@@ -38,7 +38,7 @@ export async function createVerificationCodeImpl(
   const authDb =
     config.component !== undefined ? createAuthDb(ctx, config.component) : null;
   const typedExistingAccountId = existingAccountId as
-    | GenericId<"authAccounts">
+    | GenericId<"account">
     | undefined;
   const existingAccount =
     typedExistingAccountId !== undefined
@@ -46,7 +46,7 @@ export async function createVerificationCodeImpl(
       : authDb !== null
         ? await authDb.accounts.get(providerId, email ?? phone!)
         : await ctx.db
-            .query("authAccounts")
+            .query("account")
             .withIndex("providerAndAccountId", (q) =>
               q
                 .eq("provider", providerId)
@@ -94,7 +94,7 @@ export const callCreateVerificationCode = async (
 
 async function generateUniqueVerificationCode(
   ctx: MutationCtx,
-  accountId: GenericId<"authAccounts">,
+  accountId: GenericId<"account">,
   provider: string,
   code: string,
   expirationTime: number,
@@ -107,7 +107,7 @@ async function generateUniqueVerificationCode(
     authDb !== null
       ? await authDb.verificationCodes.getByAccountId(accountId)
       : await ctx.db
-          .query("authVerificationCodes")
+          .query("verification")
           .withIndex("accountId", (q) => q.eq("accountId", accountId))
           .unique();
   if (existingCode !== null) {
@@ -127,7 +127,7 @@ async function generateUniqueVerificationCode(
       phoneVerified: phone,
     });
   } else {
-    await ctx.db.insert("authVerificationCodes", {
+    await ctx.db.insert("verification", {
       accountId,
       provider,
       code: await sha256(code),

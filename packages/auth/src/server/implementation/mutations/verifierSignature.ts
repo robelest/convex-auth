@@ -20,8 +20,8 @@ export async function verifierSignatureImpl(
     config.component !== undefined ? createAuthDb(ctx, config.component) : null;
   const verifierDoc =
     authDb !== null
-      ? await authDb.verifiers.getById(verifier as GenericId<"authVerifiers">)
-      : await ctx.db.get(verifier as GenericId<"authVerifiers">);
+      ? await authDb.verifiers.getById(verifier as GenericId<"verifier">)
+      : await ctx.db.get(verifier as GenericId<"verifier">);
   if (verifierDoc === null) {
     throw new Error("Invalid verifier");
   }

@@ -435,9 +435,9 @@ export default {
 async function initializeAuth(config: ProjectConfig) {
   logStep(config, "Initialize auth file");
   const sourceTemplate = `\
-import { convexAuth } from "@convex-dev/auth/component";
+import { Auth } from "@convex-dev/auth/component";
 
-export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({$$
+export const { auth, signIn, signOut, store } = Auth({$$
   providers: [$$],$$
 });
 `;
@@ -450,7 +450,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({$$
       logSuccess(`The ${chalk.bold(existingAuthPath)} is already set up.`);
     } else {
       logInfo(
-        `You already have a ${chalk.bold(existingAuthPath)}, make sure it initializes \`convexAuth\` like this:`,
+        `You already have a ${chalk.bold(existingAuthPath)}, make sure it initializes \`Auth\` like this:`,
       );
       print(indent(`\n${source}\n`));
       await promptForConfirmationOrExit("Ready to continue?");

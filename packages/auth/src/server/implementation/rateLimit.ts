@@ -43,7 +43,7 @@ export async function recordFailedSignIn(
         lastAttemptTime: Date.now(),
       });
     } else {
-      await ctx.db.insert("authRateLimits", {
+      await ctx.db.insert("limit", {
         identifier,
         attemptsLeft: maxAttempsPerHour - 1,
         lastAttemptTime: Date.now(),
@@ -79,10 +79,10 @@ async function getRateLimitState(
   const limit =
     config.component !== undefined
       ? ((await createAuthDb(ctx, config.component).rateLimits.get(identifier)) as
-          | Doc<"authRateLimits">
+          | Doc<"limit">
           | null)
       : await ctx.db
-          .query("authRateLimits")
+          .query("limit")
           .withIndex("identifier", (q) => q.eq("identifier", identifier))
           .unique();
   if (limit === null) {

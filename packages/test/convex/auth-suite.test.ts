@@ -1,0 +1,11 @@
+import "../../../examples/vite/convex/accounts.test";
+import "../../../examples/vite/convex/accountsPhones.test";
+import "../../../examples/vite/convex/anonymous.test";
+import "../../../examples/vite/convex/component.test";
+import "../../../examples/vite/convex/email.test";
+import "../../../examples/vite/convex/oauth.test";
+import "../../../examples/vite/convex/otp.test";
+import "../../../examples/vite/convex/passwords.test";
+import "../../../examples/vite/convex/phone.test";
+import "../../../examples/vite/convex/rateLimit.test";
+import "../../../examples/vite/convex/sessions.test";

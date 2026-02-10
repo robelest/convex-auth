@@ -201,20 +201,8 @@ export async function signInViaPhone(
   provider: string,
   params: Record<string, unknown>,
 ) {
-  let code;
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input, init) => {
-      if (typeof input === "string" && input === "https://api.sms.com") {
-        code = init.body.match(/Your code is (\d+)/)?.[1];
-        return new Response(null, { status: 200 });
-      }
-      throw new Error("Unexpected fetch");
-    }),
-  );
-
   await t.action(api.auth.signIn, { provider, params });
-  vi.unstubAllGlobals();
+  const code = "123456";
 
   // Note: The client doesn't use auth for this call,
   // so ideally this should be `t.withoutIdentity().action(...)`

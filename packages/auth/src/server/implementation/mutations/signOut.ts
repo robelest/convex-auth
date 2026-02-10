@@ -5,8 +5,8 @@ import * as Provider from "../provider.js";
 import { createAuthDb } from "../db.js";
 
 type ReturnType = {
-  userId: GenericId<"users">;
-  sessionId: GenericId<"authSessions">;
+  userId: GenericId<"user">;
+  sessionId: GenericId<"session">;
 } | null;
 
 export async function signOutImpl(

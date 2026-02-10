@@ -32,7 +32,7 @@ export async function userOAuthImpl(
     authDb !== null
       ? await authDb.accounts.get(provider, providerAccountId)
       : await ctx.db
-          .query("authAccounts")
+          .query("account")
           .withIndex("providerAndAccountId", (q) =>
             q.eq("provider", provider).eq("providerAccountId", providerAccountId),
           )
@@ -42,7 +42,7 @@ export async function userOAuthImpl(
     authDb !== null
       ? await authDb.verifiers.getBySignature(signature)
       : await ctx.db
-          .query("authVerifiers")
+          .query("verifier")
           .withIndex("signature", (q) => q.eq("signature", signature))
           .unique();
   if (verifier === null) {
@@ -67,7 +67,7 @@ export async function userOAuthImpl(
     authDb !== null
       ? await authDb.verificationCodes.getByAccountId(accountId)
       : await ctx.db
-          .query("authVerificationCodes")
+          .query("verification")
           .withIndex("accountId", (q) => q.eq("accountId", accountId))
           .unique();
   if (existingVerificationCode !== null) {
@@ -86,7 +86,7 @@ export async function userOAuthImpl(
       verifier: verifier._id,
     });
   } else {
-    await ctx.db.insert("authVerificationCodes", {
+    await ctx.db.insert("verification", {
       code: await sha256(code),
       accountId,
       provider,

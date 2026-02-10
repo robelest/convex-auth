@@ -1,8 +1,8 @@
-import { Phone } from "@convex-dev/auth/providers/Phone";
+import phone from "@convex-dev/auth/providers/Phone";
 import { internal } from "../_generated/api";
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
 
-export const TwilioOTP = Phone({
+export const twilioOtp = phone({
   id: "twilio-otp",
   maxAge: 60 * 20,
   async generateVerificationToken() {

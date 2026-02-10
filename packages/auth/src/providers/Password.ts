@@ -15,7 +15,7 @@
  * import Password from "@convex-dev/auth/providers/Password";
  * import { convexAuth } from "@convex-dev/auth/component";
  *
- * export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
+ * export const { auth, signIn, signOut, store } = convexAuth({
  *   providers: [Password],
  * });
  * ```
@@ -23,8 +23,7 @@
  * @module
  */
 
-import {
-  ConvexCredentials,
+import convexCredentials, {
   ConvexCredentialsUserConfig,
 } from "@convex-dev/auth/providers/ConvexCredentials";
 import {
@@ -71,7 +70,7 @@ export interface PasswordConfig<DataModel extends GenericDataModel> {
      * the database.
      */
     ctx: GenericActionCtxWithAuthConfig<DataModel>,
-  ) => WithoutSystemFields<DocumentByName<DataModel, "users">> & {
+  ) => WithoutSystemFields<DocumentByName<DataModel, "user">> & {
     email: string;
   };
   /**
@@ -112,11 +111,11 @@ export interface PasswordConfig<DataModel extends GenericDataModel> {
  * Email verification is not required unless you pass
  * an email provider to the `verify` option.
  */
-export function Password<DataModel extends GenericDataModel>(
+export default function password<DataModel extends GenericDataModel>(
   config: PasswordConfig<DataModel> = {},
 ) {
   const provider = config.id ?? "password";
-  return ConvexCredentials<DataModel>({
+  return convexCredentials<DataModel>({
     id: "password",
     authorize: async (params, ctx) => {
       const flow = params.flow as string;
@@ -136,8 +135,8 @@ export function Password<DataModel extends GenericDataModel>(
       const profile = config.profile?.(params, ctx) ?? defaultProfile(params);
       const { email } = profile;
       const secret = params.password as string;
-      let account: GenericDoc<DataModel, "authAccounts">;
-      let user: GenericDoc<DataModel, "users">;
+      let account: GenericDoc<DataModel, "account">;
+      let user: GenericDoc<DataModel, "user">;
       if (flow === "signUp") {
         if (secret === undefined) {
           throw new Error("Missing `password` param for `signUp` flow");

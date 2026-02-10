@@ -1,10 +1,9 @@
 import { parseAuthCookies, serializeAuthCookies } from "@convex-dev/auth/server";
 import {
-  IsAuthenticatedQuery,
   SignInAction,
   SignOutAction,
 } from "@convex-dev/auth/component";
-import { fetchAction, fetchQuery } from "convex/nextjs";
+import { fetchAction } from "convex/nextjs";
 import { cookies, headers } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -23,14 +22,7 @@ export async function convexAuthToken() {
 
 export async function isAuthenticated() {
   const token = await convexAuthToken();
-  if (!token) {
-    return false;
-  }
-  try {
-    return await fetchQuery("auth:isAuthenticated" as unknown as IsAuthenticatedQuery, {}, { token });
-  } catch {
-    return false;
-  }
+  return token !== null;
 }
 
 export async function proxyAuthRoute(request: NextRequest) {

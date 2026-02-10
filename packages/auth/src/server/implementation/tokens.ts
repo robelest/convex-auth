@@ -8,8 +8,8 @@ const DEFAULT_JWT_DURATION_MS = 1000 * 60 * 60; // 1 hour
 
 export async function generateToken(
   args: {
-    userId: GenericId<"users">;
-    sessionId: GenericId<"authSessions">;
+    userId: GenericId<"user">;
+    sessionId: GenericId<"session">;
   },
   config: ConvexAuthConfig,
 ) {

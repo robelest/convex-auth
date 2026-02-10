@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "jsx": "react-jsx",
+    "types": ["vitest/globals", "vite/client", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@convex/*": ["../../convex/*"],
+      "@convex-dev/auth/*": ["../../packages/auth/src/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"]
+}

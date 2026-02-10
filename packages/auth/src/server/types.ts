@@ -91,7 +91,7 @@ export type ConvexAuthConfig = {
      * import GitHub from "@auth/core/providers/github";
      * import { convexAuth } from "@convex-dev/auth/component";
      *
-     * export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
+     * export const { auth, signIn, signOut, store } = convexAuth({
      *   providers: [GitHub],
      *   callbacks: {
      *     async redirect({ redirectTo }) {
@@ -144,7 +144,7 @@ export type ConvexAuthConfig = {
          * If this is a sign-in to an existing account,
          * this is the existing user ID linked to that account.
          */
-        existingUserId: GenericId<"users"> | null;
+        existingUserId: GenericId<"user"> | null;
         /**
          * The provider type or "verification" if this callback is called
          * after an email or phone token verification.
@@ -173,7 +173,7 @@ export type ConvexAuthConfig = {
          */
         shouldLink?: boolean;
       },
-    ) => Promise<GenericId<"users">>;
+    ) => Promise<GenericId<"user">>;
     /**
      * Perform additional writes after a user is created.
      *
@@ -194,12 +194,12 @@ export type ConvexAuthConfig = {
         /**
          * The ID of the user that is being signed in.
          */
-        userId: GenericId<"users">;
+        userId: GenericId<"user">;
         /**
          * If this is a sign-in to an existing account,
          * this is the existing user ID linked to that account.
          */
-        existingUserId: GenericId<"users"> | null;
+        existingUserId: GenericId<"user"> | null;
         /**
          * The provider type or "verification" if this callback is called
          * after an email or phone token verification.
@@ -266,7 +266,7 @@ export interface EmailConfig<
      * The values passed to the `signIn` function.
      */
     params: Record<string, Value | undefined>,
-    account: GenericDoc<DataModel, "authAccounts">,
+    account: GenericDoc<DataModel, "account">,
   ) => Promise<void>;
 }
 
@@ -334,7 +334,7 @@ export interface PhoneConfig<
      * The values passed to the `signIn` function.
      */
     params: Record<string, Value | undefined>,
-    account: GenericDoc<DataModel, "authAccounts">,
+    account: GenericDoc<DataModel, "account">,
   ) => Promise<void>;
   options: PhoneUserConfig<DataModel>;
 }
@@ -416,6 +416,10 @@ export type AuthComponentApi = {
     verificationCodeGetByCode: FunctionReference<"query", "internal">;
     verificationCodeCreate: FunctionReference<"mutation", "internal">;
     verificationCodeDelete: FunctionReference<"mutation", "internal">;
+    verificationGetByAccountId?: FunctionReference<"query", "internal">;
+    verificationGetByCode?: FunctionReference<"query", "internal">;
+    verificationCreate?: FunctionReference<"mutation", "internal">;
+    verificationDelete?: FunctionReference<"mutation", "internal">;
     refreshTokenCreate: FunctionReference<"mutation", "internal">;
     refreshTokenGetById: FunctionReference<"query", "internal">;
     refreshTokenPatch: FunctionReference<"mutation", "internal">;
@@ -423,9 +427,44 @@ export type AuthComponentApi = {
     refreshTokenListBySession: FunctionReference<"query", "internal">;
     refreshTokenDeleteAll: FunctionReference<"mutation", "internal">;
     refreshTokenGetActive: FunctionReference<"query", "internal">;
+    tokenCreate?: FunctionReference<"mutation", "internal">;
+    tokenGetById?: FunctionReference<"query", "internal">;
+    tokenPatch?: FunctionReference<"mutation", "internal">;
+    tokenGetChildren?: FunctionReference<"query", "internal">;
+    tokenListBySession?: FunctionReference<"query", "internal">;
+    tokenDeleteAll?: FunctionReference<"mutation", "internal">;
+    tokenGetActive?: FunctionReference<"query", "internal">;
     rateLimitGet: FunctionReference<"query", "internal">;
     rateLimitCreate: FunctionReference<"mutation", "internal">;
     rateLimitPatch: FunctionReference<"mutation", "internal">;
     rateLimitDelete: FunctionReference<"mutation", "internal">;
+    limitGet?: FunctionReference<"query", "internal">;
+    limitCreate?: FunctionReference<"mutation", "internal">;
+    limitPatch?: FunctionReference<"mutation", "internal">;
+    limitDelete?: FunctionReference<"mutation", "internal">;
+    organizationCreate?: FunctionReference<"mutation", "internal">;
+    organizationGet?: FunctionReference<"query", "internal">;
+    organizationList?: FunctionReference<"query", "internal">;
+    organizationUpdate?: FunctionReference<"mutation", "internal">;
+    organizationDelete?: FunctionReference<"mutation", "internal">;
+    teamCreate?: FunctionReference<"mutation", "internal">;
+    teamGet?: FunctionReference<"query", "internal">;
+    teamListByOrganization?: FunctionReference<"query", "internal">;
+    teamUpdate?: FunctionReference<"mutation", "internal">;
+    teamDelete?: FunctionReference<"mutation", "internal">;
+    teamRelationCreate?: FunctionReference<"mutation", "internal">;
+    teamRelationGet?: FunctionReference<"query", "internal">;
+    teamRelationListByParent?: FunctionReference<"query", "internal">;
+    teamRelationDelete?: FunctionReference<"mutation", "internal">;
+    memberAdd?: FunctionReference<"mutation", "internal">;
+    memberRemove?: FunctionReference<"mutation", "internal">;
+    memberList?: FunctionReference<"query", "internal">;
+    memberRoleSet?: FunctionReference<"mutation", "internal">;
+    memberRoleGet?: FunctionReference<"query", "internal">;
+    inviteCreate?: FunctionReference<"mutation", "internal">;
+    inviteGet?: FunctionReference<"query", "internal">;
+    inviteList?: FunctionReference<"query", "internal">;
+    inviteAccept?: FunctionReference<"mutation", "internal">;
+    inviteRevoke?: FunctionReference<"mutation", "internal">;
   };
 };

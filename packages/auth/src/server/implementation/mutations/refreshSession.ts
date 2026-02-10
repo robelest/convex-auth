@@ -49,10 +49,15 @@ export async function refreshSessionImpl(
   if (validationResult === null) {
     // Replicating `deleteSession` but ensuring that we delete both the session
     // and the refresh token, even if one of them is missing.
-    const session =
-      authDb !== null
-        ? await authDb.sessions.getById(tokenSessionId)
-        : await ctx.db.get(tokenSessionId);
+    let session = null;
+    try {
+      session =
+        authDb !== null
+          ? await authDb.sessions.getById(tokenSessionId)
+          : await ctx.db.get(tokenSessionId);
+    } catch {
+      logWithLevel("DEBUG", "Skipping invalid session id during refresh cleanup");
+    }
     if (session !== null) {
       if (authDb !== null) {
         await authDb.sessions.delete(session._id);
@@ -60,7 +65,14 @@ export async function refreshSessionImpl(
         await ctx.db.delete(session._id);
       }
     }
-    await deleteAllRefreshTokens(ctx, tokenSessionId, config);
+    try {
+      await deleteAllRefreshTokens(ctx, tokenSessionId, config);
+    } catch {
+      logWithLevel(
+        "DEBUG",
+        "Skipping invalid token session id during refresh token cleanup",
+      );
+    }
     return null;
   }
   const { session } = validationResult;

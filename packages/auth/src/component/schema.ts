@@ -2,12 +2,19 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { authTables } from "../server/implementation/types.js";
 
-const { users, ...componentAuthTables } = authTables;
-void users;
+const {
+  user,
+  account,
+  session,
+  token,
+  verification,
+  verifier,
+  limit,
+} = authTables;
+void user;
 
 export default defineSchema({
-  ...componentAuthTables,
-  users: defineTable({
+  user: defineTable({
     name: v.optional(v.string()),
     image: v.optional(v.string()),
     email: v.optional(v.string()),
@@ -19,4 +26,10 @@ export default defineSchema({
   })
     .index("email", ["email"])
     .index("phone", ["phone"]),
+  account,
+  session,
+  token,
+  verification,
+  verifier,
+  limit,
 });

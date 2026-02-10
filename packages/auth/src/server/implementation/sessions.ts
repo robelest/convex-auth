@@ -22,8 +22,8 @@ const DEFAULT_SESSION_TOTAL_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 export async function maybeGenerateTokensForSession(
   ctx: MutationCtx,
   config: ConvexAuthConfig,
-  userId: GenericId<"users">,
-  sessionId: GenericId<"authSessions">,
+  userId: GenericId<"user">,
+  sessionId: GenericId<"session">,
   generateTokens: boolean,
 ): Promise<SessionInfo> {
   return {
@@ -43,7 +43,7 @@ export async function maybeGenerateTokensForSession(
 export async function createNewAndDeleteExistingSession(
   ctx: MutationCtx,
   config: ConvexAuthConfig,
-  userId: GenericId<"users">,
+  userId: GenericId<"user">,
 ) {
   const authDb =
     config.component !== undefined ? createAuthDb(ctx, config.component) : null;
@@ -64,10 +64,10 @@ export async function generateTokensForSession(
   ctx: MutationCtx,
   config: ConvexAuthConfig,
   args: {
-    userId: GenericId<"users">;
-    sessionId: GenericId<"authSessions">;
-    issuedRefreshTokenId: GenericId<"authRefreshTokens"> | null;
-    parentRefreshTokenId: GenericId<"authRefreshTokens"> | null;
+    userId: GenericId<"user">;
+    sessionId: GenericId<"session">;
+    issuedRefreshTokenId: GenericId<"token"> | null;
+    parentRefreshTokenId: GenericId<"token"> | null;
   },
 ) {
   const ids = { userId: args.userId, sessionId: args.sessionId };
@@ -92,7 +92,7 @@ export async function generateTokensForSession(
 
 async function createSession(
   ctx: MutationCtx,
-  userId: GenericId<"users">,
+  userId: GenericId<"user">,
   config: ConvexAuthConfig,
 ) {
   const expirationTime =
@@ -104,14 +104,14 @@ async function createSession(
     return (await createAuthDb(ctx, config.component).sessions.create(
       userId,
       expirationTime,
-    )) as GenericId<"authSessions">;
+    )) as GenericId<"session">;
   }
-  return await ctx.db.insert("authSessions", { expirationTime, userId });
+  return await ctx.db.insert("session", { expirationTime, userId });
 }
 
 export async function deleteSession(
   ctx: MutationCtx,
-  session: Doc<"authSessions">,
+  session: Doc<"session">,
   config: ConvexAuthConfig,
 ) {
   if (config.component !== undefined) {
@@ -151,5 +151,5 @@ export async function getAuthSessionId(ctx: { auth: Auth }) {
     return null;
   }
   const [, sessionId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
-  return sessionId as GenericId<"authSessions">;
+  return sessionId as GenericId<"session">;
 }

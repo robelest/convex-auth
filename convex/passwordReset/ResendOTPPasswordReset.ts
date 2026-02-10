@@ -1,7 +1,7 @@
 import { Email } from "@convex-dev/auth/providers/Email";
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
 
-export const ResendOTPPasswordReset = Email({
+export const resendOtpPasswordReset = Email({
   id: "resend-otp-password-reset",
   apiKey: process.env.AUTH_RESEND_KEY,
   async generateVerificationToken() {

@@ -30,12 +30,12 @@ export const invalidateSessionsImpl = async (
   logWithLevel(LOG_LEVELS.DEBUG, "invalidateSessionsImpl args:", args);
   const { userId, except } = args;
   const exceptSet = new Set(except ?? []);
-  const typedUserId = userId as GenericId<"users">;
+  const typedUserId = userId as GenericId<"user">;
   const sessions =
     config.component !== undefined
       ? await createAuthDb(ctx, config.component).sessions.listByUser(typedUserId)
       : await ctx.db
-          .query("authSessions")
+          .query("session")
           .withIndex("userId", (q) => q.eq("userId", typedUserId))
           .collect();
   for (const session of sessions) {

@@ -12,7 +12,7 @@
 
 export {
   authTables,
-  convexAuth,
+  Auth,
   getAuthUserId,
   getAuthSessionId,
   createAccount,
@@ -24,7 +24,6 @@ export {
   Doc,
   SignInAction,
   SignOutAction,
-  IsAuthenticatedQuery,
 } from "../server/implementation/index.js";
 export type {
   ConvexAuthConfig,

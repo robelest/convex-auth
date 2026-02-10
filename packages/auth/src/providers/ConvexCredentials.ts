@@ -8,7 +8,7 @@
  * import ConvexCredentials from "@convex-dev/auth/providers/ConvexCredentials";
  * import { convexAuth } from "@convex-dev/auth/component";
  *
- * export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
+ * export const { auth, signIn, signOut, store } = convexAuth({
  *   providers: [
  *     ConvexCredentials({
  *       authorize: async (credentials, ctx) => {
@@ -60,8 +60,8 @@ export interface ConvexCredentialsUserConfig<
     credentials: Partial<Record<string, Value | undefined>>,
     ctx: GenericActionCtxWithAuthConfig<DataModel>,
   ) => Promise<{
-    userId: GenericId<"users">;
-    sessionId?: GenericId<"authSessions">;
+    userId: GenericId<"user">;
+    sessionId?: GenericId<"session">;
   } | null>;
   /**
    * Provide hashing and verification functions if you're
@@ -95,7 +95,7 @@ export interface ConvexCredentialsUserConfig<
  * The Credentials provider allows you to handle signing in with arbitrary credentials,
  * such as a username and password, domain, or two factor authentication or hardware device (e.g. YubiKey U2F / FIDO).
  */
-export function ConvexCredentials<DataModel extends GenericDataModel>(
+export default function convexCredentials<DataModel extends GenericDataModel>(
   config: ConvexCredentialsUserConfig<DataModel>,
 ): ConvexCredentialsConfig {
   return {

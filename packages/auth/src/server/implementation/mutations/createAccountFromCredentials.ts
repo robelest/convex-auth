@@ -15,7 +15,7 @@ export const createAccountFromCredentialsArgs = v.object({
   shouldLinkViaPhone: v.optional(v.boolean()),
 });
 
-type ReturnType = { account: Doc<"authAccounts">; user: Doc<"users"> };
+type ReturnType = { account: Doc<"account">; user: Doc<"user"> };
 
 export async function createAccountFromCredentialsImpl(
   ctx: MutationCtx,
@@ -42,9 +42,9 @@ export async function createAccountFromCredentialsImpl(
   const provider = getProviderOrThrow(providerId) as ConvexCredentialsConfig;
   const existingAccount =
     authDb !== null
-      ? ((await authDb.accounts.get(provider.id, account.id)) as Doc<"authAccounts"> | null)
+      ? ((await authDb.accounts.get(provider.id, account.id)) as Doc<"account"> | null)
       : await ctx.db
-          .query("authAccounts")
+          .query("account")
           .withIndex("providerAndAccountId", (q) =>
             q.eq("provider", provider.id).eq("providerAccountId", account.id),
           )
@@ -65,7 +65,7 @@ export async function createAccountFromCredentialsImpl(
       // TODO: Ian removed this,
       user:
         authDb !== null
-          ? ((await authDb.users.getById(existingAccount.userId)) as unknown as Doc<"users">)
+          ? ((await authDb.users.getById(existingAccount.userId)) as unknown as Doc<"user">)
           : (await ctx.db.get(existingAccount.userId))!,
     };
   }
@@ -91,11 +91,11 @@ export async function createAccountFromCredentialsImpl(
   return {
     account:
       authDb !== null
-        ? ((await authDb.accounts.getById(accountId)) as Doc<"authAccounts">)
+        ? ((await authDb.accounts.getById(accountId)) as Doc<"account">)
         : (await ctx.db.get(accountId))!,
     user:
       authDb !== null
-        ? ((await authDb.users.getById(userId)) as unknown as Doc<"users">)
+        ? ((await authDb.users.getById(userId)) as unknown as Doc<"user">)
         : (await ctx.db.get(userId))!,
   };
 }

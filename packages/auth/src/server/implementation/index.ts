@@ -63,7 +63,7 @@ export { getAuthSessionId } from "./sessions.js";
  * However it is not stable, and may change until this library reaches 1.0.
  */
 export type SignInAction = FunctionReferenceFromExport<
-  ReturnType<typeof convexAuth>["signIn"]
+  ReturnType<typeof Auth>["signIn"]
 >;
 /**
  * The type of the signOut Convex Action returned from the auth() helper.
@@ -72,27 +72,17 @@ export type SignInAction = FunctionReferenceFromExport<
  * However it is not stable, and may change until this library reaches 1.0.
  */
 export type SignOutAction = FunctionReferenceFromExport<
-  ReturnType<typeof convexAuth>["signOut"]
+  ReturnType<typeof Auth>["signOut"]
 >;
-/**
- * The type of the isAuthenticated Convex Query returned from the auth() helper.
- *
- * This type is exported for implementors of other client integrations.
- * However it is not stable, and may change until this library reaches 1.0.
- */
-export type IsAuthenticatedQuery = FunctionReferenceFromExport<
-  ReturnType<typeof convexAuth>["isAuthenticated"]
->;
-
 /**
  * Configure the Convex Auth library. Returns an object with
  * functions and `auth` helper. You must export the functions
  * from `convex/auth.ts` to make them callable:
  *
  * ```ts filename="convex/auth.ts"
- * import { convexAuth } from "@convex-dev/auth/component";
+ * import { Auth } from "@convex-dev/auth/component";
  *
- * export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
+ * export const { auth, signIn, signOut, store } = Auth({
  *   providers: [],
  * });
  * ```
@@ -100,7 +90,7 @@ export type IsAuthenticatedQuery = FunctionReferenceFromExport<
  * @returns An object with fields you should reexport from your
  *          `convex/auth.ts` file.
  */
-export function convexAuth(config_: ConvexAuthConfig) {
+export function Auth(config_: ConvexAuthConfig) {
   const config = configDefaults(config_ as any);
   const hasOAuth = config.providers.some(
     (provider) => provider.type === "oauth" || provider.type === "oidc",
@@ -130,41 +120,162 @@ export function convexAuth(config_: ConvexAuthConfig) {
   const enrichCtx = <DataModel extends GenericDataModel>(
     ctx: GenericActionCtx<DataModel>,
   ) => ({ ...ctx, auth: { ...ctx.auth, config } });
+  const requireComponent = () => {
+    if (config.component === undefined) {
+      throw new Error(
+        "Auth component is not configured. Pass `component: components.auth` in Auth config.",
+      );
+    }
+    return config.component;
+  };
+  type ComponentCtx = Pick<
+    GenericActionCtx<GenericDataModel>,
+    "runQuery" | "runMutation"
+  >;
+  type ComponentReadCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
+  type ComponentAuthCtx = ComponentCtx & { auth: Auth };
+  type ComponentAuthReadCtx = ComponentReadCtx & { auth: Auth };
 
   const auth = {
-    /**
-     * @deprecated - Use `getAuthUserId` from "@convex-dev/auth/component":
-     *
-     * ```ts
-     * import { getAuthUserId } from "@convex-dev/auth/component";
-     * ```
-     *
-     * @hidden
-     */
-    getUserId: async (ctx: { auth: Auth }) => {
-      const identity = await ctx.auth.getUserIdentity();
-      if (identity === null) {
-        return null;
-      }
-      const [userId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
-      return userId as GenericId<"users">;
+    user: {
+      current: async (ctx: { auth: Auth }) => {
+        const identity = await ctx.auth.getUserIdentity();
+        if (identity === null) {
+          return null;
+        }
+        const [userId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
+        return userId as GenericId<"user">;
+      },
+      require: async (ctx: { auth: Auth }) => {
+        const identity = await ctx.auth.getUserIdentity();
+        if (identity === null) {
+          throw new Error("Not signed in");
+        }
+        const [userId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
+        return userId as GenericId<"user">;
+      },
+      get: async (ctx: ComponentReadCtx, userId: string) => {
+        const component = requireComponent();
+        return await ctx.runQuery(component.public.userGetById, { userId });
+      },
+      viewer: async (ctx: ComponentAuthReadCtx) => {
+        const userId = await auth.user.current(ctx);
+        if (userId === null) {
+          return null;
+        }
+        const component = requireComponent();
+        return await ctx.runQuery(component.public.userGetById, { userId });
+      },
     },
-    /**
-     * @deprecated - Use `getAuthSessionId` from "@convex-dev/auth/component":
-     *
-     * ```
-     * import { getAuthSessionId } from "@convex-dev/auth/component";
-     * ```
-     *
-     * @hidden
-     */
-    getSessionId: async (ctx: { auth: Auth }) => {
-      const identity = await ctx.auth.getUserIdentity();
-      if (identity === null) {
-        return null;
-      }
-      const [, sessionId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
-      return sessionId as GenericId<"authSessions">;
+    organization: {
+      create: async (
+        ctx: ComponentCtx,
+        data: Record<string, unknown>,
+      ): Promise<string> => {
+        const component = requireComponent();
+        return (await ctx.runMutation(component.public.organizationCreate!, {
+          data,
+        })) as string;
+      },
+      get: async (ctx: ComponentCtx, organizationId: string) => {
+        const component = requireComponent();
+        return await ctx.runQuery(component.public.organizationGet!, {
+          organizationId,
+        });
+      },
+      list: async (
+        ctx: ComponentCtx,
+        ownerUserId?: string,
+      ) => {
+        const component = requireComponent();
+        return await ctx.runQuery(component.public.organizationList!, {
+          ownerUserId,
+        });
+      },
+      update: async (
+        ctx: ComponentCtx,
+        organizationId: string,
+        data: Record<string, unknown>,
+      ) => {
+        const component = requireComponent();
+        await ctx.runMutation(component.public.organizationUpdate!, {
+          organizationId,
+          data,
+        });
+      },
+      delete: async (ctx: ComponentCtx, organizationId: string) => {
+        const component = requireComponent();
+        await ctx.runMutation(component.public.organizationDelete!, {
+          organizationId,
+        });
+      },
+      member: {
+        add: async (
+          ctx: ComponentCtx,
+          data: Record<string, unknown>,
+        ): Promise<string> => {
+          const component = requireComponent();
+          return (await ctx.runMutation(component.public.memberAdd!, {
+            data,
+          })) as string;
+        },
+        remove: async (ctx: ComponentCtx, memberId: string) => {
+          const component = requireComponent();
+          await ctx.runMutation(component.public.memberRemove!, { memberId });
+        },
+        list: async (
+          ctx: ComponentCtx,
+          args: { organizationId: string; teamId?: string },
+        ) => {
+          const component = requireComponent();
+          return await ctx.runQuery(component.public.memberList!, args);
+        },
+        role: {
+          set: async (ctx: ComponentCtx, memberId: string, role: string) => {
+            const component = requireComponent();
+            await ctx.runMutation(component.public.memberRoleSet!, {
+              memberId,
+              role,
+            });
+          },
+          get: async (ctx: ComponentCtx, memberId: string) => {
+            const component = requireComponent();
+            return await ctx.runQuery(component.public.memberRoleGet!, {
+              memberId,
+            });
+          },
+        },
+      },
+    },
+    invite: {
+      create: async (
+        ctx: ComponentCtx,
+        data: Record<string, unknown>,
+      ): Promise<string> => {
+        const component = requireComponent();
+        return (await ctx.runMutation(component.public.inviteCreate!, {
+          data,
+        })) as string;
+      },
+      get: async (ctx: ComponentCtx, inviteId: string) => {
+        const component = requireComponent();
+        return await ctx.runQuery(component.public.inviteGet!, { inviteId });
+      },
+      list: async (
+        ctx: ComponentCtx,
+        args: { organizationId?: string; status?: string },
+      ) => {
+        const component = requireComponent();
+        return await ctx.runQuery(component.public.inviteList!, args);
+      },
+      accept: async (ctx: ComponentCtx, inviteId: string) => {
+        const component = requireComponent();
+        await ctx.runMutation(component.public.inviteAccept!, { inviteId });
+      },
+      revoke: async (ctx: ComponentCtx, inviteId: string) => {
+        const component = requireComponent();
+        await ctx.runMutation(component.public.inviteRevoke!, { inviteId });
+      },
     },
     /**
      * Add HTTP actions for JWT verification and OAuth sign-in.
@@ -453,17 +564,6 @@ export function convexAuth(config_: ConvexAuthConfig) {
       },
     }),
 
-    /**
-     * Utility function for frameworks to use to get the current auth state
-     * based on credentials that they've supplied separately.
-     */
-    isAuthenticated: queryGeneric({
-      args: {},
-      handler: async (ctx, _args): Promise<boolean> => {
-        const ident = await ctx.auth.getUserIdentity();
-        return ident !== null;
-      },
-    }),
   };
 }
 
@@ -496,7 +596,7 @@ export async function getAuthUserId(ctx: { auth: Auth }) {
     return null;
   }
   const [userId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
-  return userId as GenericId<"users">;
+  return userId as GenericId<"user">;
 }
 
 /**
@@ -534,7 +634,7 @@ export async function createAccount<
      * The profile data to store for the user.
      * These must fit the `users` table schema.
      */
-    profile: WithoutSystemFields<DocumentByName<DataModel, "users">>;
+    profile: WithoutSystemFields<DocumentByName<DataModel, "user">>;
     /**
      * If `true`, the account will be linked to an existing user
      * with the same verified email address.
@@ -551,11 +651,14 @@ export async function createAccount<
     shouldLinkViaPhone?: boolean;
   },
 ): Promise<{
-  account: GenericDoc<DataModel, "authAccounts">;
-  user: GenericDoc<DataModel, "users">;
+  account: GenericDoc<DataModel, "account">;
+  user: GenericDoc<DataModel, "user">;
 }> {
   const actionCtx = ctx as unknown as ActionCtx;
-  return await callCreateAccountFromCredentials(actionCtx, args);
+  return (await callCreateAccountFromCredentials(
+    actionCtx,
+    args as any,
+  )) as any;
 }
 
 /**
@@ -592,15 +695,15 @@ export async function retrieveAccount<
     };
   },
 ): Promise<{
-  account: GenericDoc<DataModel, "authAccounts">;
-  user: GenericDoc<DataModel, "users">;
+  account: GenericDoc<DataModel, "account">;
+  user: GenericDoc<DataModel, "user">;
 }> {
   const actionCtx = ctx as unknown as ActionCtx;
   const result = await callRetreiveAccountWithCredentials(actionCtx, args);
   if (typeof result === "string") {
     throw new Error(result);
   }
-  return result;
+  return result as any;
 }
 
 /**
@@ -643,8 +746,8 @@ export async function invalidateSessions<
 >(
   ctx: GenericActionCtx<DataModel>,
   args: {
-    userId: GenericId<"users">;
-    except?: GenericId<"authSessions">[];
+    userId: GenericId<"user">;
+    except?: GenericId<"session">[];
   },
 ): Promise<void> {
   const actionCtx = ctx as unknown as ActionCtx;
@@ -666,14 +769,19 @@ export async function signInViaProvider<
   ctx: GenericActionCtxWithAuthConfig<DataModel>,
   provider: AuthProviderConfig,
   args: {
-    accountId?: GenericId<"authAccounts">;
+    accountId?: GenericId<"account">;
     params?: Record<string, Value | undefined>;
   },
 ) {
-  const result = await signInImpl(ctx, materializeProvider(provider), args, {
+  const result = await signInImpl(
+    ctx,
+    materializeProvider(provider),
+    args as any,
+    {
     generateTokens: false,
     allowExtraProviders: true,
-  });
+    },
+  );
   return result.kind === "signedIn"
     ? result.signedIn !== null
       ? { userId: result.signedIn.userId, sessionId: result.signedIn.sessionId }

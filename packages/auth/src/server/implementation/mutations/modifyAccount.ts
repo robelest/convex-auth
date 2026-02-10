@@ -30,7 +30,7 @@ export async function modifyAccountImpl(
     authDb !== null
       ? await authDb.accounts.get(provider, account.id)
       : await ctx.db
-          .query("authAccounts")
+          .query("account")
           .withIndex("providerAndAccountId", (q) =>
             q.eq("provider", provider).eq("providerAccountId", account.id),
           )

@@ -114,7 +114,7 @@ async function verifyCodeOnly(
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   allowExtraProviders: boolean,
   config: ConvexAuthConfig,
-  sessionId: GenericId<"authSessions"> | null,
+  sessionId: GenericId<"session"> | null,
 ) {
   const authDb =
     config.component !== undefined ? createAuthDb(ctx, config.component) : null;
@@ -124,7 +124,7 @@ async function verifyCodeOnly(
     authDb !== null
       ? await authDb.verificationCodes.getByCode(codeHash)
       : await ctx.db
-          .query("authVerificationCodes")
+          .query("verification")
           .withIndex("code", (q) => q.eq("code", codeHash))
           .unique();
   if (verificationCode === null) {

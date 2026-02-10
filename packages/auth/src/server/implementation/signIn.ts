@@ -32,7 +32,7 @@ export async function signInImpl(
   ctx: EnrichedActionCtx,
   provider: AuthProviderMaterializedConfig | null,
   args: {
-    accountId?: GenericId<"authAccounts">;
+    accountId?: GenericId<"account">;
     params?: Record<string, any>;
     verifier?: string;
     refreshToken?: string;
@@ -95,7 +95,7 @@ async function handleEmailAndPhoneProvider(
   provider: EmailConfig | PhoneConfig,
   args: {
     params?: Record<string, any>;
-    accountId?: GenericId<"authAccounts">;
+    accountId?: GenericId<"account">;
   },
   options: {
     generateTokens: boolean;

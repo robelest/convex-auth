@@ -1,6 +1,4 @@
 import { parseAuthCookies } from "@convex-dev/auth/server";
-import { IsAuthenticatedQuery } from "@convex-dev/auth/component";
-import { fetchQuery } from "convex/nextjs";
 import { NextRequest, NextResponse } from "next/server";
 
 function isSignInPage(request: NextRequest) {
@@ -16,14 +14,7 @@ async function isAuthenticatedRequest(request: NextRequest) {
     request.headers.get("cookie"),
     request.headers.get("host") ?? undefined,
   );
-  if (!token) {
-    return false;
-  }
-  try {
-    return await fetchQuery("auth:isAuthenticated" as unknown as IsAuthenticatedQuery, {}, { token });
-  } catch {
-    return false;
-  }
+  return token !== null;
 }
 
 export default async function middleware(request: NextRequest) {

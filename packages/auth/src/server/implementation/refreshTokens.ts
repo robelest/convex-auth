@@ -15,8 +15,8 @@ export const REFRESH_TOKEN_REUSE_WINDOW_MS = 10 * 1000; // 10 seconds
 export async function createRefreshToken(
   ctx: MutationCtx,
   config: ConvexAuthConfig,
-  sessionId: GenericId<"authSessions">,
-  parentRefreshTokenId: GenericId<"authRefreshTokens"> | null,
+  sessionId: GenericId<"session">,
+  parentRefreshTokenId: GenericId<"token"> | null,
 ) {
   const expirationTime =
     Date.now() +
@@ -28,9 +28,9 @@ export async function createRefreshToken(
       sessionId,
       expirationTime,
       parentRefreshTokenId: parentRefreshTokenId ?? undefined,
-    })) as GenericId<"authRefreshTokens">;
+    })) as GenericId<"token">;
   }
-  const newRefreshTokenId = await ctx.db.insert("authRefreshTokens", {
+  const newRefreshTokenId = await ctx.db.insert("token", {
     sessionId,
     expirationTime,
     parentRefreshTokenId: parentRefreshTokenId ?? undefined,
@@ -39,8 +39,8 @@ export async function createRefreshToken(
 }
 
 export const formatRefreshToken = (
-  refreshTokenId: GenericId<"authRefreshTokens">,
-  sessionId: GenericId<"authSessions">,
+  refreshTokenId: GenericId<"token">,
+  sessionId: GenericId<"session">,
 ) => {
   return `${refreshTokenId}${REFRESH_TOKEN_DIVIDER}${sessionId}`;
 };
@@ -48,16 +48,16 @@ export const formatRefreshToken = (
 export const parseRefreshToken = (
   refreshToken: string,
 ): {
-  refreshTokenId: GenericId<"authRefreshTokens">;
-  sessionId: GenericId<"authSessions">;
+  refreshTokenId: GenericId<"token">;
+  sessionId: GenericId<"session">;
 } => {
   const [refreshTokenId, sessionId] = refreshToken.split(REFRESH_TOKEN_DIVIDER);
   if (!refreshTokenId || !sessionId) {
     throw new Error(`Can't parse refresh token: ${maybeRedact(refreshToken)}`);
   }
   return {
-    refreshTokenId: refreshTokenId as GenericId<"authRefreshTokens">,
-    sessionId: sessionId as GenericId<"authSessions">,
+    refreshTokenId: refreshTokenId as GenericId<"token">,
+    sessionId: sessionId as GenericId<"session">,
   };
 };
 
@@ -71,7 +71,7 @@ export const parseRefreshToken = (
  */
 export async function invalidateRefreshTokensInSubtree(
   ctx: MutationCtx,
-  refreshToken: Doc<"authRefreshTokens">,
+  refreshToken: Doc<"token">,
   config: ConvexAuthConfig,
 ) {
   const authDb =
@@ -86,9 +86,9 @@ export async function invalidateRefreshTokensInSubtree(
           ? ((await authDb.refreshTokens.getChildren(
               refreshToken.sessionId,
               currentTokenId,
-            )) as Doc<"authRefreshTokens">[])
+            )) as Doc<"token">[])
           : await ctx.db
-              .query("authRefreshTokens")
+              .query("token")
               .withIndex("sessionIdAndParentRefreshTokenId", (q) =>
                 q
                   .eq("sessionId", refreshToken.sessionId)
@@ -122,7 +122,7 @@ export async function invalidateRefreshTokensInSubtree(
 
 export async function deleteAllRefreshTokens(
   ctx: MutationCtx,
-  sessionId: GenericId<"authSessions">,
+  sessionId: GenericId<"session">,
   config: ConvexAuthConfig,
 ) {
   if (config.component !== undefined) {
@@ -130,7 +130,7 @@ export async function deleteAllRefreshTokens(
     return;
   }
   const existingRefreshTokens = await ctx.db
-    .query("authRefreshTokens")
+    .query("token")
     .withIndex("sessionIdAndParentRefreshTokenId", (q) =>
       q.eq("sessionId", sessionId),
     )
@@ -148,12 +148,18 @@ export async function refreshTokenIfValid(
 ) {
   const authDb =
     config.component !== undefined ? createAuthDb(ctx, config.component) : null;
-  const refreshTokenDoc =
-    authDb !== null
-      ? ((await authDb.refreshTokens.getById(
-          refreshTokenId as GenericId<"authRefreshTokens">,
-        )) as Doc<"authRefreshTokens"> | null)
-      : await ctx.db.get(refreshTokenId as GenericId<"authRefreshTokens">);
+  let refreshTokenDoc: Doc<"token"> | null;
+  try {
+    refreshTokenDoc =
+      authDb !== null
+        ? ((await authDb.refreshTokens.getById(
+            refreshTokenId as GenericId<"token">,
+          )) as Doc<"token"> | null)
+        : await ctx.db.get(refreshTokenId as GenericId<"token">);
+  } catch {
+    logWithLevel(LOG_LEVELS.ERROR, "Invalid refresh token format");
+    return null;
+  }
 
   if (refreshTokenDoc === null) {
     logWithLevel(LOG_LEVELS.ERROR, "Invalid refresh token");
@@ -167,12 +173,18 @@ export async function refreshTokenIfValid(
     logWithLevel(LOG_LEVELS.ERROR, "Invalid refresh token session ID");
     return null;
   }
-  const session =
-    authDb !== null
-      ? ((await authDb.sessions.getById(refreshTokenDoc.sessionId)) as
-          | Doc<"authSessions">
-          | null)
-      : await ctx.db.get(refreshTokenDoc.sessionId);
+  let session: Doc<"session"> | null;
+  try {
+    session =
+      authDb !== null
+        ? ((await authDb.sessions.getById(refreshTokenDoc.sessionId)) as
+            | Doc<"session">
+            | null)
+        : await ctx.db.get(refreshTokenDoc.sessionId);
+  } catch {
+    logWithLevel(LOG_LEVELS.ERROR, "Invalid refresh token session format");
+    return null;
+  }
   if (session === null) {
     logWithLevel(LOG_LEVELS.ERROR, "Invalid refresh token session");
     return null;
@@ -192,16 +204,16 @@ export async function refreshTokenIfValid(
  */
 export async function loadActiveRefreshToken(
   ctx: MutationCtx,
-  sessionId: GenericId<"authSessions">,
+  sessionId: GenericId<"session">,
   config: ConvexAuthConfig,
 ) {
   if (config.component !== undefined) {
     return (await createAuthDb(ctx, config.component).refreshTokens.getActive(
       sessionId,
-    )) as Doc<"authRefreshTokens"> | null;
+    )) as Doc<"token"> | null;
   }
   return ctx.db
-    .query("authRefreshTokens")
+    .query("token")
     .withIndex("sessionId", (q) => q.eq("sessionId", sessionId))
     .filter((q) => q.eq(q.field("firstUsedTime"), undefined))
     .order("desc")

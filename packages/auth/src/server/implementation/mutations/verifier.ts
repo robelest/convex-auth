@@ -4,7 +4,7 @@ import { getAuthSessionId } from "../sessions.js";
 import * as Provider from "../provider.js";
 import { createAuthDb } from "../db.js";
 
-type ReturnType = GenericId<"authVerifiers">;
+type ReturnType = GenericId<"verifier">;
 
 export async function verifierImpl(
   ctx: MutationCtx,
@@ -15,7 +15,7 @@ export async function verifierImpl(
     return (await createAuthDb(ctx, config.component).verifiers.create(sessionId)) as
       ReturnType;
   }
-  return await ctx.db.insert("authVerifiers", {
+  return await ctx.db.insert("verifier", {
     sessionId,
   });
 }

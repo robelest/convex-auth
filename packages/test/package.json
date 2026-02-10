@@ -1,0 +1,19 @@
+{
+  "name": "auth-test-suite",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest",
+    "test:once": "vitest run"
+  },
+  "devDependencies": {
+    "@convex-dev/auth": "workspace:*",
+    "@edge-runtime/vm": "^3.2.0",
+    "convex": "catalog:",
+    "convex-test": "catalog:",
+    "jose": "^5.10.0",
+    "cheerio": "^1.0.0-rc.12",
+    "typescript": "^5.6.3",
+    "vitest": "^1.6.1"
+  }
+}

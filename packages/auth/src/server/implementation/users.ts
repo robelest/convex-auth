@@ -19,9 +19,9 @@ type CreateOrUpdateUserArgs = {
 
 export async function upsertUserAndAccount(
   ctx: MutationCtx,
-  sessionId: GenericId<"authSessions"> | null,
+  sessionId: GenericId<"session"> | null,
   account:
-    | { existingAccount: Doc<"authAccounts"> }
+    | { existingAccount: Doc<"account"> }
     | {
         providerAccountId: string;
         secret?: string;
@@ -29,8 +29,8 @@ export async function upsertUserAndAccount(
   args: CreateOrUpdateUserArgs,
   config: ConvexAuthConfig,
 ): Promise<{
-  userId: GenericId<"users">;
-  accountId: GenericId<"authAccounts">;
+  userId: GenericId<"user">;
+  accountId: GenericId<"account">;
 }> {
   const userId = await defaultCreateOrUpdateUser(
     ctx,
@@ -45,8 +45,8 @@ export async function upsertUserAndAccount(
 
 async function defaultCreateOrUpdateUser(
   ctx: MutationCtx,
-  existingSessionId: GenericId<"authSessions"> | null,
-  existingAccount: Doc<"authAccounts"> | null,
+  existingSessionId: GenericId<"session"> | null,
+  existingAccount: Doc<"account"> | null,
   args: CreateOrUpdateUserArgs,
   config: ConvexAuthConfig,
 ) {
@@ -152,8 +152,8 @@ async function defaultCreateOrUpdateUser(
   } else {
     userId =
       authDb !== null
-        ? ((await authDb.users.insert(userData)) as GenericId<"users">)
-        : await ctx.db.insert("users", userData);
+        ? ((await authDb.users.insert(userData)) as GenericId<"user">)
+        : await ctx.db.insert("user", userData);
   }
   const afterUserCreatedOrUpdated = config.callbacks?.afterUserCreatedOrUpdated;
   if (afterUserCreatedOrUpdated !== undefined) {
@@ -182,10 +182,10 @@ async function uniqueUserWithVerifiedEmail(
 ) {
   if (config.component !== undefined) {
     const authDb = createAuthDb(ctx, config.component);
-    return (await authDb.users.findByVerifiedEmail(email)) as Doc<"users"> | null;
+    return (await authDb.users.findByVerifiedEmail(email)) as Doc<"user"> | null;
   }
   const users = await ctx.db
-    .query("users")
+    .query("user")
     .withIndex("email", (q) => q.eq("email", email))
     .filter((q) => q.neq(q.field("emailVerificationTime"), undefined))
     .take(2);
@@ -199,10 +199,10 @@ async function uniqueUserWithVerifiedPhone(
 ) {
   if (config.component !== undefined) {
     const authDb = createAuthDb(ctx, config.component);
-    return (await authDb.users.findByVerifiedPhone(phone)) as Doc<"users"> | null;
+    return (await authDb.users.findByVerifiedPhone(phone)) as Doc<"user"> | null;
   }
   const users = await ctx.db
-    .query("users")
+    .query("user")
     .withIndex("phone", (q) => q.eq("phone", phone))
     .filter((q) => q.neq(q.field("phoneVerificationTime"), undefined))
     .take(2);
@@ -211,9 +211,9 @@ async function uniqueUserWithVerifiedPhone(
 
 async function createOrUpdateAccount(
   ctx: MutationCtx,
-  userId: GenericId<"users">,
+  userId: GenericId<"user">,
   account:
-    | { existingAccount: Doc<"authAccounts"> }
+    | { existingAccount: Doc<"account"> }
     | {
         providerAccountId: string;
         secret?: string;
@@ -232,8 +232,8 @@ async function createOrUpdateAccount(
             provider: args.provider.id,
             providerAccountId: account.providerAccountId,
             secret: account.secret,
-          })) as GenericId<"authAccounts">)
-        : await ctx.db.insert("authAccounts", {
+          })) as GenericId<"account">)
+        : await ctx.db.insert("account", {
             userId,
             provider: args.provider.id,
             providerAccountId: account.providerAccountId,
@@ -270,7 +270,7 @@ async function createOrUpdateAccount(
 
 export async function getAccountOrThrow(
   ctx: MutationCtx,
-  existingAccountId: GenericId<"authAccounts">,
+  existingAccountId: GenericId<"account">,
   config: ConvexAuthConfig,
 ) {
   const existingAccount =

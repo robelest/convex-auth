@@ -18,7 +18,7 @@ type ReturnType =
   | "InvalidAccountId"
   | "TooManyFailedAttempts"
   | "InvalidSecret"
-  | { account: Doc<"authAccounts">; user: Doc<"users"> };
+  | { account: Doc<"account">; user: Doc<"user"> };
 
 export async function retrieveAccountWithCredentialsImpl(
   ctx: MutationCtx,
@@ -38,9 +38,9 @@ export async function retrieveAccountWithCredentialsImpl(
   });
   const existingAccount =
     authDb !== null
-      ? ((await authDb.accounts.get(providerId, account.id)) as Doc<"authAccounts"> | null)
+      ? ((await authDb.accounts.get(providerId, account.id)) as Doc<"account"> | null)
       : await ctx.db
-          .query("authAccounts")
+          .query("account")
           .withIndex("providerAndAccountId", (q) =>
             q.eq("provider", providerId).eq("providerAccountId", account.id),
           )
@@ -69,7 +69,7 @@ export async function retrieveAccountWithCredentialsImpl(
     // TODO: Ian removed this
     user:
       authDb !== null
-        ? ((await authDb.users.getById(existingAccount.userId)) as unknown as Doc<"users">)
+        ? ((await authDb.users.getById(existingAccount.userId)) as unknown as Doc<"user">)
         : (await ctx.db.get(existingAccount.userId))!,
   };
 }

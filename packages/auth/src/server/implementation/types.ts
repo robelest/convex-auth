@@ -37,7 +37,7 @@ export const authTables = {
   /**
    * Users.
    */
-  users: defineTable({
+  user: defineTable({
     name: v.optional(v.string()),
     image: v.optional(v.string()),
     email: v.optional(v.string()),
@@ -53,8 +53,8 @@ export const authTables = {
    * A single user can have multiple active sessions.
    * See [Session document lifecycle](https://labs.convex.dev/auth/advanced#session-document-lifecycle).
    */
-  authSessions: defineTable({
-    userId: v.id("users"),
+  session: defineTable({
+    userId: v.id("user"),
     expirationTime: v.number(),
   }).index("userId", ["userId"]),
   /**
@@ -62,8 +62,8 @@ export const authTables = {
    * a single authentication provider.
    * A single user can have multiple accounts linked.
    */
-  authAccounts: defineTable({
-    userId: v.id("users"),
+  account: defineTable({
+    userId: v.id("user"),
     provider: v.string(),
     providerAccountId: v.string(),
     secret: v.optional(v.string()),
@@ -84,12 +84,12 @@ export const authTables = {
    * - On any invalid use of a refresh token, the token itself and all its descendants
    *   are invalidated.
    */
-  authRefreshTokens: defineTable({
-    sessionId: v.id("authSessions"),
+  token: defineTable({
+    sessionId: v.id("session"),
     expirationTime: v.number(),
     firstUsedTime: v.optional(v.number()),
     // This is the ID of the refresh token that was exchanged to create this one.
-    parentRefreshTokenId: v.optional(v.id("authRefreshTokens")),
+    parentRefreshTokenId: v.optional(v.id("token")),
   })
     // Sort by creationTime
     .index("sessionId", ["sessionId"])
@@ -103,8 +103,8 @@ export const authTables = {
    * - magic link tokens
    * - OAuth codes
    */
-  authVerificationCodes: defineTable({
-    accountId: v.id("authAccounts"),
+  verification: defineTable({
+    accountId: v.id("account"),
     provider: v.string(),
     code: v.string(),
     expirationTime: v.number(),
@@ -117,18 +117,83 @@ export const authTables = {
   /**
    * PKCE verifiers for OAuth.
    */
-  authVerifiers: defineTable({
-    sessionId: v.optional(v.id("authSessions")),
+  verifier: defineTable({
+    sessionId: v.optional(v.id("session")),
     signature: v.optional(v.string()),
   }).index("signature", ["signature"]),
   /**
    * Rate limits for OTP and password sign-in.
    */
-  authRateLimits: defineTable({
+  limit: defineTable({
     identifier: v.string(),
     lastAttemptTime: v.number(),
     attemptsLeft: v.number(),
   }).index("identifier", ["identifier"]),
+
+  organization: defineTable({
+    name: v.string(),
+    slug: v.optional(v.string()),
+    ownerUserId: v.optional(v.id("user")),
+    parentOrganizationId: v.optional(v.id("organization")),
+    metadata: v.optional(v.any()),
+  })
+    .index("slug", ["slug"])
+    .index("ownerUserId", ["ownerUserId"])
+    .index("parentOrganizationId", ["parentOrganizationId"]),
+  team: defineTable({
+    organizationId: v.id("organization"),
+    name: v.string(),
+    slug: v.optional(v.string()),
+    parentTeamId: v.optional(v.id("team")),
+    metadata: v.optional(v.any()),
+  })
+    .index("organizationId", ["organizationId"])
+    .index("organizationIdAndSlug", ["organizationId", "slug"])
+    .index("parentTeamId", ["parentTeamId"]),
+  teamRelation: defineTable({
+    organizationId: v.id("organization"),
+    parentTeamId: v.id("team"),
+    childTeamId: v.id("team"),
+    relation: v.optional(v.string()),
+  })
+    .index("organizationId", ["organizationId"])
+    .index("organizationIdAndParentTeamId", ["organizationId", "parentTeamId"])
+    .index("organizationIdAndChildTeamId", ["organizationId", "childTeamId"]),
+  member: defineTable({
+    organizationId: v.id("organization"),
+    userId: v.id("user"),
+    teamId: v.optional(v.id("team")),
+    role: v.optional(v.string()),
+    status: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+  })
+    .index("organizationId", ["organizationId"])
+    .index("organizationIdAndUserId", ["organizationId", "userId"])
+    .index("teamId", ["teamId"])
+    .index("userId", ["userId"]),
+  invite: defineTable({
+    organizationId: v.optional(v.id("organization")),
+    teamId: v.optional(v.id("team")),
+    invitedByUserId: v.id("user"),
+    email: v.string(),
+    tokenHash: v.string(),
+    role: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("revoked"),
+      v.literal("expired"),
+    ),
+    expiresTime: v.number(),
+    acceptedByUserId: v.optional(v.id("user")),
+    acceptedTime: v.optional(v.number()),
+    metadata: v.optional(v.any()),
+  })
+    .index("tokenHash", ["tokenHash"])
+    .index("emailAndStatus", ["email", "status"])
+    .index("invitedByUserIdAndStatus", ["invitedByUserId", "status"])
+    .index("organizationId", ["organizationId"])
+    .index("organizationIdAndStatus", ["organizationId", "status"]),
 };
 
 const defaultSchema = defineSchema(authTables);
@@ -144,12 +209,12 @@ export type Doc<T extends TableNamesInDataModel<AuthDataModel>> = GenericDoc<
 
 export type Tokens = { token: string; refreshToken: string };
 export type SessionInfo = {
-  userId: GenericId<"users">;
-  sessionId: GenericId<"authSessions">;
+  userId: GenericId<"user">;
+  sessionId: GenericId<"session">;
   tokens: Tokens | null;
 };
 export type SessionInfoWithTokens = {
-  userId: GenericId<"users">;
-  sessionId: GenericId<"authSessions">;
+  userId: GenericId<"user">;
+  sessionId: GenericId<"session">;
   tokens: Tokens;
 };

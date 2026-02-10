@@ -9,9 +9,7 @@
     "predev": "bun run --cwd ../.. dev:convex --until-success && bun run --cwd ../.. dashboard:convex",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "testExistingBackend": "./run-e2e-tests.sh",
-    "test": "node backendHarness.js 'bun run testExistingBackend'"
+    "lint": "next lint"
   },
   "dependencies": {
     "@convex-dev/auth": "workspace:*",
@@ -28,12 +26,10 @@
     "react": "*",
     "react-dom": "*",
     "tailwind-merge": "^2.4.0",
-    "tailwindcss-animate": "^1.0.7",
-    "adm-zip": "0.5.14"
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
     "@next/env": "16.1.6",
-    "@playwright/test": "^1.48.1",
     "@types/node": "^20",
     "@types/react": "^19.2.13",
     "@types/react-dom": "^19.2.3",

@@ -1,39 +1,36 @@
-import { Phone } from "@convex-dev/auth/providers/Phone";
-import { PhoneUserConfig } from "@convex-dev/auth/component";
-import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
+import phone from "@convex-dev/auth/providers/Phone";
+import { v } from "convex/values";
+import { internal } from "../_generated/api";
+import { internalAction } from "../_generated/server";
 
-export function FakePhone(config: PhoneUserConfig) {
-  return Phone({
-    id: "fake-phone",
-    maxAge: 60 * 20,
+export function fakePhone(options: { id?: string } = {}) {
+  return phone({
+    id: options.id ?? "fake-phone",
     async generateVerificationToken() {
-      const random: RandomReader = {
-        read(bytes) {
-          crypto.getRandomValues(bytes);
-        },
-      };
-
-      const alphabet = "0123456789";
-      const length = 6;
-      return generateRandomString(random, alphabet, length);
+      return "123456";
     },
-    async sendVerificationRequest({ identifier: phone, provider, token }) {
-      const response = await fetch("https://api.sms.com", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${provider.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          to: phone,
-          text: `Your code is ${token}.`,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Could not send verification code email");
+    async sendVerificationRequest({ identifier: phone, token }, ctx) {
+      if (phone === undefined) {
+        throw new Error("`phone` param is missing for fake-phone");
       }
+      await ctx.runAction(internal.otp.FakePhone.message, {
+        to: phone,
+        code: token,
+      });
     },
-    ...config,
   });
 }
+
+export const message = internalAction({
+  args: {
+    to: v.string(),
+    code: v.optional(v.string()),
+  },
+  handler: async (_ctx, { to, code }) => {
+    if (code === undefined) {
+      throw new Error("Code is required");
+    }
+    void to;
+    void code;
+  },
+});

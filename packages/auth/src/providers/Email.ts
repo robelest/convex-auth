@@ -22,7 +22,7 @@ import { EmailConfig, EmailUserConfig } from "../server/types.js";
  * import Email from "@convex-dev/auth/providers/Email";
  * import { convexAuth } from "@convex-dev/auth/component";
  *
- * export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
+ * export const { auth, signIn, signOut, store } = convexAuth({
  *   providers: [
  *     Email({ authorize: undefined }),
  *   ],

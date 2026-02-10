@@ -5,7 +5,7 @@
  * import { Anonymous } from "@convex-dev/auth/providers/Anonymous";
  * import { convexAuth } from "@convex-dev/auth/component";
  *
- * export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
+ * export const { auth, signIn, signOut, store } = convexAuth({
  *   providers: [Anonymous],
  * });
  * ```
@@ -13,7 +13,7 @@
  * @module
  */
 
-import { ConvexCredentials } from "@convex-dev/auth/providers/ConvexCredentials";
+import convexCredentials from "@convex-dev/auth/providers/ConvexCredentials";
 import {
   GenericActionCtxWithAuthConfig,
   createAccount,
@@ -48,7 +48,7 @@ export interface AnonymousConfig<DataModel extends GenericDataModel> {
      * the database.
      */
     ctx: GenericActionCtxWithAuthConfig<DataModel>,
-  ) => WithoutSystemFields<DocumentByName<DataModel, "users">> & {
+  ) => WithoutSystemFields<DocumentByName<DataModel, "user">> & {
     isAnonymous: true;
   };
 }
@@ -58,11 +58,11 @@ export interface AnonymousConfig<DataModel extends GenericDataModel> {
  *
  * This provider doesn't require any user-provided information.
  */
-export function Anonymous<DataModel extends GenericDataModel>(
+export default function anonymous<DataModel extends GenericDataModel>(
   config: AnonymousConfig<DataModel> = {},
 ) {
   const provider = config.id ?? "anonymous";
-  return ConvexCredentials<DataModel>({
+  return convexCredentials<DataModel>({
     id: "anonymous",
     authorize: async (params, ctx) => {
       const profile = config.profile?.(params, ctx) ?? { isAnonymous: true };

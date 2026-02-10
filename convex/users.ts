@@ -1,13 +1,7 @@
 import { query } from "./_generated/server";
-import { getAuthUserId } from "@convex-dev/auth/component";
-import { components } from "./_generated/api";
+import { auth } from "./auth";
 
 export const viewer = query({
   args: {},
-  handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    return userId !== null
-      ? await ctx.runQuery(components.auth.public.userGetById, { userId })
-      : null;
-  },
+  handler: async (ctx) => auth.user.viewer(ctx),
 });

@@ -20,7 +20,7 @@ import { PhoneConfig, PhoneUserConfig } from "../server/types.js";
  * checks that there is a `phone` field during token verification
  * that matches the `phone` used during the initial `signIn` call.
  */
-export function Phone<DataModel extends GenericDataModel>(
+export default function phone<DataModel extends GenericDataModel>(
   config: PhoneUserConfig & Pick<PhoneConfig, "sendVerificationRequest">,
 ): PhoneConfig<DataModel> {
   return {
