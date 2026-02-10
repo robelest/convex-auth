@@ -12,9 +12,9 @@ import { actionDescription } from "./command.js";
 import { generateKeys } from "./generateKeys.js";
 
 new Command()
-  .name("@convex-dev/auth")
+  .name("@robelest/convex-auth")
   .description(
-    "Add code and set environment variables for @convex-dev/auth.\n\n" +
+    "Add code and set environment variables for @robelest/convex-auth.\n\n" +
       "The steps are detailed here: https://labs.convex.dev/auth/setup/manual",
   )
   .option(
@@ -435,7 +435,7 @@ export default {
 async function initializeAuth(config: ProjectConfig) {
   logStep(config, "Initialize auth file");
   const sourceTemplate = `\
-import { Auth } from "@convex-dev/auth/component";
+import { Auth } from "@robelest/convex-auth/component";
 
 export const { auth, signIn, signOut, store } = Auth({$$
   providers: [$$],$$
@@ -622,7 +622,7 @@ function readPackageJson(): PackageJSON {
     return JSON.parse(data);
   } catch (error: any) {
     logErrorAndExit(
-      "`@convex-dev/auth` must be run from a project directory which " +
+      "`@robelest/convex-auth` must be run from a project directory which " +
         'includes a valid "package.json" file. You can create one by running ' +
         "`npm init`.",
       error.message,

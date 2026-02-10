@@ -1,8 +1,8 @@
-import { parseAuthCookies, serializeAuthCookies } from "@convex-dev/auth/server";
+import { parseAuthCookies, serializeAuthCookies } from "@robelest/convex-auth/server";
 import {
   SignInAction,
   SignOutAction,
-} from "@convex-dev/auth/component";
+} from "@robelest/convex-auth/component";
 import { fetchAction } from "convex/nextjs";
 import { cookies, headers } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";

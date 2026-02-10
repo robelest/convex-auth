@@ -26,7 +26,7 @@ export type ConvexAuthConfig = {
    *
    * You can import existing configs from
    * - `@auth/core/providers/<provider-name>`
-   * - `@convex-dev/auth/providers/<provider-name>`
+   * - `@robelest/convex-auth/providers/<provider-name>`
    */
   providers: AuthProviderConfig[];
   /**
@@ -89,7 +89,7 @@ export type ConvexAuthConfig = {
      *
      * ```ts
      * import GitHub from "@auth/core/providers/github";
-     * import { convexAuth } from "@convex-dev/auth/component";
+     * import { convexAuth } from "@robelest/convex-auth/component";
      *
      * export const { auth, signIn, signOut, store } = convexAuth({
      *   providers: [GitHub],

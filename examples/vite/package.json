@@ -17,7 +17,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@convex-dev/auth": "workspace:*",
+    "@robelest/convex-auth": "workspace:*",
     "@oslojs/crypto": "^1.0.1",
     "@radix-ui/react-dialog": "^1.0.5",
     "@radix-ui/react-dropdown-menu": "^2.0.6",

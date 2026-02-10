@@ -127,7 +127,7 @@ export async function deleteSession(
  *
  * ```ts filename="convex/myFunctions.tsx"
  * import { mutation } from "./_generated/server";
- * import { getAuthSessionId } from "@convex-dev/auth/component";
+ * import { getAuthSessionId } from "@robelest/convex-auth/component";
  *
  * export const doSomething = mutation({
  *   args: {/* ... *\/},

@@ -1,4 +1,4 @@
-import { parseAuthCookies } from "@convex-dev/auth/server";
+import { parseAuthCookies } from "@robelest/convex-auth/server";
 import { NextRequest, NextResponse } from "next/server";
 
 function isSignInPage(request: NextRequest) {

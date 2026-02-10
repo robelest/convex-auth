@@ -1,6 +1,6 @@
 {
-  "name": "@convex-dev/auth",
-  "version": "0.0.90",
+  "name": "@robelest/convex-auth",
+  "version": "0.0.1",
   "description": "Authentication for Convex",
   "keywords": [
     "authentication",
@@ -11,8 +11,8 @@
     "convex"
   ],
   "homepage": "https://labs.convex.dev/auth",
-  "bugs": "https://github.com/get-convex/convex-auth/issues",
-  "repository": "https://github.com/get-convex/convex-auth",
+  "bugs": "https://github.com/robelest/convex-auth/issues",
+  "repository": "https://github.com/robelest/convex-auth",
   "license": "Apache-2.0",
   "author": "xixixao",
   "files": [

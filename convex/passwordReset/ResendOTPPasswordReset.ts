@@ -1,4 +1,4 @@
-import { Email } from "@convex-dev/auth/providers/Email";
+import { Email } from "@robelest/convex-auth/providers/Email";
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
 
 export const resendOtpPasswordReset = Email({

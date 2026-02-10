@@ -25,7 +25,7 @@
       "@/*": [
         "./*"
       ],
-      "@convex-dev/auth/*": [
+      "@robelest/convex-auth/*": [
         "../../packages/auth/dist/*"
       ],
       "@convex/*": [

@@ -12,8 +12,8 @@
  *    included in params, verify an OTP.
  *
  * ```ts
- * import Password from "@convex-dev/auth/providers/Password";
- * import { convexAuth } from "@convex-dev/auth/component";
+ * import Password from "@robelest/convex-auth/providers/Password";
+ * import { convexAuth } from "@robelest/convex-auth/component";
  *
  * export const { auth, signIn, signOut, store } = convexAuth({
  *   providers: [Password],
@@ -25,7 +25,7 @@
 
 import convexCredentials, {
   ConvexCredentialsUserConfig,
-} from "@convex-dev/auth/providers/ConvexCredentials";
+} from "@robelest/convex-auth/providers/ConvexCredentials";
 import {
   EmailConfig,
   GenericActionCtxWithAuthConfig,
@@ -35,7 +35,7 @@ import {
   modifyAccountCredentials,
   retrieveAccount,
   signInViaProvider,
-} from "@convex-dev/auth/component";
+} from "@robelest/convex-auth/component";
 import {
   DocumentByName,
   GenericDataModel,

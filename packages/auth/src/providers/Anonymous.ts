@@ -2,8 +2,8 @@
  * Configure {@link Anonymous} provider given an {@link AnonymousConfig}.
  *
  * ```ts
- * import { Anonymous } from "@convex-dev/auth/providers/Anonymous";
- * import { convexAuth } from "@convex-dev/auth/component";
+ * import { Anonymous } from "@robelest/convex-auth/providers/Anonymous";
+ * import { convexAuth } from "@robelest/convex-auth/component";
  *
  * export const { auth, signIn, signOut, store } = convexAuth({
  *   providers: [Anonymous],
@@ -13,11 +13,11 @@
  * @module
  */
 
-import convexCredentials from "@convex-dev/auth/providers/ConvexCredentials";
+import convexCredentials from "@robelest/convex-auth/providers/ConvexCredentials";
 import {
   GenericActionCtxWithAuthConfig,
   createAccount,
-} from "@convex-dev/auth/component";
+} from "@robelest/convex-auth/component";
 import {
   DocumentByName,
   GenericDataModel,

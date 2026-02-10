@@ -1,4 +1,4 @@
-import phone from "@convex-dev/auth/providers/Phone";
+import phone from "@robelest/convex-auth/providers/Phone";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";

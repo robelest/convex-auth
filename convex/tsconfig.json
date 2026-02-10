@@ -14,7 +14,7 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@convex-dev/auth/*": ["../packages/auth/dist/*"]
+      "@robelest/convex-auth/*": ["../packages/auth/dist/*"]
     }
   },
   "include": ["./**/*"],

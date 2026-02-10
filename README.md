@@ -3,7 +3,7 @@
 Convex Auth is authentication for Convex, built around a reusable component boundary.
 This repo contains the auth package, examples, and a shared auth test suite.
 
-For full generated docs, see: https://deepwiki.com/robelest/convex-auth
+For full generated docs, see: https://deepwiki.com/robelest@robelest/convex-auth
 
 ## Quick Start
 
@@ -33,7 +33,7 @@ bun run test:auth
 
 ```ts
 import { defineApp } from "convex/server";
-import auth from "@convex-dev/auth/convex.config";
+import auth from "@robelest/convex-auth/convex.config";
 
 const app = defineApp();
 
@@ -47,8 +47,8 @@ export default app;
 `convex/auth.ts`
 
 ```ts
-import { Auth } from "@convex-dev/auth/component";
-import password from "@convex-dev/auth/providers/Password";
+import { Auth } from "@robelest/convex-auth/component";
+import password from "@robelest/convex-auth/providers/Password";
 import { components } from "./_generated/api";
 
 export const { auth, signIn, signOut, store } = Auth({

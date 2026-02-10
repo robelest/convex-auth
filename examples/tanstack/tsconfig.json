@@ -25,8 +25,8 @@
     "paths": {
       "@/*": ["./src/*"],
       "@convex/*": ["../../convex/*"],
-      "@convex-dev/auth/test": ["../../packages/auth/src/test.ts"],
-      "@convex-dev/auth/*": ["../../packages/auth/dist/*"],
+      "@robelest/convex-auth/test": ["../../packages/auth/src/test.ts"],
+      "@robelest/convex-auth/*": ["../../packages/auth/dist/*"],
       "@auth-client": ["./src/auth-client.tsx"]
     }
   },

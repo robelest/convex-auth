@@ -80,7 +80,7 @@ export type SignOutAction = FunctionReferenceFromExport<
  * from `convex/auth.ts` to make them callable:
  *
  * ```ts filename="convex/auth.ts"
- * import { Auth } from "@convex-dev/auth/component";
+ * import { Auth } from "@robelest/convex-auth/component";
  *
  * export const { auth, signIn, signOut, store } = Auth({
  *   providers: [],
@@ -572,7 +572,7 @@ export function Auth(config_: ConvexAuthConfig) {
  *
  * ```ts filename="convex/myFunctions.tsx"
  * import { mutation } from "./_generated/server";
- * import { getAuthUserId } from "@convex-dev/auth/component";
+ * import { getAuthUserId } from "@robelest/convex-auth/component";
  *
  * export const doSomething = mutation({
  *   args: {/* ... *\/},

@@ -19,7 +19,7 @@ import { GenericDoc } from "../convex_types.js";
  *
  * ```ts filename="convex/schema.ts"
  * import { defineSchema } from "convex/server";
- * import { authTables } from "@convex-dev/auth/component";
+ * import { authTables } from "@robelest/convex-auth/component";
  *
  * const schema = defineSchema({
  *   ...authTables,

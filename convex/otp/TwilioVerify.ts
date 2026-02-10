@@ -1,4 +1,4 @@
-import convexCredentials from "@convex-dev/auth/providers/ConvexCredentials";
+import convexCredentials from "@robelest/convex-auth/providers/ConvexCredentials";
 import { internal } from "../_generated/api";
 import { DataModel } from "../_generated/dataModel";
 

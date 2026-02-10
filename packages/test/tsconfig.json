@@ -9,7 +9,7 @@
     "baseUrl": ".",
     "paths": {
       "@convex/*": ["../../convex/*"],
-      "@convex-dev/auth/*": ["../../packages/auth/src/*"]
+      "@robelest/convex-auth/*": ["../../packages/auth/src/*"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx"]

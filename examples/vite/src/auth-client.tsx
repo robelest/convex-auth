@@ -3,7 +3,7 @@ import {
   SignInResult,
   TokenStorage,
   createAuthClient,
-} from "@convex-dev/auth/client";
+} from "@robelest/convex-auth/client";
 import { ConvexHttpClient } from "convex/browser";
 import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
 import { Value } from "convex/values";

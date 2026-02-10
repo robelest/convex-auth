@@ -5,8 +5,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@convex": path.resolve(__dirname, "../../convex"),
-      "@convex-dev/auth/test": path.resolve(__dirname, "../../packages/auth/src/test.ts"),
-      "@convex-dev/auth": path.resolve(__dirname, "../../packages/auth/src"),
+      "@robelest/convex-auth/test": path.resolve(__dirname, "../../packages/auth/src/test.ts"),
+      "@robelest/convex-auth": path.resolve(__dirname, "../../packages/auth/src"),
     },
   },
   test: {

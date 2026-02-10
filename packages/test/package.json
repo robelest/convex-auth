@@ -7,7 +7,7 @@
     "test:once": "vitest run"
   },
   "devDependencies": {
-    "@convex-dev/auth": "workspace:*",
+    "@robelest/convex-auth": "workspace:*",
     "@edge-runtime/vm": "^3.2.0",
     "convex": "catalog:",
     "convex-test": "catalog:",
