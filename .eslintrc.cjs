@@ -7,10 +7,9 @@ module.exports = {
   ],
   ignorePatterns: [
     ".eslintrc.cjs",
-    "test",
+    "examples",
     "docs",
     "dist",
-    "test-nextjs/backendHarness.js",
   ],
   parser: "@typescript-eslint/parser",
   parserOptions: {

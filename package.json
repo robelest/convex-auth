@@ -1,144 +1,20 @@
 {
-  "name": "@convex-dev/auth",
-  "version": "0.0.90",
-  "description": "Authentication for Convex",
-  "keywords": [
-    "authentication",
-    "authorization",
-    "auth",
-    "login",
-    "sign",
-    "convex"
-  ],
-  "homepage": "https://labs.convex.dev/auth",
-  "bugs": "https://github.com/get-convex/convex-auth/issues",
-  "repository": "https://github.com/get-convex/convex-auth",
-  "license": "Apache-2.0",
-  "author": "xixixao",
-  "files": [
-    "dist",
-    "providers",
-    "react",
-    "server",
-    "src"
-  ],
+  "name": "convex-auth-monorepo",
+  "private": true,
   "type": "module",
-  "bin": "./dist/bin.cjs",
-  "sideEffects": false,
   "scripts": {
-    "build:bin": "esbuild src/cli/index.ts --bundle --platform=node --format=cjs --outfile=dist/bin.cjs",
-    "build:server": "tsc --project tsconfig.server.json",
-    "build:component": "tsc --project tsconfig.component.json",
-    "build:react": "tsc --project tsconfig.react.json && mkdir -p dist && rm -rf dist/react && mv distreact/react dist/react && rm -r distreact",
-    "build:nextjs": "tsc --project tsconfig.nextjs.json && mkdir -p dist && rm -rf dist/nextjs && mv distnextjs/nextjs dist/nextjs && rm -r distnextjs",
-    "build": "rm -rf dist && npm run build:bin && npm run build:server && npm run build:component && npm run build:react && npm run build:nextjs",
-    "docs": "cd docs && npm run dev",
-    "lint": "tsc && eslint . && cd test && npm run lint",
-    "spellcheck": "cspell \"docs/pages/**/*.md*\"",
-    "prepare": "npm run build",
-    "prepublishOnly": "npm run lint && npm run build && npm run test:once",
-    "publish:example": "node publishExample.mjs",
-    "test": "cd test && npm run test",
-    "test:once": "cd test && npm run test:once",
-    "convex:dev": "bunx convex dev",
-    "convex:codegen": "bunx convex codegen && bun run convex:codegen:component",
-    "convex:codegen:component": "bunx convex codegen --component-dir ./src/component",
-    "convex:dashboard": "bunx convex dashboard",
-    "convex:run": "bunx convex run"
-  },
-  "exports": {
-    "./_generated/component.js": {
-      "types": "./dist/component/_generated/component.d.ts"
-    },
-    "./test": "./src/test.ts",
-    "./server": {
-      "types": "./dist/server/index.d.ts",
-      "import": "./dist/server/index.js"
-    },
-    "./convex.config": {
-      "types": "./dist/component/convex.config.d.ts",
-      "default": "./dist/component/convex.config.js"
-    },
-    "./convex.config.js": {
-      "types": "./dist/component/convex.config.d.ts",
-      "default": "./dist/component/convex.config.js"
-    },
-    "./providers/*": {
-      "types": "./dist/providers/*.d.ts",
-      "import": "./dist/providers/*.js"
-    },
-    "./react": {
-      "import": "./dist/react/index.js",
-      "require": "./dist/react/index.js"
-    },
-    "./nextjs": {
-      "import": "./dist/nextjs/index.js",
-      "require": "./dist/nextjs/index.js"
-    },
-    "./nextjs/server": {
-      "import": "./dist/nextjs/server/index.js",
-      "require": "./dist/nextjs/server/index.js"
-    }
-  },
-  "dependencies": {
-    "@oslojs/crypto": "^1.0.1",
-    "@oslojs/encoding": "^1.1.0",
-    "cookie": "^1.1.1",
-    "is-network-error": "^1.3.0",
-    "jose": "^6.1.3",
-    "jwt-decode": "^4.0.0",
-    "lucia": "^3.2.2",
-    "oauth4webapi": "^3.8.4",
-    "path-to-regexp": "^6.3.0",
-    "server-only": "^0.0.1"
-  },
-  "peerDependencies": {
-    "@auth/core": "^0.37.0",
-    "convex": "^1.31.7",
-    "react": "^18.3.1 || ^19.0.0"
-  },
-  "peerDependenciesMeta": {
-    "react": {
-      "optional": true
-    }
-  },
-  "@comment devDependencies": [
-    "The dependencies of the CLI are also in devDependencies, built into",
-    "a bundle."
-  ],
-  "devDependencies": {
-    "@auth/core": "0.37.3",
-    "@convex-dev/resend": "^0.2.3",
-    "@commander-js/extra-typings": "^14.0.0",
-    "@edge-runtime/vm": "^5.0.0",
-    "@types/inquirer": "^9.0.9",
-    "@types/node": "25.2.2",
-    "@types/react": "^19.2.13",
-    "@typescript-eslint/eslint-plugin": "^8.55.0",
-    "chalk": "^5.6.2",
-    "convex": "^1.31.7",
-    "convex-test": "^0.0.41",
-    "cspell": "^9.6.4",
-    "dotenv": "^17.2.4",
-    "esbuild": "^0.27.3",
-    "eslint": "10.0.0",
-    "inquirer": "^13.2.2",
-    "next": "^16.1.6",
-    "npm-run-all": "^4.1.5",
-    "react-dom": "^19.2.4",
-    "shelljs": "^0.10.0",
-    "tsup": "^8.5.1",
-    "twilio": "^5.2.0",
-    "typescript": "^5.9.3",
-    "valibot": "^1.2.0",
-    "vitest": "^4.0.18"
-  },
-  "overrides": {
-    "@auth/core": "0.37.3",
-    "path-to-regexp": "~6.3.0"
+    "dev:vite": "bun run --cwd examples/vite dev:frontend",
+    "dev:tanstack": "bun run --cwd examples/tanstack dev:frontend",
+    "dev:nextjs": "bun run --cwd examples/nextjs dev:frontend",
+    "dev:convex": "bunx convex dev",
+    "build": "bun run --cwd packages/auth build",
+    "test:once": "bun run --cwd examples/vite test:once",
+    "codegen:convex": "bunx convex codegen && bun run --cwd packages/auth convex:codegen:component",
+    "dashboard:convex": "bunx convex dashboard",
+    "run:convex": "bunx convex run"
   },
   "workspaces": {
-    "packages": [".", "test", "test-router", "test-nextjs"],
+    "packages": ["packages/*", "examples/*"],
     "catalog": {
       "convex": "1.31.7",
       "convex-test": "^0.0.41"

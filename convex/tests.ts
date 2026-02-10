@@ -1,4 +1,4 @@
-import { createAccount } from "../dist/server/index";
+import { createAccount } from "@convex-dev/auth/component";
 import { components, internal } from "./_generated/api";
 import { internalAction, internalQuery } from "./_generated/server";
 

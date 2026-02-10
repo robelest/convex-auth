@@ -1,12 +1,11 @@
 {
   "$schema": "https://typedoc-plugin-markdown.org/schema.json",
-  "tsconfig": "../tsconfig.json",
+  "tsconfig": "../packages/auth/tsconfig.json",
   "entryPoints": [
-    "../src/server/index.ts",
-    "../src/react/index.tsx",
-    "../src/nextjs/index.tsx",
-    "../src/nextjs/server/index.tsx",
-    "../src/providers"
+    "../packages/auth/src/component/index.ts",
+    "../packages/auth/src/client/index.ts",
+    "../packages/auth/src/server/index.ts",
+    "../packages/auth/src/providers"
   ],
   "exclude": ["../README.md"],
   "entryPointStrategy": "expand",
@@ -27,5 +26,5 @@
   "parametersFormat": "htmlTable",
   "disableGit": true,
   "sourceLinkTemplate": "https://github.com/get-convex/convex-auth/blob/main/{path}#L{line}",
-  "intentionallyNotExported": ["RouteMatcherWithNextTypedRoutes"]
+  "intentionallyNotExported": []
 }

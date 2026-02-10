@@ -1,5 +1,5 @@
 import { Phone } from "@convex-dev/auth/providers/Phone";
-import { PhoneUserConfig } from "@convex-dev/auth/server";
+import { PhoneUserConfig } from "@convex-dev/auth/component";
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
 
 export function FakePhone(config: PhoneUserConfig) {

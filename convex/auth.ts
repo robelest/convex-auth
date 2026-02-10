@@ -7,7 +7,7 @@ import { Anonymous } from "@convex-dev/auth/providers/Anonymous";
 import { Password } from "@convex-dev/auth/providers/Password";
 import { ConvexCredentials } from "@convex-dev/auth/providers/ConvexCredentials";
 import { ConvexError } from "convex/values";
-import { convexAuth } from "@convex-dev/auth/server";
+import { convexAuth } from "@convex-dev/auth/component";
 import { ResendOTP } from "./otp/ResendOTP";
 import { TwilioOTP } from "./otp/TwilioOTP";
 import { TwilioVerify } from "./otp/TwilioVerify";

@@ -8,8 +8,12 @@
 
 # dependencies
 /node_modules
+**/node_modules
 /.pnp
 .pnp.js
+
+# package build artifacts
+/packages/auth/dist
 
 # testing
 /coverage
