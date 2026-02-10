@@ -1,4 +1,4 @@
-import { isAuthenticatedNextjs } from "../../../dist/nextjs/server/index.js";
+import { isAuthenticatedNextjs } from "@convex-dev/auth/nextjs/server";
 
 export async function GET() {
   const isAuthenticated = await isAuthenticatedNextjs();

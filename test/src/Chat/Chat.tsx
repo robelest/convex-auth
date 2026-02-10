@@ -5,9 +5,8 @@ import { Input } from "@/components/ui/input";
 import { useMutation, useQuery } from "convex/react";
 import { FormEvent, useState } from "react";
 import { api } from "@convex/_generated/api";
-import { Id } from "@convex/_generated/dataModel";
 
-export function Chat({ viewer }: { viewer: Id<"users"> }) {
+export function Chat({ viewer }: { viewer: string }) {
   const [newMessageText, setNewMessageText] = useState("");
   const messages = useQuery(api.messages.list);
   const sendMessage = useMutation(api.messages.send);

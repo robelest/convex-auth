@@ -4,6 +4,7 @@ import * as Provider from "../provider.js";
 import { OAuthConfig } from "@auth/core/providers/oauth.js";
 import { upsertUserAndAccount } from "../users.js";
 import { generateRandomString, logWithLevel, sha256 } from "../utils.js";
+import { createAuthDb } from "../db.js";
 
 const OAUTH_SIGN_IN_EXPIRATION_MS = 1000 * 60 * 2; // 2 minutes
 
@@ -24,18 +25,26 @@ export async function userOAuthImpl(
 ): Promise<ReturnType> {
   logWithLevel("DEBUG", "userOAuthImpl args:", args);
   const { profile, provider, providerAccountId, signature } = args;
+  const authDb =
+    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
   const providerConfig = getProviderOrThrow(provider) as OAuthConfig<any>;
-  const existingAccount = await ctx.db
-    .query("authAccounts")
-    .withIndex("providerAndAccountId", (q) =>
-      q.eq("provider", provider).eq("providerAccountId", providerAccountId),
-    )
-    .unique();
+  const existingAccount =
+    authDb !== null
+      ? await authDb.accounts.get(provider, providerAccountId)
+      : await ctx.db
+          .query("authAccounts")
+          .withIndex("providerAndAccountId", (q) =>
+            q.eq("provider", provider).eq("providerAccountId", providerAccountId),
+          )
+          .unique();
 
-  const verifier = await ctx.db
-    .query("authVerifiers")
-    .withIndex("signature", (q) => q.eq("signature", signature))
-    .unique();
+  const verifier =
+    authDb !== null
+      ? await authDb.verifiers.getBySignature(signature)
+      : await ctx.db
+          .query("authVerifiers")
+          .withIndex("signature", (q) => q.eq("signature", signature))
+          .unique();
   if (verifier === null) {
     throw new Error("Invalid state");
   }
@@ -49,23 +58,44 @@ export async function userOAuthImpl(
   );
 
   const code = generateRandomString(8, "0123456789");
-  await ctx.db.delete(verifier._id);
-  const existingVerificationCode = await ctx.db
-    .query("authVerificationCodes")
-    .withIndex("accountId", (q) => q.eq("accountId", accountId))
-    .unique();
-  if (existingVerificationCode !== null) {
-    await ctx.db.delete(existingVerificationCode._id);
+  if (authDb !== null) {
+    await authDb.verifiers.delete(verifier._id);
+  } else {
+    await ctx.db.delete(verifier._id);
   }
-  await ctx.db.insert("authVerificationCodes", {
-    code: await sha256(code),
-    accountId,
-    provider,
-    expirationTime: Date.now() + OAUTH_SIGN_IN_EXPIRATION_MS,
-    // The use of a verifier means we don't need an identifier
-    // during verification.
-    verifier: verifier._id,
-  });
+  const existingVerificationCode =
+    authDb !== null
+      ? await authDb.verificationCodes.getByAccountId(accountId)
+      : await ctx.db
+          .query("authVerificationCodes")
+          .withIndex("accountId", (q) => q.eq("accountId", accountId))
+          .unique();
+  if (existingVerificationCode !== null) {
+    if (authDb !== null) {
+      await authDb.verificationCodes.delete(existingVerificationCode._id);
+    } else {
+      await ctx.db.delete(existingVerificationCode._id);
+    }
+  }
+  if (authDb !== null) {
+    await authDb.verificationCodes.create({
+      code: await sha256(code),
+      accountId,
+      provider,
+      expirationTime: Date.now() + OAUTH_SIGN_IN_EXPIRATION_MS,
+      verifier: verifier._id,
+    });
+  } else {
+    await ctx.db.insert("authVerificationCodes", {
+      code: await sha256(code),
+      accountId,
+      provider,
+      expirationTime: Date.now() + OAUTH_SIGN_IN_EXPIRATION_MS,
+      // The use of a verifier means we don't need an identifier
+      // during verification.
+      verifier: verifier._id,
+    });
+  }
   return code;
 }
 

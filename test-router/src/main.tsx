@@ -16,10 +16,11 @@ declare module "@tanstack/react-router" {
   }
 }
 
-const convex = new ConvexReactClient(
-  import.meta.env.VITE_CONVEX_URL as string,
-  { verbose: true },
-);
+const convexUrl =
+  (import.meta.env.NEXT_PUBLIC_CONVEX_URL as string | undefined) ??
+  (import.meta.env.VITE_CONVEX_URL as string | undefined);
+
+const convex = new ConvexReactClient(convexUrl as string, { verbose: true });
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

@@ -27,6 +27,12 @@
       ],
       "@convex/*": [
         "../convex/*"
+      ],
+      "@convex-dev/auth/server": [
+        "../dist/server/index.d.ts"
+      ],
+      "@convex-dev/auth/providers/*": [
+        "../dist/providers/*"
       ]
     },
     "target": "ES2017"

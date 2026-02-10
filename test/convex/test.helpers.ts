@@ -103,7 +103,7 @@ export async function signInViaGitHub(
     params: { code },
     verifier,
   });
-  return { tokens, url: finalRedirectedTo! };
+  return { tokens, url: finalRedirectedTo!, verifier };
 }
 
 export async function signInViaMagicLink(

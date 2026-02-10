@@ -14,9 +14,10 @@ import { TwilioVerify } from "./otp/TwilioVerify";
 import { ResendOTPPasswordReset } from "./passwordReset/ResendOTPPasswordReset";
 import { FakePhone } from "./otp/FakePhone";
 import { DataModel } from "./_generated/dataModel.js";
-import { internal } from "./_generated/api";
+import { components, internal } from "./_generated/api";
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
+  component: components.auth,
   providers: [
     FakePhone,
     FakePhone({ id: "fake-phone-2" }),

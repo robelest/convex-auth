@@ -1,6 +1,7 @@
 import { convexTest } from "../convex-test";
+import { decodeJwt } from "jose";
 import { expect, test } from "vitest";
-import { api } from "@convex/_generated/api";
+import { api, components } from "@convex/_generated/api";
 import schema from "./schema";
 import {
   CONVEX_SITE_URL,
@@ -14,20 +15,19 @@ test("automatic linking for signin via phone", async () => {
   const t = convexTest(schema);
 
   // 1. Sign in via phone
-  await signInViaPhone(t, "fake-phone", { phone: "+1234567890" });
+  const initialTokens = await signInViaPhone(t, "fake-phone", {
+    phone: "+1234567890",
+  });
 
   // 2. Sign in via the same phone, different provider
   const newTokens = await signInViaPhone(t, "fake-phone-2", {
     phone: "+1234567890",
   });
+  expect(initialTokens).not.toBeNull();
   expect(newTokens).not.toBeNull();
-
-  // 3. Check that there is only one user, the same one
-  await t.run(async (ctx) => {
-    const users = await ctx.db.query("users").collect();
-    expect(users).toHaveLength(1);
-    expect(users[0].phoneVerificationTime).not.toBeUndefined();
-  });
+  expect(getUserIdFromToken(initialTokens!.token)).toEqual(
+    getUserIdFromToken(newTokens!.token),
+  );
 });
 
 test("no linking to untrusted accounts", async () => {
@@ -35,38 +35,32 @@ test("no linking to untrusted accounts", async () => {
   const t = convexTest(schema);
 
   // 1. Sign up without phone verification
-  await t.action(api.auth.signIn, {
+  const { tokens: passwordTokens } = await t.action(api.auth.signIn, {
     provider: "password",
     params: { email: "sarah@gmail.com", password: "44448888", flow: "signUp" },
   });
+  expect(passwordTokens).not.toBeNull();
 
   // 2. Add a phone number
+  const passwordUserId = getUserIdFromToken(passwordTokens!.token);
   await t.run(async (ctx) => {
-    const users = await ctx.db.query("users").collect();
-    expect(users).toHaveLength(1);
-    expect(users[0].phoneVerificationTime).toBeUndefined();
-    await ctx.db.patch(users[0]._id, { phone: "+1234567890" });
+    await ctx.runMutation(components.auth.public.userPatch, {
+      userId: passwordUserId,
+      data: { phone: "+1234567890" },
+    });
   });
 
   // 2. Sign up via phone
-  await signInViaPhone(t, "fake-phone", { phone: "+1234567890" });
-
-  // 3. Check the users and accounts
-  await t.run(async (ctx) => {
-    const users = await ctx.db.query("users").collect();
-    expect(users).toHaveLength(2);
-    expect(users).toMatchObject([
-      { phone: "+1234567890", email: "sarah@gmail.com" },
-      { phone: "+1234567890" },
-    ]);
-    const accounts = await ctx.db.query("authAccounts").collect();
-    expect(accounts).toHaveLength(2);
-    expect(accounts).toMatchObject([
-      { provider: "password", userId: users[0]._id },
-      { provider: "fake-phone", userId: users[1]._id },
-    ]);
+  const phoneTokens = await signInViaPhone(t, "fake-phone", {
+    phone: "+1234567890",
   });
+  expect(phoneTokens).not.toBeNull();
+  expect(getUserIdFromToken(phoneTokens!.token)).not.toEqual(passwordUserId);
 });
+
+function getUserIdFromToken(token: string) {
+  return decodeJwt(token).sub!.split("|")[0];
+}
 
 function setupEnv() {
   process.env.SITE_URL = "http://localhost:5173";

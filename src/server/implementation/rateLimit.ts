@@ -1,5 +1,6 @@
 import { ConvexAuthConfig } from "../index.js";
-import { MutationCtx } from "./types.js";
+import { Doc, MutationCtx } from "./types.js";
+import { createAuthDb } from "./db.js";
 
 const DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR = 10;
 
@@ -22,30 +23,49 @@ export async function recordFailedSignIn(
 ) {
   const state = await getRateLimitState(ctx, identifier, config);
   if (state !== null) {
-    await ctx.db.patch(state.limit._id, {
-      attemptsLeft: state.attempsLeft - 1,
-      lastAttemptTime: Date.now(),
-    });
+    if (config.component !== undefined) {
+      await createAuthDb(ctx, config.component).rateLimits.patch(state.limit._id, {
+        attemptsLeft: state.attempsLeft - 1,
+        lastAttemptTime: Date.now(),
+      });
+    } else {
+      await ctx.db.patch(state.limit._id, {
+        attemptsLeft: state.attempsLeft - 1,
+        lastAttemptTime: Date.now(),
+      });
+    }
   } else {
     const maxAttempsPerHour = configuredMaxAttempsPerHour(config);
-    await ctx.db.insert("authRateLimits", {
-      identifier,
-      attemptsLeft: maxAttempsPerHour - 1,
-      lastAttemptTime: Date.now(),
-    });
+    if (config.component !== undefined) {
+      await createAuthDb(ctx, config.component).rateLimits.create({
+        identifier,
+        attemptsLeft: maxAttempsPerHour - 1,
+        lastAttemptTime: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("authRateLimits", {
+        identifier,
+        attemptsLeft: maxAttempsPerHour - 1,
+        lastAttemptTime: Date.now(),
+      });
+    }
   }
 }
 
 export async function resetSignInRateLimit(
   ctx: MutationCtx,
   identifier: string,
+  config: ConvexAuthConfig,
 ) {
-  const existingState = await ctx.db
-    .query("authRateLimits")
-    .withIndex("identifier", (q) => q.eq("identifier", identifier))
-    .unique();
+  const existingState = await getRateLimitState(ctx, identifier, config);
   if (existingState !== null) {
-    await ctx.db.delete(existingState._id);
+    if (config.component !== undefined) {
+      await createAuthDb(ctx, config.component).rateLimits.delete(
+        existingState.limit._id,
+      );
+    } else {
+      await ctx.db.delete(existingState.limit._id);
+    }
   }
 }
 
@@ -56,10 +76,15 @@ async function getRateLimitState(
 ) {
   const now = Date.now();
   const maxAttempsPerHour = configuredMaxAttempsPerHour(config);
-  const limit = await ctx.db
-    .query("authRateLimits")
-    .withIndex("identifier", (q) => q.eq("identifier", identifier))
-    .unique();
+  const limit =
+    config.component !== undefined
+      ? ((await createAuthDb(ctx, config.component).rateLimits.get(identifier)) as
+          | Doc<"authRateLimits">
+          | null)
+      : await ctx.db
+          .query("authRateLimits")
+          .withIndex("identifier", (q) => q.eq("identifier", identifier))
+          .unique();
   if (limit === null) {
     return null;
   }

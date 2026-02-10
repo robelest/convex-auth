@@ -15,6 +15,7 @@ import {
   formatRefreshToken,
   deleteAllRefreshTokens,
 } from "./refreshTokens.js";
+import { createAuthDb } from "./db.js";
 
 const DEFAULT_SESSION_TOTAL_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
@@ -44,11 +45,16 @@ export async function createNewAndDeleteExistingSession(
   config: ConvexAuthConfig,
   userId: GenericId<"users">,
 ) {
+  const authDb =
+    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
   const existingSessionId = await getAuthSessionId(ctx);
   if (existingSessionId !== null) {
-    const existingSession = await ctx.db.get(existingSessionId);
+    const existingSession =
+      authDb !== null
+        ? await authDb.sessions.getById(existingSessionId)
+        : await ctx.db.get(existingSessionId);
     if (existingSession !== null) {
-      await deleteSession(ctx, existingSession);
+      await deleteSession(ctx, existingSession, config);
     }
   }
   return await createSession(ctx, userId, config);
@@ -94,15 +100,26 @@ async function createSession(
     (config.session?.totalDurationMs ??
       stringToNumber(process.env.AUTH_SESSION_TOTAL_DURATION_MS) ??
       DEFAULT_SESSION_TOTAL_DURATION_MS);
+  if (config.component !== undefined) {
+    return (await createAuthDb(ctx, config.component).sessions.create(
+      userId,
+      expirationTime,
+    )) as GenericId<"authSessions">;
+  }
   return await ctx.db.insert("authSessions", { expirationTime, userId });
 }
 
 export async function deleteSession(
   ctx: MutationCtx,
   session: Doc<"authSessions">,
+  config: ConvexAuthConfig,
 ) {
-  await ctx.db.delete(session._id);
-  await deleteAllRefreshTokens(ctx, session._id);
+  if (config.component !== undefined) {
+    await createAuthDb(ctx, config.component).sessions.delete(session._id);
+  } else {
+    await ctx.db.delete(session._id);
+  }
+  await deleteAllRefreshTokens(ctx, session._id, config);
 }
 
 /**

@@ -28,9 +28,10 @@
   "scripts": {
     "build:bin": "esbuild src/cli/index.ts --bundle --platform=node --format=cjs --outfile=dist/bin.cjs",
     "build:server": "tsc --project tsconfig.server.json",
+    "build:component": "tsc --project tsconfig.component.json",
     "build:react": "tsc --project tsconfig.react.json && mkdir -p dist && rm -rf dist/react && mv distreact/react dist/react && rm -r distreact",
     "build:nextjs": "tsc --project tsconfig.nextjs.json && mkdir -p dist && rm -rf dist/nextjs && mv distnextjs/nextjs dist/nextjs && rm -r distnextjs",
-    "build": "rm -rf dist && npm run build:bin && npm run build:server && npm run build:react && npm run build:nextjs",
+    "build": "rm -rf dist && npm run build:bin && npm run build:server && npm run build:component && npm run build:react && npm run build:nextjs",
     "docs": "cd docs && npm run dev",
     "lint": "tsc && eslint . && cd test && npm run lint",
     "spellcheck": "cspell \"docs/pages/**/*.md*\"",
@@ -40,14 +41,27 @@
     "test": "cd test && npm run test",
     "test:once": "cd test && npm run test:once",
     "convex:dev": "bunx convex dev",
-    "convex:codegen": "bunx convex codegen",
+    "convex:codegen": "bunx convex codegen && bun run convex:codegen:component",
+    "convex:codegen:component": "bunx convex codegen --component-dir ./src/component",
     "convex:dashboard": "bunx convex dashboard",
     "convex:run": "bunx convex run"
   },
   "exports": {
+    "./_generated/component.js": {
+      "types": "./dist/component/_generated/component.d.ts"
+    },
+    "./test": "./src/test.ts",
     "./server": {
       "types": "./dist/server/index.d.ts",
       "import": "./dist/server/index.js"
+    },
+    "./convex.config": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
+    },
+    "./convex.config.js": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
     },
     "./providers/*": {
       "types": "./dist/providers/*.d.ts",
@@ -123,5 +137,11 @@
     "@auth/core": "0.37.3",
     "path-to-regexp": "~6.3.0"
   },
-  "workspaces": ["test", "test-router", "test-nextjs"]
+  "workspaces": {
+    "packages": [".", "test", "test-router", "test-nextjs"],
+    "catalog": {
+      "convex": "1.31.7",
+      "convex-test": "^0.0.41"
+    }
+  }
 }

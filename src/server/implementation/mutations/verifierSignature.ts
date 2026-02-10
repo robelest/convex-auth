@@ -1,5 +1,7 @@
 import { GenericId, Infer, v } from "convex/values";
 import { ActionCtx, MutationCtx } from "../types.js";
+import * as Provider from "../provider.js";
+import { createAuthDb } from "../db.js";
 
 export const verifierSignatureArgs = v.object({
   verifier: v.string(),
@@ -11,11 +13,20 @@ type ReturnType = void;
 export async function verifierSignatureImpl(
   ctx: MutationCtx,
   args: Infer<typeof verifierSignatureArgs>,
+  config: Provider.Config,
 ): Promise<ReturnType> {
   const { verifier, signature } = args;
-  const verifierDoc = await ctx.db.get(verifier as GenericId<"authVerifiers">);
+  const authDb =
+    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
+  const verifierDoc =
+    authDb !== null
+      ? await authDb.verifiers.getById(verifier as GenericId<"authVerifiers">)
+      : await ctx.db.get(verifier as GenericId<"authVerifiers">);
   if (verifierDoc === null) {
     throw new Error("Invalid verifier");
+  }
+  if (authDb !== null) {
+    return await authDb.verifiers.patch(verifierDoc._id, { signature });
   }
   return await ctx.db.patch(verifierDoc._id, { signature });
 }

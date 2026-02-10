@@ -6,7 +6,11 @@ import ReactDOM from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
+const convexUrl =
+  (import.meta.env.NEXT_PUBLIC_CONVEX_URL as string | undefined) ??
+  (import.meta.env.VITE_CONVEX_URL as string | undefined);
+
+const convex = new ConvexReactClient(convexUrl as string);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

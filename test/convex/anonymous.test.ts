@@ -29,11 +29,16 @@ test.todo("convert anonymous user to permanent", async () => {
     "mike@gmail.com",
   );
   expect(newTokens).not.toBeNull();
-  await t.run(async (ctx) => {
-    const users = await ctx.db.query("users").collect();
-    expect(users).toMatchObject([{ email: "mike@gmail.com" }]);
-    expect(users[0]).not.toHaveProperty("isAnonymous");
-  });
+
+  const newClaims = decodeJwt(newTokens!.token);
+  expect(newClaims.sub).toEqual(claims.sub);
+
+  const viewer = await t.withIdentity({ subject: newClaims.sub }).query(
+    api.users.viewer,
+    {},
+  );
+  expect(viewer).toMatchObject({ email: "mike@gmail.com" });
+  expect(viewer).not.toHaveProperty("isAnonymous");
 });
 
 function setupEnv() {

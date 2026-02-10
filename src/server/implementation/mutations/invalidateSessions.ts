@@ -1,11 +1,13 @@
-import { Infer, v } from "convex/values";
+import { GenericId, Infer, v } from "convex/values";
 import { deleteSession } from "../sessions.js";
 import { ActionCtx, MutationCtx } from "../types.js";
 import { LOG_LEVELS, logWithLevel } from "../utils.js";
+import * as Provider from "../provider.js";
+import { createAuthDb } from "../db.js";
 
 export const invalidateSessionsArgs = v.object({
-  userId: v.id("users"),
-  except: v.optional(v.array(v.id("authSessions"))),
+  userId: v.string(),
+  except: v.optional(v.array(v.string())),
 });
 
 export const callInvalidateSessions = async (
@@ -23,17 +25,22 @@ export const callInvalidateSessions = async (
 export const invalidateSessionsImpl = async (
   ctx: MutationCtx,
   args: Infer<typeof invalidateSessionsArgs>,
+  config: Provider.Config,
 ): Promise<void> => {
   logWithLevel(LOG_LEVELS.DEBUG, "invalidateSessionsImpl args:", args);
   const { userId, except } = args;
   const exceptSet = new Set(except ?? []);
-  const sessions = await ctx.db
-    .query("authSessions")
-    .withIndex("userId", (q) => q.eq("userId", userId))
-    .collect();
+  const typedUserId = userId as GenericId<"users">;
+  const sessions =
+    config.component !== undefined
+      ? await createAuthDb(ctx, config.component).sessions.listByUser(typedUserId)
+      : await ctx.db
+          .query("authSessions")
+          .withIndex("userId", (q) => q.eq("userId", typedUserId))
+          .collect();
   for (const session of sessions) {
     if (!exceptSet.has(session._id)) {
-      await deleteSession(ctx, session);
+      await deleteSession(ctx, session, config);
     }
   }
   return;

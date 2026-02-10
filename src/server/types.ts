@@ -8,6 +8,7 @@ import {
 import { Theme } from "@auth/core/types";
 import {
   AnyDataModel,
+  FunctionReference,
   GenericActionCtx,
   GenericDataModel,
   GenericMutationCtx,
@@ -28,6 +29,13 @@ export type ConvexAuthConfig = {
    * - `@convex-dev/auth/providers/<provider-name>`
    */
   providers: AuthProviderConfig[];
+  /**
+   * Optional auth component reference from `components.auth`.
+   *
+   * When provided, core auth storage operations are executed through
+   * the component API boundary instead of direct table access.
+   */
+  component?: AuthComponentApi;
   /**
    * Theme used for emails.
    * See [Auth.js theme docs](https://authjs.dev/reference/core/types#theme).
@@ -364,7 +372,10 @@ export type GenericActionCtxWithAuthConfig<DataModel extends GenericDataModel> =
 export type ConvexAuthMaterializedConfig = {
   providers: AuthProviderMaterializedConfig[];
   theme: Theme;
-} & Pick<ConvexAuthConfig, "session" | "jwt" | "signIn" | "callbacks">;
+} & Pick<
+  ConvexAuthConfig,
+  "component" | "session" | "jwt" | "signIn" | "callbacks"
+>;
 
 /**
  * Materialized Auth.js provider config.
@@ -375,3 +386,46 @@ export type AuthProviderMaterializedConfig =
   | EmailConfig
   | PhoneConfig
   | ConvexCredentialsConfig;
+
+/**
+ * Component function references required by core auth runtime.
+ */
+export type AuthComponentApi = {
+  public: {
+    userGetById: FunctionReference<"query", "internal">;
+    userFindByVerifiedEmail: FunctionReference<"query", "internal">;
+    userFindByVerifiedPhone: FunctionReference<"query", "internal">;
+    userInsert: FunctionReference<"mutation", "internal">;
+    userUpsert: FunctionReference<"mutation", "internal">;
+    userPatch: FunctionReference<"mutation", "internal">;
+    accountGet: FunctionReference<"query", "internal">;
+    accountGetById: FunctionReference<"query", "internal">;
+    accountInsert: FunctionReference<"mutation", "internal">;
+    accountPatch: FunctionReference<"mutation", "internal">;
+    accountDelete: FunctionReference<"mutation", "internal">;
+    sessionCreate: FunctionReference<"mutation", "internal">;
+    sessionGetById: FunctionReference<"query", "internal">;
+    sessionDelete: FunctionReference<"mutation", "internal">;
+    sessionListByUser: FunctionReference<"query", "internal">;
+    verifierCreate: FunctionReference<"mutation", "internal">;
+    verifierGetById: FunctionReference<"query", "internal">;
+    verifierGetBySignature: FunctionReference<"query", "internal">;
+    verifierPatch: FunctionReference<"mutation", "internal">;
+    verifierDelete: FunctionReference<"mutation", "internal">;
+    verificationCodeGetByAccountId: FunctionReference<"query", "internal">;
+    verificationCodeGetByCode: FunctionReference<"query", "internal">;
+    verificationCodeCreate: FunctionReference<"mutation", "internal">;
+    verificationCodeDelete: FunctionReference<"mutation", "internal">;
+    refreshTokenCreate: FunctionReference<"mutation", "internal">;
+    refreshTokenGetById: FunctionReference<"query", "internal">;
+    refreshTokenPatch: FunctionReference<"mutation", "internal">;
+    refreshTokenGetChildren: FunctionReference<"query", "internal">;
+    refreshTokenListBySession: FunctionReference<"query", "internal">;
+    refreshTokenDeleteAll: FunctionReference<"mutation", "internal">;
+    refreshTokenGetActive: FunctionReference<"query", "internal">;
+    rateLimitGet: FunctionReference<"query", "internal">;
+    rateLimitCreate: FunctionReference<"mutation", "internal">;
+    rateLimitPatch: FunctionReference<"mutation", "internal">;
+    rateLimitDelete: FunctionReference<"mutation", "internal">;
+  };
+};

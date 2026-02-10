@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { components } from "./_generated/api";
 
 export const list = query({
   args: {},
@@ -12,7 +13,10 @@ export const list = query({
     const messages = await ctx.db.query("messages").order("desc").take(100);
     return Promise.all(
       messages.reverse().map(async (message) => {
-        const { name, email, phone } = (await ctx.db.get(message.userId))!;
+        const { name, email, phone } =
+          (await ctx.runQuery(components.auth.public.userGetById, {
+            userId: message.userId,
+          }))!;
         return { ...message, author: name ?? email ?? phone ?? "Anonymous" };
       }),
     );

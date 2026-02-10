@@ -27,6 +27,7 @@ test("sign up with password", async () => {
   });
 
   expect(tokens2).not.toBeNull();
+  expect(tokens2!.refreshToken).not.toEqual(tokens!.refreshToken);
 
   await expect(async () => {
     await t.action(api.auth.signIn, {
@@ -35,34 +36,32 @@ test("sign up with password", async () => {
     });
   }).rejects.toThrow("InvalidSecret");
 
-  await t.run(async (ctx) => {
-    const users = await ctx.db.query("users").collect();
-    expect(users).toMatchObject([{ email: "sarah@gmail.com" }]);
-    const accounts = await ctx.db.query("authAccounts").collect();
-    expect(accounts).toMatchObject([
-      { provider: "password", providerAccountId: "sarah@gmail.com" },
-    ]);
-    const sessions = await ctx.db.query("authSessions").collect();
-    expect(sessions).toHaveLength(2);
-  });
-
-  // Sign out from each session
+  // Sign out from each session and verify refresh behavior follows
+  // the session lifetime.
 
   const claims = decodeJwt(tokens!.token);
   await t.withIdentity({ subject: claims.sub }).action(api.auth.signOut);
 
-  await t.run(async (ctx) => {
-    const sessions = await ctx.db.query("authSessions").collect();
-    expect(sessions).toHaveLength(1);
+  const { tokens: refreshedFromFirstSession } = await t.action(api.auth.signIn, {
+    refreshToken: tokens!.refreshToken,
+    params: {},
   });
+  expect(refreshedFromFirstSession).toBeNull();
+
+  const { tokens: refreshedFromSecondSession } = await t.action(api.auth.signIn, {
+    refreshToken: tokens2!.refreshToken,
+    params: {},
+  });
+  expect(refreshedFromSecondSession).not.toBeNull();
 
   const claims2 = decodeJwt(tokens2!.token);
   await t.withIdentity({ subject: claims2.sub }).action(api.auth.signOut);
 
-  await t.run(async (ctx) => {
-    const sessions = await ctx.db.query("authSessions").collect();
-    expect(sessions).toHaveLength(0);
+  const { tokens: refreshedAfterSecondSignOut } = await t.action(api.auth.signIn, {
+    refreshToken: tokens2!.refreshToken,
+    params: {},
   });
+  expect(refreshedAfterSecondSignOut).toBeNull();
 });
 
 test("sign up with password and verify email", async () => {

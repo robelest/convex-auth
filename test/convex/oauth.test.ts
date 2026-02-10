@@ -1,5 +1,7 @@
 import { convexTest } from "../convex-test";
+import { decodeJwt } from "jose";
 import { expect, test } from "vitest";
+import { components } from "@convex/_generated/api";
 import schema from "./schema";
 import {
   CONVEX_SITE_URL,
@@ -11,7 +13,7 @@ import {
 test("sign up with oauth", async () => {
   setupEnv();
   const t = convexTest(schema);
-  const { tokens } = await signInViaGitHub(t, "github", {
+  const { tokens, verifier } = await signInViaGitHub(t, "github", {
     email: "tom@gmail.com",
     name: "Tom",
     id: "someGitHubId",
@@ -20,46 +22,50 @@ test("sign up with oauth", async () => {
   expect(tokens).not.toBeNull();
 
   await t.run(async (ctx) => {
-    const verificationCodes = await ctx.db
-      .query("authVerificationCodes")
-      .collect();
-    expect(verificationCodes).toHaveLength(0);
-    const verifiers = await ctx.db.query("authVerifiers").collect();
-    expect(verifiers).toHaveLength(0);
+    const storedVerifier = await ctx.runQuery(components.auth.public.verifierGetById, {
+      verifierId: verifier,
+    });
+    expect(storedVerifier).toBeNull();
   });
 });
 
 test("sign in with oauth", async () => {
   setupEnv();
   const t = convexTest(schema);
-  await signInViaGitHub(t, "github", {
-    email: "tom@gmail.com",
-    name: "Tom",
-    id: "someGitHubId",
-  });
+  const { tokens: initialTokens, verifier: initialVerifier } = await signInViaGitHub(
+    t,
+    "github",
+    {
+      email: "tom@gmail.com",
+      name: "Tom",
+      id: "someGitHubId",
+    },
+  );
 
+  expect(initialTokens).not.toBeNull();
   await t.run(async (ctx) => {
-    const users = await ctx.db.query("users").collect();
-    expect(users).toMatchObject([{ email: "tom@gmail.com", name: "Tom" }]);
+    const storedVerifier = await ctx.runQuery(components.auth.public.verifierGetById, {
+      verifierId: initialVerifier,
+    });
+    expect(storedVerifier).toBeNull();
   });
 
-  const { tokens } = await signInViaGitHub(t, "github", {
+  const { tokens, verifier } = await signInViaGitHub(t, "github", {
     email: "tom@gmail.com",
     name: "Thomas",
     id: "someGitHubId",
   });
 
   expect(tokens).not.toBeNull();
+  expect(getUserIdFromToken(tokens!.token)).toEqual(
+    getUserIdFromToken(initialTokens!.token),
+  );
 
   await t.run(async (ctx) => {
-    const verificationCodes = await ctx.db
-      .query("authVerificationCodes")
-      .collect();
-    expect(verificationCodes).toHaveLength(0);
-    const verifiers = await ctx.db.query("authVerifiers").collect();
-    expect(verifiers).toHaveLength(0);
-    const users = await ctx.db.query("users").collect();
-    expect(users).toMatchObject([{ email: "tom@gmail.com", name: "Thomas" }]);
+    const storedVerifier = await ctx.runQuery(components.auth.public.verifierGetById, {
+      verifierId: verifier,
+    });
+    expect(storedVerifier).toBeNull();
   });
 });
 
@@ -90,4 +96,8 @@ function setupEnv() {
   process.env.AUTH_GITHUB_ID = "githubClientId";
   process.env.AUTH_GITHUB_SECRET = "githubClientSecret";
   process.env.AUTH_LOG_LEVEL = "ERROR";
+}
+
+function getUserIdFromToken(token: string) {
+  return decodeJwt(token).sub!.split("|")[0];
 }

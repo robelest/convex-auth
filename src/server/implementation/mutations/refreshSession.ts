@@ -11,6 +11,7 @@ import {
   refreshTokenIfValid,
 } from "../refreshTokens.js";
 import { generateTokensForSession } from "../sessions.js";
+import { createAuthDb } from "../db.js";
 
 export const refreshSessionArgs = v.object({
   refreshToken: v.string(),
@@ -27,6 +28,8 @@ export async function refreshSessionImpl(
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
 ): Promise<ReturnType> {
+  const authDb =
+    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
   const { refreshToken } = args;
   const { refreshTokenId, sessionId: tokenSessionId } =
     parseRefreshToken(refreshToken);
@@ -40,16 +43,24 @@ export async function refreshSessionImpl(
     ctx,
     refreshTokenId,
     tokenSessionId,
+    config,
   );
 
   if (validationResult === null) {
     // Replicating `deleteSession` but ensuring that we delete both the session
     // and the refresh token, even if one of them is missing.
-    const session = await ctx.db.get(tokenSessionId);
+    const session =
+      authDb !== null
+        ? await authDb.sessions.getById(tokenSessionId)
+        : await ctx.db.get(tokenSessionId);
     if (session !== null) {
-      await ctx.db.delete(session._id);
+      if (authDb !== null) {
+        await authDb.sessions.delete(session._id);
+      } else {
+        await ctx.db.delete(session._id);
+      }
     }
-    await deleteAllRefreshTokens(ctx, tokenSessionId);
+    await deleteAllRefreshTokens(ctx, tokenSessionId, config);
     return null;
   }
   const { session } = validationResult;
@@ -60,9 +71,15 @@ export async function refreshSessionImpl(
 
   // First use -- mark as used and generate new refresh token
   if (tokenFirstUsed === undefined) {
-    await ctx.db.patch(refreshTokenId, {
-      firstUsedTime: Date.now(),
-    });
+    if (authDb !== null) {
+      await authDb.refreshTokens.patch(refreshTokenId, {
+        firstUsedTime: Date.now(),
+      });
+    } else {
+      await ctx.db.patch(refreshTokenId, {
+        firstUsedTime: Date.now(),
+      });
+    }
     const result = await generateTokensForSession(ctx, config, {
       userId,
       sessionId,
@@ -81,7 +98,11 @@ export async function refreshSessionImpl(
 
   // Token has been used before
   // Check if parent of active refresh token
-  const activeRefreshToken = await loadActiveRefreshToken(ctx, tokenSessionId);
+  const activeRefreshToken = await loadActiveRefreshToken(
+    ctx,
+    tokenSessionId,
+    config,
+  );
   logWithLevel(
     "DEBUG",
     `Active refresh token: ${maybeRedact(activeRefreshToken?._id ?? "(none)")}, parent ${maybeRedact(activeRefreshToken?.parentRefreshTokenId ?? "(none)")}`,
@@ -130,6 +151,7 @@ export async function refreshSessionImpl(
     const tokensToInvalidate = await invalidateRefreshTokensInSubtree(
       ctx,
       validationResult.refreshTokenDoc,
+      config,
     );
     logWithLevel(
       "DEBUG",

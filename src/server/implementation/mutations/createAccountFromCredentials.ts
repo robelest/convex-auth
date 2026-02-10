@@ -5,6 +5,7 @@ import { ConvexCredentialsConfig } from "../../types.js";
 import { upsertUserAndAccount } from "../users.js";
 import { getAuthSessionId } from "../sessions.js";
 import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils.js";
+import { createAuthDb } from "../db.js";
 
 export const createAccountFromCredentialsArgs = v.object({
   provider: v.string(),
@@ -36,13 +37,18 @@ export async function createAccountFromCredentialsImpl(
     shouldLinkViaEmail,
     shouldLinkViaPhone,
   } = args;
+  const authDb =
+    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
   const provider = getProviderOrThrow(providerId) as ConvexCredentialsConfig;
-  const existingAccount = await ctx.db
-    .query("authAccounts")
-    .withIndex("providerAndAccountId", (q) =>
-      q.eq("provider", provider.id).eq("providerAccountId", account.id),
-    )
-    .unique();
+  const existingAccount =
+    authDb !== null
+      ? ((await authDb.accounts.get(provider.id, account.id)) as Doc<"authAccounts"> | null)
+      : await ctx.db
+          .query("authAccounts")
+          .withIndex("providerAndAccountId", (q) =>
+            q.eq("provider", provider.id).eq("providerAccountId", account.id),
+          )
+          .unique();
   if (existingAccount !== null) {
     if (
       account.secret !== undefined &&
@@ -57,7 +63,10 @@ export async function createAccountFromCredentialsImpl(
     return {
       account: existingAccount,
       // TODO: Ian removed this,
-      user: (await ctx.db.get(existingAccount.userId))!,
+      user:
+        authDb !== null
+          ? ((await authDb.users.getById(existingAccount.userId)) as unknown as Doc<"users">)
+          : (await ctx.db.get(existingAccount.userId))!,
     };
   }
 
@@ -80,8 +89,14 @@ export async function createAccountFromCredentialsImpl(
   );
 
   return {
-    account: (await ctx.db.get(accountId))!,
-    user: (await ctx.db.get(userId))!,
+    account:
+      authDb !== null
+        ? ((await authDb.accounts.getById(accountId)) as Doc<"authAccounts">)
+        : (await ctx.db.get(accountId))!,
+    user:
+      authDb !== null
+        ? ((await authDb.users.getById(userId)) as unknown as Doc<"users">)
+        : (await ctx.db.get(userId))!,
   };
 }
 

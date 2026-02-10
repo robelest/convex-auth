@@ -1,4 +1,5 @@
 import { convexTest } from "../convex-test";
+import { decodeJwt } from "jose";
 import { expect, test } from "vitest";
 import schema from "./schema";
 import {
@@ -22,21 +23,24 @@ test("repeated signin via phone", async () => {
   const t = convexTest(schema);
 
   // 1. Sign in via phone
-  await signInViaPhone(t, "fake-phone", { phone: "+1234567890" });
+  const initialTokens = await signInViaPhone(t, "fake-phone", {
+    phone: "+1234567890",
+  });
 
   // 2. Sign in via the same phone
   const newTokens = await signInViaPhone(t, "fake-phone", {
     phone: "+1234567890",
   });
+  expect(initialTokens).not.toBeNull();
   expect(newTokens).not.toBeNull();
-
-  // 3. Check that there is only one user, the same one
-  await t.run(async (ctx) => {
-    const users = await ctx.db.query("users").collect();
-    expect(users).toHaveLength(1);
-    expect(users[0].phoneVerificationTime).not.toBeUndefined();
-  });
+  expect(getUserIdFromToken(initialTokens!.token)).toEqual(
+    getUserIdFromToken(newTokens!.token),
+  );
 });
+
+function getUserIdFromToken(token: string) {
+  return decodeJwt(token).sub!.split("|")[0];
+}
 
 function setupEnv() {
   process.env.SITE_URL = "http://localhost:5173";

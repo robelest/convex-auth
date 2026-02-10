@@ -5,9 +5,10 @@ import { EmailConfig, PhoneConfig } from "../../types.js";
 import { getAccountOrThrow, upsertUserAndAccount } from "../users.js";
 import { getAuthSessionId } from "../sessions.js";
 import { LOG_LEVELS, logWithLevel, sha256 } from "../utils.js";
+import { createAuthDb } from "../db.js";
 
 export const createVerificationCodeArgs = v.object({
-  accountId: v.optional(v.id("authAccounts")),
+  accountId: v.optional(v.string()),
   provider: v.string(),
   email: v.optional(v.string()),
   phone: v.optional(v.string()),
@@ -34,17 +35,24 @@ export async function createVerificationCodeImpl(
     accountId: existingAccountId,
     allowExtraProviders,
   } = args;
+  const authDb =
+    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
+  const typedExistingAccountId = existingAccountId as
+    | GenericId<"authAccounts">
+    | undefined;
   const existingAccount =
-    existingAccountId !== undefined
-      ? await getAccountOrThrow(ctx, existingAccountId)
-      : await ctx.db
-          .query("authAccounts")
-          .withIndex("providerAndAccountId", (q) =>
-            q
-              .eq("provider", providerId)
-              .eq("providerAccountId", email ?? phone!),
-          )
-          .unique();
+    typedExistingAccountId !== undefined
+      ? await getAccountOrThrow(ctx, typedExistingAccountId, config)
+      : authDb !== null
+        ? await authDb.accounts.get(providerId, email ?? phone!)
+        : await ctx.db
+            .query("authAccounts")
+            .withIndex("providerAndAccountId", (q) =>
+              q
+                .eq("provider", providerId)
+                .eq("providerAccountId", email ?? phone!),
+            )
+            .unique();
 
   const provider = getProviderOrThrow(providerId, allowExtraProviders) as
     | EmailConfig
@@ -67,6 +75,7 @@ export async function createVerificationCodeImpl(
     code,
     expirationTime,
     { email, phone },
+    config,
   );
   return email ?? phone!;
 }
@@ -90,20 +99,41 @@ async function generateUniqueVerificationCode(
   code: string,
   expirationTime: number,
   { email, phone }: { email?: string; phone?: string },
+  config: Provider.Config,
 ) {
-  const existingCode = await ctx.db
-    .query("authVerificationCodes")
-    .withIndex("accountId", (q) => q.eq("accountId", accountId))
-    .unique();
+  const authDb =
+    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
+  const existingCode =
+    authDb !== null
+      ? await authDb.verificationCodes.getByAccountId(accountId)
+      : await ctx.db
+          .query("authVerificationCodes")
+          .withIndex("accountId", (q) => q.eq("accountId", accountId))
+          .unique();
   if (existingCode !== null) {
-    await ctx.db.delete(existingCode._id);
+    if (authDb !== null) {
+      await authDb.verificationCodes.delete(existingCode._id);
+    } else {
+      await ctx.db.delete(existingCode._id);
+    }
   }
-  await ctx.db.insert("authVerificationCodes", {
-    accountId,
-    provider,
-    code: await sha256(code),
-    expirationTime,
-    emailVerified: email,
-    phoneVerified: phone,
-  });
+  if (authDb !== null) {
+    await authDb.verificationCodes.create({
+      accountId,
+      provider,
+      code: await sha256(code),
+      expirationTime,
+      emailVerified: email,
+      phoneVerified: phone,
+    });
+  } else {
+    await ctx.db.insert("authVerificationCodes", {
+      accountId,
+      provider,
+      code: await sha256(code),
+      expirationTime,
+      emailVerified: email,
+      phoneVerified: phone,
+    });
+  }
 }

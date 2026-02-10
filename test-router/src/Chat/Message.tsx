@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
-import { Id } from "@convex/_generated/dataModel";
 
 export function Message({
   authorName,
@@ -9,8 +8,8 @@ export function Message({
   children,
 }: {
   authorName: string;
-  author: Id<"users">;
-  viewer: Id<"users">;
+  author: string;
+  viewer: string;
   children: ReactNode;
 }) {
   return (

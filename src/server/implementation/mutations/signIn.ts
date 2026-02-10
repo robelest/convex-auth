@@ -1,4 +1,4 @@
-import { Infer, v } from "convex/values";
+import { GenericId, Infer, v } from "convex/values";
 import { ActionCtx, MutationCtx, SessionInfo } from "../types.js";
 import * as Provider from "../provider.js";
 import {
@@ -8,8 +8,8 @@ import {
 import { LOG_LEVELS, logWithLevel } from "../utils.js";
 
 export const signInArgs = v.object({
-  userId: v.id("users"),
-  sessionId: v.optional(v.id("authSessions")),
+  userId: v.string(),
+  sessionId: v.optional(v.string()),
   generateTokens: v.boolean(),
 });
 
@@ -22,13 +22,17 @@ export async function signInImpl(
 ): Promise<ReturnType> {
   logWithLevel(LOG_LEVELS.DEBUG, "signInImpl args:", args);
   const { userId, sessionId: existingSessionId, generateTokens } = args;
+  const typedUserId = userId as GenericId<"users">;
+  const typedExistingSessionId = existingSessionId as
+    | GenericId<"authSessions">
+    | undefined;
   const sessionId =
-    existingSessionId ??
-    (await createNewAndDeleteExistingSession(ctx, config, userId));
+    typedExistingSessionId ??
+    (await createNewAndDeleteExistingSession(ctx, config, typedUserId));
   return await maybeGenerateTokensForSession(
     ctx,
     config,
-    userId,
+    typedUserId,
     sessionId,
     generateTokens,
   );

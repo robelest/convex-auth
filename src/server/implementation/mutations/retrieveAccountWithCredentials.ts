@@ -7,6 +7,7 @@ import {
 } from "../rateLimit.js";
 import * as Provider from "../provider.js";
 import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils.js";
+import { createAuthDb } from "../db.js";
 
 export const retrieveAccountWithCredentialsArgs = v.object({
   provider: v.string(),
@@ -26,6 +27,8 @@ export async function retrieveAccountWithCredentialsImpl(
   config: Provider.Config,
 ): Promise<ReturnType> {
   const { provider: providerId, account } = args;
+  const authDb =
+    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
   logWithLevel(LOG_LEVELS.DEBUG, "retrieveAccountWithCredentialsImpl args:", {
     provider: providerId,
     account: {
@@ -33,12 +36,15 @@ export async function retrieveAccountWithCredentialsImpl(
       secret: maybeRedact(account.secret ?? ""),
     },
   });
-  const existingAccount = await ctx.db
-    .query("authAccounts")
-    .withIndex("providerAndAccountId", (q) =>
-      q.eq("provider", providerId).eq("providerAccountId", account.id),
-    )
-    .unique();
+  const existingAccount =
+    authDb !== null
+      ? ((await authDb.accounts.get(providerId, account.id)) as Doc<"authAccounts"> | null)
+      : await ctx.db
+          .query("authAccounts")
+          .withIndex("providerAndAccountId", (q) =>
+            q.eq("provider", providerId).eq("providerAccountId", account.id),
+          )
+          .unique();
   if (existingAccount === null) {
     return "InvalidAccountId";
   }
@@ -56,12 +62,15 @@ export async function retrieveAccountWithCredentialsImpl(
       await recordFailedSignIn(ctx, existingAccount._id, config);
       return "InvalidSecret";
     }
-    await resetSignInRateLimit(ctx, existingAccount._id);
+    await resetSignInRateLimit(ctx, existingAccount._id, config);
   }
   return {
     account: existingAccount,
     // TODO: Ian removed this
-    user: (await ctx.db.get(existingAccount.userId))!,
+    user:
+      authDb !== null
+        ? ((await authDb.users.getById(existingAccount.userId)) as unknown as Doc<"users">)
+        : (await ctx.db.get(existingAccount.userId))!,
   };
 }
 

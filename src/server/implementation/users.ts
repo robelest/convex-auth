@@ -1,7 +1,8 @@
 import { GenericId } from "convex/values";
-import { Doc, MutationCtx, QueryCtx } from "./types.js";
+import { Doc, MutationCtx } from "./types.js";
 import { AuthProviderMaterializedConfig, ConvexAuthConfig } from "../types.js";
 import { LOG_LEVELS, logWithLevel } from "./utils.js";
+import { createAuthDb } from "./db.js";
 
 type CreateOrUpdateUserArgs = {
   type: "oauth" | "credentials" | "email" | "phone" | "verification";
@@ -38,7 +39,7 @@ export async function upsertUserAndAccount(
     args,
     config,
   );
-  const accountId = await createOrUpdateAccount(ctx, userId, account, args);
+  const accountId = await createOrUpdateAccount(ctx, userId, account, args, config);
   return { userId, accountId };
 }
 
@@ -55,6 +56,8 @@ async function defaultCreateOrUpdateUser(
     args,
   });
   const existingUserId = existingAccount?.userId ?? null;
+  const authDb =
+    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
   if (config.callbacks?.createOrUpdateUser !== undefined) {
     logWithLevel(LOG_LEVELS.DEBUG, "Using custom createOrUpdateUser callback");
     return await config.callbacks.createOrUpdateUser(ctx, {
@@ -85,12 +88,14 @@ async function defaultCreateOrUpdateUser(
   if (existingUserId === null) {
     const existingUserWithVerifiedEmailId =
       typeof profile.email === "string" && shouldLinkViaEmail
-        ? (await uniqueUserWithVerifiedEmail(ctx, profile.email))?._id ?? null
+        ? (await uniqueUserWithVerifiedEmail(ctx, profile.email, config))?._id ??
+          null
         : null;
 
     const existingUserWithVerifiedPhoneId =
       typeof profile.phone === "string" && shouldLinkViaPhone
-        ? (await uniqueUserWithVerifiedPhone(ctx, profile.phone))?._id ?? null
+        ? (await uniqueUserWithVerifiedPhone(ctx, profile.phone, config))?._id ??
+          null
         : null;
     // If there is both email and phone verified user
     // already we can't link.
@@ -131,7 +136,11 @@ async function defaultCreateOrUpdateUser(
   const existingOrLinkedUserId = userId;
   if (userId !== null) {
     try {
-      await ctx.db.patch(userId, userData);
+      if (authDb !== null) {
+        await authDb.users.patch(userId, userData);
+      } else {
+        await ctx.db.patch(userId, userData);
+      }
     } catch (error) {
       throw new Error(
         `Could not update user document with ID \`${userId}\`, ` +
@@ -141,7 +150,10 @@ async function defaultCreateOrUpdateUser(
       );
     }
   } else {
-    userId = await ctx.db.insert("users", userData);
+    userId =
+      authDb !== null
+        ? ((await authDb.users.insert(userData)) as GenericId<"users">)
+        : await ctx.db.insert("users", userData);
   }
   const afterUserCreatedOrUpdated = config.callbacks?.afterUserCreatedOrUpdated;
   if (afterUserCreatedOrUpdated !== undefined) {
@@ -163,7 +175,15 @@ async function defaultCreateOrUpdateUser(
   return userId;
 }
 
-async function uniqueUserWithVerifiedEmail(ctx: QueryCtx, email: string) {
+async function uniqueUserWithVerifiedEmail(
+  ctx: MutationCtx,
+  email: string,
+  config: ConvexAuthConfig,
+) {
+  if (config.component !== undefined) {
+    const authDb = createAuthDb(ctx, config.component);
+    return (await authDb.users.findByVerifiedEmail(email)) as Doc<"users"> | null;
+  }
   const users = await ctx.db
     .query("users")
     .withIndex("email", (q) => q.eq("email", email))
@@ -172,7 +192,15 @@ async function uniqueUserWithVerifiedEmail(ctx: QueryCtx, email: string) {
   return users.length === 1 ? users[0] : null;
 }
 
-async function uniqueUserWithVerifiedPhone(ctx: QueryCtx, phone: string) {
+async function uniqueUserWithVerifiedPhone(
+  ctx: MutationCtx,
+  phone: string,
+  config: ConvexAuthConfig,
+) {
+  if (config.component !== undefined) {
+    const authDb = createAuthDb(ctx, config.component);
+    return (await authDb.users.findByVerifiedPhone(phone)) as Doc<"users"> | null;
+  }
   const users = await ctx.db
     .query("users")
     .withIndex("phone", (q) => q.eq("phone", phone))
@@ -191,38 +219,64 @@ async function createOrUpdateAccount(
         secret?: string;
       },
   args: CreateOrUpdateUserArgs,
+  config: ConvexAuthConfig,
 ) {
+  const authDb =
+    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
   const accountId =
     "existingAccount" in account
       ? account.existingAccount._id
-      : await ctx.db.insert("authAccounts", {
-          userId,
-          provider: args.provider.id,
-          providerAccountId: account.providerAccountId,
-          secret: account.secret,
-        });
+      : authDb !== null
+        ? ((await authDb.accounts.create({
+            userId,
+            provider: args.provider.id,
+            providerAccountId: account.providerAccountId,
+            secret: account.secret,
+          })) as GenericId<"authAccounts">)
+        : await ctx.db.insert("authAccounts", {
+            userId,
+            provider: args.provider.id,
+            providerAccountId: account.providerAccountId,
+            secret: account.secret,
+          });
   // This is never used with the default `createOrUpdateUser` implementation,
   // but it is used for manual linking via custom `createOrUpdateUser`:
   if (
     "existingAccount" in account &&
     account.existingAccount.userId !== userId
   ) {
-    await ctx.db.patch(accountId, { userId });
+    if (authDb !== null) {
+      await authDb.accounts.patch(accountId, { userId });
+    } else {
+      await ctx.db.patch(accountId, { userId });
+    }
   }
   if (args.profile.emailVerified) {
-    await ctx.db.patch(accountId, { emailVerified: args.profile.email });
+    if (authDb !== null) {
+      await authDb.accounts.patch(accountId, { emailVerified: args.profile.email });
+    } else {
+      await ctx.db.patch(accountId, { emailVerified: args.profile.email });
+    }
   }
   if (args.profile.phoneVerified) {
-    await ctx.db.patch(accountId, { phoneVerified: args.profile.phone });
+    if (authDb !== null) {
+      await authDb.accounts.patch(accountId, { phoneVerified: args.profile.phone });
+    } else {
+      await ctx.db.patch(accountId, { phoneVerified: args.profile.phone });
+    }
   }
   return accountId;
 }
 
 export async function getAccountOrThrow(
-  ctx: QueryCtx,
+  ctx: MutationCtx,
   existingAccountId: GenericId<"authAccounts">,
+  config: ConvexAuthConfig,
 ) {
-  const existingAccount = await ctx.db.get(existingAccountId);
+  const existingAccount =
+    config.component !== undefined
+      ? await createAuthDb(ctx, config.component).accounts.getById(existingAccountId)
+      : await ctx.db.get(existingAccountId);
   if (existingAccount === null) {
     throw new Error(
       `Expected an account to exist for ID "${existingAccountId}"`,
