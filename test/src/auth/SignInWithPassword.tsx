@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { useState } from "react";
 import { ConvexError } from "convex/values";
-import { INVALID_PASSWORD } from "../../convex/errors.js";
+import { INVALID_PASSWORD } from "@convex/errors";
 
 export function SignInWithPassword({
   provider,

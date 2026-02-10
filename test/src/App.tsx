@@ -3,7 +3,7 @@ import { ChatHeader } from "@/Chat/ChatIntro";
 import { Layout } from "@/Layout";
 import { SignInFormsShowcase } from "@/auth/SignInFormsShowcase";
 import { UserMenu } from "@/components/UserMenu";
-import { api } from "../convex/_generated/api";
+import { api } from "@convex/_generated/api";
 import { Authenticated, Unauthenticated, useQuery } from "convex/react";
 
 export default function App() {

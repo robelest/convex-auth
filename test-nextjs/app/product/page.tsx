@@ -1,7 +1,7 @@
 import { Chat } from "@/app/product/Chat/Chat";
 import { ChatIntro } from "@/app/product/Chat/ChatIntro";
 import { UserMenu } from "@/components/UserMenu";
-import { api } from "@/convex/_generated/api";
+import { api } from "@convex/_generated/api";
 import { convexAuthNextjsToken } from "@convex-dev/auth/nextjs/server";
 import { fetchQuery } from "convex/nextjs";
 

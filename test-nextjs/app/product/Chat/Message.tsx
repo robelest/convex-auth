@@ -1,4 +1,4 @@
-import { Id } from "@/convex/_generated/dataModel";
+import { Id } from "@convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 

@@ -1,4 +1,4 @@
-import { convexTest } from "convex-test";
+import { convexTest } from "../convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
 import {

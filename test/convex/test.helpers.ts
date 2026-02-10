@@ -1,8 +1,8 @@
 import { load as cheerio } from "cheerio";
-import { TestConvexForDataModel } from "convex-test";
+import { TestConvexForDataModel } from "../convex-test";
 import { expect, vi } from "vitest";
-import { api } from "./_generated/api";
-import { DataModel } from "./_generated/dataModel";
+import { api } from "@convex/_generated/api";
+import { DataModel } from "@convex/_generated/dataModel";
 
 export const CONVEX_SITE_URL = "https://test-123.convex.site";
 export const JWT_PRIVATE_KEY =
@@ -117,9 +117,19 @@ export async function signInViaMagicLink(
     vi.fn(async (input, init) => {
       if (
         typeof input === "string" &&
-        input === "https://api.resend.com/emails"
+        (input === "https://api.resend.com/emails" ||
+          input === `${CONVEX_SITE_URL}/auth-email-dispatch`)
       ) {
-        code = init.body.match(/\?code=([^\s\\]+)/)?.[1] ?? "";
+        const body = String(init.body ?? "");
+        if (input === "https://api.resend.com/emails") {
+          code = body.match(/\?code=([^\s\\]+)/)?.[1] ?? "";
+        } else {
+          const parsed = JSON.parse(body) as { html?: string };
+          code =
+            parsed.html?.match(/\b(\d{6,8})\b/)?.[1] ??
+            parsed.html?.match(/\?code=([^\s\\"'&<>]+)/)?.[1] ??
+            "";
+        }
         expect(code).not.toEqual("");
         return new Response(null, { status: 200 });
       }
@@ -163,9 +173,17 @@ export async function mockResendOTP<T>(send: () => Promise<T>) {
     vi.fn(async (input, init) => {
       if (
         typeof input === "string" &&
-        input === "https://api.resend.com/emails"
+        (input === "https://api.resend.com/emails" ||
+          input === `${CONVEX_SITE_URL}/auth-email-dispatch`)
       ) {
-        code = cheerio(init.body)('p[style*="font-size:2.25rem"]').text();
+        const body = String(init.body ?? "");
+        const html =
+          input === "https://api.resend.com/emails"
+            ? body
+            : ((JSON.parse(body) as { html?: string }).html ?? "");
+        const byHtmlSelector = cheerio(html)('p[style*="font-size:2.25rem"]').text();
+        const byRegex = html.match(/\b(\d{6,8})\b/)?.[1] ?? "";
+        code = byHtmlSelector || byRegex;
         expect(code).not.toEqual("");
         return new Response(JSON.stringify(null), { status: 200 });
       }

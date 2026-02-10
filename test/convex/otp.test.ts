@@ -1,4 +1,4 @@
-import { convexTest } from "convex-test";
+import { convexTest } from "../convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
 import {
@@ -9,7 +9,7 @@ import {
   mockResendOTP,
   signInViaOTP,
 } from "./test.helpers";
-import { api } from "./_generated/api";
+import { api } from "@convex/_generated/api";
 
 test("sign in with otp", async () => {
   setupEnv();

@@ -1,6 +1,6 @@
-import { convexTest } from "convex-test";
+import { convexTest } from "../convex-test";
 import { expect, test, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api } from "@convex/_generated/api";
 import schema from "./schema";
 import {
   AUTH_RESEND_KEY,
