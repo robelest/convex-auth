@@ -196,9 +196,9 @@ export const authTables = {
     .index("organizationIdAndStatus", ["organizationId", "status"]),
 };
 
-const defaultSchema = defineSchema(authTables);
+type DefaultSchema = ReturnType<typeof defineSchema<typeof authTables>>;
 
-export type AuthDataModel = DataModelFromSchemaDefinition<typeof defaultSchema>;
+export type AuthDataModel = DataModelFromSchemaDefinition<DefaultSchema>;
 export type ActionCtx = GenericActionCtx<AuthDataModel>;
 export type MutationCtx = GenericMutationCtx<AuthDataModel>;
 export type QueryCtx = GenericQueryCtx<AuthDataModel>;

@@ -148,7 +148,7 @@ async function configureSiteUrl(config: ProjectConfig, forcedValue?: string) {
       try {
         new URL(input);
         return true;
-      } catch (error: any) {
+      } catch {
         return "The URL must start with http:// or https://";
       }
     },

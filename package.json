@@ -8,6 +8,8 @@
     "dev:nextjs": "bun run --cwd examples/nextjs dev:frontend",
     "dev:convex": "bunx convex dev",
     "build": "bun run --cwd packages/auth build",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "test:once": "bun run --cwd examples/vite test:once",
     "test:auth": "bun run --cwd packages/test test:once",
     "codegen:convex": "bunx convex codegen && bunx convex codegen --component-dir ./packages/auth/src/component",
@@ -24,5 +26,15 @@
   "dependencies": {
     "@robelest/convex-auth": "workspace:*",
     "convex": "^1.31.7"
+  },
+  "devDependencies": {
+    "@convex-dev/eslint-plugin": "^1.1.1",
+    "@eslint/js": "^9.37.0",
+    "eslint": "^9.39.0",
+    "eslint-plugin-no-only-tests": "^3.3.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.4.0",
+    "typescript-eslint": "^8.46.1"
   }
 }

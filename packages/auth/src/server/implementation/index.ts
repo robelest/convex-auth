@@ -7,7 +7,6 @@ import {
   HttpRouter,
   WithoutSystemFields,
   actionGeneric,
-  queryGeneric,
   httpActionGeneric,
   internalMutationGeneric,
 } from "convex/server";
@@ -133,7 +132,6 @@ export function Auth(config_: ConvexAuthConfig) {
     "runQuery" | "runMutation"
   >;
   type ComponentReadCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
-  type ComponentAuthCtx = ComponentCtx & { auth: Auth };
   type ComponentAuthReadCtx = ComponentReadCtx & { auth: Auth };
 
   const auth = {

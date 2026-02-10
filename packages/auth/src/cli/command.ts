@@ -3,7 +3,6 @@ import { Command, Option } from "@commander-js/extra-typings";
 declare module "@commander-js/extra-typings" {
   interface Command<
     Args extends any[] = [],
-    // eslint-disable-next-line @typescript-eslint/ban-types
     Opts extends OptionValues = {},
   > {
     /**
