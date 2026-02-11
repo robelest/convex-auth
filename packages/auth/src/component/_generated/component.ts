@@ -64,6 +64,41 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      groupCreate: FunctionReference<
+        "mutation",
+        "internal",
+        { metadata?: any; name: string; parentGroupId?: string; slug?: string },
+        any,
+        Name
+      >;
+      groupDelete: FunctionReference<
+        "mutation",
+        "internal",
+        { groupId: string },
+        any,
+        Name
+      >;
+      groupGet: FunctionReference<
+        "query",
+        "internal",
+        { groupId: string },
+        any,
+        Name
+      >;
+      groupList: FunctionReference<
+        "query",
+        "internal",
+        { parentGroupId?: string },
+        any,
+        Name
+      >;
+      groupUpdate: FunctionReference<
+        "mutation",
+        "internal",
+        { data: any; groupId: string },
+        any,
+        Name
+      >;
       inviteAccept: FunctionReference<
         "mutation",
         "internal",
@@ -74,7 +109,16 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       inviteCreate: FunctionReference<
         "mutation",
         "internal",
-        { data: any },
+        {
+          email: string;
+          expiresTime: number;
+          groupId?: string;
+          invitedByUserId: string;
+          metadata?: any;
+          role?: string;
+          status: "pending" | "accepted" | "revoked" | "expired";
+          tokenHash: string;
+        },
         any,
         Name
       >;
@@ -88,7 +132,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       inviteList: FunctionReference<
         "query",
         "internal",
-        { organizationId?: string; status?: string },
+        {
+          groupId?: string;
+          status?: "pending" | "accepted" | "revoked" | "expired";
+        },
         any,
         Name
       >;
@@ -130,14 +177,41 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       memberAdd: FunctionReference<
         "mutation",
         "internal",
-        { data: any },
+        {
+          groupId: string;
+          metadata?: any;
+          role?: string;
+          status?: string;
+          userId: string;
+        },
+        any,
+        Name
+      >;
+      memberGet: FunctionReference<
+        "query",
+        "internal",
+        { memberId: string },
+        any,
+        Name
+      >;
+      memberGetByGroupAndUser: FunctionReference<
+        "query",
+        "internal",
+        { groupId: string; userId: string },
         any,
         Name
       >;
       memberList: FunctionReference<
         "query",
         "internal",
-        { organizationId: string; teamId?: string },
+        { groupId: string },
+        any,
+        Name
+      >;
+      memberListByUser: FunctionReference<
+        "query",
+        "internal",
+        { userId: string },
         any,
         Name
       >;
@@ -148,52 +222,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
-      memberRoleGet: FunctionReference<
-        "query",
-        "internal",
-        { memberId: string },
-        any,
-        Name
-      >;
-      memberRoleSet: FunctionReference<
+      memberUpdate: FunctionReference<
         "mutation",
         "internal",
-        { memberId: string; role: string },
-        any,
-        Name
-      >;
-      organizationCreate: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any },
-        any,
-        Name
-      >;
-      organizationDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { organizationId: string },
-        any,
-        Name
-      >;
-      organizationGet: FunctionReference<
-        "query",
-        "internal",
-        { organizationId: string },
-        any,
-        Name
-      >;
-      organizationList: FunctionReference<
-        "query",
-        "internal",
-        { ownerUserId?: string },
-        any,
-        Name
-      >;
-      organizationUpdate: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; organizationId: string },
+        { data: any; memberId: string },
         any,
         Name
       >;
@@ -303,80 +335,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "query",
         "internal",
         { userId: string },
-        any,
-        Name
-      >;
-      teamCreate: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          metadata?: any;
-          name: string;
-          organizationId: string;
-          parentTeamId?: string;
-          slug?: string;
-        },
-        any,
-        Name
-      >;
-      teamDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { teamId: string },
-        any,
-        Name
-      >;
-      teamGet: FunctionReference<
-        "query",
-        "internal",
-        { teamId: string },
-        any,
-        Name
-      >;
-      teamListByOrganization: FunctionReference<
-        "query",
-        "internal",
-        { organizationId: string },
-        any,
-        Name
-      >;
-      teamRelationCreate: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          childTeamId: string;
-          organizationId: string;
-          parentTeamId: string;
-          relation?: string;
-        },
-        any,
-        Name
-      >;
-      teamRelationDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { teamRelationId: string },
-        any,
-        Name
-      >;
-      teamRelationGet: FunctionReference<
-        "query",
-        "internal",
-        { teamRelationId: string },
-        any,
-        Name
-      >;
-      teamRelationListByParent: FunctionReference<
-        "query",
-        "internal",
-        { organizationId: string; parentTeamId: string },
-        any,
-        Name
-      >;
-      teamUpdate: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; teamId: string },
         any,
         Name
       >;

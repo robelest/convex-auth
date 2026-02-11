@@ -5,13 +5,10 @@
  * Call {@link convexAuth} to configure your authentication methods
  * and use the helpers it returns.
  *
- * Include {@link authTables} in your schema.
- *
  * @module
  */
 
 export {
-  authTables,
   Auth,
   getAuthUserId,
   getAuthSessionId,

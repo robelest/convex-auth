@@ -26,7 +26,7 @@ import {
 } from "../types.js";
 import { requireEnv } from "../utils.js";
 import { ActionCtx, MutationCtx, Tokens } from "./types.js";
-export { authTables, Doc, Tokens } from "./types.js";
+export { Doc, Tokens } from "./types.js";
 import {
   LOG_LEVELS,
   TOKEN_SUB_CLAIM_DIVIDER,
@@ -136,6 +136,10 @@ export function Auth(config_: ConvexAuthConfig) {
 
   const auth = {
     user: {
+      /**
+       * Get the current user's ID from the auth context, or `null` if
+       * not signed in.
+       */
       current: async (ctx: { auth: Auth }) => {
         const identity = await ctx.auth.getUserIdentity();
         if (identity === null) {
@@ -144,6 +148,10 @@ export function Auth(config_: ConvexAuthConfig) {
         const [userId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
         return userId as GenericId<"user">;
       },
+      /**
+       * Get the current user's ID, or throw if not signed in.
+       * Use this when authentication is required.
+       */
       require: async (ctx: { auth: Auth }) => {
         const identity = await ctx.auth.getUserIdentity();
         if (identity === null) {
@@ -152,10 +160,17 @@ export function Auth(config_: ConvexAuthConfig) {
         const [userId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
         return userId as GenericId<"user">;
       },
+      /**
+       * Retrieve a user document by their ID.
+       */
       get: async (ctx: ComponentReadCtx, userId: string) => {
         const component = requireComponent();
         return await ctx.runQuery(component.public.userGetById, { userId });
       },
+      /**
+       * Get the currently signed-in user's document, or `null` if not
+       * signed in. Convenience method combining `current` + `get`.
+       */
       viewer: async (ctx: ComponentAuthReadCtx) => {
         const userId = await auth.user.current(ctx);
         if (userId === null) {
@@ -164,115 +179,258 @@ export function Auth(config_: ConvexAuthConfig) {
         const component = requireComponent();
         return await ctx.runQuery(component.public.userGetById, { userId });
       },
-    },
-    organization: {
-      create: async (
-        ctx: ComponentCtx,
-        data: Record<string, unknown>,
-      ): Promise<string> => {
-        const component = requireComponent();
-        return (await ctx.runMutation(component.public.organizationCreate!, {
-          data,
-        })) as string;
-      },
-      get: async (ctx: ComponentCtx, organizationId: string) => {
-        const component = requireComponent();
-        return await ctx.runQuery(component.public.organizationGet!, {
-          organizationId,
-        });
-      },
-      list: async (
-        ctx: ComponentCtx,
-        ownerUserId?: string,
-      ) => {
-        const component = requireComponent();
-        return await ctx.runQuery(component.public.organizationList!, {
-          ownerUserId,
-        });
-      },
-      update: async (
-        ctx: ComponentCtx,
-        organizationId: string,
-        data: Record<string, unknown>,
-      ) => {
-        const component = requireComponent();
-        await ctx.runMutation(component.public.organizationUpdate!, {
-          organizationId,
-          data,
-        });
-      },
-      delete: async (ctx: ComponentCtx, organizationId: string) => {
-        const component = requireComponent();
-        await ctx.runMutation(component.public.organizationDelete!, {
-          organizationId,
-        });
-      },
-      member: {
-        add: async (
-          ctx: ComponentCtx,
-          data: Record<string, unknown>,
-        ): Promise<string> => {
+      /**
+       * Query a user's group memberships.
+       */
+      group: {
+        /**
+         * List all groups a user belongs to. Returns member records which
+         * include the `groupId`, `role`, `status`, and `metadata` for each.
+         */
+        list: async (ctx: ComponentReadCtx, opts: { userId: string }) => {
           const component = requireComponent();
-          return (await ctx.runMutation(component.public.memberAdd!, {
-            data,
-          })) as string;
+          return await ctx.runQuery(component.public.memberListByUser, opts);
         },
-        remove: async (ctx: ComponentCtx, memberId: string) => {
-          const component = requireComponent();
-          await ctx.runMutation(component.public.memberRemove!, { memberId });
-        },
-        list: async (
-          ctx: ComponentCtx,
-          args: { organizationId: string; teamId?: string },
+        /**
+         * Look up a user's membership in a specific group. Returns the member
+         * record (with role, status, metadata) or `null` if the user is not
+         * a member.
+         */
+        get: async (
+          ctx: ComponentReadCtx,
+          opts: { userId: string; groupId: string },
         ) => {
           const component = requireComponent();
-          return await ctx.runQuery(component.public.memberList!, args);
-        },
-        role: {
-          set: async (ctx: ComponentCtx, memberId: string, role: string) => {
-            const component = requireComponent();
-            await ctx.runMutation(component.public.memberRoleSet!, {
-              memberId,
-              role,
-            });
-          },
-          get: async (ctx: ComponentCtx, memberId: string) => {
-            const component = requireComponent();
-            return await ctx.runQuery(component.public.memberRoleGet!, {
-              memberId,
-            });
-          },
+          return await ctx.runQuery(
+            component.public.memberGetByGroupAndUser,
+            opts,
+          );
         },
       },
     },
-    invite: {
+    /**
+     * Hierarchical group management. Groups can nest arbitrarily deep
+     * via `parentGroupId`. A root group has no parent.
+     *
+     * ```ts
+     * const groupId = await auth.group.create(ctx, { name: "Acme Corp" });
+     * const subGroupId = await auth.group.create(ctx, {
+     *   name: "Engineering",
+     *   parentGroupId: groupId,
+     * });
+     * ```
+     */
+    group: {
+      /**
+       * Create a new group. Omit `parentGroupId` for a root-level group,
+       * or provide it to create a nested group.
+       *
+       * @returns The ID of the newly created group.
+       */
       create: async (
         ctx: ComponentCtx,
-        data: Record<string, unknown>,
+        data: {
+          name: string;
+          slug?: string;
+          parentGroupId?: string;
+          metadata?: Record<string, unknown>;
+        },
       ): Promise<string> => {
         const component = requireComponent();
-        return (await ctx.runMutation(component.public.inviteCreate!, {
+        return (await ctx.runMutation(
+          component.public.groupCreate,
           data,
-        })) as string;
+        )) as string;
       },
-      get: async (ctx: ComponentCtx, inviteId: string) => {
+      /**
+       * Retrieve a group by its ID. Returns `null` if not found.
+       */
+      get: async (ctx: ComponentReadCtx, groupId: string) => {
         const component = requireComponent();
-        return await ctx.runQuery(component.public.inviteGet!, { inviteId });
+        return await ctx.runQuery(component.public.groupGet, { groupId });
       },
-      list: async (
+      /**
+       * List groups. When `parentGroupId` is provided, returns children of
+       * that group. When omitted, returns root-level groups (no parent).
+       */
+      list: async (ctx: ComponentReadCtx, opts?: { parentGroupId?: string }) => {
+        const component = requireComponent();
+        return await ctx.runQuery(component.public.groupList, {
+          parentGroupId: opts?.parentGroupId,
+        });
+      },
+      /**
+       * Update a group's fields (name, slug, metadata, parentGroupId).
+       */
+      update: async (
         ctx: ComponentCtx,
-        args: { organizationId?: string; status?: string },
+        groupId: string,
+        data: Record<string, unknown>,
       ) => {
         const component = requireComponent();
-        return await ctx.runQuery(component.public.inviteList!, args);
+        await ctx.runMutation(component.public.groupUpdate, { groupId, data });
       },
-      accept: async (ctx: ComponentCtx, inviteId: string) => {
+      /**
+       * Delete a group and cascade to all descendants. Deletes child groups
+       * (recursively), all members, and all invites for this group and its
+       * descendants.
+       */
+      delete: async (ctx: ComponentCtx, groupId: string) => {
         const component = requireComponent();
-        await ctx.runMutation(component.public.inviteAccept!, { inviteId });
+        await ctx.runMutation(component.public.groupDelete, { groupId });
       },
-      revoke: async (ctx: ComponentCtx, inviteId: string) => {
-        const component = requireComponent();
-        await ctx.runMutation(component.public.inviteRevoke!, { inviteId });
+
+      /**
+       * Manage group membership. A member links a user to a group with an
+       * application-defined role string (e.g. "owner", "admin", "member").
+       *
+       * The auth component stores roles but does not enforce access control.
+       * Your application defines what each role means.
+       */
+      member: {
+        /**
+         * Add a user as a member of a group.
+         *
+         * @param data.groupId - The group to add the member to.
+         * @param data.userId - The user to add.
+         * @param data.role - Application-defined role (e.g. "owner", "admin", "member").
+         * @param data.status - Optional membership status (e.g. "active", "suspended").
+         * @param data.metadata - Optional arbitrary metadata.
+         * @returns The ID of the new member record.
+         */
+        add: async (
+          ctx: ComponentCtx,
+          data: {
+            groupId: string;
+            userId: string;
+            role?: string;
+            status?: string;
+            metadata?: Record<string, unknown>;
+          },
+        ): Promise<string> => {
+          const component = requireComponent();
+          return (await ctx.runMutation(
+            component.public.memberAdd,
+            data,
+          )) as string;
+        },
+        /**
+         * Retrieve a member record by its ID. Returns `null` if not found.
+         */
+        get: async (ctx: ComponentReadCtx, memberId: string) => {
+          const component = requireComponent();
+          return await ctx.runQuery(component.public.memberGet, { memberId });
+        },
+        /**
+         * List all members of a group.
+         */
+        list: async (ctx: ComponentReadCtx, opts: { groupId: string }) => {
+          const component = requireComponent();
+          return await ctx.runQuery(component.public.memberList, opts);
+        },
+        /**
+         * Remove a member from a group by deleting the member record.
+         */
+        remove: async (ctx: ComponentCtx, memberId: string) => {
+          const component = requireComponent();
+          await ctx.runMutation(component.public.memberRemove, { memberId });
+        },
+        /**
+         * Update a member's fields (role, status, metadata).
+         *
+         * ```ts
+         * await auth.group.member.update(ctx, memberId, { role: "admin" });
+         * ```
+         */
+        update: async (
+          ctx: ComponentCtx,
+          memberId: string,
+          data: Record<string, unknown>,
+        ) => {
+          const component = requireComponent();
+          await ctx.runMutation(component.public.memberUpdate, {
+            memberId,
+            data,
+          });
+        },
+      },
+
+      /**
+       * Manage group invitations. Invites track pending, accepted, revoked,
+       * and expired invitations to join a group.
+       */
+      invite: {
+        /**
+         * Create a new invitation to join a group.
+         *
+         * @param data.groupId - The group to invite the user to.
+         * @param data.invitedByUserId - The user sending the invitation.
+         * @param data.email - The email address of the invitee.
+         * @param data.tokenHash - Hashed token for secure acceptance.
+         * @param data.role - Optional role to assign on acceptance.
+         * @param data.status - Initial status (typically "pending").
+         * @param data.expiresTime - Timestamp when the invite expires.
+         * @param data.metadata - Optional arbitrary metadata.
+         * @returns The ID of the new invite record.
+         */
+        create: async (
+          ctx: ComponentCtx,
+          data: {
+            groupId?: string;
+            invitedByUserId: string;
+            email: string;
+            tokenHash: string;
+            role?: string;
+            status: "pending" | "accepted" | "revoked" | "expired";
+            expiresTime: number;
+            metadata?: Record<string, unknown>;
+          },
+        ): Promise<string> => {
+          const component = requireComponent();
+          return (await ctx.runMutation(
+            component.public.inviteCreate,
+            data,
+          )) as string;
+        },
+        /**
+         * Retrieve an invite by its ID. Returns `null` if not found.
+         */
+        get: async (ctx: ComponentReadCtx, inviteId: string) => {
+          const component = requireComponent();
+          return await ctx.runQuery(component.public.inviteGet, { inviteId });
+        },
+        /**
+         * List invites for a group, optionally filtered by status.
+         */
+        list: async (
+          ctx: ComponentReadCtx,
+          opts?: {
+            groupId?: string;
+            status?: "pending" | "accepted" | "revoked" | "expired";
+          },
+        ) => {
+          const component = requireComponent();
+          return await ctx.runQuery(component.public.inviteList, {
+            groupId: opts?.groupId,
+            status: opts?.status,
+          });
+        },
+        /**
+         * Accept an invitation. Marks the invite as "accepted" and records
+         * the timestamp. The caller is responsible for creating the member
+         * record via `auth.group.member.add`.
+         */
+        accept: async (ctx: ComponentCtx, inviteId: string) => {
+          const component = requireComponent();
+          await ctx.runMutation(component.public.inviteAccept, { inviteId });
+        },
+        /**
+         * Revoke a pending invitation.
+         */
+        revoke: async (ctx: ComponentCtx, inviteId: string) => {
+          const component = requireComponent();
+          await ctx.runMutation(component.public.inviteRevoke, { inviteId });
+        },
       },
     },
     /**
