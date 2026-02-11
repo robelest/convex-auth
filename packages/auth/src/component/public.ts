@@ -614,8 +614,9 @@ export const memberUpdate = mutation({
 // ============================================================================
 
 /**
- * Create a new invitation to join a group. The invitation is sent to an
- * email address and includes a hashed token for secure acceptance.
+ * Create a new platform-level invitation. Optionally set `groupId` to tie
+ * the invite to a specific group. The invitation is sent to an email address
+ * and includes a hashed token for secure acceptance.
  *
  * @returns The ID of the new invite record.
  */
@@ -649,7 +650,7 @@ export const inviteGet = query({
 });
 
 /**
- * List invites for a group, optionally filtered by status.
+ * List invites, optionally filtered by group and/or status.
  * Both `groupId` and `status` are optional filters.
  */
 export const inviteList = query({

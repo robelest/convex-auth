@@ -306,7 +306,8 @@ Membership APIs:
 
 ### Invite flow
 
-Invites are group-scoped records with statuses: `pending`, `accepted`, `revoked`, `expired`.
+Invites are platform-level records with statuses: `pending`, `accepted`, `revoked`, `expired`.
+Use optional `groupId` when an invite should grant access to a specific group.
 
 ```ts
 import { mutation } from "./_generated/server";
@@ -316,7 +317,7 @@ export const inviteUser = mutation({
   args: {},
   handler: async (ctx) => {
     const invitedByUserId = await auth.user.require(ctx);
-    const inviteId = await auth.group.invite.create(ctx, {
+    const inviteId = await auth.invite.create(ctx, {
       groupId: "group_id_here",
       invitedByUserId,
       email: "new-user@example.com",
@@ -333,11 +334,11 @@ export const inviteUser = mutation({
 
 Invite APIs:
 
-- `auth.group.invite.create(ctx, data)` creates an invite.
-- `auth.group.invite.get(ctx, inviteId)` fetches an invite.
-- `auth.group.invite.list(ctx, { groupId?, status? })` lists invites.
-- `auth.group.invite.accept(ctx, inviteId)` marks invite accepted.
-- `auth.group.invite.revoke(ctx, inviteId)` marks invite revoked.
+- `auth.invite.create(ctx, data)` creates an invite.
+- `auth.invite.get(ctx, inviteId)` fetches an invite.
+- `auth.invite.list(ctx, { groupId?, status? })` lists invites.
+- `auth.invite.accept(ctx, inviteId)` marks invite accepted.
+- `auth.invite.revoke(ctx, inviteId)` marks invite revoked.
 
 ## Component System
 

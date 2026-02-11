@@ -355,82 +355,81 @@ export function Auth(config_: ConvexAuthConfig) {
         },
       },
 
+    },
+    /**
+     * Manage platform-level invitations.
+     *
+     * Invites can optionally target a group by setting `groupId`, but they do
+     * not require groups and can be used in apps with user-only collaboration.
+     */
+    invite: {
       /**
-       * Manage group invitations. Invites track pending, accepted, revoked,
-       * and expired invitations to join a group.
+       * Create a new invitation.
+       *
+       * @param data.groupId - Optional group to invite the user into.
+       * @param data.invitedByUserId - The user sending the invitation.
+       * @param data.email - The email address of the invitee.
+       * @param data.tokenHash - Hashed token for secure acceptance.
+       * @param data.role - Optional role to assign on acceptance.
+       * @param data.status - Initial status (typically "pending").
+       * @param data.expiresTime - Timestamp when the invite expires.
+       * @param data.extend - Optional arbitrary JSON extension data.
+       * @returns The ID of the new invite record.
        */
-      invite: {
-        /**
-         * Create a new invitation to join a group.
-         *
-         * @param data.groupId - The group to invite the user to.
-         * @param data.invitedByUserId - The user sending the invitation.
-         * @param data.email - The email address of the invitee.
-         * @param data.tokenHash - Hashed token for secure acceptance.
-         * @param data.role - Optional role to assign on acceptance.
-         * @param data.status - Initial status (typically "pending").
-         * @param data.expiresTime - Timestamp when the invite expires.
-         * @param data.extend - Optional arbitrary JSON extension data.
-         * @returns The ID of the new invite record.
-         */
-        create: async (
-          ctx: ComponentCtx,
-          data: {
-            groupId?: string;
-            invitedByUserId: string;
-            email: string;
-            tokenHash: string;
-            role?: string;
-            status: "pending" | "accepted" | "revoked" | "expired";
-            expiresTime: number;
-            extend?: Record<string, unknown>;
-          },
-        ): Promise<string> => {
-          const component = requireComponent();
-          return (await ctx.runMutation(
-            component.public.inviteCreate,
-            data,
-          )) as string;
+      create: async (
+        ctx: ComponentCtx,
+        data: {
+          groupId?: string;
+          invitedByUserId: string;
+          email: string;
+          tokenHash: string;
+          role?: string;
+          status: "pending" | "accepted" | "revoked" | "expired";
+          expiresTime: number;
+          extend?: Record<string, unknown>;
         },
-        /**
-         * Retrieve an invite by its ID. Returns `null` if not found.
-         */
-        get: async (ctx: ComponentReadCtx, inviteId: string) => {
-          const component = requireComponent();
-          return await ctx.runQuery(component.public.inviteGet, { inviteId });
+      ): Promise<string> => {
+        const component = requireComponent();
+        return (await ctx.runMutation(component.public.inviteCreate, data)) as string;
+      },
+      /**
+       * Retrieve an invite by its ID. Returns `null` if not found.
+       */
+      get: async (ctx: ComponentReadCtx, inviteId: string) => {
+        const component = requireComponent();
+        return await ctx.runQuery(component.public.inviteGet, { inviteId });
+      },
+      /**
+       * List invites, optionally filtered by group and/or status.
+       */
+      list: async (
+        ctx: ComponentReadCtx,
+        opts?: {
+          groupId?: string;
+          status?: "pending" | "accepted" | "revoked" | "expired";
         },
-        /**
-         * List invites for a group, optionally filtered by status.
-         */
-        list: async (
-          ctx: ComponentReadCtx,
-          opts?: {
-            groupId?: string;
-            status?: "pending" | "accepted" | "revoked" | "expired";
-          },
-        ) => {
-          const component = requireComponent();
-          return await ctx.runQuery(component.public.inviteList, {
-            groupId: opts?.groupId,
-            status: opts?.status,
-          });
-        },
-        /**
-         * Accept an invitation. Marks the invite as "accepted" and records
-         * the timestamp. The caller is responsible for creating the member
-         * record via `auth.group.member.add`.
-         */
-        accept: async (ctx: ComponentCtx, inviteId: string) => {
-          const component = requireComponent();
-          await ctx.runMutation(component.public.inviteAccept, { inviteId });
-        },
-        /**
-         * Revoke a pending invitation.
-         */
-        revoke: async (ctx: ComponentCtx, inviteId: string) => {
-          const component = requireComponent();
-          await ctx.runMutation(component.public.inviteRevoke, { inviteId });
-        },
+      ) => {
+        const component = requireComponent();
+        return await ctx.runQuery(component.public.inviteList, {
+          groupId: opts?.groupId,
+          status: opts?.status,
+        });
+      },
+      /**
+       * Accept an invitation. Marks the invite as "accepted" and records
+       * the timestamp. If the invite has a group, the caller is responsible
+       * for creating the member record via `auth.group.member.add`.
+       */
+      accept: async (ctx: ComponentCtx, inviteId: string) => {
+        const component = requireComponent();
+        await ctx.runMutation(component.public.inviteAccept, { inviteId });
+      },
+      /**
+       * Revoke a pending invitation.
+       */
+      revoke: async (ctx: ComponentCtx, inviteId: string) => {
+        const component = requireComponent();
+        await ctx.runMutation(component.public.inviteRevoke, { inviteId });
       },
     },
     /**
