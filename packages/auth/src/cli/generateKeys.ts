@@ -2,7 +2,7 @@ import { exportJWK, exportPKCS8, generateKeyPair } from "jose";
 
 export async function generateKeys() {
   try {
-    const keys = await generateKeyPair("RS256");
+    const keys = await generateKeyPair("RS256", { extractable: true });
     const privateKey = await exportPKCS8(keys.privateKey);
     const publicKey = await exportJWK(keys.publicKey);
     const jwks = JSON.stringify({ keys: [{ use: "sig", ...publicKey }] });
