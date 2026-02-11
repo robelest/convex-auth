@@ -185,7 +185,7 @@ export function Auth(config_: ConvexAuthConfig) {
       group: {
         /**
          * List all groups a user belongs to. Returns member records which
-         * include the `groupId`, `role`, `status`, and `metadata` for each.
+         * include the `groupId`, `role`, `status`, and `extend` for each.
          */
         list: async (ctx: ComponentReadCtx, opts: { userId: string }) => {
           const component = requireComponent();
@@ -193,7 +193,7 @@ export function Auth(config_: ConvexAuthConfig) {
         },
         /**
          * Look up a user's membership in a specific group. Returns the member
-         * record (with role, status, metadata) or `null` if the user is not
+         * record (with role, status, extend) or `null` if the user is not
          * a member.
          */
         get: async (
@@ -233,7 +233,7 @@ export function Auth(config_: ConvexAuthConfig) {
           name: string;
           slug?: string;
           parentGroupId?: string;
-          metadata?: Record<string, unknown>;
+          extend?: Record<string, unknown>;
         },
       ): Promise<string> => {
         const component = requireComponent();
@@ -260,7 +260,7 @@ export function Auth(config_: ConvexAuthConfig) {
         });
       },
       /**
-       * Update a group's fields (name, slug, metadata, parentGroupId).
+       * Update a group's fields (name, slug, extend, parentGroupId).
        */
       update: async (
         ctx: ComponentCtx,
@@ -295,7 +295,7 @@ export function Auth(config_: ConvexAuthConfig) {
          * @param data.userId - The user to add.
          * @param data.role - Application-defined role (e.g. "owner", "admin", "member").
          * @param data.status - Optional membership status (e.g. "active", "suspended").
-         * @param data.metadata - Optional arbitrary metadata.
+         * @param data.extend - Optional arbitrary JSON extension data.
          * @returns The ID of the new member record.
          */
         add: async (
@@ -305,7 +305,7 @@ export function Auth(config_: ConvexAuthConfig) {
             userId: string;
             role?: string;
             status?: string;
-            metadata?: Record<string, unknown>;
+            extend?: Record<string, unknown>;
           },
         ): Promise<string> => {
           const component = requireComponent();
@@ -336,7 +336,7 @@ export function Auth(config_: ConvexAuthConfig) {
           await ctx.runMutation(component.public.memberRemove, { memberId });
         },
         /**
-         * Update a member's fields (role, status, metadata).
+         * Update a member's fields (role, status, extend).
          *
          * ```ts
          * await auth.group.member.update(ctx, memberId, { role: "admin" });
@@ -370,7 +370,7 @@ export function Auth(config_: ConvexAuthConfig) {
          * @param data.role - Optional role to assign on acceptance.
          * @param data.status - Initial status (typically "pending").
          * @param data.expiresTime - Timestamp when the invite expires.
-         * @param data.metadata - Optional arbitrary metadata.
+         * @param data.extend - Optional arbitrary JSON extension data.
          * @returns The ID of the new invite record.
          */
         create: async (
@@ -383,7 +383,7 @@ export function Auth(config_: ConvexAuthConfig) {
             role?: string;
             status: "pending" | "accepted" | "revoked" | "expired";
             expiresTime: number;
-            metadata?: Record<string, unknown>;
+            extend?: Record<string, unknown>;
           },
         ): Promise<string> => {
           const component = requireComponent();

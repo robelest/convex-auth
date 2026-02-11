@@ -435,7 +435,7 @@ export const groupCreate = mutation({
     name: v.string(),
     slug: v.optional(v.string()),
     parentGroupId: v.optional(v.id("group")),
-    metadata: v.optional(v.any()),
+    extend: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("group", args);
@@ -464,7 +464,7 @@ export const groupList = query({
   },
 });
 
-/** Update a group's fields (name, slug, metadata, parentGroupId). */
+/** Update a group's fields (name, slug, extend, parentGroupId). */
 export const groupUpdate = mutation({
   args: { groupId: v.id("group"), data: v.any() },
   handler: async (ctx, { groupId, data }) => {
@@ -532,7 +532,7 @@ export const memberAdd = mutation({
     userId: v.id("user"),
     role: v.optional(v.string()),
     status: v.optional(v.string()),
-    metadata: v.optional(v.any()),
+    extend: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("member", args);
@@ -560,7 +560,7 @@ export const memberList = query({
 
 /**
  * List all group memberships for a specific user. Returns member records
- * which include the `groupId`, `role`, `status`, and `metadata` for each
+ * which include the `groupId`, `role`, `status`, and `extend` for each
  * group the user belongs to.
  */
 export const memberListByUser = query({
@@ -598,7 +598,7 @@ export const memberRemove = mutation({
 });
 
 /**
- * Update a member record's fields (role, status, metadata).
+ * Update a member record's fields (role, status, extend).
  *
  * Common usage: `memberUpdate({ memberId, data: { role: "admin" } })`
  */
@@ -633,7 +633,7 @@ export const inviteCreate = mutation({
       v.literal("expired"),
     ),
     expiresTime: v.number(),
-    metadata: v.optional(v.any()),
+    extend: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("invite", args);

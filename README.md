@@ -243,6 +243,14 @@ export const viewer = query({
 | `auth.user.get(ctx, userId)` | Fetches user document by ID via component API |
 | `auth.user.viewer(ctx)` | Fetches the current signed-in user document |
 
+User profiles include an optional `extend` JSON field for app-specific data (for example preferences, onboarding state, feature flags, or profile attributes).
+
+Why `extend`?
+
+- It gives you a stable extension point without changing auth table structure.
+- It keeps app-specific JSON separate from auth core fields.
+- It is consistent across `user`, `group`, `member`, and `invite`.
+
 ### Group and membership helpers
 
 The component exposes a hierarchical `group` primitive.
@@ -250,6 +258,7 @@ The component exposes a hierarchical `group` primitive.
 - A root group has no `parentGroupId`.
 - Child groups set `parentGroupId` to another group id.
 - Roles are application-defined strings on membership records (for example: `owner`, `admin`, `member`, `viewer`).
+- Groups, memberships, and invites each include an optional `extend` JSON field for custom app data.
 
 ```ts
 import { mutation } from "./_generated/server";
@@ -259,13 +268,17 @@ export const createGroup = mutation({
   args: {},
   handler: async (ctx) => {
     const userId = await auth.user.require(ctx);
-    const groupId = await auth.group.create(ctx, { name: "Acme" });
+    const groupId = await auth.group.create(ctx, {
+      name: "Acme",
+      extend: { billingPlan: "pro", region: "us" },
+    });
 
     await auth.group.member.add(ctx, {
       groupId,
       userId,
       role: "owner",
       status: "active",
+      extend: { invitedVia: "seed-script" },
     });
 
     return groupId;
@@ -286,7 +299,7 @@ Membership APIs:
 - `auth.group.member.add(ctx, data)` creates membership.
 - `auth.group.member.get(ctx, memberId)` fetches membership by id.
 - `auth.group.member.list(ctx, { groupId })` lists members for a group.
-- `auth.group.member.update(ctx, memberId, data)` updates role/status/metadata.
+- `auth.group.member.update(ctx, memberId, data)` updates role/status/extend.
 - `auth.group.member.remove(ctx, memberId)` removes membership.
 - `auth.user.group.list(ctx, { userId })` lists all memberships for a user.
 - `auth.user.group.get(ctx, { userId, groupId })` fetches one membership for a user in a group.
@@ -311,6 +324,7 @@ export const inviteUser = mutation({
       status: "pending",
       expiresTime: Date.now() + 1000 * 60 * 60 * 24,
       role: "member",
+      extend: { source: "admin-panel" },
     });
     return inviteId;
   },

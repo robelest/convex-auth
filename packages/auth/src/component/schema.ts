@@ -21,6 +21,7 @@ export default defineSchema({
     phone: v.optional(v.string()),
     phoneVerificationTime: v.optional(v.number()),
     isAnonymous: v.optional(v.boolean()),
+    extend: v.optional(v.any()),
   })
     .index("email", ["email"])
     .index("phone", ["phone"]),
@@ -113,7 +114,7 @@ export default defineSchema({
     name: v.string(),
     slug: v.optional(v.string()),
     parentGroupId: v.optional(v.id("group")),
-    metadata: v.optional(v.any()),
+    extend: v.optional(v.any()),
   })
     .index("slug", ["slug"])
     .index("parentGroupId", ["parentGroupId"]),
@@ -128,7 +129,7 @@ export default defineSchema({
     userId: v.id("user"),
     role: v.optional(v.string()),
     status: v.optional(v.string()),
-    metadata: v.optional(v.any()),
+    extend: v.optional(v.any()),
   })
     .index("groupId", ["groupId"])
     .index("groupIdAndUserId", ["groupId", "userId"])
@@ -154,7 +155,7 @@ export default defineSchema({
     expiresTime: v.number(),
     acceptedByUserId: v.optional(v.id("user")),
     acceptedTime: v.optional(v.number()),
-    metadata: v.optional(v.any()),
+    extend: v.optional(v.any()),
   })
     .index("tokenHash", ["tokenHash"])
     .index("emailAndStatus", ["email", "status"])

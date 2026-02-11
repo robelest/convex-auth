@@ -67,7 +67,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       groupCreate: FunctionReference<
         "mutation",
         "internal",
-        { metadata?: any; name: string; parentGroupId?: string; slug?: string },
+        { extend?: any; name: string; parentGroupId?: string; slug?: string },
         any,
         Name
       >;
@@ -112,9 +112,9 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           email: string;
           expiresTime: number;
+          extend?: any;
           groupId?: string;
           invitedByUserId: string;
-          metadata?: any;
           role?: string;
           status: "pending" | "accepted" | "revoked" | "expired";
           tokenHash: string;
@@ -178,8 +178,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "mutation",
         "internal",
         {
+          extend?: any;
           groupId: string;
-          metadata?: any;
           role?: string;
           status?: string;
           userId: string;
