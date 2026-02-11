@@ -432,5 +432,5 @@ bun run test:auth
 
 - `packages/auth/` — Main auth package
 - `packages/test/` — Shared test suite
-- `examples/vite/`, `examples/nextjs/`, `examples/tanstack/` — Example apps
+- `examples/tanstack/` — TanStack Start example app
 - `convex/` — Root Convex functions for testing
