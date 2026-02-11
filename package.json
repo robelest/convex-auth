@@ -3,21 +3,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev:vite": "bun run --cwd examples/vite dev:frontend",
-    "dev:tanstack": "bun run --cwd examples/tanstack dev:frontend",
-    "dev:nextjs": "bun run --cwd examples/nextjs dev:frontend",
     "dev:convex": "bunx convex dev",
     "build": "bun run --cwd packages/auth build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "test:once": "bun run --cwd examples/vite test:once",
-    "test:auth": "bun run --cwd packages/test test:once",
+    "test": "bun run --cwd packages/test test:once",
     "codegen:convex": "bunx convex codegen && bunx convex codegen --component-dir ./packages/auth/src/component",
     "dashboard:convex": "bunx convex dashboard",
     "run:convex": "bunx convex run"
   },
   "workspaces": {
-    "packages": ["packages/*", "examples/*"],
+    "packages": ["packages/*"],
     "catalog": {
       "convex": "1.31.7",
       "convex-test": "^0.0.41"
