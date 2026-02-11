@@ -243,14 +243,97 @@ export const viewer = query({
 | `auth.user.get(ctx, userId)` | Fetches user document by ID via component API |
 | `auth.user.viewer(ctx)` | Fetches the current signed-in user document |
 
+### Group and membership helpers
+
+The component exposes a hierarchical `group` primitive.
+
+- A root group has no `parentGroupId`.
+- Child groups set `parentGroupId` to another group id.
+- Roles are application-defined strings on membership records (for example: `owner`, `admin`, `member`, `viewer`).
+
+```ts
+import { mutation } from "./_generated/server";
+import { auth } from "./auth";
+
+export const createGroup = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await auth.user.require(ctx);
+    const groupId = await auth.group.create(ctx, { name: "Acme" });
+
+    await auth.group.member.add(ctx, {
+      groupId,
+      userId,
+      role: "owner",
+      status: "active",
+    });
+
+    return groupId;
+  },
+});
+```
+
+Main group APIs:
+
+- `auth.group.create(ctx, data)` creates a group.
+- `auth.group.get(ctx, groupId)` fetches a group.
+- `auth.group.list(ctx, { parentGroupId? })` lists root groups or children.
+- `auth.group.update(ctx, groupId, data)` patches a group.
+- `auth.group.delete(ctx, groupId)` deletes a group and cascades to descendants, members, and invites.
+
+Membership APIs:
+
+- `auth.group.member.add(ctx, data)` creates membership.
+- `auth.group.member.get(ctx, memberId)` fetches membership by id.
+- `auth.group.member.list(ctx, { groupId })` lists members for a group.
+- `auth.group.member.update(ctx, memberId, data)` updates role/status/metadata.
+- `auth.group.member.remove(ctx, memberId)` removes membership.
+- `auth.user.group.list(ctx, { userId })` lists all memberships for a user.
+- `auth.user.group.get(ctx, { userId, groupId })` fetches one membership for a user in a group.
+
+### Invite flow
+
+Invites are group-scoped records with statuses: `pending`, `accepted`, `revoked`, `expired`.
+
+```ts
+import { mutation } from "./_generated/server";
+import { auth } from "./auth";
+
+export const inviteUser = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const invitedByUserId = await auth.user.require(ctx);
+    const inviteId = await auth.group.invite.create(ctx, {
+      groupId: "group_id_here",
+      invitedByUserId,
+      email: "new-user@example.com",
+      tokenHash: "hashed-token",
+      status: "pending",
+      expiresTime: Date.now() + 1000 * 60 * 60 * 24,
+      role: "member",
+    });
+    return inviteId;
+  },
+});
+```
+
+Invite APIs:
+
+- `auth.group.invite.create(ctx, data)` creates an invite.
+- `auth.group.invite.get(ctx, inviteId)` fetches an invite.
+- `auth.group.invite.list(ctx, { groupId?, status? })` lists invites.
+- `auth.group.invite.accept(ctx, inviteId)` marks invite accepted.
+- `auth.group.invite.revoke(ctx, inviteId)` marks invite revoked.
+
 ## Component System
 
-The auth runtime uses `component: components.auth` to execute storage and auth operations through a component API boundary. This provides:
+The auth runtime uses `component: components.auth` to execute storage and auth operations through a component API boundary.
+This gives you a clean integration point and keeps auth primitives (users, accounts, sessions, verification, rate limits, and group/member/invite APIs) in one place.
 
 - Clean integration point
 - Isolated auth primitives (users, accounts, sessions, verification)
 - Rate limiting and security features
-- Organization/member/invite APIs
+- Group/member/invite APIs
 
 All auth tables live inside the component — you don't need to modify your schema.
 
