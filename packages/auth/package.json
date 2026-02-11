@@ -121,6 +121,6 @@
   },
   "overrides": {
     "@auth/core": "0.37.3",
-    "path-to-regexp": "~6.3.0"
+    "path-to-regexp": "^6.3.0"
   }
 }
