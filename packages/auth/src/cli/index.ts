@@ -15,7 +15,11 @@ new Command()
   .name("@robelest/convex-auth")
   .description(
     "Add code and set environment variables for @robelest/convex-auth.\n\n" +
-      "The steps are detailed here: https://labs.convex.dev/auth/setup/manual",
+      "Full docs: https://deepwiki.com/robelest/convex-auth",
+  )
+  .option(
+    "--site-url <url>",
+    "Your frontend app URL (e.g. 'http://localhost:5173' for dev, 'https://myapp.com' for prod)",
   )
   .option(
     "--variables <json>",
@@ -23,10 +27,6 @@ new Command()
   )
   .option("--skip-git-check", "Don't warn when running outside a Git checkout.")
   .option("--allow-dirty-git-state", "Don't warn when Git state is not clean.")
-  .option(
-    "--web-server-url <url>",
-    "URL of web server, e.g. 'http://localhost:5173' if local",
-  )
   .addDeploymentSelectionOptions(
     actionDescription("Set environment variables on"),
   )
@@ -62,7 +62,7 @@ new Command()
     // Step 1: Configure SITE_URL
     // We check for existing config.
     // We default to localhost and port depending on framework
-    await configureSiteUrl(config, options.webServerUrl);
+    await configureSiteUrl(config, options.siteUrl);
 
     // Step 2: Configure private and public key
     // We ask if we would overwrite existing keys
@@ -92,9 +92,7 @@ new Command()
     if (options.variables !== undefined) {
       await configureOtherVariables(config, options.variables);
     } else {
-      logSuccess(
-        "You're all set. Continue by configuring your schema and frontend.",
-      );
+      printFinalSuccessMessage(config);
     }
   })
   .parse(process.argv);
@@ -803,6 +801,28 @@ async function promptForInput(
         "Run this command in an interactive terminal to provide input.",
       );
     }
+  }
+}
+
+function printFinalSuccessMessage(config: ProjectConfig) {
+  const isProd = config.deployment.type === "prod";
+  const deploymentName = config.deployment.name ?? "your deployment";
+  
+  if (isProd) {
+    logSuccess(`Production setup complete for ${deploymentName}.`);
+    print("");
+    print(`  Full docs: ${chalk.cyan("https://deepwiki.com/robelest/convex-auth")}`);
+  } else {
+    logSuccess(`Setup complete for ${deploymentName}.`);
+    print("");
+    print(`  ${chalk.bold("To set up production")}, run this command with your production URL:`);
+    print(`    ${chalk.cyan("npx @robelest/convex-auth --prod --site-url \"https://myapp.com\"")}`);
+    print("");
+    print(`  ${chalk.bold("Don't forget")} to set provider secrets on production too:`);
+    print(`    ${chalk.grey("npx convex env set --prod AUTH_GITHUB_ID \"...\"")}`);
+    print(`    ${chalk.grey("npx convex env set --prod AUTH_GITHUB_SECRET \"...\"")}`);
+    print("");
+    print(`  Full docs: ${chalk.cyan("https://deepwiki.com/robelest/convex-auth")}`);
   }
 }
 
