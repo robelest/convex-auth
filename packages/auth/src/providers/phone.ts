@@ -1,9 +1,9 @@
 /**
- * Configure {@link Phone} provider given a {@link PhoneUserConfig}.
+ * Configure {@link phone} provider given a {@link PhoneUserConfig}.
  *
  * Simplifies creating phone providers.
  *
- * By default checks that there is an `phone` field during token verification
+ * By default checks that there is a `phone` field during token verification
  * that matches the `phone` used during the initial `signIn` call.
  *
  * @module

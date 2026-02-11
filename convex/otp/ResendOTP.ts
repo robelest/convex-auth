@@ -1,7 +1,7 @@
-import { Email } from "@robelest/convex-auth/providers/Email";
+import email from "@robelest/convex-auth/providers/email";
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
 
-export const resendOtp = Email({
+export const resendOtp = email({
   id: "resend-otp",
   apiKey: process.env.AUTH_RESEND_KEY,
   maxAge: 60 * 20,

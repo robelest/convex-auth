@@ -1,7 +1,7 @@
 /**
- * Configure {@link Password} provider given a {@link PasswordConfig}.
+ * Configure {@link password} provider given a {@link PasswordConfig}.
  *
- * The `Password` provider supports the following flows, determined
+ * The `password` provider supports the following flows, determined
  * by the `flow` parameter:
  *
  * - `"signUp"`: Create a new account with a password.
@@ -12,29 +12,24 @@
  *    included in params, verify an OTP.
  *
  * ```ts
- * import Password from "@robelest/convex-auth/providers/Password";
- * import { convexAuth } from "@robelest/convex-auth/component";
+ * import password from "@robelest/convex-auth/providers/password";
+ * import { Auth } from "@robelest/convex-auth/component";
  *
- * export const { auth, signIn, signOut, store } = convexAuth({
- *   providers: [Password],
+ * export const { auth, signIn, signOut, store } = Auth({
+ *   providers: [password],
  * });
  * ```
  *
  * @module
  */
 
-import convexCredentials, {
-  ConvexCredentialsUserConfig,
-} from "@robelest/convex-auth/providers/ConvexCredentials";
+import credentials, {
+  CredentialsUserConfig,
+} from "@robelest/convex-auth/providers/credentials";
 import {
   EmailConfig,
   GenericActionCtxWithAuthConfig,
   GenericDoc,
-  createAccount,
-  invalidateSessions,
-  modifyAccountCredentials,
-  retrieveAccount,
-  signInViaProvider,
 } from "@robelest/convex-auth/component";
 import {
   DocumentByName,
@@ -45,7 +40,7 @@ import { Value } from "convex/values";
 import { Scrypt } from "lucia";
 
 /**
- * The available options to a {@link Password} provider for Convex Auth.
+ * The available options to a {@link password} provider for Convex Auth.
  */
 export interface PasswordConfig<DataModel extends GenericDataModel> {
   /**
@@ -89,7 +84,7 @@ export interface PasswordConfig<DataModel extends GenericDataModel> {
    * Provide hashing and verification functions if you want to control
    * how passwords are hashed.
    */
-  crypto?: ConvexCredentialsUserConfig["crypto"];
+  crypto?: CredentialsUserConfig["crypto"];
   /**
    * An Auth.js email provider used to require verification
    * before password reset.
@@ -115,7 +110,7 @@ export default function password<DataModel extends GenericDataModel>(
   config: PasswordConfig<DataModel> = {},
 ) {
   const provider = config.id ?? "password";
-  return convexCredentials<DataModel>({
+  return credentials<DataModel>({
     id: "password",
     authorize: async (params, ctx) => {
       const flow = params.flow as string;
@@ -141,7 +136,7 @@ export default function password<DataModel extends GenericDataModel>(
         if (secret === undefined) {
           throw new Error("Missing `password` param for `signUp` flow");
         }
-        const created = await createAccount(ctx, {
+        const created = await ctx.auth.account.create(ctx, {
           provider,
           account: { id: email, secret },
           profile: profile as any,
@@ -153,7 +148,7 @@ export default function password<DataModel extends GenericDataModel>(
         if (secret === undefined) {
           throw new Error("Missing `password` param for `signIn` flow");
         }
-        const retrieved = await retrieveAccount(ctx, {
+        const retrieved = await ctx.auth.account.get(ctx, {
           provider,
           account: { id: email, secret },
         });
@@ -166,11 +161,11 @@ export default function password<DataModel extends GenericDataModel>(
         if (!config.reset) {
           throw new Error(`Password reset is not enabled for ${provider}`);
         }
-        const { account } = await retrieveAccount(ctx, {
+        const { account } = await ctx.auth.account.get(ctx, {
           provider,
           account: { id: email },
         });
-        return await signInViaProvider(ctx, config.reset, {
+        return await ctx.auth.provider.signIn(ctx, config.reset, {
           accountId: account._id,
           params,
         });
@@ -183,17 +178,17 @@ export default function password<DataModel extends GenericDataModel>(
             "Missing `newPassword` param for `reset-verification` flow",
           );
         }
-        const result = await signInViaProvider(ctx, config.reset, { params });
+        const result = await ctx.auth.provider.signIn(ctx, config.reset, { params });
         if (result === null) {
           throw new Error("Invalid code");
         }
         const { userId, sessionId } = result;
         const secret = params.newPassword as string;
-        await modifyAccountCredentials(ctx, {
+        await ctx.auth.account.updateCredentials(ctx, {
           provider,
           account: { id: email, secret },
         });
-        await invalidateSessions(ctx, { userId, except: [sessionId] });
+        await ctx.auth.session.invalidate(ctx, { userId, except: [sessionId] });
         return { userId, sessionId };
         // END
         // START: Optional, email verification during sign in
@@ -201,11 +196,11 @@ export default function password<DataModel extends GenericDataModel>(
         if (!config.verify) {
           throw new Error(`Email verification is not enabled for ${provider}`);
         }
-        const { account } = await retrieveAccount(ctx, {
+        const { account } = await ctx.auth.account.get(ctx, {
           provider,
           account: { id: email },
         });
-        return await signInViaProvider(ctx, config.verify, {
+        return await ctx.auth.provider.signIn(ctx, config.verify, {
           accountId: account._id,
           params,
         });
@@ -219,7 +214,7 @@ export default function password<DataModel extends GenericDataModel>(
       }
       // START: Optional, email verification during sign in
       if (config.verify && !account.emailVerified) {
-        return await signInViaProvider(ctx, config.verify, {
+        return await ctx.auth.provider.signIn(ctx, config.verify, {
           accountId: account._id,
           params,
         });

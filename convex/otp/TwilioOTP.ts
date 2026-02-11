@@ -1,4 +1,4 @@
-import phone from "@robelest/convex-auth/providers/Phone";
+import phone from "@robelest/convex-auth/providers/phone";
 import { internal } from "../_generated/api";
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
 

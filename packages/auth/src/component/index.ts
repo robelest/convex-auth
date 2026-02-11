@@ -2,7 +2,7 @@
  * Configuration and helpers for using Convex Auth on your Convex
  * backend.
  *
- * Call {@link convexAuth} to configure your authentication methods
+ * Call {@link Auth} to configure your authentication methods
  * and use the helpers it returns.
  *
  * @module
@@ -10,13 +10,6 @@
 
 export {
   Auth,
-  getAuthUserId,
-  getAuthSessionId,
-  createAccount,
-  retrieveAccount,
-  signInViaProvider,
-  invalidateSessions,
-  modifyAccountCredentials,
   Tokens,
   Doc,
   SignInAction,

@@ -14,11 +14,11 @@ import {
   GenericMutationCtx,
 } from "convex/server";
 import { GenericId, Value } from "convex/values";
-import { ConvexCredentialsUserConfig } from "../providers/ConvexCredentials.js";
+import { CredentialsUserConfig } from "../providers/credentials.js";
 import { GenericDoc } from "./convex_types.js";
 
 /**
- * The config for the Convex Auth library, passed to `convexAuth`.
+ * The config for the Convex Auth library, passed to `Auth`.
  */
 export type ConvexAuthConfig = {
   /**
@@ -89,9 +89,9 @@ export type ConvexAuthConfig = {
      *
      * ```ts
      * import GitHub from "@auth/core/providers/github";
-     * import { convexAuth } from "@robelest/convex-auth/component";
+     * import { Auth } from "@robelest/convex-auth/component";
      *
-     * export const { auth, signIn, signOut, store } = convexAuth({
+     * export const { auth, signIn, signOut, store } = Auth({
      *   providers: [GitHub],
      *   callbacks: {
      *     async redirect({ redirectTo }) {
@@ -349,22 +349,109 @@ export type PhoneUserConfig<
 /**
  * Similar to Auth.js Credentials config.
  */
-export type ConvexCredentialsConfig = ConvexCredentialsUserConfig<any> & {
+export type ConvexCredentialsConfig = CredentialsUserConfig<any> & {
   type: "credentials";
   id: string;
 };
 
+export type AuthAccountCredentials = {
+  id: string;
+  secret?: string;
+};
+
+export type AuthCreateAccountArgs = {
+  provider: string;
+  account: AuthAccountCredentials;
+  profile: Record<string, unknown> & {
+    email?: string;
+    phone?: string;
+    emailVerified?: boolean;
+    phoneVerified?: boolean;
+  };
+  shouldLinkViaEmail?: boolean;
+  shouldLinkViaPhone?: boolean;
+};
+
+export type AuthRetrieveAccountArgs = {
+  provider: string;
+  account: AuthAccountCredentials;
+};
+
+export type AuthUpdateAccountCredentialsArgs = {
+  provider: string;
+  account: {
+    id: string;
+    secret: string;
+  };
+};
+
+export type AuthInvalidateSessionsArgs = {
+  userId: GenericId<"user">;
+  except?: GenericId<"session">[];
+};
+
+export type AuthProviderSignInArgs = {
+  accountId?: GenericId<"account">;
+  params?: Record<string, Value | undefined>;
+};
+
+export type AuthProviderSignInResult = {
+  userId: GenericId<"user">;
+  sessionId: GenericId<"session">;
+} | null;
+
+export type AuthServerHelpers = {
+  account: {
+    create: (
+      ctx: GenericActionCtx<any>,
+      args: AuthCreateAccountArgs,
+    ) => Promise<{
+      account: GenericDoc<GenericDataModel, "account">;
+      user: GenericDoc<GenericDataModel, "user">;
+    }>;
+    get: (
+      ctx: GenericActionCtx<any>,
+      args: AuthRetrieveAccountArgs,
+    ) => Promise<{
+      account: GenericDoc<GenericDataModel, "account">;
+      user: GenericDoc<GenericDataModel, "user">;
+    }>;
+    updateCredentials: (
+      ctx: GenericActionCtx<any>,
+      args: AuthUpdateAccountCredentialsArgs,
+    ) => Promise<void>;
+  };
+  session: {
+    current: (
+      ctx: { auth: GenericActionCtx<GenericDataModel>["auth"] },
+    ) => Promise<GenericId<"session"> | null>;
+    invalidate: (
+      ctx: GenericActionCtx<any>,
+      args: AuthInvalidateSessionsArgs,
+    ) => Promise<void>;
+  };
+  provider: {
+    signIn: (
+      ctx: GenericActionCtx<any>,
+      provider: AuthProviderConfig,
+      args: AuthProviderSignInArgs,
+    ) => Promise<AuthProviderSignInResult>;
+  };
+};
+
 /**
  * Your `ActionCtx` enriched with `ctx.auth.config` field with
- * the config passed to `convexAuth`.
+ * the config passed to `Auth`.
  */
 export type GenericActionCtxWithAuthConfig<DataModel extends GenericDataModel> =
   GenericActionCtx<DataModel> & {
-    auth: { config: ConvexAuthMaterializedConfig };
+    auth: GenericActionCtx<DataModel>["auth"] & {
+      config: ConvexAuthMaterializedConfig;
+    } & AuthServerHelpers;
   };
 
 /**
- * The config for the Convex Auth library, passed to `convexAuth`,
+ * The config for the Convex Auth library, passed to `Auth`,
  * with defaults and initialized providers.
  *
  * See {@link ConvexAuthConfig}

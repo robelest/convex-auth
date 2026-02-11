@@ -1,13 +1,61 @@
-import { HeadContent, Link, Outlet, Scripts, createRootRoute } from '@tanstack/react-router'
+import {
+  HeadContent,
+  Link,
+  Outlet,
+  Scripts,
+  createRootRoute,
+  redirect,
+} from '@tanstack/react-router'
+import { createServerFn } from '@tanstack/react-start'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
-import { Authenticated, ConvexReactClient, Unauthenticated, useQuery } from 'convex/react'
+import { ConvexReactClient, useQuery } from 'convex/react'
 import { useMemo } from 'react'
 
 import appCss from '../styles.css?url'
 import { api } from '@convex/_generated/api'
 import { UserMenu } from '@/components/user-menu'
-import { ConvexAuthProvider } from '@/lib/auth'
+import { Authenticated, ConvexAuthProvider, Unauthenticated } from '@/lib/auth'
+
+// ---------------------------------------------------------------------------
+// Server function: runs during SSR to refresh tokens, handle OAuth code
+// exchange, and provide the initial JWT for flash-free client hydration.
+// ---------------------------------------------------------------------------
+
+const getAuthState = createServerFn({ method: 'GET' }).handler(async () => {
+  const { getRequest, setResponseHeader } = await import('@tanstack/react-start/server')
+  const { server } = await import('@robelest/convex-auth/server')
+  const request = getRequest()
+  const auth = server()
+
+  // Handle OAuth code exchange + token refresh.
+  const result = await auth.refresh(request)
+
+  if (result.response) {
+    // OAuth code exchange produced a redirect response with Set-Cookie headers.
+    // Forward cookies to the browser via the SSR response.
+    const cookieHeaders = result.response.headers.getSetCookie?.() ?? []
+    for (const raw of cookieHeaders) {
+      setResponseHeader('set-cookie', raw)
+    }
+    const location = result.response.headers.get('location')
+    return { token: null as string | null, redirect: location }
+  }
+
+  if (result.cookies) {
+    // Token was refreshed — forward updated cookies.
+    for (const raw of result.cookies) {
+      setResponseHeader('set-cookie', raw)
+    }
+  }
+
+  // Return the JWT from the httpOnly cookie for client hydration.
+  return { token: auth.token(request), redirect: null as string | null }
+})
+
+// ---------------------------------------------------------------------------
+// Route
+// ---------------------------------------------------------------------------
 
 export const Route = createRootRoute({
   head: () => ({
@@ -30,12 +78,20 @@ export const Route = createRootRoute({
       },
     ],
   }),
+  beforeLoad: async () => {
+    const { token, redirect: redirectUrl } = await getAuthState()
+    if (redirectUrl) {
+      throw redirect({ href: redirectUrl })
+    }
+    return { initialToken: token }
+  },
   component: RootApp,
   shellComponent: RootDocument,
 })
 
 function RootApp() {
   const convexUrl = import.meta.env.VITE_CONVEX_URL
+  const { initialToken } = Route.useRouteContext()
 
   if (!convexUrl) {
     throw new Error('Missing VITE_CONVEX_URL in environment')
@@ -44,7 +100,7 @@ function RootApp() {
   const client = useMemo(() => new ConvexReactClient(convexUrl), [convexUrl])
 
   return (
-    <ConvexAuthProvider client={client} shouldHandleCode={false}>
+    <ConvexAuthProvider convex={client} proxy="/api/auth" initialToken={initialToken}>
       <AppLayout />
     </ConvexAuthProvider>
   )

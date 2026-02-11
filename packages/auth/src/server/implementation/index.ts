@@ -1,19 +1,17 @@
 import { OAuth2Config, OAuthConfig } from "@auth/core/providers";
 import {
   Auth,
-  DocumentByName,
   GenericActionCtx,
   GenericDataModel,
   HttpRouter,
-  WithoutSystemFields,
   actionGeneric,
   httpActionGeneric,
   internalMutationGeneric,
 } from "convex/server";
-import { ConvexError, GenericId, Value, v } from "convex/values";
+import { ConvexError, GenericId, v } from "convex/values";
 import { parse as parseCookies, serialize as serializeCookie } from "cookie";
 import { redirectToParamCookie, useRedirectToParam } from "../cookies.js";
-import { FunctionReferenceFromExport, GenericDoc } from "../convex_types.js";
+import { FunctionReferenceFromExport } from "../convex_types.js";
 import {
   configDefaults,
   listAvailableProviders,
@@ -22,7 +20,6 @@ import {
 import {
   AuthProviderConfig,
   ConvexAuthConfig,
-  GenericActionCtxWithAuthConfig,
 } from "../types.js";
 import { requireEnv } from "../utils.js";
 import { ActionCtx, MutationCtx, Tokens } from "./types.js";
@@ -53,7 +50,6 @@ import {
   oAuthConfigToInternalProvider,
 } from "../oauth/convexAuth.js";
 import { handleOAuth } from "../oauth/callback.js";
-export { getAuthSessionId } from "./sessions.js";
 
 /**
  * The type of the signIn Convex Action returned from the auth() helper.
@@ -118,15 +114,25 @@ export function Auth(config_: ConvexAuthConfig) {
     }
     return provider;
   };
-  const enrichCtx = <DataModel extends GenericDataModel>(
-    ctx: GenericActionCtx<DataModel>,
-  ) => ({ ...ctx, auth: { ...ctx.auth, config } });
   type ComponentCtx = Pick<
     GenericActionCtx<GenericDataModel>,
     "runQuery" | "runMutation"
   >;
   type ComponentReadCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
   type ComponentAuthReadCtx = ComponentReadCtx & { auth: Auth };
+  type AccountCredentials = { id: string; secret?: string };
+  type CreateAccountArgs = {
+    provider: string;
+    account: AccountCredentials;
+    profile: Record<string, unknown>;
+    shouldLinkViaEmail?: boolean;
+    shouldLinkViaPhone?: boolean;
+  };
+  type RetrieveAccountArgs = { provider: string; account: AccountCredentials };
+  type UpdateAccountCredentialsArgs = {
+    provider: string;
+    account: { id: string; secret: string };
+  };
 
   const auth = {
     user: {
@@ -196,6 +202,97 @@ export function Auth(config_: ConvexAuthConfig) {
             opts,
           );
         },
+      },
+    },
+    session: {
+      /**
+       * Get the current session ID from the auth context, or `null` if
+       * not signed in.
+       */
+      current: async (ctx: { auth: Auth }) => {
+        const identity = await ctx.auth.getUserIdentity();
+        if (identity === null) {
+          return null;
+        }
+        const [, sessionId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
+        return sessionId as GenericId<"session">;
+      },
+      /**
+       * Invalidate sessions for a user, optionally preserving specific sessions.
+       */
+      invalidate: async <DataModel extends GenericDataModel>(
+        ctx: GenericActionCtx<DataModel>,
+        args: {
+          userId: GenericId<"user">;
+          except?: GenericId<"session">[];
+        },
+      ): Promise<void> => {
+        const actionCtx = ctx as unknown as ActionCtx;
+        return await callInvalidateSessions(actionCtx, args);
+      },
+    },
+    account: {
+      /**
+       * Create an account and user for a credentials provider.
+       */
+      create: async <DataModel extends GenericDataModel>(
+        ctx: GenericActionCtx<DataModel>,
+        args: CreateAccountArgs,
+      ) => {
+        const actionCtx = ctx as unknown as ActionCtx;
+        return await callCreateAccountFromCredentials(actionCtx, args as any);
+      },
+      /**
+       * Retrieve an account and user for a credentials provider.
+       */
+      get: async <DataModel extends GenericDataModel>(
+        ctx: GenericActionCtx<DataModel>,
+        args: RetrieveAccountArgs,
+      ) => {
+        const actionCtx = ctx as unknown as ActionCtx;
+        const result = await callRetreiveAccountWithCredentials(actionCtx, args);
+        if (typeof result === "string") {
+          throw new Error(result);
+        }
+        return result;
+      },
+      /**
+       * Update credentials for an existing account.
+       */
+      updateCredentials: async <DataModel extends GenericDataModel>(
+        ctx: GenericActionCtx<DataModel>,
+        args: UpdateAccountCredentialsArgs,
+      ): Promise<void> => {
+        const actionCtx = ctx as unknown as ActionCtx;
+        return await callModifyAccount(actionCtx, args);
+      },
+    },
+    provider: {
+      /**
+       * Sign in via another provider, typically from a credentials flow.
+       */
+      signIn: async <DataModel extends GenericDataModel>(
+        ctx: GenericActionCtx<DataModel>,
+        provider: AuthProviderConfig,
+        args: {
+          accountId?: GenericId<"account">;
+          params?: Record<string, unknown>;
+        },
+      ) => {
+        const result = await signInImpl(
+          enrichCtx(ctx),
+          materializeProvider(provider),
+          args as any,
+          {
+            generateTokens: false,
+            allowExtraProviders: true,
+          },
+        );
+        return result.kind === "signedIn"
+          ? result.signedIn !== null
+            ? { userId: result.signedIn.userId, sessionId: result.signedIn.sessionId }
+            : null
+          : null;
       },
     },
     /**
@@ -655,6 +752,19 @@ export function Auth(config_: ConvexAuthConfig) {
       }
     },
   };
+  const enrichCtx = <DataModel extends GenericDataModel>(
+    ctx: GenericActionCtx<DataModel>,
+  ) => ({
+    ...ctx,
+    auth: {
+      ...ctx.auth,
+      config,
+      account: auth.account,
+      session: auth.session,
+      provider: auth.provider,
+    },
+  });
+
   return {
     /**
      * Helper for configuring HTTP actions.
@@ -730,228 +840,6 @@ export function Auth(config_: ConvexAuthConfig) {
     }),
 
   };
-}
-
-/**
- * Return the currently signed-in user's ID.
- *
- * ```ts filename="convex/myFunctions.tsx"
- * import { mutation } from "./_generated/server";
- * import { getAuthUserId } from "@robelest/convex-auth/component";
- *
- * export const doSomething = mutation({
- *   args: {/* ... *\/},
- *   handler: async (ctx, args) => {
- *     const userId = await getAuthUserId(ctx);
- *     if (userId === null) {
- *       throw new Error("Client is not authenticated!")
- *     }
- *     const user = await ctx.db.get(userId);
- *     // ...
- *   },
- * });
- * ```
- *
- * @param ctx query, mutation or action `ctx`
- * @returns the user ID or `null` if the client isn't authenticated
- */
-export async function getAuthUserId(ctx: { auth: Auth }) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (identity === null) {
-    return null;
-  }
-  const [userId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
-  return userId as GenericId<"user">;
-}
-
-/**
- * Use this function from a
- * [`ConvexCredentials`](https://labs.convex.dev/auth/api_reference/providers/ConvexCredentials)
- * provider to create an account and a user with a unique account "id" (OAuth
- * provider ID, email address, phone number, username etc.).
- *
- * @returns user ID if it successfully creates the account
- * or throws an error.
- */
-export async function createAccount<
-  DataModel extends GenericDataModel = GenericDataModel,
->(
-  ctx: GenericActionCtx<DataModel>,
-  args: {
-    /**
-     * The provider ID (like "password"), used to disambiguate accounts.
-     *
-     * It is also used to configure account secret hashing via the provider's
-     * `crypto` option.
-     */
-    provider: string;
-    account: {
-      /**
-       * The unique external ID for the account, for example email address.
-       */
-      id: string;
-      /**
-       * The secret credential to store for this account, if given.
-       */
-      secret?: string;
-    };
-    /**
-     * The profile data to store for the user.
-     * These must fit the `users` table schema.
-     */
-    profile: WithoutSystemFields<DocumentByName<DataModel, "user">>;
-    /**
-     * If `true`, the account will be linked to an existing user
-     * with the same verified email address.
-     * This is only safe if the returned account's email is verified
-     * before the user is allowed to sign in with it.
-     */
-    shouldLinkViaEmail?: boolean;
-    /**
-     * If `true`, the account will be linked to an existing user
-     * with the same verified phone number.
-     * This is only safe if the returned account's phone is verified
-     * before the user is allowed to sign in with it.
-     */
-    shouldLinkViaPhone?: boolean;
-  },
-): Promise<{
-  account: GenericDoc<DataModel, "account">;
-  user: GenericDoc<DataModel, "user">;
-}> {
-  const actionCtx = ctx as unknown as ActionCtx;
-  return (await callCreateAccountFromCredentials(
-    actionCtx,
-    args as any,
-  )) as any;
-}
-
-/**
- * Use this function from a
- * [`ConvexCredentials`](https://labs.convex.dev/auth/api_reference/providers/ConvexCredentials)
- * provider to retrieve a user given the account provider ID and
- * the provider-specific account ID.
- *
- * @returns the retrieved user document, or `null` if there is no account
- * for given account ID or throws if the provided
- * secret does not match.
- */
-export async function retrieveAccount<
-  DataModel extends GenericDataModel = GenericDataModel,
->(
-  ctx: GenericActionCtx<DataModel>,
-  args: {
-    /**
-     * The provider ID (like "password"), used to disambiguate accounts.
-     *
-     * It is also used to configure account secret hashing via the provider's
-     * `crypto` option.
-     */
-    provider: string;
-    account: {
-      /**
-       * The unique external ID for the account, for example email address.
-       */
-      id: string;
-      /**
-       * The secret that should match the stored credential, if given.
-       */
-      secret?: string;
-    };
-  },
-): Promise<{
-  account: GenericDoc<DataModel, "account">;
-  user: GenericDoc<DataModel, "user">;
-}> {
-  const actionCtx = ctx as unknown as ActionCtx;
-  const result = await callRetreiveAccountWithCredentials(actionCtx, args);
-  if (typeof result === "string") {
-    throw new Error(result);
-  }
-  return result as any;
-}
-
-/**
- * Use this function to modify the account credentials
- * from a [`ConvexCredentials`](https://labs.convex.dev/auth/api_reference/providers/ConvexCredentials)
- * provider.
- */
-export async function modifyAccountCredentials<
-  DataModel extends GenericDataModel = GenericDataModel,
->(
-  ctx: GenericActionCtx<DataModel>,
-  args: {
-    /**
-     * The provider ID (like "password"), used to disambiguate accounts.
-     *
-     * It is also used to configure account secret hashing via the `crypto` option.
-     */
-    provider: string;
-    account: {
-      /**
-       * The unique external ID for the account, for example email address.
-       */
-      id: string;
-      /**
-       * The new secret credential to store for this account.
-       */
-      secret: string;
-    };
-  },
-): Promise<void> {
-  const actionCtx = ctx as unknown as ActionCtx;
-  return await callModifyAccount(actionCtx, args);
-}
-
-/**
- * Use this function to invalidate existing sessions.
- */
-export async function invalidateSessions<
-  DataModel extends GenericDataModel = GenericDataModel,
->(
-  ctx: GenericActionCtx<DataModel>,
-  args: {
-    userId: GenericId<"user">;
-    except?: GenericId<"session">[];
-  },
-): Promise<void> {
-  const actionCtx = ctx as unknown as ActionCtx;
-  return await callInvalidateSessions(actionCtx, args);
-}
-
-/**
- * Use this function from a
- * [`ConvexCredentials`](https://labs.convex.dev/auth/api_reference/providers/ConvexCredentials)
- * provider to sign in the user via another provider (usually
- * for email verification on sign up or password reset).
- *
- * Returns the user ID if the sign can proceed,
- * or `null`.
- */
-export async function signInViaProvider<
-  DataModel extends GenericDataModel = GenericDataModel,
->(
-  ctx: GenericActionCtxWithAuthConfig<DataModel>,
-  provider: AuthProviderConfig,
-  args: {
-    accountId?: GenericId<"account">;
-    params?: Record<string, Value | undefined>;
-  },
-) {
-  const result = await signInImpl(
-    ctx,
-    materializeProvider(provider),
-    args as any,
-    {
-    generateTokens: false,
-    allowExtraProviders: true,
-    },
-  );
-  return result.kind === "signedIn"
-    ? result.signedIn !== null
-      ? { userId: result.signedIn.userId, sessionId: result.signedIn.sessionId }
-      : null
-    : null;
 }
 
 function convertErrorsToResponse(

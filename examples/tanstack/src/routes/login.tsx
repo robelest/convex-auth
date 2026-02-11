@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { Authenticated, Unauthenticated } from 'convex/react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -14,7 +13,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
-import { useAuthActions } from '@/lib/auth'
+import { Authenticated, Unauthenticated, useAuthActions } from '@/lib/auth'
 
 export const Route = createFileRoute('/login')({ component: LoginPage })
 

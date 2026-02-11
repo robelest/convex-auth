@@ -1,16 +1,16 @@
 /**
- * Configure {@link ConvexCredentials} provider given a {@link ConvexCredentialsUserConfig}.
+ * Configure {@link credentials} provider given a {@link CredentialsUserConfig}.
  *
  * This is for a very custom authentication implementation, often you can
- * use the [`Password`](https://labs.convex.dev/auth/api_reference/providers/Password) provider instead.
+ * use the [`password`](https://labs.convex.dev/auth/api_reference/providers/password) provider instead.
  *
  * ```ts
- * import ConvexCredentials from "@robelest/convex-auth/providers/ConvexCredentials";
- * import { convexAuth } from "@robelest/convex-auth/component";
+ * import credentials from "@robelest/convex-auth/providers/credentials";
+ * import { Auth } from "@robelest/convex-auth/component";
  *
- * export const { auth, signIn, signOut, store } = convexAuth({
+ * export const { auth, signIn, signOut, store } = Auth({
  *   providers: [
- *     ConvexCredentials({
+ *     credentials({
  *       authorize: async (credentials, ctx) => {
  *         // Your custom logic here...
  *       },
@@ -31,14 +31,14 @@ import { GenericDataModel } from "convex/server";
 import { GenericId, Value } from "convex/values";
 
 /**
- * The available options to a {@link ConvexCredentials} provider for Convex Auth.
+ * The available options to a {@link credentials} provider for Convex Auth.
  */
-export interface ConvexCredentialsUserConfig<
+export interface CredentialsUserConfig<
   DataModel extends GenericDataModel = GenericDataModel,
 > {
   /**
    * Uniquely identifies the provider, allowing to use
-   * multiple different {@link ConvexCredentials} providers.
+   * multiple different {@link credentials} providers.
    */
   id?: string;
   /**
@@ -95,8 +95,8 @@ export interface ConvexCredentialsUserConfig<
  * The Credentials provider allows you to handle signing in with arbitrary credentials,
  * such as a username and password, domain, or two factor authentication or hardware device (e.g. YubiKey U2F / FIDO).
  */
-export default function convexCredentials<DataModel extends GenericDataModel>(
-  config: ConvexCredentialsUserConfig<DataModel>,
+export default function credentials<DataModel extends GenericDataModel>(
+  config: CredentialsUserConfig<DataModel>,
 ): ConvexCredentialsConfig {
   return {
     id: "credentials",

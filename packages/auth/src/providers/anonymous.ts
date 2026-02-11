@@ -1,22 +1,21 @@
 /**
- * Configure {@link Anonymous} provider given an {@link AnonymousConfig}.
+ * Configure {@link anonymous} provider given an {@link AnonymousConfig}.
  *
  * ```ts
- * import { Anonymous } from "@robelest/convex-auth/providers/Anonymous";
- * import { convexAuth } from "@robelest/convex-auth/component";
+ * import anonymous from "@robelest/convex-auth/providers/anonymous";
+ * import { Auth } from "@robelest/convex-auth/component";
  *
- * export const { auth, signIn, signOut, store } = convexAuth({
- *   providers: [Anonymous],
+ * export const { auth, signIn, signOut, store } = Auth({
+ *   providers: [anonymous],
  * });
  * ```
  *
  * @module
  */
 
-import convexCredentials from "@robelest/convex-auth/providers/ConvexCredentials";
+import credentials from "@robelest/convex-auth/providers/credentials";
 import {
   GenericActionCtxWithAuthConfig,
-  createAccount,
 } from "@robelest/convex-auth/component";
 import {
   DocumentByName,
@@ -26,12 +25,12 @@ import {
 import { Value } from "convex/values";
 
 /**
- * The available options to an {@link Anonymous} provider for Convex Auth.
+ * The available options to an {@link anonymous} provider for Convex Auth.
  */
 export interface AnonymousConfig<DataModel extends GenericDataModel> {
   /**
    * Uniquely identifies the provider, allowing to use
-   * multiple different {@link Anonymous} providers.
+   * multiple different {@link anonymous} providers.
    */
   id?: string;
   /**
@@ -62,11 +61,11 @@ export default function anonymous<DataModel extends GenericDataModel>(
   config: AnonymousConfig<DataModel> = {},
 ) {
   const provider = config.id ?? "anonymous";
-  return convexCredentials<DataModel>({
+  return credentials<DataModel>({
     id: "anonymous",
     authorize: async (params, ctx) => {
       const profile = config.profile?.(params, ctx) ?? { isAnonymous: true };
-      const { user } = await createAccount(ctx, {
+      const { user } = await ctx.auth.account.create(ctx, {
         provider,
         account: { id: crypto.randomUUID() },
         profile: profile as any,

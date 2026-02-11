@@ -1,11 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Authenticated, Unauthenticated, useConvexAuth } from 'convex/react'
 import { useEffect } from 'react'
+
+import { Authenticated, Unauthenticated, useAuthState } from '@/lib/auth'
 
 export const Route = createFileRoute('/')({ component: IndexPage })
 
 function IndexPage() {
-  const { isLoading } = useConvexAuth()
+  const { isLoading } = useAuthState()
 
   if (isLoading) {
     return <p className="text-muted-foreground text-xs">Checking your session...</p>

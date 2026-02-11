@@ -1,54 +1,85 @@
-import { FunctionReference, OptionalRestArgs } from "convex/server";
+import { ConvexHttpClient } from "convex/browser";
 import { Value } from "convex/values";
-import type {
-  SignInAction,
-  SignOutAction,
-} from "../server/implementation/index.js";
 
-type AuthActionCaller = {
-  authenticatedCall<Action extends FunctionReference<"action", "public">>(
-    action: Action,
-    ...args: OptionalRestArgs<Action>
-  ): Promise<Action["_returnType"]>;
-  unauthenticatedCall<Action extends FunctionReference<"action", "public">>(
-    action: Action,
-    ...args: OptionalRestArgs<Action>
-  ): Promise<Action["_returnType"]>;
-  verbose?: boolean;
-  logger?: {
-    logVerbose?: (message: string) => void;
-  };
-};
+/**
+ * Structural interface for any Convex client.
+ * Satisfied by both `ConvexClient` (`convex/browser`) and
+ * `ConvexReactClient` (`convex/react`).
+ */
+interface ConvexTransport {
+  action(action: any, args: any): Promise<any>;
+  setAuth(
+    fetchToken: (args: {
+      forceRefreshToken: boolean;
+    }) => Promise<string | null | undefined>,
+    onChange?: (isAuthenticated: boolean) => void,
+  ): void;
+  clearAuth(): void;
+}
 
-export interface TokenStorage {
-  getItem(key: string): string | null | undefined | Promise<string | null | undefined>;
+/** Pluggable key-value storage (defaults to `localStorage`). */
+export interface Storage {
+  getItem(
+    key: string,
+  ): string | null | undefined | Promise<string | null | undefined>;
   setItem(key: string, value: string): void | Promise<void>;
   removeItem(key: string): void | Promise<void>;
 }
 
-export type AuthSession = {
+type AuthSession = {
   token: string;
   refreshToken: string;
 };
 
-export type SignInResult = {
+type SignInResult = {
   signingIn: boolean;
   redirect?: URL;
 };
 
-export type AuthSnapshot = {
+/** Reactive auth state snapshot returned by `auth.state` and `auth.onChange`. */
+export type AuthState = {
   isLoading: boolean;
   isAuthenticated: boolean;
   token: string | null;
 };
 
-export type AuthClientOptions = {
-  transport: AuthActionCaller;
-  storage?: TokenStorage | null;
-  storageNamespace: string;
+/** Options for {@link client}. */
+export type ClientOptions = {
+  /** Any Convex client (`ConvexClient` or `ConvexReactClient`). */
+  convex: ConvexTransport;
+  /**
+   * Convex deployment URL. Derived automatically from the client internals
+   * when omitted — pass explicitly only if auto-detection fails.
+   */
+  url?: string;
+  /**
+   * Key-value storage for persisting tokens.
+   *
+   * - Defaults to `localStorage` in SPA mode.
+   * - Defaults to `null` (in-memory only) when `proxy` is set,
+   *   since httpOnly cookies handle persistence.
+   */
+  storage?: Storage | null;
+  /** Override how the URL bar is updated after OAuth code exchange. */
   replaceURL?: (relativeUrl: string) => void | Promise<void>;
-  shouldHandleCode?: (() => boolean) | boolean;
-  onChange?: () => Promise<unknown>;
+  /**
+   * SSR proxy endpoint (e.g. `"/api/auth"`).
+   *
+   * When set, `signIn`/`signOut`/token refresh POST to this URL
+   * (with `credentials: "include"`) instead of calling Convex directly.
+   * The server handles httpOnly cookies for token persistence.
+   *
+   * Pair with {@link ClientOptions.initialToken} for flash-free SSR hydration.
+   */
+  proxy?: string;
+  /**
+   * Initial JWT from server-side hydration.
+   *
+   * In proxy mode the server reads the JWT from an httpOnly cookie
+   * and passes it to the client during SSR. This avoids a loading
+   * flash on first render — the client is immediately authenticated.
+   */
+  initialToken?: string | null;
 };
 
 const VERIFIER_STORAGE_KEY = "__convexAuthOAuthVerifier";
@@ -58,60 +89,122 @@ const REFRESH_TOKEN_STORAGE_KEY = "__convexAuthRefreshToken";
 const RETRY_BACKOFF = [500, 2000];
 const RETRY_JITTER = 100;
 
-export function createAuthClient(options: AuthClientOptions) {
-  const {
-    transport,
-    storage = typeof window === "undefined" ? null : window.localStorage,
-    storageNamespace,
-    replaceURL = (url: string) => {
+/**
+ * Resolve the Convex deployment URL from the client.
+ *
+ * `ConvexReactClient` exposes `.url` directly.
+ * `ConvexClient` exposes `.client.url` via `BaseConvexClient`.
+ */
+function resolveUrl(convex: ConvexTransport, explicit?: string): string {
+  if (explicit) return explicit;
+  const c = convex as any;
+  const url: unknown = c.url ?? c.client?.url;
+  if (typeof url === "string") return url;
+  throw new Error(
+    "Could not determine Convex deployment URL. Pass `url` explicitly.",
+  );
+}
+
+/**
+ * Create a framework-agnostic auth client.
+ *
+ * ### SPA mode (default)
+ *
+ * ```ts
+ * import { ConvexClient } from 'convex/browser'
+ * import { client } from '\@robelest/convex-auth/client'
+ *
+ * const convex = new ConvexClient(CONVEX_URL)
+ * const auth = client({ convex })
+ * ```
+ *
+ * ### SSR / proxy mode
+ *
+ * ```ts
+ * const auth = client({
+ *   convex,
+ *   proxy: '/api/auth',
+ *   initialToken: tokenFromServer, // read from httpOnly cookie during SSR
+ * })
+ * ```
+ *
+ * In proxy mode all auth operations go through the proxy URL.
+ * Tokens are stored in httpOnly cookies server-side — the client
+ * only holds the JWT in memory.
+ */
+export function client(options: ClientOptions) {
+  const { convex, proxy } = options;
+
+  // In proxy mode, default storage to null (cookies handle persistence).
+  const storage =
+    options.storage !== undefined
+      ? options.storage
+      : proxy
+        ? null
+        : typeof window === "undefined"
+          ? null
+          : window.localStorage;
+
+  const replaceURL =
+    options.replaceURL ??
+    ((url: string) => {
       if (typeof window !== "undefined") {
         window.history.replaceState({}, "", url);
       }
-    },
-    shouldHandleCode,
-    onChange,
-  } = options;
+    });
 
-  const escapedNamespace = storageNamespace.replace(/[^a-zA-Z0-9]/g, "");
+  const url = proxy ? undefined : resolveUrl(convex, options.url);
+  const escapedNamespace = proxy
+    ? proxy.replace(/[^a-zA-Z0-9]/g, "")
+    : url!.replace(/[^a-zA-Z0-9]/g, "");
   const key = (name: string) => `${name}_${escapedNamespace}`;
   const subscribers = new Set<() => void>();
 
-  let token: string | null = null;
-  let isLoading = true;
-  let snapshot: AuthSnapshot = {
+  // Unauthenticated HTTP client for code verification & OAuth exchange.
+  // Only needed in SPA mode — proxy mode routes everything through the proxy.
+  const httpClient = proxy ? null : new ConvexHttpClient(url!);
+
+  // ---------------------------------------------------------------------------
+  // State
+  // ---------------------------------------------------------------------------
+
+  // If an initialToken was provided (SSR hydration), start authenticated.
+  const hasInitialToken =
+    options.initialToken !== undefined && options.initialToken !== null;
+
+  let token: string | null = hasInitialToken ? options.initialToken! : null;
+  let isLoading = !hasInitialToken;
+  let snapshot: AuthState = {
     isLoading,
-    isAuthenticated: false,
+    isAuthenticated: hasInitialToken,
     token,
   };
   let handlingCodeFlow = false;
-
-  const logVerbose = (message: string) => {
-    if (transport.verbose) {
-      transport.logger?.logVerbose?.(message);
-      console.debug(`${new Date().toISOString()} ${message}`);
-    }
-  };
 
   const notify = () => {
     for (const cb of subscribers) cb();
   };
 
   const updateSnapshot = () => {
-    const nextSnapshot: AuthSnapshot = {
+    const next: AuthState = {
       isLoading,
       isAuthenticated: token !== null,
       token,
     };
     if (
-      snapshot.isLoading === nextSnapshot.isLoading &&
-      snapshot.isAuthenticated === nextSnapshot.isAuthenticated &&
-      snapshot.token === nextSnapshot.token
+      snapshot.isLoading === next.isLoading &&
+      snapshot.isAuthenticated === next.isAuthenticated &&
+      snapshot.token === next.token
     ) {
       return false;
     }
-    snapshot = nextSnapshot;
+    snapshot = next;
     return true;
   };
+
+  // ---------------------------------------------------------------------------
+  // Storage helpers (SPA mode only)
+  // ---------------------------------------------------------------------------
 
   const storageGet = async (name: string) =>
     storage ? ((await storage.getItem(key(name))) ?? null) : null;
@@ -122,12 +215,15 @@ export function createAuthClient(options: AuthClientOptions) {
     if (storage) await storage.removeItem(key(name));
   };
 
+  // ---------------------------------------------------------------------------
+  // Token management
+  // ---------------------------------------------------------------------------
+
   const setToken = async (
     args:
       | { shouldStore: true; tokens: AuthSession | null }
       | { shouldStore: false; tokens: { token: string } | null },
   ) => {
-    const wasAuthenticated = token !== null;
     if (args.tokens === null) {
       token = null;
       if (args.shouldStore) {
@@ -141,9 +237,6 @@ export function createAuthClient(options: AuthClientOptions) {
         await storageSet(REFRESH_TOKEN_STORAGE_KEY, args.tokens.refreshToken);
       }
     }
-    if (wasAuthenticated !== (token !== null)) {
-      await onChange?.();
-    }
     const hadPendingLoad = isLoading;
     isLoading = false;
     const changed = updateSnapshot();
@@ -152,6 +245,30 @@ export function createAuthClient(options: AuthClientOptions) {
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // Proxy fetch helper
+  // ---------------------------------------------------------------------------
+
+  const proxyFetch = async (body: Record<string, unknown>) => {
+    const response = await fetch(proxy!, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(
+        (error as any).error ?? `Proxy request failed: ${response.status}`,
+      );
+    }
+    return response.json();
+  };
+
+  // ---------------------------------------------------------------------------
+  // Code verification with retries (SPA mode only)
+  // ---------------------------------------------------------------------------
+
   const verifyCode = async (
     args: { code: string; verifier?: string } | { refreshToken: string },
   ) => {
@@ -159,8 +276,8 @@ export function createAuthClient(options: AuthClientOptions) {
     let retry = 0;
     while (retry < RETRY_BACKOFF.length) {
       try {
-        return await transport.unauthenticatedCall(
-          "auth:signIn" as unknown as SignInAction,
+        return await httpClient!.action(
+          "auth:signIn" as any,
           "code" in args
             ? { params: { code: args.code }, verifier: args.verifier }
             : args,
@@ -170,11 +287,8 @@ export function createAuthClient(options: AuthClientOptions) {
         const isNetworkError =
           e instanceof Error && /network/i.test(e.message || "");
         if (!isNetworkError) break;
-        const wait = RETRY_BACKOFF[retry] + RETRY_JITTER * Math.random();
+        const wait = RETRY_BACKOFF[retry]! + RETRY_JITTER * Math.random();
         retry++;
-        logVerbose(
-          `verifyCode network retry ${retry}/${RETRY_BACKOFF.length} in ${wait}ms`,
-        );
         await new Promise((resolve) => setTimeout(resolve, wait));
       }
     }
@@ -185,9 +299,16 @@ export function createAuthClient(options: AuthClientOptions) {
     args: { code: string; verifier?: string } | { refreshToken: string },
   ) => {
     const { tokens } = await verifyCode(args);
-    await setToken({ shouldStore: true, tokens: (tokens as AuthSession | null) ?? null });
+    await setToken({
+      shouldStore: true,
+      tokens: (tokens as AuthSession | null) ?? null,
+    });
     return tokens !== null;
   };
+
+  // ---------------------------------------------------------------------------
+  // signIn
+  // ---------------------------------------------------------------------------
 
   const signIn = async (
     provider?: string,
@@ -204,19 +325,48 @@ export function createAuthClient(options: AuthClientOptions) {
           )
         : args ?? {};
 
+    if (proxy) {
+      // Proxy mode: POST to the proxy endpoint.
+      const result = await proxyFetch({
+        action: "auth:signIn",
+        args: { provider, params },
+      });
+      if (result.redirect !== undefined) {
+        const redirectUrl = new URL(result.redirect);
+        // Verifier is stored server-side in an httpOnly cookie.
+        if (typeof window !== "undefined") {
+          window.location.href = redirectUrl.toString();
+        }
+        return { signingIn: false, redirect: redirectUrl };
+      }
+      if (result.tokens !== undefined) {
+        // Proxy returns { token, refreshToken: "dummy" }.
+        // Store JWT in memory only — real refresh token is in httpOnly cookie.
+        await setToken({
+          shouldStore: false,
+          tokens:
+            result.tokens === null ? null : { token: result.tokens.token },
+        });
+        return { signingIn: result.tokens !== null };
+      }
+      return { signingIn: false };
+    }
+
+    // SPA mode: call Convex directly.
     const verifier = (await storageGet(VERIFIER_STORAGE_KEY)) ?? undefined;
     await storageRemove(VERIFIER_STORAGE_KEY);
-    const result = await transport.authenticatedCall(
-      "auth:signIn" as unknown as SignInAction,
-      { provider, params, verifier },
-    );
+    const result = await convex.action("auth:signIn" as any, {
+      provider,
+      params,
+      verifier,
+    });
     if (result.redirect !== undefined) {
-      const url = new URL(result.redirect);
+      const redirectUrl = new URL(result.redirect);
       await storageSet(VERIFIER_STORAGE_KEY, result.verifier!);
       if (typeof window !== "undefined") {
-        window.location.href = url.toString();
+        window.location.href = redirectUrl.toString();
       }
-      return { signingIn: false, redirect: url };
+      return { signingIn: false, redirect: redirectUrl };
     }
     if (result.tokens !== undefined) {
       await setToken({
@@ -228,16 +378,33 @@ export function createAuthClient(options: AuthClientOptions) {
     return { signingIn: false };
   };
 
+  // ---------------------------------------------------------------------------
+  // signOut
+  // ---------------------------------------------------------------------------
+
   const signOut = async () => {
+    if (proxy) {
+      try {
+        await proxyFetch({ action: "auth:signOut", args: {} });
+      } catch {
+        // Already signed out is fine.
+      }
+      await setToken({ shouldStore: false, tokens: null });
+      return;
+    }
+
+    // SPA mode.
     try {
-      await transport.authenticatedCall(
-        "auth:signOut" as unknown as SignOutAction,
-      );
+      await convex.action("auth:signOut" as any, {});
     } catch {
       // Already signed out is fine.
     }
     await setToken({ shouldStore: true, tokens: null });
   };
+
+  // ---------------------------------------------------------------------------
+  // fetchAccessToken — called by convex.setAuth()
+  // ---------------------------------------------------------------------------
 
   const fetchAccessToken = async ({
     forceRefreshToken,
@@ -245,18 +412,44 @@ export function createAuthClient(options: AuthClientOptions) {
     forceRefreshToken: boolean;
   }): Promise<string | null> => {
     if (!forceRefreshToken) return token;
+
+    if (proxy) {
+      // Proxy mode: POST to the proxy to refresh.
+      // The proxy reads the real refresh token from the httpOnly cookie.
+      const tokenBeforeRefresh = token;
+      return await browserMutex("__convexAuthProxyRefresh", async () => {
+        // Another tab/call may have already refreshed.
+        if (token !== tokenBeforeRefresh) return token;
+        try {
+          const result = await proxyFetch({
+            action: "auth:signIn",
+            args: { refreshToken: true },
+          });
+          if (result.tokens) {
+            await setToken({
+              shouldStore: false,
+              tokens: { token: result.tokens.token },
+            });
+          } else {
+            await setToken({ shouldStore: false, tokens: null });
+          }
+        } catch {
+          await setToken({ shouldStore: false, tokens: null });
+        }
+        return token;
+      });
+    }
+
+    // SPA mode: refresh via localStorage + httpClient.
     const tokenBeforeLockAcquisition = token;
     return await browserMutex(REFRESH_TOKEN_STORAGE_KEY, async () => {
       const tokenAfterLockAcquisition = token;
       if (tokenAfterLockAcquisition !== tokenBeforeLockAcquisition) {
-        logVerbose(
-          `fetchAccessToken using synchronized token, is null: ${tokenAfterLockAcquisition === null}`,
-        );
         return tokenAfterLockAcquisition;
       }
-      const refreshToken = (await storageGet(REFRESH_TOKEN_STORAGE_KEY)) ?? null;
+      const refreshToken =
+        (await storageGet(REFRESH_TOKEN_STORAGE_KEY)) ?? null;
       if (!refreshToken) {
-        logVerbose("fetchAccessToken found no refresh token");
         return null;
       }
       await verifyCodeAndSetToken({ refreshToken });
@@ -264,28 +457,29 @@ export function createAuthClient(options: AuthClientOptions) {
     });
   };
 
+  // ---------------------------------------------------------------------------
+  // OAuth code flow (SPA mode only — server handles this in proxy mode)
+  // ---------------------------------------------------------------------------
+
   const handleCodeFlow = async () => {
     if (typeof window === "undefined") return;
     if (handlingCodeFlow) return;
     const code = new URLSearchParams(window.location.search).get("code");
     if (!code) return;
-    const shouldRun =
-      shouldHandleCode === undefined
-        ? true
-        : typeof shouldHandleCode === "function"
-          ? shouldHandleCode()
-          : shouldHandleCode;
-    if (!shouldRun) return;
     handlingCodeFlow = true;
-    const url = new URL(window.location.href);
-    url.searchParams.delete("code");
+    const codeUrl = new URL(window.location.href);
+    codeUrl.searchParams.delete("code");
     try {
-      await replaceURL(url.pathname + url.search + url.hash);
+      await replaceURL(codeUrl.pathname + codeUrl.search + codeUrl.hash);
       await signIn(undefined, { code });
     } finally {
       handlingCodeFlow = false;
     }
   };
+
+  // ---------------------------------------------------------------------------
+  // Hydrate from storage (SPA mode only)
+  // ---------------------------------------------------------------------------
 
   const hydrateFromStorage = async () => {
     const storedToken = (await storageGet(JWT_STORAGE_KEY)) ?? null;
@@ -295,39 +489,82 @@ export function createAuthClient(options: AuthClientOptions) {
     });
   };
 
-  const getSnapshot = (): AuthSnapshot => snapshot;
+  // ---------------------------------------------------------------------------
+  // Subscribe
+  // ---------------------------------------------------------------------------
 
-  const subscribe = (cb: () => void) => {
-    subscribers.add(cb);
-    return () => subscribers.delete(cb);
+  /**
+   * Subscribe to auth state changes. Immediately invokes the callback
+   * with the current state and returns an unsubscribe function.
+   *
+   * ```ts
+   * const unsub = auth.onChange(setState)
+   * ```
+   */
+  const onChange = (cb: (state: AuthState) => void): (() => void) => {
+    cb(snapshot);
+    const wrapped = () => cb(snapshot);
+    subscribers.add(wrapped);
+    return () => {
+      subscribers.delete(wrapped);
+    };
   };
 
-  if (typeof window !== "undefined") {
+  // ---------------------------------------------------------------------------
+  // Initialization
+  // ---------------------------------------------------------------------------
+
+  // Cross-tab sync via storage events (SPA mode only).
+  if (!proxy && typeof window !== "undefined") {
     const onStorage = (event: StorageEvent) => {
       void (async () => {
-        if (event.key !== key(JWT_STORAGE_KEY)) {
-          return;
-        }
-        const value = event.newValue;
+        if (event.key !== key(JWT_STORAGE_KEY)) return;
         await setToken({
           shouldStore: false,
-          tokens: value === null ? null : { token: value },
+          tokens:
+            event.newValue === null ? null : { token: event.newValue },
         });
       })();
     };
     window.addEventListener("storage", onStorage);
   }
 
+  // Auto-wire: feed our tokens into the Convex client so
+  // queries and mutations are automatically authenticated.
+  convex.setAuth(fetchAccessToken);
+
+  // Auto-hydrate and handle code flow.
+  if (typeof window !== "undefined") {
+    if (proxy) {
+      // Proxy mode: if no initialToken was provided, try a refresh
+      // to pick up any existing session from httpOnly cookies.
+      if (!hasInitialToken) {
+        void fetchAccessToken({ forceRefreshToken: true });
+      } else {
+        // initialToken already set — mark loading as done.
+        isLoading = false;
+        updateSnapshot();
+      }
+    } else {
+      // SPA mode: hydrate from localStorage, then handle OAuth code flow.
+      void hydrateFromStorage().then(() => handleCodeFlow());
+    }
+  }
+
   return {
+    /** Current auth state snapshot. */
+    get state(): AuthState {
+      return snapshot;
+    },
     signIn,
     signOut,
-    fetchAccessToken,
-    handleCodeFlow,
-    hydrateFromStorage,
-    getSnapshot,
-    subscribe,
+    onChange,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Browser mutex — ensures only one tab refreshes a token at a time.
+// ---------------------------------------------------------------------------
 
 async function browserMutex<T>(
   key: string,

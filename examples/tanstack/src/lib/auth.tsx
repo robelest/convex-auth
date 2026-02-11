@@ -1,145 +1,101 @@
-import {
-  createAuthClient,
-  type AuthSnapshot,
-  type SignInResult,
-  type TokenStorage,
-} from '@robelest/convex-auth/client'
-import { ConvexHttpClient } from 'convex/browser'
-import { ConvexProviderWithAuth, type ConvexReactClient } from 'convex/react'
-import type { FunctionReference, OptionalRestArgs } from 'convex/server'
+import { client } from '@robelest/convex-auth/client'
+import type { AuthState } from '@robelest/convex-auth/client'
+import { ConvexProvider, ConvexReactClient } from 'convex/react'
 import type { Value } from 'convex/values'
 import {
   createContext,
-  type ReactNode,
   useContext,
   useEffect,
   useMemo,
-  useSyncExternalStore,
+  useState,
+  type ReactNode,
 } from 'react'
 
-type PublicAction = FunctionReference<'action', 'public'>
+// ---------------------------------------------------------------------------
+// Auth context
+// ---------------------------------------------------------------------------
 
-type AuthActionContextValue = {
-  signIn: (
-    provider?: string,
-    params?: FormData | Record<string, Value>,
-  ) => Promise<SignInResult>
+const AuthContext = createContext<{
+  signIn: (provider?: string, params?: FormData | Record<string, Value>) => Promise<void>
   signOut: () => Promise<void>
-}
+  state: AuthState
+} | null>(null)
 
-type ConvexAuthContextValue = {
-  isLoading: boolean
-  isAuthenticated: boolean
-  fetchAccessToken: (args: { forceRefreshToken: boolean }) => Promise<string | null>
-}
 
-type ConvexClientInternals = {
-  address: string
-  options?: {
-    verbose?: boolean
-  }
-}
-
-const AuthActionsContext = createContext<AuthActionContextValue | null>(null)
-const ConvexAuthInternalContext = createContext<ConvexAuthContextValue | null>(null)
 
 function useAuth() {
-  const value = useContext(ConvexAuthInternalContext)
-  if (!value) {
-    throw new Error('useAuth must be used inside ConvexAuthProvider')
-  }
-  return value
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('Auth hooks must be used inside ConvexAuthProvider')
+  return ctx
 }
 
-function useAuthSnapshot(client: ReturnType<typeof createAuthClient>) {
-  return useSyncExternalStore<AuthSnapshot>(
-    client.subscribe,
-    client.getSnapshot,
-    client.getSnapshot,
-  )
+/** Read the current auth state (reactive). */
+export function useAuthState() {
+  return useAuth().state
 }
 
+/** Access `signIn` and `signOut` actions. */
 export function useAuthActions() {
-  const value = useContext(AuthActionsContext)
-  if (!value) {
-    throw new Error('useAuthActions must be used inside ConvexAuthProvider')
-  }
-  return value
+  const { signIn, signOut } = useAuth()
+  return { signIn, signOut }
 }
+
+// ---------------------------------------------------------------------------
+// Auth-aware render helpers (replace Convex's Authenticated/Unauthenticated)
+// ---------------------------------------------------------------------------
+
+export function Authenticated({ children }: { children: ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuthState()
+  if (isLoading || !isAuthenticated) return null
+  return <>{children}</>
+}
+
+export function Unauthenticated({ children }: { children: ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuthState()
+  if (isLoading || isAuthenticated) return null
+  return <>{children}</>
+}
+
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
 
 export function ConvexAuthProvider({
-  client,
-  storage,
-  storageNamespace,
-  replaceURL,
-  shouldHandleCode,
+  convex,
+  proxy,
+  initialToken,
   children,
 }: {
-  client: ConvexReactClient
-  storage?: TokenStorage | null
-  storageNamespace?: string
-  replaceURL?: (relativeUrl: string) => void | Promise<void>
-  shouldHandleCode?: (() => boolean) | boolean
+  convex: ConvexReactClient
+  /** SSR proxy endpoint (e.g. `"/api/auth"`). */
+  proxy?: string
+  /** Initial JWT from server-side hydration for flash-free startup. */
+  initialToken?: string | null
   children: ReactNode
 }) {
-  const internalClient = client as unknown as ConvexClientInternals
-  const authClient = useMemo(
-    () =>
-      createAuthClient({
-        transport: {
-          authenticatedCall<TAction extends PublicAction>(
-            action: TAction,
-            ...args: OptionalRestArgs<TAction>
-          ) {
-            return client.action(action, ...args)
-          },
-          unauthenticatedCall<TAction extends PublicAction>(
-            action: TAction,
-            ...args: OptionalRestArgs<TAction>
-          ) {
-            return new ConvexHttpClient(internalClient.address, {
-              logger: client.logger,
-            }).action(action, ...args)
-          },
-          verbose: internalClient.options?.verbose,
-          logger: client.logger,
-        },
-        storage:
-          storage ?? (typeof window === 'undefined' ? null : window.localStorage),
-        storageNamespace: storageNamespace ?? internalClient.address,
-        replaceURL,
-        shouldHandleCode,
-      }),
-    [client, internalClient.address, internalClient.options?.verbose, replaceURL, shouldHandleCode, storage, storageNamespace],
+  const auth = useMemo(
+    () => client({ convex, proxy, initialToken }),
+    [convex, proxy, initialToken],
   )
+  const [state, setState] = useState<AuthState>(auth.state)
+  useEffect(() => auth.onChange(setState), [auth])
 
-  useEffect(() => {
-    void authClient.hydrateFromStorage().then(() => authClient.handleCodeFlow())
-  }, [authClient])
-
-  const snapshot = useAuthSnapshot(authClient)
-  const actions = useMemo(
-    () => ({ signIn: authClient.signIn, signOut: authClient.signOut }),
-    [authClient],
-  )
-
-  const authState = useMemo(
+  const value = useMemo(
     () => ({
-      isLoading: snapshot.isLoading,
-      isAuthenticated: snapshot.isAuthenticated,
-      fetchAccessToken: (args: { forceRefreshToken: boolean }) =>
-        authClient.fetchAccessToken(args),
+      signIn: async (provider?: string, params?: FormData | Record<string, Value>) => {
+        await auth.signIn(provider, params)
+      },
+      signOut: auth.signOut,
+      state,
     }),
-    [authClient, snapshot.isAuthenticated, snapshot.isLoading],
+    [auth, state],
   )
 
   return (
-    <ConvexAuthInternalContext.Provider value={authState}>
-      <AuthActionsContext.Provider value={actions}>
-        <ConvexProviderWithAuth client={client} useAuth={useAuth}>
-          {children}
-        </ConvexProviderWithAuth>
-      </AuthActionsContext.Provider>
-    </ConvexAuthInternalContext.Provider>
+    <AuthContext.Provider value={value}>
+      <ConvexProvider client={convex}>
+        {children}
+      </ConvexProvider>
+    </AuthContext.Provider>
   )
 }

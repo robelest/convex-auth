@@ -1,9 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Authenticated, Unauthenticated, useQuery } from 'convex/react'
+import { useQuery } from 'convex/react'
 import { useEffect } from 'react'
 
 import { api } from '@convex/_generated/api'
 import { Chat } from '@/components/chat'
+import { Authenticated, Unauthenticated } from '@/lib/auth'
 
 export const Route = createFileRoute('/chat')({ component: ChatPage })
 

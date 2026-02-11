@@ -1,9 +1,9 @@
 "use node";
 
-import { createAccount } from "@robelest/convex-auth/component";
 import { v } from "convex/values";
 import twilio from "twilio";
 import { internalAction } from "../_generated/server";
+import { auth } from "../auth";
 
 export const verify = internalAction({
   args: {
@@ -26,7 +26,7 @@ export const verify = internalAction({
       console.error(status);
       throw new Error("Code could not be verified");
     }
-    const { user } = await createAccount(ctx, {
+    const { user } = await auth.account.create(ctx, {
       provider: "twilio",
       account: {
         id: phone,

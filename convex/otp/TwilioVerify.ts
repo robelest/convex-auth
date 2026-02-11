@@ -1,9 +1,9 @@
-import convexCredentials from "@robelest/convex-auth/providers/ConvexCredentials";
+import credentials from "@robelest/convex-auth/providers/credentials";
 import { internal } from "../_generated/api";
 import { DataModel } from "../_generated/dataModel";
 
 export function twilioVerify() {
-  return convexCredentials<DataModel>({
+  return credentials<DataModel>({
     id: "twilio",
     authorize: async (params, ctx) => {
       if (params.phone === undefined) {

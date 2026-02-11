@@ -110,27 +110,9 @@ export async function deleteSession(
 }
 
 /**
- * Return the current session ID.
+ * Return the current session ID from the auth identity subject.
  *
- * ```ts filename="convex/myFunctions.tsx"
- * import { mutation } from "./_generated/server";
- * import { getAuthSessionId } from "@robelest/convex-auth/component";
- *
- * export const doSomething = mutation({
- *   args: {/* ... *\/},
- *   handler: async (ctx, args) => {
- *     const sessionId = await getAuthSessionId(ctx);
- *     if (sessionId === null) {
- *       throw new Error("Client is not authenticated!")
- *     }
- *     const session = await ctx.db.get(sessionId);
- *     // ...
- *   },
- * });
- * ```
- *
- * @param ctx query, mutation or action `ctx`
- * @returns the session ID or `null` if the client isn't authenticated
+ * Internal helper used by auth runtime internals and `auth.session.current`.
  */
 export async function getAuthSessionId(ctx: { auth: Auth }) {
   const identity = await ctx.auth.getUserIdentity();

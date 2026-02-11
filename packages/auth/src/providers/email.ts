@@ -19,19 +19,19 @@ import { EmailConfig, EmailUserConfig } from "../server/types.js";
  * you can override the `authorize` method to skip the check:
  *
  * ```ts
- * import Email from "@robelest/convex-auth/providers/Email";
- * import { convexAuth } from "@robelest/convex-auth/component";
+ * import email from "@robelest/convex-auth/providers/email";
+ * import { Auth } from "@robelest/convex-auth/component";
  *
- * export const { auth, signIn, signOut, store } = convexAuth({
+ * export const { auth, signIn, signOut, store } = Auth({
  *   providers: [
- *     Email({ authorize: undefined }),
+ *     email({ authorize: undefined }),
  *   ],
  * });
  * ```
  *
  * Make sure the token has high enough entropy to be secure.
  */
-export function Email<DataModel extends GenericDataModel>(
+export default function email<DataModel extends GenericDataModel>(
   config: EmailUserConfig<DataModel> &
     Pick<EmailConfig, "sendVerificationRequest">,
 ): EmailConfig<DataModel> {
