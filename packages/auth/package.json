@@ -17,8 +17,6 @@
   "author": "xixixao",
   "files": [
     "dist",
-    "providers",
-    "server",
     "src"
   ],
   "type": "module",
@@ -35,9 +33,8 @@
     "spellcheck": "cspell \"docs/pages/**/*.md*\"",
     "prepare": "bun run build",
     "prepublishOnly": "bun run lint && bun run build && bun run test:once",
-    "publish:example": "node publishExample.mjs",
-    "test": "bun run --cwd ../../examples/vite test",
-    "test:once": "bun run --cwd ../../examples/vite test:once",
+    "test": "bun run --cwd ../../packages/test test",
+    "test:once": "bun run --cwd ../../packages/test test:once",
     "convex:dev": "bunx convex dev",
     "convex:codegen": "bunx convex codegen && bun run convex:codegen:component",
     "convex:codegen:component": "bunx convex codegen --component-dir ./src/component",
