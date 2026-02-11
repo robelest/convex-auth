@@ -73,10 +73,9 @@ new Command()
     // Skipped if there's no tsconfig.json
     await modifyTsConfig(config);
 
-    // Step 4: Configure auth.config.ts
-    // To avoid having to execute it we just give instructions
-    // if it exists already.
-    await configureAuthConfig(config);
+    // Step 4: Configure convex.config.ts
+    // Ensure the auth component is registered via app.use(auth).
+    await configureConvexConfig(config);
 
     // Step 5: Initialize auth.ts
     // We do nothing if the file already contains the code,
@@ -395,36 +394,36 @@ function addCompilerOption(
   }
 }
 
-async function configureAuthConfig(config: ProjectConfig) {
-  logStep(config, "Configure auth config file");
+async function configureConvexConfig(config: ProjectConfig) {
+  logStep(config, "Configure convex config file");
   const sourceTemplate = `\
-export default {
-  providers: [$$
-    {
-      domain: process.env.CONVEX_SITE_URL,
-      applicationID: "convex",
-    },$$
-  ],
-};
+import { defineApp } from "convex/server";
+import auth from "@robelest/convex-auth/component/convex.config";
+
+const app = defineApp();
+
+app.use(auth);
+
+export default app;
 `;
   const source = templateToSource(sourceTemplate);
-  const authConfigPath = path.join(config.convexFolderPath, "auth.config");
-  const existingConfigPath = await existingNonEmptySourcePath(authConfigPath);
+  const convexConfigPath = path.join(config.convexFolderPath, "convex.config");
+  const existingConfigPath = await existingNonEmptySourcePath(convexConfigPath);
   if (existingConfigPath !== null) {
     const existingConfig = readFileSync(existingConfigPath, "utf8");
     if (doesAlreadyMatchTemplate(existingConfig, sourceTemplate)) {
       logSuccess(`The ${chalk.bold(existingConfigPath)} is already set up.`);
     } else {
       logInfo(
-        `You already have a ${chalk.bold(existingConfigPath)}, make sure the \`providers\` include the following config:`,
+        `You already have a ${chalk.bold(existingConfigPath)}, make sure it registers the auth component like this:`,
       );
       print(indent(`\n${source}\n`));
       await promptForConfirmationOrExit("Ready to continue?");
     }
   } else {
     const newConfigPath = config.usesTypeScript
-      ? `${authConfigPath}.ts`
-      : `${authConfigPath}.js`;
+      ? `${convexConfigPath}.ts`
+      : `${convexConfigPath}.js`;
     writeFileSync(newConfigPath, source);
     logSuccess(`Created ${chalk.bold(newConfigPath)}`);
   }
@@ -434,8 +433,10 @@ async function initializeAuth(config: ProjectConfig) {
   logStep(config, "Initialize auth file");
   const sourceTemplate = `\
 import { Auth } from "@robelest/convex-auth/component";
+import { components } from "./_generated/api";
 
 export const { auth, signIn, signOut, store } = Auth({$$
+  component: components.auth,$$
   providers: [$$],$$
 });
 `;
