@@ -14,7 +14,8 @@ import {
 import { ConvexAuthConfig } from "../../types.js";
 import { LOG_LEVELS, logWithLevel, sha256 } from "../utils.js";
 import { upsertUserAndAccount } from "../users.js";
-import { createAuthDb } from "../db.js";
+import { authDb } from "../db.js";
+import { AUTH_STORE_REF } from "./storeRef.js";
 
 export const verifyCodeAndSignInArgs = v.object({
   params: v.any(),
@@ -87,7 +88,7 @@ export const callVerifyCodeAndSignIn = async (
   ctx: ActionCtx,
   args: Infer<typeof verifyCodeAndSignInArgs>,
 ): Promise<ReturnType> => {
-  return ctx.runMutation("auth:store" as any, {
+  return ctx.runMutation(AUTH_STORE_REF, {
     args: {
       type: "verifyCodeAndSignIn",
       ...args,
@@ -116,26 +117,15 @@ async function verifyCodeOnly(
   config: ConvexAuthConfig,
   sessionId: GenericId<"session"> | null,
 ) {
-  const authDb =
-    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
+  const db = authDb(ctx, config);
   const { params, verifier } = args;
   const codeHash = await sha256(params.code);
-  const verificationCode =
-    authDb !== null
-      ? await authDb.verificationCodes.getByCode(codeHash)
-      : await ctx.db
-          .query("verification")
-          .withIndex("code", (q) => q.eq("code", codeHash))
-          .unique();
+  const verificationCode = await db.verificationCodes.getByCode(codeHash);
   if (verificationCode === null) {
     logWithLevel(LOG_LEVELS.ERROR, "Invalid verification code");
     return null;
   }
-  if (authDb !== null) {
-    await authDb.verificationCodes.delete(verificationCode._id);
-  } else {
-    await ctx.db.delete(verificationCode._id);
-  }
+  await db.verificationCodes.delete(verificationCode._id);
   if (verificationCode.verifier !== verifier) {
     logWithLevel(LOG_LEVELS.ERROR, "Invalid verifier");
     return null;
@@ -145,8 +135,7 @@ async function verifyCodeOnly(
     return null;
   }
   const { accountId, emailVerified, phoneVerified } = verificationCode;
-  const account =
-    authDb !== null ? await authDb.accounts.getById(accountId) : await ctx.db.get(accountId);
+  const account = await db.accounts.getById(accountId);
   if (account === null) {
     logWithLevel(
       LOG_LEVELS.ERROR,

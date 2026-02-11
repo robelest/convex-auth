@@ -7,7 +7,8 @@ import {
 } from "../rateLimit.js";
 import * as Provider from "../provider.js";
 import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils.js";
-import { createAuthDb } from "../db.js";
+import { authDb } from "../db.js";
+import { AUTH_STORE_REF } from "./storeRef.js";
 
 export const retrieveAccountWithCredentialsArgs = v.object({
   provider: v.string(),
@@ -27,8 +28,7 @@ export async function retrieveAccountWithCredentialsImpl(
   config: Provider.Config,
 ): Promise<ReturnType> {
   const { provider: providerId, account } = args;
-  const authDb =
-    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
+  const db = authDb(ctx, config);
   logWithLevel(LOG_LEVELS.DEBUG, "retrieveAccountWithCredentialsImpl args:", {
     provider: providerId,
     account: {
@@ -36,15 +36,10 @@ export async function retrieveAccountWithCredentialsImpl(
       secret: maybeRedact(account.secret ?? ""),
     },
   });
-  const existingAccount =
-    authDb !== null
-      ? ((await authDb.accounts.get(providerId, account.id)) as Doc<"account"> | null)
-      : await ctx.db
-          .query("account")
-          .withIndex("providerAndAccountId", (q) =>
-            q.eq("provider", providerId).eq("providerAccountId", account.id),
-          )
-          .unique();
+  const existingAccount = (await db.accounts.get(
+    providerId,
+    account.id,
+  )) as Doc<"account"> | null;
   if (existingAccount === null) {
     return "InvalidAccountId";
   }
@@ -67,10 +62,7 @@ export async function retrieveAccountWithCredentialsImpl(
   return {
     account: existingAccount,
     // TODO: Ian removed this
-    user:
-      authDb !== null
-        ? ((await authDb.users.getById(existingAccount.userId)) as unknown as Doc<"user">)
-        : (await ctx.db.get(existingAccount.userId))!,
+    user: (await db.users.getById(existingAccount.userId)) as unknown as Doc<"user">,
   };
 }
 
@@ -78,7 +70,7 @@ export const callRetreiveAccountWithCredentials = async (
   ctx: ActionCtx,
   args: Infer<typeof retrieveAccountWithCredentialsArgs>,
 ): Promise<ReturnType> => {
-  return ctx.runMutation("auth:store" as any, {
+  return ctx.runMutation(AUTH_STORE_REF, {
     args: {
       type: "retrieveAccountWithCredentials",
       ...args,

@@ -59,13 +59,13 @@ export function configDefaults(config_: ConvexAuthConfig) {
  * @internal
  */
 export function materializeProvider(provider: AuthProviderConfig) {
-  const config = { providers: [provider] };
+  const config = { providers: [provider], component: {} as any };
   materializeAndDefaultProviders(config);
   return config.providers[0] as AuthProviderMaterializedConfig;
 }
 
 function materializeProviders(providers: AuthProviderConfig[]) {
-  const config = { providers };
+  const config = { providers, component: {} as any };
   materializeAndDefaultProviders(config);
   return config.providers as AuthProviderMaterializedConfig[];
 }

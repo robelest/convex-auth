@@ -158,6 +158,7 @@ export default defineSchema({
     extend: v.optional(v.any()),
   })
     .index("tokenHash", ["tokenHash"])
+    .index("status", ["status"])
     .index("emailAndStatus", ["email", "status"])
     .index("invitedByUserIdAndStatus", ["invitedByUserId", "status"])
     .index("groupId", ["groupId"])

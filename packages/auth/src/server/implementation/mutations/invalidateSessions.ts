@@ -3,7 +3,8 @@ import { deleteSession } from "../sessions.js";
 import { ActionCtx, MutationCtx } from "../types.js";
 import { LOG_LEVELS, logWithLevel } from "../utils.js";
 import * as Provider from "../provider.js";
-import { createAuthDb } from "../db.js";
+import { authDb } from "../db.js";
+import { AUTH_STORE_REF } from "./storeRef.js";
 
 export const invalidateSessionsArgs = v.object({
   userId: v.string(),
@@ -14,7 +15,7 @@ export const callInvalidateSessions = async (
   ctx: ActionCtx,
   args: Infer<typeof invalidateSessionsArgs>,
 ): Promise<void> => {
-  return ctx.runMutation("auth:store" as any, {
+  return ctx.runMutation(AUTH_STORE_REF, {
     args: {
       type: "invalidateSessions",
       ...args,
@@ -31,13 +32,7 @@ export const invalidateSessionsImpl = async (
   const { userId, except } = args;
   const exceptSet = new Set(except ?? []);
   const typedUserId = userId as GenericId<"user">;
-  const sessions =
-    config.component !== undefined
-      ? await createAuthDb(ctx, config.component).sessions.listByUser(typedUserId)
-      : await ctx.db
-          .query("session")
-          .withIndex("userId", (q) => q.eq("userId", typedUserId))
-          .collect();
+  const sessions = await authDb(ctx, config).sessions.listByUser(typedUserId);
   for (const session of sessions) {
     if (!exceptSet.has(session._id)) {
       await deleteSession(ctx, session, config);

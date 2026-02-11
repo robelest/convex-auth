@@ -15,7 +15,7 @@ import {
   formatRefreshToken,
   deleteAllRefreshTokens,
 } from "./refreshTokens.js";
-import { createAuthDb } from "./db.js";
+import { authDb } from "./db.js";
 
 const DEFAULT_SESSION_TOTAL_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
@@ -45,14 +45,10 @@ export async function createNewAndDeleteExistingSession(
   config: ConvexAuthConfig,
   userId: GenericId<"user">,
 ) {
-  const authDb =
-    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
+  const db = authDb(ctx, config);
   const existingSessionId = await getAuthSessionId(ctx);
   if (existingSessionId !== null) {
-    const existingSession =
-      authDb !== null
-        ? await authDb.sessions.getById(existingSessionId)
-        : await ctx.db.get(existingSessionId);
+    const existingSession = await db.sessions.getById(existingSessionId);
     if (existingSession !== null) {
       await deleteSession(ctx, existingSession, config);
     }
@@ -95,18 +91,13 @@ async function createSession(
   userId: GenericId<"user">,
   config: ConvexAuthConfig,
 ) {
+  const db = authDb(ctx, config);
   const expirationTime =
     Date.now() +
     (config.session?.totalDurationMs ??
       stringToNumber(process.env.AUTH_SESSION_TOTAL_DURATION_MS) ??
       DEFAULT_SESSION_TOTAL_DURATION_MS);
-  if (config.component !== undefined) {
-    return (await createAuthDb(ctx, config.component).sessions.create(
-      userId,
-      expirationTime,
-    )) as GenericId<"session">;
-  }
-  return await ctx.db.insert("session", { expirationTime, userId });
+  return (await db.sessions.create(userId, expirationTime)) as GenericId<"session">;
 }
 
 export async function deleteSession(
@@ -114,11 +105,7 @@ export async function deleteSession(
   session: Doc<"session">,
   config: ConvexAuthConfig,
 ) {
-  if (config.component !== undefined) {
-    await createAuthDb(ctx, config.component).sessions.delete(session._id);
-  } else {
-    await ctx.db.delete(session._id);
-  }
+  await authDb(ctx, config).sessions.delete(session._id);
   await deleteAllRefreshTokens(ctx, session._id, config);
 }
 

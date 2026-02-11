@@ -1,5 +1,5 @@
 import { Infer, v } from "convex/values";
-import { ActionCtx, MutationCtx } from "../types.js";
+import { ActionCtx, Doc, MutationCtx } from "../types.js";
 import * as Provider from "../provider.js";
 import { logWithLevel, maybeRedact } from "../utils.js";
 import {
@@ -11,7 +11,8 @@ import {
   refreshTokenIfValid,
 } from "../refreshTokens.js";
 import { generateTokensForSession } from "../sessions.js";
-import { createAuthDb } from "../db.js";
+import { authDb } from "../db.js";
+import { AUTH_STORE_REF } from "./storeRef.js";
 
 export const refreshSessionArgs = v.object({
   refreshToken: v.string(),
@@ -28,8 +29,7 @@ export async function refreshSessionImpl(
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
 ): Promise<ReturnType> {
-  const authDb =
-    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
+  const db = authDb(ctx, config);
   const { refreshToken } = args;
   const { refreshTokenId, sessionId: tokenSessionId } =
     parseRefreshToken(refreshToken);
@@ -49,21 +49,14 @@ export async function refreshSessionImpl(
   if (validationResult === null) {
     // Replicating `deleteSession` but ensuring that we delete both the session
     // and the refresh token, even if one of them is missing.
-    let session = null;
+    let session: Doc<"session"> | null = null;
     try {
-      session =
-        authDb !== null
-          ? await authDb.sessions.getById(tokenSessionId)
-          : await ctx.db.get(tokenSessionId);
+      session = await db.sessions.getById(tokenSessionId);
     } catch {
       logWithLevel("DEBUG", "Skipping invalid session id during refresh cleanup");
     }
     if (session !== null) {
-      if (authDb !== null) {
-        await authDb.sessions.delete(session._id);
-      } else {
-        await ctx.db.delete(session._id);
-      }
+      await db.sessions.delete(session._id);
     }
     try {
       await deleteAllRefreshTokens(ctx, tokenSessionId, config);
@@ -83,15 +76,9 @@ export async function refreshSessionImpl(
 
   // First use -- mark as used and generate new refresh token
   if (tokenFirstUsed === undefined) {
-    if (authDb !== null) {
-      await authDb.refreshTokens.patch(refreshTokenId, {
-        firstUsedTime: Date.now(),
-      });
-    } else {
-      await ctx.db.patch(refreshTokenId, {
-        firstUsedTime: Date.now(),
-      });
-    }
+    await db.refreshTokens.patch(refreshTokenId, {
+      firstUsedTime: Date.now(),
+    });
     const result = await generateTokensForSession(ctx, config, {
       userId,
       sessionId,
@@ -179,7 +166,7 @@ export const callRefreshSession = async (
   ctx: ActionCtx,
   args: Infer<typeof refreshSessionArgs>,
 ): Promise<ReturnType> => {
-  return ctx.runMutation("auth:store" as any, {
+  return ctx.runMutation(AUTH_STORE_REF, {
     args: {
       type: "refreshSession",
       ...args,

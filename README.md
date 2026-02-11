@@ -337,8 +337,56 @@ Invite APIs:
 - `auth.invite.create(ctx, data)` creates an invite.
 - `auth.invite.get(ctx, inviteId)` fetches an invite.
 - `auth.invite.list(ctx, { groupId?, status? })` lists invites.
-- `auth.invite.accept(ctx, inviteId)` marks invite accepted.
-- `auth.invite.revoke(ctx, inviteId)` marks invite revoked.
+- `auth.invite.accept(ctx, inviteId)` accepts a pending invite.
+- `auth.invite.revoke(ctx, inviteId)` revokes a pending invite.
+
+The component does not send emails by itself. Create invites in a mutation,
+then trigger notifications using your app's provider of choice (for example,
+Resend) in your app layer.
+
+### Invite acceptance and membership (atomic pattern)
+
+If an invite includes a `groupId`, accept + member creation should happen in
+the same Convex mutation to keep state transactional.
+
+```ts
+import { ConvexError, v } from "convex/values";
+import { mutation } from "./_generated/server";
+import { auth } from "./auth";
+
+export const acceptInvite = mutation({
+  args: { inviteId: v.string() },
+  handler: async (ctx, { inviteId }) => {
+    const userId = await auth.user.require(ctx);
+    const invite = await auth.invite.get(ctx, inviteId);
+    if (!invite) throw new Error("Invite not found");
+
+    await auth.invite.accept(ctx, inviteId);
+    if (invite.groupId) {
+      try {
+        await auth.group.member.add(ctx, {
+          groupId: invite.groupId,
+          userId,
+          role: invite.role,
+        });
+      } catch (error) {
+        if (error instanceof ConvexError && error.data?.code === "DUPLICATE_MEMBERSHIP") {
+          return { alreadyMember: true, memberId: error.data.existingMemberId };
+        }
+        throw error;
+      }
+    }
+
+    return { success: true };
+  },
+});
+```
+
+`auth.group.member.add` throws `DUPLICATE_MEMBERSHIP` if the user already
+belongs to the group. `auth.invite.create` throws `DUPLICATE_INVITE` when a
+pending invite already exists for the same email and scope. `auth.invite.accept`
+and `auth.invite.revoke` throw `INVITE_NOT_FOUND` or `INVITE_NOT_PENDING` for
+invalid invite transitions.
 
 ## Component System
 

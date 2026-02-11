@@ -8,7 +8,7 @@ import {
   maybeRedact,
   stringToNumber,
 } from "./utils.js";
-import { createAuthDb } from "./db.js";
+import { authDb } from "./db.js";
 
 const DEFAULT_SESSION_INACTIVE_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 export const REFRESH_TOKEN_REUSE_WINDOW_MS = 10 * 1000; // 10 seconds
@@ -17,24 +17,18 @@ export async function createRefreshToken(
   config: ConvexAuthConfig,
   sessionId: GenericId<"session">,
   parentRefreshTokenId: GenericId<"token"> | null,
-) {
+): Promise<GenericId<"token">> {
+  const db = authDb(ctx, config);
   const expirationTime =
     Date.now() +
     (config.session?.inactiveDurationMs ??
       stringToNumber(process.env.AUTH_SESSION_INACTIVE_DURATION_MS) ??
       DEFAULT_SESSION_INACTIVE_DURATION_MS);
-  if (config.component !== undefined) {
-    return (await createAuthDb(ctx, config.component).refreshTokens.create({
-      sessionId,
-      expirationTime,
-      parentRefreshTokenId: parentRefreshTokenId ?? undefined,
-    })) as GenericId<"token">;
-  }
-  const newRefreshTokenId = await ctx.db.insert("token", {
+  const newRefreshTokenId = (await db.refreshTokens.create({
     sessionId,
     expirationTime,
     parentRefreshTokenId: parentRefreshTokenId ?? undefined,
-  });
+  })) as GenericId<"token">;
   return newRefreshTokenId;
 }
 
@@ -74,27 +68,16 @@ export async function invalidateRefreshTokensInSubtree(
   refreshToken: Doc<"token">,
   config: ConvexAuthConfig,
 ) {
-  const authDb =
-    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
+  const db = authDb(ctx, config);
   const tokensToInvalidate = [refreshToken];
-  let frontier = [refreshToken._id];
+  let frontier: GenericId<"token">[] = [refreshToken._id];
   while (frontier.length > 0) {
-    const nextFrontier = [];
+    const nextFrontier: GenericId<"token">[] = [];
     for (const currentTokenId of frontier) {
-      const children =
-        authDb !== null
-          ? ((await authDb.refreshTokens.getChildren(
-              refreshToken.sessionId,
-              currentTokenId,
-            )) as Doc<"token">[])
-          : await ctx.db
-              .query("token")
-              .withIndex("sessionIdAndParentRefreshTokenId", (q) =>
-                q
-                  .eq("sessionId", refreshToken.sessionId)
-                  .eq("parentRefreshTokenId", currentTokenId),
-              )
-              .collect();
+      const children = (await db.refreshTokens.getChildren(
+        refreshToken.sessionId,
+        currentTokenId,
+      )) as Doc<"token">[];
       tokensToInvalidate.push(...children);
       nextFrontier.push(...children.map((child) => child._id));
     }
@@ -106,15 +89,9 @@ export async function invalidateRefreshTokensInSubtree(
       token.firstUsedTime === undefined ||
       token.firstUsedTime > Date.now() - REFRESH_TOKEN_REUSE_WINDOW_MS
     ) {
-      if (authDb !== null) {
-        await authDb.refreshTokens.patch(token._id, {
-          firstUsedTime: Date.now() - REFRESH_TOKEN_REUSE_WINDOW_MS,
-        });
-      } else {
-        await ctx.db.patch(token._id, {
-          firstUsedTime: Date.now() - REFRESH_TOKEN_REUSE_WINDOW_MS,
-        });
-      }
+      await db.refreshTokens.patch(token._id, {
+        firstUsedTime: Date.now() - REFRESH_TOKEN_REUSE_WINDOW_MS,
+      });
     }
   }
   return tokensToInvalidate;
@@ -125,19 +102,7 @@ export async function deleteAllRefreshTokens(
   sessionId: GenericId<"session">,
   config: ConvexAuthConfig,
 ) {
-  if (config.component !== undefined) {
-    await createAuthDb(ctx, config.component).refreshTokens.deleteAll(sessionId);
-    return;
-  }
-  const existingRefreshTokens = await ctx.db
-    .query("token")
-    .withIndex("sessionIdAndParentRefreshTokenId", (q) =>
-      q.eq("sessionId", sessionId),
-    )
-    .collect();
-  for (const refreshTokenDoc of existingRefreshTokens) {
-    await ctx.db.delete(refreshTokenDoc._id);
-  }
+  await authDb(ctx, config).refreshTokens.deleteAll(sessionId);
 }
 
 export async function refreshTokenIfValid(
@@ -146,16 +111,12 @@ export async function refreshTokenIfValid(
   tokenSessionId: string,
   config: ConvexAuthConfig,
 ) {
-  const authDb =
-    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
+  const db = authDb(ctx, config);
   let refreshTokenDoc: Doc<"token"> | null;
   try {
-    refreshTokenDoc =
-      authDb !== null
-        ? ((await authDb.refreshTokens.getById(
-            refreshTokenId as GenericId<"token">,
-          )) as Doc<"token"> | null)
-        : await ctx.db.get(refreshTokenId as GenericId<"token">);
+    refreshTokenDoc = (await db.refreshTokens.getById(
+      refreshTokenId as GenericId<"token">,
+    )) as Doc<"token"> | null;
   } catch {
     logWithLevel(LOG_LEVELS.ERROR, "Invalid refresh token format");
     return null;
@@ -175,12 +136,9 @@ export async function refreshTokenIfValid(
   }
   let session: Doc<"session"> | null;
   try {
-    session =
-      authDb !== null
-        ? ((await authDb.sessions.getById(refreshTokenDoc.sessionId)) as
-            | Doc<"session">
-            | null)
-        : await ctx.db.get(refreshTokenDoc.sessionId);
+    session = (await db.sessions.getById(refreshTokenDoc.sessionId)) as
+      | Doc<"session">
+      | null;
   } catch {
     logWithLevel(LOG_LEVELS.ERROR, "Invalid refresh token session format");
     return null;
@@ -207,15 +165,7 @@ export async function loadActiveRefreshToken(
   sessionId: GenericId<"session">,
   config: ConvexAuthConfig,
 ) {
-  if (config.component !== undefined) {
-    return (await createAuthDb(ctx, config.component).refreshTokens.getActive(
-      sessionId,
-    )) as Doc<"token"> | null;
-  }
-  return ctx.db
-    .query("token")
-    .withIndex("sessionId", (q) => q.eq("sessionId", sessionId))
-    .filter((q) => q.eq(q.field("firstUsedTime"), undefined))
-    .order("desc")
-    .first();
+  return (await authDb(ctx, config).refreshTokens.getActive(sessionId)) as
+    | Doc<"token">
+    | null;
 }

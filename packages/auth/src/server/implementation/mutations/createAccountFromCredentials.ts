@@ -5,7 +5,8 @@ import { ConvexCredentialsConfig } from "../../types.js";
 import { upsertUserAndAccount } from "../users.js";
 import { getAuthSessionId } from "../sessions.js";
 import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils.js";
-import { createAuthDb } from "../db.js";
+import { authDb } from "../db.js";
+import { AUTH_STORE_REF } from "./storeRef.js";
 
 export const createAccountFromCredentialsArgs = v.object({
   provider: v.string(),
@@ -37,18 +38,12 @@ export async function createAccountFromCredentialsImpl(
     shouldLinkViaEmail,
     shouldLinkViaPhone,
   } = args;
-  const authDb =
-    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
+  const db = authDb(ctx, config);
   const provider = getProviderOrThrow(providerId) as ConvexCredentialsConfig;
-  const existingAccount =
-    authDb !== null
-      ? ((await authDb.accounts.get(provider.id, account.id)) as Doc<"account"> | null)
-      : await ctx.db
-          .query("account")
-          .withIndex("providerAndAccountId", (q) =>
-            q.eq("provider", provider.id).eq("providerAccountId", account.id),
-          )
-          .unique();
+  const existingAccount = (await db.accounts.get(
+    provider.id,
+    account.id,
+  )) as Doc<"account"> | null;
   if (existingAccount !== null) {
     if (
       account.secret !== undefined &&
@@ -63,10 +58,7 @@ export async function createAccountFromCredentialsImpl(
     return {
       account: existingAccount,
       // TODO: Ian removed this,
-      user:
-        authDb !== null
-          ? ((await authDb.users.getById(existingAccount.userId)) as unknown as Doc<"user">)
-          : (await ctx.db.get(existingAccount.userId))!,
+      user: (await db.users.getById(existingAccount.userId)) as unknown as Doc<"user">,
     };
   }
 
@@ -89,14 +81,8 @@ export async function createAccountFromCredentialsImpl(
   );
 
   return {
-    account:
-      authDb !== null
-        ? ((await authDb.accounts.getById(accountId)) as Doc<"account">)
-        : (await ctx.db.get(accountId))!,
-    user:
-      authDb !== null
-        ? ((await authDb.users.getById(userId)) as unknown as Doc<"user">)
-        : (await ctx.db.get(userId))!,
+    account: (await db.accounts.getById(accountId)) as Doc<"account">,
+    user: (await db.users.getById(userId)) as unknown as Doc<"user">,
   };
 }
 
@@ -104,7 +90,7 @@ export const callCreateAccountFromCredentials = async (
   ctx: ActionCtx,
   args: Infer<typeof createAccountFromCredentialsArgs>,
 ): Promise<ReturnType> => {
-  return ctx.runMutation("auth:store" as any, {
+  return ctx.runMutation(AUTH_STORE_REF, {
     args: {
       type: "createAccountFromCredentials",
       ...args,

@@ -6,6 +6,7 @@ import {
   maybeGenerateTokensForSession,
 } from "../sessions.js";
 import { LOG_LEVELS, logWithLevel } from "../utils.js";
+import { AUTH_STORE_REF } from "./storeRef.js";
 
 export const signInArgs = v.object({
   userId: v.string(),
@@ -42,7 +43,7 @@ export const callSignIn = async (
   ctx: ActionCtx,
   args: Infer<typeof signInArgs>,
 ): Promise<ReturnType> => {
-  return ctx.runMutation("auth:store" as any, {
+  return ctx.runMutation(AUTH_STORE_REF, {
     args: {
       type: "signIn",
       ...args,

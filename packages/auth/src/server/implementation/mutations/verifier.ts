@@ -2,7 +2,8 @@ import { GenericId } from "convex/values";
 import { ActionCtx, MutationCtx } from "../types.js";
 import { getAuthSessionId } from "../sessions.js";
 import * as Provider from "../provider.js";
-import { createAuthDb } from "../db.js";
+import { authDb } from "../db.js";
+import { AUTH_STORE_REF } from "./storeRef.js";
 
 type ReturnType = GenericId<"verifier">;
 
@@ -11,17 +12,11 @@ export async function verifierImpl(
   config: Provider.Config,
 ): Promise<ReturnType> {
   const sessionId = (await getAuthSessionId(ctx)) ?? undefined;
-  if (config.component !== undefined) {
-    return (await createAuthDb(ctx, config.component).verifiers.create(sessionId)) as
-      ReturnType;
-  }
-  return await ctx.db.insert("verifier", {
-    sessionId,
-  });
+  return (await authDb(ctx, config).verifiers.create(sessionId)) as ReturnType;
 }
 
 export const callVerifier = async (ctx: ActionCtx): Promise<ReturnType> => {
-  return ctx.runMutation("auth:store" as any, {
+  return ctx.runMutation(AUTH_STORE_REF, {
     args: {
       type: "verifier",
     },

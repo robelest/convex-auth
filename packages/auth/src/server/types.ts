@@ -30,12 +30,12 @@ export type ConvexAuthConfig = {
    */
   providers: AuthProviderConfig[];
   /**
-   * Optional auth component reference from `components.auth`.
+   * Auth component reference from `components.auth`.
    *
-   * When provided, core auth storage operations are executed through
-   * the component API boundary instead of direct table access.
+   * Core auth storage operations are executed through
+   * the component API boundary.
    */
-  component?: AuthComponentApi;
+  component: AuthComponentApi;
   /**
    * Theme used for emails.
    * See [Auth.js theme docs](https://authjs.dev/reference/core/types#theme).
@@ -416,10 +416,6 @@ export type AuthComponentApi = {
     verificationCodeGetByCode: FunctionReference<"query", "internal">;
     verificationCodeCreate: FunctionReference<"mutation", "internal">;
     verificationCodeDelete: FunctionReference<"mutation", "internal">;
-    verificationGetByAccountId?: FunctionReference<"query", "internal">;
-    verificationGetByCode?: FunctionReference<"query", "internal">;
-    verificationCreate?: FunctionReference<"mutation", "internal">;
-    verificationDelete?: FunctionReference<"mutation", "internal">;
     refreshTokenCreate: FunctionReference<"mutation", "internal">;
     refreshTokenGetById: FunctionReference<"query", "internal">;
     refreshTokenPatch: FunctionReference<"mutation", "internal">;
@@ -427,21 +423,10 @@ export type AuthComponentApi = {
     refreshTokenListBySession: FunctionReference<"query", "internal">;
     refreshTokenDeleteAll: FunctionReference<"mutation", "internal">;
     refreshTokenGetActive: FunctionReference<"query", "internal">;
-    tokenCreate?: FunctionReference<"mutation", "internal">;
-    tokenGetById?: FunctionReference<"query", "internal">;
-    tokenPatch?: FunctionReference<"mutation", "internal">;
-    tokenGetChildren?: FunctionReference<"query", "internal">;
-    tokenListBySession?: FunctionReference<"query", "internal">;
-    tokenDeleteAll?: FunctionReference<"mutation", "internal">;
-    tokenGetActive?: FunctionReference<"query", "internal">;
     rateLimitGet: FunctionReference<"query", "internal">;
     rateLimitCreate: FunctionReference<"mutation", "internal">;
     rateLimitPatch: FunctionReference<"mutation", "internal">;
     rateLimitDelete: FunctionReference<"mutation", "internal">;
-    limitGet?: FunctionReference<"query", "internal">;
-    limitCreate?: FunctionReference<"mutation", "internal">;
-    limitPatch?: FunctionReference<"mutation", "internal">;
-    limitDelete?: FunctionReference<"mutation", "internal">;
     groupCreate: FunctionReference<"mutation", "internal">;
     groupGet: FunctionReference<"query", "internal">;
     groupList: FunctionReference<"query", "internal">;

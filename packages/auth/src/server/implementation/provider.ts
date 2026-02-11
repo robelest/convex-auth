@@ -1,4 +1,5 @@
 import { AuthProviderMaterializedConfig } from "../types.js";
+import { ConvexAuthMaterializedConfig } from "../types.js";
 
 export async function hash(provider: any, secret: string) {
   if (provider.type !== "credentials") {
@@ -35,4 +36,4 @@ export type GetProviderOrThrowFunc = (
   allowExtraProviders?: boolean,
 ) => AuthProviderMaterializedConfig;
 
-export type Config = any;
+export type Config = ConvexAuthMaterializedConfig;

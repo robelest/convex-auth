@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
 // ============================================================================
@@ -403,23 +403,6 @@ export const rateLimitDelete = mutation({
   },
 });
 
-// Aliases for backward compatibility with internal references
-export const verificationGetByAccountId = verificationCodeGetByAccountId;
-export const verificationGetByCode = verificationCodeGetByCode;
-export const verificationCreate = verificationCodeCreate;
-export const verificationDelete = verificationCodeDelete;
-export const tokenCreate = refreshTokenCreate;
-export const tokenGetById = refreshTokenGetById;
-export const tokenPatch = refreshTokenPatch;
-export const tokenGetChildren = refreshTokenGetChildren;
-export const tokenListBySession = refreshTokenListBySession;
-export const tokenDeleteAll = refreshTokenDeleteAll;
-export const tokenGetActive = refreshTokenGetActive;
-export const limitGet = rateLimitGet;
-export const limitCreate = rateLimitCreate;
-export const limitPatch = rateLimitPatch;
-export const limitDelete = rateLimitDelete;
-
 // ============================================================================
 // Groups
 // ============================================================================
@@ -524,6 +507,9 @@ export const groupDelete = mutation({
  * "member", "viewer"). The auth component stores it but does not enforce
  * access control — your application defines what each role means.
  *
+ * Throws `ConvexError` with code `DUPLICATE_MEMBERSHIP` when the user is
+ * already a member of the target group.
+ *
  * @returns The ID of the new member record.
  */
 export const memberAdd = mutation({
@@ -535,6 +521,21 @@ export const memberAdd = mutation({
     extend: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    const existingMembership = await ctx.db
+      .query("member")
+      .withIndex("groupIdAndUserId", (q) =>
+        q.eq("groupId", args.groupId).eq("userId", args.userId),
+      )
+      .unique();
+    if (existingMembership !== null) {
+      throw new ConvexError({
+        code: "DUPLICATE_MEMBERSHIP",
+        message: "User is already a member of this group",
+        groupId: args.groupId,
+        userId: args.userId,
+        existingMemberId: existingMembership._id,
+      });
+    }
     return await ctx.db.insert("member", args);
   },
 });
@@ -618,6 +619,11 @@ export const memberUpdate = mutation({
  * the invite to a specific group. The invitation is sent to an email address
  * and includes a hashed token for secure acceptance.
  *
+ * Throws `ConvexError` with code `DUPLICATE_INVITE` when a pending invite
+ * already exists for the same email and scope:
+ * - group invite: same `email` + same `groupId`
+ * - platform invite: same `email` with no `groupId`
+ *
  * @returns The ID of the new invite record.
  */
 export const inviteCreate = mutation({
@@ -637,6 +643,40 @@ export const inviteCreate = mutation({
     extend: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    if (args.groupId !== undefined) {
+      const existingGroupInvite = await ctx.db
+        .query("invite")
+        .withIndex("groupIdAndStatus", (q) =>
+          q.eq("groupId", args.groupId).eq("status", "pending"),
+        )
+        .filter((q) => q.eq(q.field("email"), args.email))
+        .first();
+      if (existingGroupInvite !== null) {
+        throw new ConvexError({
+          code: "DUPLICATE_INVITE",
+          message: "A pending invite already exists for this email in this group",
+          email: args.email,
+          groupId: args.groupId,
+          existingInviteId: existingGroupInvite._id,
+        });
+      }
+    } else {
+      const existingPlatformInvite = await ctx.db
+        .query("invite")
+        .withIndex("emailAndStatus", (q) =>
+          q.eq("email", args.email).eq("status", "pending"),
+        )
+        .filter((q) => q.eq(q.field("groupId"), undefined))
+        .first();
+      if (existingPlatformInvite !== null) {
+        throw new ConvexError({
+          code: "DUPLICATE_INVITE",
+          message: "A pending platform invite already exists for this email",
+          email: args.email,
+          existingInviteId: existingPlatformInvite._id,
+        });
+      }
+    }
     return await ctx.db.insert("invite", args);
   },
 });
@@ -683,7 +723,7 @@ export const inviteList = query({
     if (status !== undefined) {
       return await ctx.db
         .query("invite")
-        .filter((q) => q.eq(q.field("status"), status))
+        .withIndex("status", (q) => q.eq("status", status))
         .collect();
     }
     return await ctx.db.query("invite").collect();
@@ -691,13 +731,33 @@ export const inviteList = query({
 });
 
 /**
- * Accept an invitation. Marks the invite as "accepted" and records the
- * acceptance timestamp. The caller is responsible for creating the
- * corresponding member record.
+ * Accept a pending invitation.
+ *
+ * Marks the invite as "accepted" and records the acceptance timestamp.
+ * Throws a structured `ConvexError` when the invite doesn't exist or is not
+ * currently pending.
+ *
+ * The caller is responsible for creating the corresponding member record.
  */
 export const inviteAccept = mutation({
   args: { inviteId: v.id("invite") },
   handler: async (ctx, { inviteId }) => {
+    const invite = await ctx.db.get(inviteId);
+    if (invite === null) {
+      throw new ConvexError({
+        code: "INVITE_NOT_FOUND",
+        message: "Invite not found",
+        inviteId,
+      });
+    }
+    if (invite.status !== "pending") {
+      throw new ConvexError({
+        code: "INVITE_NOT_PENDING",
+        message: `Cannot accept invite with status "${invite.status}"`,
+        inviteId,
+        currentStatus: invite.status,
+      });
+    }
     await ctx.db.patch(inviteId, {
       status: "accepted",
       acceptedTime: Date.now(),
@@ -705,10 +765,31 @@ export const inviteAccept = mutation({
   },
 });
 
-/** Revoke a pending invitation. Marks the invite as "revoked". */
+/**
+ * Revoke a pending invitation.
+ *
+ * Marks the invite as "revoked". Throws a structured `ConvexError` when the
+ * invite doesn't exist or is not currently pending.
+ */
 export const inviteRevoke = mutation({
   args: { inviteId: v.id("invite") },
   handler: async (ctx, { inviteId }) => {
+    const invite = await ctx.db.get(inviteId);
+    if (invite === null) {
+      throw new ConvexError({
+        code: "INVITE_NOT_FOUND",
+        message: "Invite not found",
+        inviteId,
+      });
+    }
+    if (invite.status !== "pending") {
+      throw new ConvexError({
+        code: "INVITE_NOT_PENDING",
+        message: `Cannot revoke invite with status "${invite.status}"`,
+        inviteId,
+        currentStatus: invite.status,
+      });
+    }
     await ctx.db.patch(inviteId, { status: "revoked" });
   },
 });

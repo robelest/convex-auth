@@ -146,34 +146,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
-      limitCreate: FunctionReference<
-        "mutation",
-        "internal",
-        { attemptsLeft: number; identifier: string; lastAttemptTime: number },
-        any,
-        Name
-      >;
-      limitDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { rateLimitId: string },
-        any,
-        Name
-      >;
-      limitGet: FunctionReference<
-        "query",
-        "internal",
-        { identifier: string },
-        any,
-        Name
-      >;
-      limitPatch: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; rateLimitId: string },
-        any,
-        Name
-      >;
       memberAdd: FunctionReference<
         "mutation",
         "internal",
@@ -338,59 +310,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
-      tokenCreate: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          expirationTime: number;
-          parentRefreshTokenId?: string;
-          sessionId: string;
-        },
-        any,
-        Name
-      >;
-      tokenDeleteAll: FunctionReference<
-        "mutation",
-        "internal",
-        { sessionId: string },
-        any,
-        Name
-      >;
-      tokenGetActive: FunctionReference<
-        "query",
-        "internal",
-        { sessionId: string },
-        any,
-        Name
-      >;
-      tokenGetById: FunctionReference<
-        "query",
-        "internal",
-        { refreshTokenId: string },
-        any,
-        Name
-      >;
-      tokenGetChildren: FunctionReference<
-        "query",
-        "internal",
-        { parentRefreshTokenId: string; sessionId: string },
-        any,
-        Name
-      >;
-      tokenListBySession: FunctionReference<
-        "query",
-        "internal",
-        { sessionId: string },
-        any,
-        Name
-      >;
-      tokenPatch: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; refreshTokenId: string },
-        any,
-        Name
-      >;
       userFindByVerifiedEmail: FunctionReference<
         "query",
         "internal",
@@ -463,42 +382,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         Name
       >;
       verificationCodeGetByCode: FunctionReference<
-        "query",
-        "internal",
-        { code: string },
-        any,
-        Name
-      >;
-      verificationCreate: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          accountId: string;
-          code: string;
-          emailVerified?: string;
-          expirationTime: number;
-          phoneVerified?: string;
-          provider: string;
-          verifier?: string;
-        },
-        any,
-        Name
-      >;
-      verificationDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { verificationCodeId: string },
-        any,
-        Name
-      >;
-      verificationGetByAccountId: FunctionReference<
-        "query",
-        "internal",
-        { accountId: string },
-        any,
-        Name
-      >;
-      verificationGetByCode: FunctionReference<
         "query",
         "internal",
         { code: string },

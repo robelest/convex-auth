@@ -1,7 +1,8 @@
 import { GenericId, Infer, v } from "convex/values";
 import { ActionCtx, MutationCtx } from "../types.js";
 import * as Provider from "../provider.js";
-import { createAuthDb } from "../db.js";
+import { authDb } from "../db.js";
+import { AUTH_STORE_REF } from "./storeRef.js";
 
 export const verifierSignatureArgs = v.object({
   verifier: v.string(),
@@ -16,26 +17,19 @@ export async function verifierSignatureImpl(
   config: Provider.Config,
 ): Promise<ReturnType> {
   const { verifier, signature } = args;
-  const authDb =
-    config.component !== undefined ? createAuthDb(ctx, config.component) : null;
-  const verifierDoc =
-    authDb !== null
-      ? await authDb.verifiers.getById(verifier as GenericId<"verifier">)
-      : await ctx.db.get(verifier as GenericId<"verifier">);
+  const db = authDb(ctx, config);
+  const verifierDoc = await db.verifiers.getById(verifier as GenericId<"verifier">);
   if (verifierDoc === null) {
     throw new Error("Invalid verifier");
   }
-  if (authDb !== null) {
-    return await authDb.verifiers.patch(verifierDoc._id, { signature });
-  }
-  return await ctx.db.patch(verifierDoc._id, { signature });
+  return await db.verifiers.patch(verifierDoc._id, { signature });
 }
 
 export const callVerifierSignature = async (
   ctx: ActionCtx,
   args: Infer<typeof verifierSignatureArgs>,
 ): Promise<void> => {
-  return ctx.runMutation("auth:store" as any, {
+  return ctx.runMutation(AUTH_STORE_REF, {
     args: {
       type: "verifierSignature",
       ...args,

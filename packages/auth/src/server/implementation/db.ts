@@ -9,9 +9,12 @@ type ActionCtxLike = Pick<
 
 type CtxLike = MutationCtxLike | ActionCtxLike;
 
-export type AuthDb = ReturnType<typeof createAuthDb>;
+export type AuthDbConfig = { component: AuthComponentApi };
 
-export function createAuthDb(ctx: CtxLike, component: AuthComponentApi) {
+export type AuthDb = ReturnType<typeof authDb>;
+
+export function authDb(ctx: CtxLike, config: AuthDbConfig) {
+  const component = config.component;
   return {
     users: {
       getById: (userId: string) =>

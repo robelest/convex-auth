@@ -80,8 +80,10 @@ export type SignOutAction = FunctionReferenceFromExport<
  *
  * ```ts filename="convex/auth.ts"
  * import { Auth } from "@robelest/convex-auth/component";
+ * import { components } from "./_generated/api";
  *
  * export const { auth, signIn, signOut, store } = Auth({
+ *   component: components.auth,
  *   providers: [],
  * });
  * ```
@@ -119,14 +121,6 @@ export function Auth(config_: ConvexAuthConfig) {
   const enrichCtx = <DataModel extends GenericDataModel>(
     ctx: GenericActionCtx<DataModel>,
   ) => ({ ...ctx, auth: { ...ctx.auth, config } });
-  const requireComponent = () => {
-    if (config.component === undefined) {
-      throw new Error(
-        "Auth component is not configured. Pass `component: components.auth` in Auth config.",
-      );
-    }
-    return config.component;
-  };
   type ComponentCtx = Pick<
     GenericActionCtx<GenericDataModel>,
     "runQuery" | "runMutation"
@@ -164,8 +158,7 @@ export function Auth(config_: ConvexAuthConfig) {
        * Retrieve a user document by their ID.
        */
       get: async (ctx: ComponentReadCtx, userId: string) => {
-        const component = requireComponent();
-        return await ctx.runQuery(component.public.userGetById, { userId });
+        return await ctx.runQuery(config.component.public.userGetById, { userId });
       },
       /**
        * Get the currently signed-in user's document, or `null` if not
@@ -176,8 +169,7 @@ export function Auth(config_: ConvexAuthConfig) {
         if (userId === null) {
           return null;
         }
-        const component = requireComponent();
-        return await ctx.runQuery(component.public.userGetById, { userId });
+        return await ctx.runQuery(config.component.public.userGetById, { userId });
       },
       /**
        * Query a user's group memberships.
@@ -188,8 +180,7 @@ export function Auth(config_: ConvexAuthConfig) {
          * include the `groupId`, `role`, `status`, and `extend` for each.
          */
         list: async (ctx: ComponentReadCtx, opts: { userId: string }) => {
-          const component = requireComponent();
-          return await ctx.runQuery(component.public.memberListByUser, opts);
+          return await ctx.runQuery(config.component.public.memberListByUser, opts);
         },
         /**
          * Look up a user's membership in a specific group. Returns the member
@@ -200,9 +191,8 @@ export function Auth(config_: ConvexAuthConfig) {
           ctx: ComponentReadCtx,
           opts: { userId: string; groupId: string },
         ) => {
-          const component = requireComponent();
           return await ctx.runQuery(
-            component.public.memberGetByGroupAndUser,
+            config.component.public.memberGetByGroupAndUser,
             opts,
           );
         },
@@ -236,9 +226,8 @@ export function Auth(config_: ConvexAuthConfig) {
           extend?: Record<string, unknown>;
         },
       ): Promise<string> => {
-        const component = requireComponent();
         return (await ctx.runMutation(
-          component.public.groupCreate,
+          config.component.public.groupCreate,
           data,
         )) as string;
       },
@@ -246,16 +235,14 @@ export function Auth(config_: ConvexAuthConfig) {
        * Retrieve a group by its ID. Returns `null` if not found.
        */
       get: async (ctx: ComponentReadCtx, groupId: string) => {
-        const component = requireComponent();
-        return await ctx.runQuery(component.public.groupGet, { groupId });
+        return await ctx.runQuery(config.component.public.groupGet, { groupId });
       },
       /**
        * List groups. When `parentGroupId` is provided, returns children of
        * that group. When omitted, returns root-level groups (no parent).
        */
       list: async (ctx: ComponentReadCtx, opts?: { parentGroupId?: string }) => {
-        const component = requireComponent();
-        return await ctx.runQuery(component.public.groupList, {
+        return await ctx.runQuery(config.component.public.groupList, {
           parentGroupId: opts?.parentGroupId,
         });
       },
@@ -267,8 +254,7 @@ export function Auth(config_: ConvexAuthConfig) {
         groupId: string,
         data: Record<string, unknown>,
       ) => {
-        const component = requireComponent();
-        await ctx.runMutation(component.public.groupUpdate, { groupId, data });
+        await ctx.runMutation(config.component.public.groupUpdate, { groupId, data });
       },
       /**
        * Delete a group and cascade to all descendants. Deletes child groups
@@ -276,8 +262,7 @@ export function Auth(config_: ConvexAuthConfig) {
        * descendants.
        */
       delete: async (ctx: ComponentCtx, groupId: string) => {
-        const component = requireComponent();
-        await ctx.runMutation(component.public.groupDelete, { groupId });
+        await ctx.runMutation(config.component.public.groupDelete, { groupId });
       },
 
       /**
@@ -296,6 +281,8 @@ export function Auth(config_: ConvexAuthConfig) {
          * @param data.role - Application-defined role (e.g. "owner", "admin", "member").
          * @param data.status - Optional membership status (e.g. "active", "suspended").
          * @param data.extend - Optional arbitrary JSON extension data.
+         * @throws ConvexError with code `DUPLICATE_MEMBERSHIP` if the user is
+         * already a member of the target group.
          * @returns The ID of the new member record.
          */
         add: async (
@@ -308,9 +295,8 @@ export function Auth(config_: ConvexAuthConfig) {
             extend?: Record<string, unknown>;
           },
         ): Promise<string> => {
-          const component = requireComponent();
           return (await ctx.runMutation(
-            component.public.memberAdd,
+            config.component.public.memberAdd,
             data,
           )) as string;
         },
@@ -318,22 +304,19 @@ export function Auth(config_: ConvexAuthConfig) {
          * Retrieve a member record by its ID. Returns `null` if not found.
          */
         get: async (ctx: ComponentReadCtx, memberId: string) => {
-          const component = requireComponent();
-          return await ctx.runQuery(component.public.memberGet, { memberId });
+          return await ctx.runQuery(config.component.public.memberGet, { memberId });
         },
         /**
          * List all members of a group.
          */
         list: async (ctx: ComponentReadCtx, opts: { groupId: string }) => {
-          const component = requireComponent();
-          return await ctx.runQuery(component.public.memberList, opts);
+          return await ctx.runQuery(config.component.public.memberList, opts);
         },
         /**
          * Remove a member from a group by deleting the member record.
          */
         remove: async (ctx: ComponentCtx, memberId: string) => {
-          const component = requireComponent();
-          await ctx.runMutation(component.public.memberRemove, { memberId });
+          await ctx.runMutation(config.component.public.memberRemove, { memberId });
         },
         /**
          * Update a member's fields (role, status, extend).
@@ -347,8 +330,7 @@ export function Auth(config_: ConvexAuthConfig) {
           memberId: string,
           data: Record<string, unknown>,
         ) => {
-          const component = requireComponent();
-          await ctx.runMutation(component.public.memberUpdate, {
+          await ctx.runMutation(config.component.public.memberUpdate, {
             memberId,
             data,
           });
@@ -374,6 +356,8 @@ export function Auth(config_: ConvexAuthConfig) {
        * @param data.status - Initial status (typically "pending").
        * @param data.expiresTime - Timestamp when the invite expires.
        * @param data.extend - Optional arbitrary JSON extension data.
+       * @throws ConvexError with code `DUPLICATE_INVITE` if a pending invite
+       * already exists for this email and scope.
        * @returns The ID of the new invite record.
        */
       create: async (
@@ -389,15 +373,13 @@ export function Auth(config_: ConvexAuthConfig) {
           extend?: Record<string, unknown>;
         },
       ): Promise<string> => {
-        const component = requireComponent();
-        return (await ctx.runMutation(component.public.inviteCreate, data)) as string;
+        return (await ctx.runMutation(config.component.public.inviteCreate, data)) as string;
       },
       /**
        * Retrieve an invite by its ID. Returns `null` if not found.
        */
       get: async (ctx: ComponentReadCtx, inviteId: string) => {
-        const component = requireComponent();
-        return await ctx.runQuery(component.public.inviteGet, { inviteId });
+        return await ctx.runQuery(config.component.public.inviteGet, { inviteId });
       },
       /**
        * List invites, optionally filtered by group and/or status.
@@ -409,8 +391,7 @@ export function Auth(config_: ConvexAuthConfig) {
           status?: "pending" | "accepted" | "revoked" | "expired";
         },
       ) => {
-        const component = requireComponent();
-        return await ctx.runQuery(component.public.inviteList, {
+        return await ctx.runQuery(config.component.public.inviteList, {
           groupId: opts?.groupId,
           status: opts?.status,
         });
@@ -418,18 +399,47 @@ export function Auth(config_: ConvexAuthConfig) {
       /**
        * Accept an invitation. Marks the invite as "accepted" and records
        * the timestamp. If the invite has a group, the caller is responsible
-       * for creating the member record via `auth.group.member.add`.
+       * for creating the member record via `auth.group.member.add` in the
+       * same Convex mutation for transactional safety.
+        *
+        * @throws ConvexError with code `INVITE_NOT_FOUND` when the invite does
+        * not exist.
+        * @throws ConvexError with code `INVITE_NOT_PENDING` when the invite is
+        * not in `pending` status.
+       *
+       * ```ts
+        * export const acceptInvite = mutation({
+        *   args: { inviteId: v.string() },
+       *   handler: async (ctx, { inviteId }) => {
+       *     const userId = await auth.user.require(ctx);
+       *     const invite = await auth.invite.get(ctx, inviteId);
+       *     if (!invite) throw new Error("Invite not found");
+       *
+       *     await auth.invite.accept(ctx, inviteId);
+       *     if (invite.groupId) {
+       *       await auth.group.member.add(ctx, {
+       *         groupId: invite.groupId,
+       *         userId,
+       *         role: invite.role,
+       *       });
+       *     }
+       *   },
+       * });
+       * ```
        */
       accept: async (ctx: ComponentCtx, inviteId: string) => {
-        const component = requireComponent();
-        await ctx.runMutation(component.public.inviteAccept, { inviteId });
+        await ctx.runMutation(config.component.public.inviteAccept, { inviteId });
       },
-      /**
-       * Revoke a pending invitation.
-       */
+       /**
+        * Revoke a pending invitation.
+        *
+        * @throws ConvexError with code `INVITE_NOT_FOUND` when the invite does
+        * not exist.
+        * @throws ConvexError with code `INVITE_NOT_PENDING` when the invite is
+        * not in `pending` status.
+        */
       revoke: async (ctx: ComponentCtx, inviteId: string) => {
-        const component = requireComponent();
-        await ctx.runMutation(component.public.inviteRevoke, { inviteId });
+        await ctx.runMutation(config.component.public.inviteRevoke, { inviteId });
       },
     },
     /**
