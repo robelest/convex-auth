@@ -34,6 +34,8 @@ type AuthSession = {
 type SignInResult = {
   signingIn: boolean;
   redirect?: URL;
+  totpRequired?: boolean;
+  verifier?: string;
 };
 
 /** Reactive auth state snapshot returned by `auth.state` and `auth.onChange`. */
@@ -339,6 +341,9 @@ export function client(options: ClientOptions) {
         }
         return { signingIn: false, redirect: redirectUrl };
       }
+      if (result.totpRequired) {
+        return { signingIn: false, totpRequired: true, verifier: result.verifier };
+      }
       if (result.tokens !== undefined) {
         // Proxy returns { token, refreshToken: "dummy" }.
         // Store JWT in memory only — real refresh token is in httpOnly cookie.
@@ -367,6 +372,9 @@ export function client(options: ClientOptions) {
         window.location.href = redirectUrl.toString();
       }
       return { signingIn: false, redirect: redirectUrl };
+    }
+    if (result.totpRequired) {
+      return { signingIn: false, totpRequired: true, verifier: result.verifier };
     }
     if (result.tokens !== undefined) {
       await setToken({
@@ -891,6 +899,131 @@ export function client(options: ClientOptions) {
     },
   };
 
+  const totp = {
+    /**
+     * Start TOTP enrollment. Must be authenticated.
+     *
+     * Returns a URI for QR code display and a base32 secret for manual entry.
+     *
+     * ```ts
+     * const setup = await auth.totp.setup();
+     * // Display QR code from setup.uri
+     * // Or show setup.secret for manual entry
+     * ```
+     */
+    setup: async (
+      opts?: { name?: string; accountName?: string },
+    ): Promise<{ uri: string; secret: string; verifier: string; totpId: string }> => {
+      const params: Record<string, any> = { flow: "setup" };
+      if (opts?.name) params.name = opts.name;
+      if (opts?.accountName) params.accountName = opts.accountName;
+
+      if (proxy) {
+        const result = await proxyFetch({
+          action: "auth:signIn",
+          args: { provider: "totp", params },
+        });
+        return { uri: result.totpSetup.uri, secret: result.totpSetup.secret, verifier: result.verifier, totpId: result.totpSetup.totpId };
+      }
+
+      const result = await convex.action("auth:signIn" as any, {
+        provider: "totp",
+        params,
+      });
+      return { uri: result.totpSetup.uri, secret: result.totpSetup.secret, verifier: result.verifier, totpId: result.totpSetup.totpId };
+    },
+
+    /**
+     * Complete TOTP enrollment by verifying the first code from the authenticator app.
+     *
+     * ```ts
+     * await auth.totp.confirm({ code: "123456", verifier: setup.verifier, totpId: setup.totpId });
+     * ```
+     */
+    confirm: async (opts: {
+      code: string;
+      verifier: string;
+      totpId: string;
+    }): Promise<void> => {
+      const params: Record<string, any> = {
+        flow: "confirm",
+        code: opts.code,
+        totpId: opts.totpId,
+      };
+
+      if (proxy) {
+        const result = await proxyFetch({
+          action: "auth:signIn",
+          args: { provider: "totp", params, verifier: opts.verifier },
+        });
+        if (result.tokens) {
+          await setToken({
+            shouldStore: false,
+            tokens: result.tokens === null ? null : { token: result.tokens.token },
+          });
+        }
+        return;
+      }
+
+      const result = await convex.action("auth:signIn" as any, {
+        provider: "totp",
+        params,
+        verifier: opts.verifier,
+      });
+      if (result.tokens) {
+        await setToken({
+          shouldStore: true,
+          tokens: (result.tokens as AuthSession | null) ?? null,
+        });
+      }
+    },
+
+    /**
+     * Complete 2FA verification during sign-in.
+     *
+     * Called after a credentials sign-in returns `totpRequired: true`.
+     *
+     * ```ts
+     * const result = await auth.signIn("password", { email, password });
+     * if (result.totpRequired) {
+     *   await auth.totp.verify({ code: "123456", verifier: result.verifier! });
+     * }
+     * ```
+     */
+    verify: async (opts: { code: string; verifier: string }): Promise<void> => {
+      const params: Record<string, any> = {
+        flow: "verify",
+        code: opts.code,
+      };
+
+      if (proxy) {
+        const result = await proxyFetch({
+          action: "auth:signIn",
+          args: { provider: "totp", params, verifier: opts.verifier },
+        });
+        if (result.tokens) {
+          await setToken({
+            shouldStore: false,
+            tokens: result.tokens === null ? null : { token: result.tokens.token },
+          });
+        }
+        return;
+      }
+
+      const result = await convex.action("auth:signIn" as any, {
+        provider: "totp",
+        params,
+        verifier: opts.verifier,
+      });
+      if (result.tokens) {
+        await setToken({
+          shouldStore: true,
+          tokens: (result.tokens as AuthSession | null) ?? null,
+        });
+      }
+    },
+  };
+
   return {
     /** Current auth state snapshot. */
     get state(): AuthState {
@@ -901,6 +1034,8 @@ export function client(options: ClientOptions) {
     onChange,
     /** Passkey (WebAuthn) authentication helpers. */
     passkey,
+    /** TOTP two-factor authentication helpers. */
+    totp,
   };
 }
 

@@ -4,6 +4,7 @@ import anonymous from "@robelest/convex-auth/providers/anonymous";
 import email from "@robelest/convex-auth/providers/email";
 import passkey from "@robelest/convex-auth/providers/passkey";
 import password from "@robelest/convex-auth/providers/password";
+import totp from "@robelest/convex-auth/providers/totp";
 import phone from "@robelest/convex-auth/providers/phone";
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
 import { Auth } from "@robelest/convex-auth/component";
@@ -116,6 +117,7 @@ export const { auth, signIn, signOut, store } = Auth({
       verify: resendOtp,
     }),
     passkey,
+    totp({ issuer: "ConvexAuth Example" }),
     anonymous,
   ],
 });

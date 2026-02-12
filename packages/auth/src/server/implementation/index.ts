@@ -587,6 +587,39 @@ export function Auth(config_: ConvexAuthConfig) {
       },
     },
     /**
+     * Manage TOTP two-factor authentication enrollments for users.
+     *
+     * ```ts
+     * const enrollments = await auth.totp.list(ctx, { userId });
+     * await auth.totp.remove(ctx, totpId);
+     * ```
+     */
+    totp: {
+      /**
+       * List all TOTP enrollments for a user.
+       *
+       * @param opts.userId - The user whose enrollments to list.
+       * @returns Array of TOTP enrollment records.
+       */
+      list: async (ctx: ComponentReadCtx, opts: { userId: string }) => {
+        return await ctx.runQuery(
+          config.component.public.totpListByUserId,
+          opts,
+        );
+      },
+      /**
+       * Delete a TOTP enrollment.
+       *
+       * @param totpId - The TOTP document ID to remove.
+       */
+      remove: async (ctx: ComponentCtx, totpId: string) => {
+        await ctx.runMutation(
+          config.component.public.totpDelete,
+          { totpId },
+        );
+      },
+    },
+    /**
      * Add HTTP actions for JWT verification and OAuth sign-in.
      *
      * ```ts
@@ -839,6 +872,8 @@ export function Auth(config_: ConvexAuthConfig) {
         tokens?: Tokens | null;
         started?: boolean;
         options?: Record<string, any>;
+        totpRequired?: boolean;
+        totpSetup?: { uri: string; secret: string; totpId: string };
       }> => {
         if (args.calledBy !== undefined) {
           logWithLevel("INFO", `\`auth:signIn\` called by ${args.calledBy}`);
@@ -861,6 +896,10 @@ export function Auth(config_: ConvexAuthConfig) {
             return { started: true };
           case "passkeyOptions":
             return { options: result.options, verifier: result.verifier };
+          case "totpRequired":
+            return { totpRequired: true, verifier: result.verifier };
+          case "totpSetup":
+            return { totpSetup: { uri: result.uri, secret: result.secret, totpId: result.totpId }, verifier: result.verifier };
           default: {
             const _typecheck: never = result;
             throw new Error(`Unexpected result from signIn, ${result as any}`);
