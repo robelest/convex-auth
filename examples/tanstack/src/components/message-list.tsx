@@ -11,9 +11,7 @@ export function MessageList({
   const listRef = useRef<HTMLOListElement>(null)
 
   useEffect(() => {
-    if (!listRef.current) {
-      return
-    }
+    if (!listRef.current) return
     listRef.current.scrollTo({
       top: listRef.current.scrollHeight,
       behavior: 'smooth',
@@ -23,7 +21,7 @@ export function MessageList({
   return (
     <ol
       ref={listRef}
-      className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-6"
+      className="flex h-full flex-col gap-4 overflow-y-auto p-5"
     >
       {children}
     </ol>

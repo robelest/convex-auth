@@ -18,15 +18,19 @@ export function Message({
   return (
     <li
       className={cn(
-        'flex w-full flex-col gap-1 text-sm',
+        'flex w-full flex-col gap-1',
         fromViewer ? 'items-end' : 'items-start',
       )}
     >
-      <p className="text-muted-foreground px-1 text-xs font-medium">{authorName}</p>
+      <p className="text-muted-foreground/70 px-0.5 font-mono text-[10px] font-medium tracking-wide uppercase">
+        {authorName}
+      </p>
       <p
         className={cn(
-          'bg-card max-w-[min(34rem,85vw)] border px-3 py-2',
-          fromViewer ? 'bg-primary text-primary-foreground border-primary' : 'border-border',
+          'max-w-[min(32rem,80vw)] border px-3.5 py-2 text-sm leading-relaxed',
+          fromViewer
+            ? 'bg-primary text-primary-foreground border-primary'
+            : 'bg-card border-border',
         )}
       >
         {children}

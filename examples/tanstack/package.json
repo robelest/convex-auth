@@ -12,10 +12,11 @@
     "check": "prettier --write . && eslint --fix"
   },
   "dependencies": {
-    "@robelest/convex-auth": "workspace:*",
     "@base-ui/react": "^1.1.0",
     "@fontsource-variable/geist": "^5.2.8",
+    "@fontsource-variable/geist-mono": "^5.2.7",
     "@remixicon/react": "^4.9.0",
+    "@robelest/convex-auth": "workspace:*",
     "@tailwindcss/vite": "^4.0.6",
     "@tanstack/react-devtools": "^0.7.0",
     "@tanstack/react-router": "^1.132.0",
@@ -48,8 +49,8 @@
     "jsdom": "^27.0.0",
     "prettier": "^3.5.3",
     "typescript": "^5.7.2",
-    "vite": "^7.1.7",
-    "vitest": "^3.0.5",
+    "vite": "catalog:",
+    "vitest": "^3.2.4",
     "web-vitals": "^5.1.0"
   }
 }

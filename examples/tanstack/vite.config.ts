@@ -13,6 +13,9 @@ const rootDir = fileURLToPath(new URL('../../', import.meta.url))
 
 const config = defineConfig({
   envDir: rootDir,
+  server: {
+    allowedHosts: true,
+  },
   resolve: {
     alias: {
       '@convex': path.resolve(rootDir, 'convex'),

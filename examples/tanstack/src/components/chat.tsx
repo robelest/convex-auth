@@ -1,3 +1,4 @@
+import { RiSendPlaneLine } from '@remixicon/react'
 import { api } from '@convex/_generated/api'
 import { useMutation, useQuery } from 'convex/react'
 import { useMemo, useState } from 'react'
@@ -6,7 +7,6 @@ import type { FormEvent } from 'react'
 import { Message } from '@/components/message'
 import { MessageList } from '@/components/message-list'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 
 export function Chat({ viewer }: { viewer: string }) {
@@ -21,10 +21,7 @@ export function Chat({ viewer }: { viewer: string }) {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const body = newMessage.trim()
-    if (!body || sending) {
-      return
-    }
-
+    if (!body || sending) return
     setSending(true)
     setError(null)
     try {
@@ -38,11 +35,22 @@ export function Chat({ viewer }: { viewer: string }) {
   }
 
   return (
-    <Card className="mx-auto flex h-[calc(100vh-10rem)] w-full max-w-5xl flex-col">
-      <CardHeader className="border-b">
-        <CardTitle className="text-base">Team Chat</CardTitle>
-      </CardHeader>
-      <CardContent className="min-h-0 flex-1 p-0">
+    <div className="border-border bg-card flex h-[calc(100vh-11rem)] w-full flex-col border">
+      {/* Header */}
+      <div className="border-border flex items-center justify-between border-b px-5 py-3">
+        <div className="flex items-center gap-3">
+          <div className="bg-primary size-2" />
+          <h2 className="font-mono text-xs font-bold tracking-wide uppercase">
+            Team Chat
+          </h2>
+        </div>
+        <span className="text-muted-foreground font-mono text-[10px] tabular-nums">
+          {messageCount} message{messageCount !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {/* Messages */}
+      <div className="min-h-0 flex-1">
         <MessageList dependencyKey={messageCount}>
           {messages?.map((message) => (
             <Message
@@ -55,21 +63,31 @@ export function Chat({ viewer }: { viewer: string }) {
             </Message>
           ))}
         </MessageList>
-      </CardContent>
-      <CardFooter className="flex-col items-stretch gap-2 border-t p-4">
-        <form onSubmit={handleSubmit} className="flex w-full flex-col gap-2 sm:flex-row">
+      </div>
+
+      {/* Input */}
+      <div className="border-border space-y-2 border-t p-4">
+        <form onSubmit={handleSubmit} className="flex gap-2">
           <Input
-            placeholder="Write a message"
+            placeholder="Type a message..."
             value={newMessage}
-            onChange={(event) => setNewMessage(event.target.value)}
+            onChange={(e) => setNewMessage(e.target.value)}
             aria-label="Message"
+            className="flex-1"
           />
-          <Button type="submit" disabled={sending || !newMessage.trim()}>
-            {sending ? 'Sending...' : 'Send'}
+          <Button
+            type="submit"
+            size="icon"
+            disabled={sending || !newMessage.trim()}
+          >
+            <RiSendPlaneLine className="size-4" />
+            <span className="sr-only">Send</span>
           </Button>
         </form>
-        {error ? <p className="text-destructive text-xs">{error}</p> : null}
-      </CardFooter>
-    </Card>
+        {error && (
+          <p className="text-destructive font-mono text-[11px]">{error}</p>
+        )}
+      </div>
+    </div>
   )
 }
