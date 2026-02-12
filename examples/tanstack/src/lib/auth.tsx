@@ -30,10 +30,17 @@ type PasskeyActions = {
   }) => Promise<{ signingIn: boolean }>
 }
 
+type TotpActions = {
+  setup: (opts?: { name?: string; accountName?: string }) => Promise<{ uri: string; secret: string; verifier: string; totpId: string }>
+  confirm: (opts: { code: string; verifier: string; totpId: string }) => Promise<void>
+  verify: (opts: { code: string; verifier: string }) => Promise<void>
+}
+
 const AuthContext = createContext<{
-  signIn: (provider?: string, params?: FormData | Record<string, Value>) => Promise<void>
+  signIn: (provider?: string, params?: FormData | Record<string, Value>) => Promise<{ totpRequired?: boolean; verifier?: string }>
   signOut: () => Promise<void>
   passkey: PasskeyActions
+  totp: TotpActions
   state: AuthState
 } | null>(null)
 
@@ -52,8 +59,8 @@ export function useAuthState() {
 
 /** Access `signIn`, `signOut`, and `passkey` actions. */
 export function useAuthActions() {
-  const { signIn, signOut, passkey } = useAuth()
-  return { signIn, signOut, passkey }
+  const { signIn, signOut, passkey, totp } = useAuth()
+  return { signIn, signOut, passkey, totp }
 }
 
 // ---------------------------------------------------------------------------
@@ -99,10 +106,12 @@ export function ConvexAuthProvider({
   const value = useMemo(
     () => ({
       signIn: async (provider?: string, params?: FormData | Record<string, Value>) => {
-        await auth.signIn(provider, params)
+        const result = await auth.signIn(provider, params)
+        return { totpRequired: result.totpRequired, verifier: result.verifier }
       },
       signOut: auth.signOut,
       passkey: auth.passkey,
+      totp: auth.totp,
       state,
     }),
     [auth, state],

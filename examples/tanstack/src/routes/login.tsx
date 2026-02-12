@@ -85,11 +85,14 @@ function PasswordTab({
   flow: 'signIn' | 'signUp'
   setFlow: (flow: 'signIn' | 'signUp') => void
 }) {
-  const { signIn } = useAuthActions()
+  const { signIn, totp } = useAuthActions()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [totpStep, setTotpStep] = useState(false)
+  const [totpVerifier, setTotpVerifier] = useState<string | null>(null)
+  const [totpCode, setTotpCode] = useState('')
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -97,7 +100,13 @@ function PasswordTab({
     setBusy(true)
     setError(null)
     try {
-      await signIn('password', { email, password, flow })
+      const result = await signIn('password', { email, password, flow })
+      if (result?.totpRequired) {
+        setTotpStep(true)
+        setTotpVerifier(result.verifier ?? null)
+        setBusy(false)
+        return
+      }
       window.location.replace('/chat')
     } catch {
       setError(
@@ -108,6 +117,89 @@ function PasswordTab({
     } finally {
       setBusy(false)
     }
+  }
+
+  const handleTotpVerify = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (busy || !totpVerifier) return
+    setBusy(true)
+    setError(null)
+    try {
+      await totp.verify({ code: totpCode, verifier: totpVerifier })
+      window.location.replace('/chat')
+    } catch {
+      setError('Invalid code. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (totpStep) {
+    return (
+      <div className="space-y-5">
+        <div className="bg-muted/40 border-border flex flex-col items-center gap-4 border p-6">
+          <div className="bg-primary/10 border-primary/20 flex size-14 items-center justify-center border">
+            <RiShieldKeyholeLine className="text-primary size-7" />
+          </div>
+          <div className="space-y-1 text-center">
+            <p className="text-sm font-medium">Two-factor authentication</p>
+            <p className="text-muted-foreground text-xs leading-relaxed">
+              Enter the 6-digit code from your authenticator app.
+            </p>
+          </div>
+        </div>
+
+        <form className="space-y-4" onSubmit={handleTotpVerify}>
+          <div className="space-y-2">
+            <Label htmlFor="totp-code" className="font-mono text-[11px] tracking-wide uppercase">
+              Verification code
+            </Label>
+            <Input
+              id="totp-code"
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="000000"
+              value={totpCode}
+              onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              className="font-mono text-lg tracking-[0.3em] text-center"
+              autoFocus
+              required
+            />
+          </div>
+
+          <Button
+            type="submit"
+            className="w-full font-mono text-xs tracking-wide"
+            disabled={busy || totpCode.length !== 6}
+          >
+            <RiShieldKeyholeLine className="size-4" />
+            {busy ? 'Verifying...' : 'Verify'}
+          </Button>
+        </form>
+
+        {error && (
+          <p className="bg-destructive/10 text-destructive border-destructive/20 border px-3 py-2 font-mono text-[11px]">
+            {error}
+          </p>
+        )}
+
+        <div className="border-border/60 border-t pt-4">
+          <button
+            type="button"
+            onClick={() => {
+              setTotpStep(false)
+              setTotpVerifier(null)
+              setTotpCode('')
+              setError(null)
+            }}
+            className="text-muted-foreground hover:text-foreground w-full text-center font-mono text-[11px] tracking-wide transition-colors"
+          >
+            Back to sign in
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
