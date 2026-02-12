@@ -79,8 +79,31 @@ function materializeAndDefaultProviders(config_: ConvexAuthConfig) {
   );
   const config = { ...config_, providers };
 
+  // setEnvDefaults is from Auth.js and only works with Auth.js provider types.
+  // Filter out passkey providers before passing to setEnvDefaults, then
+  // reinsert them at their original positions.
+  const passkeyIndices: number[] = [];
+  const passkeyProviders: AuthProviderMaterializedConfig[] = [];
+  const filteredProviders = config.providers.filter((p, i) => {
+    if (p.type === "passkey") {
+      passkeyIndices.push(i);
+      passkeyProviders.push(p);
+      return false;
+    }
+    return true;
+  });
+
   // Unfortunately mutates its argument
-  setEnvDefaults(process.env, config as any);
+  const tempConfig = { ...config, providers: filteredProviders };
+  setEnvDefaults(process.env, tempConfig as any);
+
+  // Reinsert passkey providers at their original positions
+  const merged = [...tempConfig.providers];
+  for (let i = 0; i < passkeyIndices.length; i++) {
+    merged.splice(passkeyIndices[i]!, 0, passkeyProviders[i]!);
+  }
+  config.providers = merged;
+
   // Manually do this for new provider type
   config.providers.forEach((provider) => {
     if (provider.type === "phone") {
@@ -94,6 +117,10 @@ function materializeAndDefaultProviders(config_: ConvexAuthConfig) {
 }
 
 function providerDefaults(provider: AuthProviderMaterializedConfig) {
+  // Passkey providers don't use Auth.js options merge or OAuth normalization
+  if (provider.type === "passkey") {
+    return provider;
+  }
   // TODO: Add `redirectProxyUrl` to oauth providers
   const merged = merge(
     provider,

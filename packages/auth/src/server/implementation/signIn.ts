@@ -4,6 +4,7 @@ import {
   ConvexCredentialsConfig,
   EmailConfig,
   GenericActionCtxWithAuthConfig,
+  PasskeyProviderConfig,
   PhoneConfig,
 } from "../types.js";
 import {
@@ -23,6 +24,7 @@ import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects.js";
 import { requireEnv } from "../utils.js";
 import { OAuth2Config, OIDCConfig } from "@auth/core/providers/oauth.js";
 import { generateRandomString } from "./utils.js";
+import { handlePasskey } from "./passkey.js";
 
 const DEFAULT_EMAIL_VERIFICATION_CODE_DURATION_S = 60 * 60 * 24; // 24 hours
 
@@ -50,6 +52,8 @@ export async function signInImpl(
   | { kind: "started"; started: true }
   // OAuth2 and OIDC flows
   | { kind: "redirect"; redirect: string; verifier: string }
+  // Passkey options (challenge + credential options)
+  | { kind: "passkeyOptions"; options: Record<string, any>; verifier: string }
 > {
   if (provider === null && args.refreshToken) {
     const tokens: Tokens = (await callRefreshSession(ctx, {
@@ -83,6 +87,9 @@ export async function signInImpl(
   }
   if (provider.type === "oauth" || provider.type === "oidc") {
     return handleOAuthProvider(ctx, provider, args, options);
+  }
+  if (provider.type === "passkey") {
+    return handlePasskey(ctx, provider, args);
   }
   const _typecheck: never = provider;
   throw new Error(

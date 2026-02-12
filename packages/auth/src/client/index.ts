@@ -551,6 +551,346 @@ export function client(options: ClientOptions) {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Passkey helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Base64url encode/decode helpers for the WebAuthn credential API.
+   * These run client-side only (browser context).
+   */
+  const base64urlEncode = (buffer: ArrayBuffer): string => {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]!);
+    }
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  };
+
+  const base64urlDecode = (str: string): Uint8Array => {
+    const padded = str.replace(/-/g, "+").replace(/_/g, "/");
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  };
+
+  const passkey = {
+    /**
+     * Check if WebAuthn passkeys are supported in the current environment.
+     */
+    isSupported: (): boolean => {
+      return (
+        typeof window !== "undefined" &&
+        typeof window.PublicKeyCredential !== "undefined"
+      );
+    },
+
+    /**
+     * Check if conditional UI (autofill-assisted passkey sign-in) is supported.
+     *
+     * ```ts
+     * if (await auth.passkey.isAutofillSupported()) {
+     *   auth.passkey.authenticate({ autofill: true });
+     * }
+     * ```
+     */
+    isAutofillSupported: async (): Promise<boolean> => {
+      if (typeof window === "undefined") return false;
+      if (typeof window.PublicKeyCredential === "undefined") return false;
+      if (
+        typeof (
+          window.PublicKeyCredential as any
+        ).isConditionalMediationAvailable !== "function"
+      ) {
+        return false;
+      }
+      return (
+        window.PublicKeyCredential as any
+      ).isConditionalMediationAvailable();
+    },
+
+    /**
+     * Register a new passkey for the current or new user.
+     *
+     * Performs the full two-round-trip WebAuthn registration ceremony:
+     * 1. Requests creation options from the server (challenge, RP info)
+     * 2. Calls `navigator.credentials.create()` with the options
+     * 3. Sends the attestation back to the server for verification
+     * 4. Server creates user + account + passkey records and returns tokens
+     *
+     * Works in both SPA and proxy (SSR) modes.
+     *
+     * ```ts
+     * await auth.passkey.register({ name: "MacBook Touch ID" });
+     * ```
+     *
+     * @param opts.name - Friendly name for this passkey
+     * @param opts.email - Email to associate with the new account
+     * @param opts.userName - Username for the credential (defaults to email)
+     * @param opts.userDisplayName - Display name for the credential
+     * @returns `{ signingIn: true }` on success
+     */
+    register: async (
+      opts?: {
+        name?: string;
+        email?: string;
+        userName?: string;
+        userDisplayName?: string;
+      },
+    ): Promise<SignInResult> => {
+      const phase1Params = {
+        flow: "register-options",
+        email: opts?.email,
+        userName: opts?.userName,
+        userDisplayName: opts?.userDisplayName,
+      };
+
+      // Phase 1: Get registration options from server
+      let phase1Result: any;
+      if (proxy) {
+        phase1Result = await proxyFetch({
+          action: "auth:signIn",
+          args: { provider: "passkey", params: phase1Params },
+        });
+      } else {
+        phase1Result = await convex.action("auth:signIn" as any, {
+          provider: "passkey",
+          params: phase1Params,
+        });
+      }
+
+      if (!phase1Result.options) {
+        throw new Error("Server did not return passkey registration options");
+      }
+
+      const options = phase1Result.options;
+
+      // Convert base64url strings to ArrayBuffers for the credential API
+      const createOptions: CredentialCreationOptions = {
+        publicKey: {
+          rp: options.rp,
+          user: {
+            id: base64urlDecode(options.user.id).buffer as ArrayBuffer,
+            name: options.user.name,
+            displayName: options.user.displayName,
+          },
+          challenge: base64urlDecode(options.challenge).buffer as ArrayBuffer,
+          pubKeyCredParams: options.pubKeyCredParams,
+          timeout: options.timeout,
+          attestation: options.attestation,
+          authenticatorSelection: options.authenticatorSelection,
+          excludeCredentials: (options.excludeCredentials ?? []).map(
+            (cred: any) => ({
+              type: cred.type ?? "public-key",
+              id: base64urlDecode(cred.id).buffer as ArrayBuffer,
+              transports: cred.transports,
+            }),
+          ),
+        },
+      };
+
+      // Phase 2: Create credential via browser API
+      const credential = (await navigator.credentials.create(
+        createOptions,
+      )) as PublicKeyCredential | null;
+      if (!credential) {
+        throw new Error("Passkey registration was cancelled");
+      }
+
+      const response =
+        credential.response as AuthenticatorAttestationResponse;
+
+      // Extract transports if available
+      const transports =
+        typeof response.getTransports === "function"
+          ? response.getTransports()
+          : undefined;
+
+      const phase2Params = {
+        flow: "register-verify",
+        clientDataJSON: base64urlEncode(response.clientDataJSON),
+        attestationObject: base64urlEncode(response.attestationObject),
+        transports,
+        passkeyName: opts?.name,
+        email: opts?.email,
+      };
+
+      // Phase 3: Send attestation to server for verification
+      let phase2Result: any;
+      if (proxy) {
+        // In proxy mode the verifier is stored in an httpOnly cookie by the proxy.
+        // We pass it back explicitly so the proxy can forward it to Convex.
+        phase2Result = await proxyFetch({
+          action: "auth:signIn",
+          args: {
+            provider: "passkey",
+            params: phase2Params,
+            verifier: phase1Result.verifier,
+          },
+        });
+      } else {
+        phase2Result = await convex.action("auth:signIn" as any, {
+          provider: "passkey",
+          params: phase2Params,
+          verifier: phase1Result.verifier,
+        });
+      }
+
+      if (phase2Result.tokens) {
+        if (proxy) {
+          await setToken({
+            shouldStore: false,
+            tokens:
+              phase2Result.tokens === null
+                ? null
+                : { token: phase2Result.tokens.token },
+          });
+        } else {
+          await setToken({
+            shouldStore: true,
+            tokens: phase2Result.tokens as AuthSession,
+          });
+        }
+        return { signingIn: true };
+      }
+      return { signingIn: false };
+    },
+
+    /**
+     * Authenticate with an existing passkey.
+     *
+     * Performs the full two-round-trip WebAuthn authentication ceremony:
+     * 1. Requests assertion options from the server (challenge, allowed credentials)
+     * 2. Calls `navigator.credentials.get()` with the options
+     * 3. Sends the assertion back to the server for signature verification
+     * 4. Server verifies signature, updates counter, creates session, returns tokens
+     *
+     * Works in both SPA and proxy (SSR) modes.
+     *
+     * ```ts
+     * // Discoverable credential (no email needed)
+     * await auth.passkey.authenticate();
+     *
+     * // Scoped to a specific user's credentials
+     * await auth.passkey.authenticate({ email: "user@example.com" });
+     *
+     * // Autofill-assisted (conditional UI)
+     * await auth.passkey.authenticate({ autofill: true });
+     * ```
+     *
+     * @param opts.email - Scope to credentials for this email's user
+     * @param opts.autofill - Use conditional mediation (autofill UI)
+     * @returns `{ signingIn: true }` on success
+     */
+    authenticate: async (
+      opts?: { email?: string; autofill?: boolean },
+    ): Promise<SignInResult> => {
+      const phase1Params = {
+        flow: "auth-options",
+        email: opts?.email,
+      };
+
+      // Phase 1: Get assertion options from server
+      let phase1Result: any;
+      if (proxy) {
+        phase1Result = await proxyFetch({
+          action: "auth:signIn",
+          args: { provider: "passkey", params: phase1Params },
+        });
+      } else {
+        phase1Result = await convex.action("auth:signIn" as any, {
+          provider: "passkey",
+          params: phase1Params,
+        });
+      }
+
+      if (!phase1Result.options) {
+        throw new Error("Server did not return passkey authentication options");
+      }
+
+      const options = phase1Result.options;
+
+      // Convert base64url strings to ArrayBuffers for the credential API
+      const getOptions: CredentialRequestOptions = {
+        publicKey: {
+          challenge: base64urlDecode(options.challenge).buffer as ArrayBuffer,
+          timeout: options.timeout,
+          rpId: options.rpId,
+          userVerification: options.userVerification,
+          allowCredentials: (options.allowCredentials ?? []).map(
+            (cred: any) => ({
+              type: cred.type ?? "public-key",
+              id: base64urlDecode(cred.id).buffer as ArrayBuffer,
+              transports: cred.transports,
+            }),
+          ),
+        },
+        ...(opts?.autofill ? { mediation: "conditional" as any } : {}),
+      };
+
+      // Phase 2: Get credential via browser API
+      const credential = (await navigator.credentials.get(
+        getOptions,
+      )) as PublicKeyCredential | null;
+      if (!credential) {
+        throw new Error("Passkey authentication was cancelled");
+      }
+
+      const response =
+        credential.response as AuthenticatorAssertionResponse;
+
+      const phase2Params = {
+        flow: "auth-verify",
+        credentialId: base64urlEncode(credential.rawId),
+        clientDataJSON: base64urlEncode(response.clientDataJSON),
+        authenticatorData: base64urlEncode(response.authenticatorData),
+        signature: base64urlEncode(response.signature),
+      };
+
+      // Phase 3: Send assertion to server for verification
+      let phase2Result: any;
+      if (proxy) {
+        phase2Result = await proxyFetch({
+          action: "auth:signIn",
+          args: {
+            provider: "passkey",
+            params: phase2Params,
+            verifier: phase1Result.verifier,
+          },
+        });
+      } else {
+        phase2Result = await convex.action("auth:signIn" as any, {
+          provider: "passkey",
+          params: phase2Params,
+          verifier: phase1Result.verifier,
+        });
+      }
+
+      if (phase2Result.tokens) {
+        if (proxy) {
+          await setToken({
+            shouldStore: false,
+            tokens:
+              phase2Result.tokens === null
+                ? null
+                : { token: phase2Result.tokens.token },
+          });
+        } else {
+          await setToken({
+            shouldStore: true,
+            tokens: phase2Result.tokens as AuthSession,
+          });
+        }
+        return { signingIn: true };
+      }
+      return { signingIn: false };
+    },
+  };
+
   return {
     /** Current auth state snapshot. */
     get state(): AuthState {
@@ -559,6 +899,8 @@ export function client(options: ClientOptions) {
     signIn,
     signOut,
     onChange,
+    /** Passkey (WebAuthn) authentication helpers. */
+    passkey,
   };
 }
 

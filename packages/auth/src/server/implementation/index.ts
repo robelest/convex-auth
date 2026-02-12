@@ -540,6 +540,53 @@ export function Auth(config_: ConvexAuthConfig) {
       },
     },
     /**
+     * Manage passkey credentials for users.
+     *
+     * ```ts
+     * const passkeys = await auth.passkey.list(ctx, { userId });
+     * await auth.passkey.rename(ctx, passkeyId, "MacBook Touch ID");
+     * await auth.passkey.remove(ctx, passkeyId);
+     * ```
+     */
+    passkey: {
+      /**
+       * List all passkeys for a user.
+       *
+       * @param opts.userId - The user whose passkeys to list.
+       * @returns Array of passkey records with credentialId, name, deviceType,
+       * backedUp, createdAt, and lastUsedAt.
+       */
+      list: async (ctx: ComponentReadCtx, opts: { userId: string }) => {
+        return await ctx.runQuery(
+          config.component.public.passkeyListByUserId,
+          opts,
+        );
+      },
+      /**
+       * Rename a passkey (set a user-friendly display name).
+       *
+       * @param passkeyId - The passkey document ID.
+       * @param name - New display name (e.g. "MacBook Touch ID").
+       */
+      rename: async (ctx: ComponentCtx, passkeyId: string, name: string) => {
+        await ctx.runMutation(
+          config.component.public.passkeyUpdateMeta,
+          { passkeyId, data: { name } },
+        );
+      },
+      /**
+       * Delete a passkey credential.
+       *
+       * @param passkeyId - The passkey document ID to remove.
+       */
+      remove: async (ctx: ComponentCtx, passkeyId: string) => {
+        await ctx.runMutation(
+          config.component.public.passkeyDelete,
+          { passkeyId },
+        );
+      },
+    },
+    /**
      * Add HTTP actions for JWT verification and OAuth sign-in.
      *
      * ```ts
@@ -791,6 +838,7 @@ export function Auth(config_: ConvexAuthConfig) {
         verifier?: string;
         tokens?: Tokens | null;
         started?: boolean;
+        options?: Record<string, any>;
       }> => {
         if (args.calledBy !== undefined) {
           logWithLevel("INFO", `\`auth:signIn\` called by ${args.calledBy}`);
@@ -811,6 +859,8 @@ export function Auth(config_: ConvexAuthConfig) {
             return { tokens: result.signedIn?.tokens ?? null };
           case "started":
             return { started: true };
+          case "passkeyOptions":
+            return { options: result.options, verifier: result.verifier };
           default: {
             const _typecheck: never = result;
             throw new Error(`Unexpected result from signIn, ${result as any}`);

@@ -201,6 +201,59 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      passkeyDelete: FunctionReference<
+        "mutation",
+        "internal",
+        { passkeyId: string },
+        any,
+        Name
+      >;
+      passkeyGetByCredentialId: FunctionReference<
+        "query",
+        "internal",
+        { credentialId: string },
+        any,
+        Name
+      >;
+      passkeyInsert: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          algorithm: number;
+          backedUp: boolean;
+          counter: number;
+          createdAt: number;
+          credentialId: string;
+          deviceType: string;
+          name?: string;
+          publicKey: ArrayBuffer;
+          transports?: Array<string>;
+          userId: string;
+        },
+        any,
+        Name
+      >;
+      passkeyListByUserId: FunctionReference<
+        "query",
+        "internal",
+        { userId: string },
+        any,
+        Name
+      >;
+      passkeyUpdateCounter: FunctionReference<
+        "mutation",
+        "internal",
+        { counter: number; lastUsedAt: number; passkeyId: string },
+        any,
+        Name
+      >;
+      passkeyUpdateMeta: FunctionReference<
+        "mutation",
+        "internal",
+        { data: any; passkeyId: string },
+        any,
+        Name
+      >;
       rateLimitCreate: FunctionReference<
         "mutation",
         "internal",
