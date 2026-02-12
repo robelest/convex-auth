@@ -404,6 +404,41 @@ All auth tables live inside the component — you don't need to modify your sche
 
 For complete documentation, see: https://deepwiki.com/robelest/convex-auth
 
+## Roadmap
+
+### Phase 1 — Complete Core Auth
+- **Two-Factor Authentication (2FA)**: TOTP authenticator app support, backup codes, trusted devices
+- **Passkeys / WebAuthn**: Passwordless authentication via biometrics and security keys (powered by SimpleWebAuthn)
+- **Admin Operations**: User ban/unban, session listing and revocation, user impersonation
+- **Account Deletion**: Full cascade across sessions, tokens, accounts, memberships, and invites
+
+### Phase 2 — Developer Platform
+- **API Keys**: Hashed key storage, CRUD, per-key rate limiting, scoped permissions, `x-api-key` header verification
+- **One-Time Tokens**: Secure single-use tokens for cross-domain auth, magic actions, and email verification links
+- **Device Authorization (RFC 8628)**: OAuth device flow for CLIs, smart TVs, and IoT devices
+- **Bearer Token Auth**: `Authorization: Bearer` header support for API-first applications
+
+### Phase 3 — OAuth Foundation
+- **Migrate to Arctic**: Replace `@auth/core` with Arctic for a lighter, actively maintained OAuth 2.0 client layer with zero third-party dependencies
+
+### Phase 4 — Enterprise SSO & Directory Sync
+- **SSO (SAML 2.0 + OIDC)**: Register identity providers dynamically, sign in by domain/email/org, SAML assertion validation, OIDC discovery, attribute mapping (powered by samlify)
+- **SCIM 2.0 Directory Sync**: User lifecycle management — provision, update, and deprovision users from Okta, Azure AD, Google Workspace, and other directory providers. Standard + custom attribute mapping, group sync, and provisioning/deprovisioning events
+- **Domain Verification**: DNS TXT record verification for organization domain ownership
+- **Organization Provisioning**: Auto-add SSO/SCIM users to groups with role mapping
+- **Self-Serve Admin Portal** (`@robelest/convex-auth-portal`): Astro-powered UI served directly from Convex HTTP endpoints. IT admins configure SSO, SCIM, and domain verification through a guided wizard — no developer involvement needed. Generate a secure link, send it to your customer's IT team. Includes per-IdP setup guides for Okta, Azure AD, Google Workspace, OneLogin, JumpCloud, and custom SAML/OIDC. Supports branding customization (logo, colors, app name)
+
+### Phase 5 — Be the Identity Provider
+- **OAuth 2.1 Provider**: Authorization code flow with PKCE, client credentials, refresh tokens, dynamic client registration, token introspection and revocation
+- **OIDC Provider**: id_token issuance, UserInfo endpoint, `.well-known/openid-configuration`
+- **MCP Support**: Model Context Protocol authentication for AI agent integrations
+
+### Phase 6 — Enterprise Hardening
+- **Audit Logging**: Structured auth event log (sign-in, sign-out, password change, 2FA enable, admin actions) with actor/target/context tracking
+- **Webhook Notifications**: Fire webhooks on auth lifecycle events (user created, session created, password changed, user provisioned via SCIM)
+- **Advanced Rate Limiting**: IP-based brute force protection
+- **OAuth Token Storage**: Store provider access/refresh tokens for apps that call provider APIs on behalf of users
+
 ---
 
 ## Contributing to This Repo
@@ -431,6 +466,7 @@ bun run test:auth
 ### Monorepo Structure
 
 - `packages/auth/` — Main auth package
+- `packages/portal/` — Self-serve admin portal (Astro)
 - `packages/test/` — Shared test suite
 - `examples/tanstack/` — TanStack Start example app
 - `convex/` — Root Convex functions for testing
