@@ -5,7 +5,7 @@ import type {
   SignInAction,
   SignOutAction,
 } from "./implementation/index.js";
-import { isLocalHost, requireEnv } from "./utils.js";
+import { isLocalHost } from "./utils.js";
 
 export type AuthCookieConfig = {
   maxAge: number | null;
@@ -18,7 +18,8 @@ export type AuthCookies = {
 };
 
 export type ServerOptions = {
-  convexUrl?: string;
+  /** Convex deployment URL. */
+  url: string;
   apiRoute?: string;
   cookieMaxAge?: number | null;
   verbose?: boolean;
@@ -97,9 +98,8 @@ const MINIMUM_REQUIRED_TOKEN_LIFETIME_MS = 10_000;
 
 type DecodedToken = { exp?: number; iat?: number };
 
-export function server(options: ServerOptions = {}) {
-  const convexUrl =
-    options.convexUrl ?? requireEnv("VITE_CONVEX_URL");
+export function server(options: ServerOptions) {
+  const convexUrl = options.url;
   const apiRoute = options.apiRoute ?? "/api/auth";
   const cookieConfig = { maxAge: options.cookieMaxAge ?? null };
   const verbose = options.verbose ?? false;

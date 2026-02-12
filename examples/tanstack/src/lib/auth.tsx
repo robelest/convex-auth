@@ -63,19 +63,19 @@ export function Unauthenticated({ children }: { children: ReactNode }) {
 export function ConvexAuthProvider({
   convex,
   proxy,
-  initialToken,
+  token,
   children,
 }: {
   convex: ConvexReactClient
   /** SSR proxy endpoint (e.g. `"/api/auth"`). */
   proxy?: string
-  /** Initial JWT from server-side hydration for flash-free startup. */
-  initialToken?: string | null
+  /** JWT from server-side hydration for flash-free startup. */
+  token?: string | null
   children: ReactNode
 }) {
   const auth = useMemo(
-    () => client({ convex, proxy, initialToken }),
-    [convex, proxy, initialToken],
+    () => client({ convex, proxy, token }),
+    [convex, proxy, token],
   )
   const [state, setState] = useState<AuthState>(auth.state)
   useEffect(() => auth.onChange(setState), [auth])

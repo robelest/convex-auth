@@ -69,17 +69,17 @@ export type ClientOptions = {
    * (with `credentials: "include"`) instead of calling Convex directly.
    * The server handles httpOnly cookies for token persistence.
    *
-   * Pair with {@link ClientOptions.initialToken} for flash-free SSR hydration.
+   * Pair with {@link ClientOptions.token} for flash-free SSR hydration.
    */
   proxy?: string;
   /**
-   * Initial JWT from server-side hydration.
+   * JWT from server-side hydration.
    *
    * In proxy mode the server reads the JWT from an httpOnly cookie
    * and passes it to the client during SSR. This avoids a loading
    * flash on first render — the client is immediately authenticated.
    */
-  initialToken?: string | null;
+  token?: string | null;
 };
 
 const VERIFIER_STORAGE_KEY = "__convexAuthOAuthVerifier";
@@ -168,15 +168,15 @@ export function client(options: ClientOptions) {
   // State
   // ---------------------------------------------------------------------------
 
-  // If an initialToken was provided (SSR hydration), start authenticated.
-  const hasInitialToken =
-    options.initialToken !== undefined && options.initialToken !== null;
+  // If a server-provided token was supplied (SSR hydration), start authenticated.
+  const serverToken = options.token ?? null;
+  const hasServerToken = serverToken !== null;
 
-  let token: string | null = hasInitialToken ? options.initialToken! : null;
-  let isLoading = !hasInitialToken;
+  let token: string | null = serverToken;
+  let isLoading = !hasServerToken;
   let snapshot: AuthState = {
     isLoading,
-    isAuthenticated: hasInitialToken,
+    isAuthenticated: hasServerToken,
     token,
   };
   let handlingCodeFlow = false;
@@ -538,7 +538,7 @@ export function client(options: ClientOptions) {
     if (proxy) {
       // Proxy mode: if no initialToken was provided, try a refresh
       // to pick up any existing session from httpOnly cookies.
-      if (!hasInitialToken) {
+      if (!hasServerToken) {
         void fetchAccessToken({ forceRefreshToken: true });
       } else {
         // initialToken already set — mark loading as done.

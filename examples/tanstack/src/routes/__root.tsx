@@ -7,6 +7,8 @@ import {
   redirect,
 } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
+import { getRequest, setResponseHeader } from '@tanstack/react-start/server'
+import { server } from '@robelest/convex-auth/server'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 import { ConvexReactClient, useQuery } from 'convex/react'
@@ -19,14 +21,12 @@ import { Authenticated, ConvexAuthProvider, Unauthenticated } from '@/lib/auth'
 
 // ---------------------------------------------------------------------------
 // Server function: runs during SSR to refresh tokens, handle OAuth code
-// exchange, and provide the initial JWT for flash-free client hydration.
+// exchange, and provide the JWT for flash-free client hydration.
 // ---------------------------------------------------------------------------
 
 const getAuthState = createServerFn({ method: 'GET' }).handler(async () => {
-  const { getRequest, setResponseHeader } = await import('@tanstack/react-start/server')
-  const { server } = await import('@robelest/convex-auth/server')
   const request = getRequest()
-  const auth = server()
+  const auth = server({ url: import.meta.env.VITE_CONVEX_URL! })
 
   // Handle OAuth code exchange + token refresh.
   const result = await auth.refresh(request)
@@ -83,7 +83,7 @@ export const Route = createRootRoute({
     if (redirectUrl) {
       throw redirect({ href: redirectUrl })
     }
-    return { initialToken: token }
+    return { token }
   },
   component: RootApp,
   shellComponent: RootDocument,
@@ -91,7 +91,7 @@ export const Route = createRootRoute({
 
 function RootApp() {
   const convexUrl = import.meta.env.VITE_CONVEX_URL
-  const { initialToken } = Route.useRouteContext()
+  const { token } = Route.useRouteContext()
 
   if (!convexUrl) {
     throw new Error('Missing VITE_CONVEX_URL in environment')
@@ -100,7 +100,7 @@ function RootApp() {
   const client = useMemo(() => new ConvexReactClient(convexUrl), [convexUrl])
 
   return (
-    <ConvexAuthProvider convex={client} proxy="/api/auth" initialToken={initialToken}>
+    <ConvexAuthProvider convex={client} proxy="/api/auth" token={token}>
       <AppLayout />
     </ConvexAuthProvider>
   )

@@ -5,7 +5,7 @@ export const Route = createFileRoute('/api/auth')({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        return server().proxy(request)
+        return server({ url: import.meta.env.VITE_CONVEX_URL! }).proxy(request)
       },
     },
   },
