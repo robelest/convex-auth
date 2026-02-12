@@ -5,8 +5,8 @@
  * use the [`password`](https://labs.convex.dev/auth/api_reference/providers/password) provider instead.
  *
  * ```ts
- * import credentials from "@robelest/convex-auth/providers/credentials";
- * import { Auth } from "@robelest/convex-auth/component";
+ * import credentials from "@convex-dev/auth/providers/credentials";
+ * import { Auth } from "@convex-dev/auth/component";
  *
  * export const { auth, signIn, signOut, store } = Auth({
  *   providers: [
@@ -26,7 +26,7 @@ import {
   AuthProviderConfig,
   ConvexCredentialsConfig,
   GenericActionCtxWithAuthConfig,
-} from "@robelest/convex-auth/component";
+} from "@convex-dev/auth/component";
 import { GenericDataModel } from "convex/server";
 import { GenericId, Value } from "convex/values";
 

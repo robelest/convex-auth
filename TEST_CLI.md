@@ -35,7 +35,7 @@ cd /path/to/convex-auth/packages/auth
 npm link
 
 # Then from your test project:
-npx @robelest/convex-auth --site-url "http://localhost:5173"
+npx @convex-dev/auth --site-url "http://localhost:5173"
 ```
 
 ### Test Production Setup

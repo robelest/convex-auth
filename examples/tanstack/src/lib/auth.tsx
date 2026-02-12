@@ -1,5 +1,5 @@
-import { client } from '@robelest/convex-auth/client'
-import type { AuthState } from '@robelest/convex-auth/client'
+import { client } from '@convex-dev/auth/client'
+import type { AuthState } from '@convex-dev/auth/client'
 import { ConvexProvider, ConvexReactClient } from 'convex/react'
 import type { Value } from 'convex/values'
 import {

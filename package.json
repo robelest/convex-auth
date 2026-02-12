@@ -21,7 +21,7 @@
     }
   },
   "dependencies": {
-    "@robelest/convex-auth": "workspace:*",
+    "@convex-dev/auth": "workspace:*",
     "convex": "^1.31.7"
   },
   "devDependencies": {

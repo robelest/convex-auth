@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { server } from '@robelest/convex-auth/server'
+import { server } from '@convex-dev/auth/server'
 
 export const Route = createFileRoute('/api/auth')({
   server: {

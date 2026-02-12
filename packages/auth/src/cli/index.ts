@@ -12,9 +12,9 @@ import { actionDescription } from "./command.js";
 import { generateKeys } from "./generateKeys.js";
 
 new Command()
-  .name("@robelest/convex-auth")
+  .name("@convex-dev/auth")
   .description(
-    "Add code and set environment variables for @robelest/convex-auth.\n\n" +
+    "Add code and set environment variables for @convex-dev/auth.\n\n" +
       "Full docs: https://deepwiki.com/robelest/convex-auth",
   )
   .option(
@@ -398,7 +398,7 @@ async function configureConvexConfig(config: ProjectConfig) {
   logStep(config, "Configure convex config file");
   const sourceTemplate = `\
 import { defineApp } from "convex/server";
-import auth from "@robelest/convex-auth/component/convex.config";
+import auth from "@convex-dev/auth/component/convex.config";
 
 const app = defineApp();
 
@@ -432,7 +432,7 @@ export default app;
 async function initializeAuth(config: ProjectConfig) {
   logStep(config, "Initialize auth file");
   const sourceTemplate = `\
-import { Auth } from "@robelest/convex-auth/component";
+import { Auth } from "@convex-dev/auth/component";
 import { components } from "./_generated/api";
 
 export const { auth, signIn, signOut, store } = Auth({$$
@@ -621,7 +621,7 @@ function readPackageJson(): PackageJSON {
     return JSON.parse(data);
   } catch (error: any) {
     logErrorAndExit(
-      "`@robelest/convex-auth` must be run from a project directory which " +
+      "`@convex-dev/auth` must be run from a project directory which " +
         'includes a valid "package.json" file. You can create one by running ' +
         "`npm init`.",
       error.message,
@@ -817,7 +817,7 @@ function printFinalSuccessMessage(config: ProjectConfig) {
     logSuccess(`Setup complete for ${deploymentName}.`);
     print("");
     print(`  ${chalk.bold("To set up production")}, run this command with your production URL:`);
-    print(`    ${chalk.cyan("npx @robelest/convex-auth --prod --site-url \"https://myapp.com\"")}`);
+    print(`    ${chalk.cyan("npx @convex-dev/auth --prod --site-url \"https://myapp.com\"")}`);
     print("");
     print(`  ${chalk.bold("Don't forget")} to set provider secrets on production too:`);
     print(`    ${chalk.grey("npx convex env set --prod AUTH_GITHUB_ID \"...\"")}`);

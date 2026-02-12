@@ -12,7 +12,7 @@
     "check": "prettier --write . && eslint --fix"
   },
   "dependencies": {
-    "@robelest/convex-auth": "workspace:*",
+    "@convex-dev/auth": "workspace:*",
     "@base-ui/react": "^1.1.0",
     "@fontsource-variable/geist": "^5.2.8",
     "@remixicon/react": "^4.9.0",

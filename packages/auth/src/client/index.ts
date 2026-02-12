@@ -112,7 +112,7 @@ function resolveUrl(convex: ConvexTransport, explicit?: string): string {
  *
  * ```ts
  * import { ConvexClient } from 'convex/browser'
- * import { client } from '\@robelest/convex-auth/client'
+ * import { client } from '\@convex-dev/auth/client'
  *
  * const convex = new ConvexClient(CONVEX_URL)
  * const auth = client({ convex })

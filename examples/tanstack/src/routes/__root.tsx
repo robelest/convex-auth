@@ -8,7 +8,7 @@ import {
 } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest, setResponseHeader } from '@tanstack/react-start/server'
-import { server } from '@robelest/convex-auth/server'
+import { server } from '@convex-dev/auth/server'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
 import { ConvexReactClient, useQuery } from 'convex/react'
