@@ -408,7 +408,7 @@ For complete documentation, see: https://deepwiki.com/robelest/convex-auth
 
 ### Phase 1 — Complete Core Auth
 - **Two-Factor Authentication (2FA)**: TOTP authenticator app support, backup codes, trusted devices
-- **Passkeys / WebAuthn**: Passwordless authentication via biometrics and security keys (powered by SimpleWebAuthn)
+- **Passkeys / WebAuthn**: Passwordless authentication via biometrics and security keys (powered by @oslojs/webauthn) ✅
 - **Admin Operations**: User ban/unban, session listing and revocation, user impersonation
 - **Account Deletion**: Full cascade across sessions, tokens, accounts, memberships, and invites
 
