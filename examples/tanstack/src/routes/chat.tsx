@@ -19,7 +19,11 @@ function ChatPage() {
       </Unauthenticated>
       <Authenticated>
         {!viewerId ? (
-          <p className="text-muted-foreground text-xs">Loading your profile...</p>
+          <div className="flex flex-1 items-center justify-center">
+            <p className="text-muted-foreground font-mono text-xs animate-pulse">
+              Loading...
+            </p>
+          </div>
         ) : (
           <Chat viewer={viewerId} />
         )}
@@ -33,5 +37,11 @@ function ClientRedirect({ to }: { to: string }) {
     window.location.replace(to)
   }, [to])
 
-  return <p className="text-muted-foreground text-xs">Redirecting...</p>
+  return (
+    <div className="flex flex-1 items-center justify-center">
+      <p className="text-muted-foreground font-mono text-xs animate-pulse">
+        Redirecting...
+      </p>
+    </div>
+  )
 }

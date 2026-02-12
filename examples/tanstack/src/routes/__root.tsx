@@ -111,27 +111,40 @@ function AppLayout() {
   const userLabel = user?.name ?? user?.email ?? user?.phone ?? 'Anonymous'
 
   return (
-    <div className="from-background to-muted/25 flex min-h-screen flex-col bg-linear-to-br">
-      <header className="border-b">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
-          <Link to="/" className="text-sm font-semibold tracking-wide uppercase">
-            Convex Auth
+    <div className="bg-background flex min-h-screen flex-col">
+      <header className="border-border/60 border-b backdrop-blur-sm">
+        <div className="mx-auto flex w-full max-w-4xl items-center justify-between px-6 py-4">
+          <Link
+            to="/"
+            className="font-mono text-xs font-bold tracking-[0.2em] uppercase transition-colors hover:text-primary"
+          >
+            convex<span className="text-primary">/</span>auth
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <Authenticated>
               <UserMenu label={userLabel} />
             </Authenticated>
             <Unauthenticated>
-              <a href="/login" className="text-muted-foreground text-xs hover:text-foreground">
+              <a
+                href="/login"
+                className="text-muted-foreground hover:text-foreground font-mono text-[11px] tracking-wide uppercase transition-colors"
+              >
                 Sign in
               </a>
             </Unauthenticated>
           </div>
         </div>
       </header>
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-6 sm:px-6">
+      <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-6 py-8">
         <Outlet />
       </main>
+      <footer className="border-border/40 border-t">
+        <div className="mx-auto flex w-full max-w-4xl items-center justify-between px-6 py-4">
+          <p className="text-muted-foreground/60 font-mono text-[10px] tracking-wide">
+            @robelest/convex-auth
+          </p>
+        </div>
+      </footer>
     </div>
   )
 }

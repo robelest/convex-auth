@@ -15,9 +15,25 @@ import {
 // Auth context
 // ---------------------------------------------------------------------------
 
+type PasskeyActions = {
+  isSupported: () => boolean
+  isAutofillSupported: () => Promise<boolean>
+  register: (opts?: {
+    name?: string
+    email?: string
+    userName?: string
+    userDisplayName?: string
+  }) => Promise<{ signingIn: boolean }>
+  authenticate: (opts?: {
+    email?: string
+    autofill?: boolean
+  }) => Promise<{ signingIn: boolean }>
+}
+
 const AuthContext = createContext<{
   signIn: (provider?: string, params?: FormData | Record<string, Value>) => Promise<void>
   signOut: () => Promise<void>
+  passkey: PasskeyActions
   state: AuthState
 } | null>(null)
 
@@ -34,10 +50,10 @@ export function useAuthState() {
   return useAuth().state
 }
 
-/** Access `signIn` and `signOut` actions. */
+/** Access `signIn`, `signOut`, and `passkey` actions. */
 export function useAuthActions() {
-  const { signIn, signOut } = useAuth()
-  return { signIn, signOut }
+  const { signIn, signOut, passkey } = useAuth()
+  return { signIn, signOut, passkey }
 }
 
 // ---------------------------------------------------------------------------
@@ -86,6 +102,7 @@ export function ConvexAuthProvider({
         await auth.signIn(provider, params)
       },
       signOut: auth.signOut,
+      passkey: auth.passkey,
       state,
     }),
     [auth, state],
