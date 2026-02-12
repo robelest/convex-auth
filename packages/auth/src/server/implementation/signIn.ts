@@ -6,6 +6,7 @@ import {
   GenericActionCtxWithAuthConfig,
   PasskeyProviderConfig,
   PhoneConfig,
+  TotpProviderConfig,
 } from "../types.js";
 import {
   AuthDataModel,
@@ -18,6 +19,7 @@ import {
   callRefreshSession,
   callSignIn,
   callVerifier,
+  callVerifierSignature,
   callVerifyCodeAndSignIn,
 } from "./mutations/index.js";
 import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects.js";
@@ -25,6 +27,7 @@ import { requireEnv } from "../utils.js";
 import { OAuth2Config, OIDCConfig } from "@auth/core/providers/oauth.js";
 import { generateRandomString } from "./utils.js";
 import { handlePasskey } from "./passkey.js";
+import { handleTotp, checkTotpRequired } from "./totp.js";
 
 const DEFAULT_EMAIL_VERIFICATION_CODE_DURATION_S = 60 * 60 * 24; // 24 hours
 
@@ -54,6 +57,10 @@ export async function signInImpl(
   | { kind: "redirect"; redirect: string; verifier: string }
   // Passkey options (challenge + credential options)
   | { kind: "passkeyOptions"; options: Record<string, any>; verifier: string }
+  // TOTP 2FA required after credentials sign-in
+  | { kind: "totpRequired"; verifier: string }
+  // TOTP setup response (enrollment)
+  | { kind: "totpSetup"; uri: string; secret: string; verifier: string; totpId: string }
 > {
   if (provider === null && args.refreshToken) {
     const tokens: Tokens = (await callRefreshSession(ctx, {
@@ -90,6 +97,9 @@ export async function signInImpl(
   }
   if (provider.type === "passkey") {
     return handlePasskey(ctx, provider, args);
+  }
+  if (provider.type === "totp") {
+    return handleTotp(ctx, provider, args);
   }
   const _typecheck: never = provider;
   throw new Error(
@@ -194,11 +204,32 @@ async function handleCredentials(
   options: {
     generateTokens: boolean;
   },
-): Promise<{ kind: "signedIn"; signedIn: SessionInfo | null }> {
+): Promise<
+  | { kind: "signedIn"; signedIn: SessionInfo | null }
+  | { kind: "totpRequired"; verifier: string }
+> {
   const result = await provider.authorize(args.params ?? {}, ctx);
   if (result === null) {
     return { kind: "signedIn", signedIn: null };
   }
+  // Check if user has TOTP 2FA enrolled before issuing tokens
+  const hasTotpEnrolled = await checkTotpRequired(ctx, result.userId);
+  if (hasTotpEnrolled) {
+    // Create session but withhold tokens — TOTP verification needed
+    const idsWithoutTokens = await callSignIn(ctx, {
+      userId: result.userId,
+      sessionId: result.sessionId,
+      generateTokens: false,
+    });
+    // Store userId in verifier so the TOTP verify flow can complete sign-in
+    const verifier = await callVerifier(ctx);
+    await callVerifierSignature(ctx, {
+      verifier,
+      signature: JSON.stringify({ userId: result.userId }),
+    });
+    return { kind: "totpRequired", verifier };
+  }
+
   const idsAndTokens = await callSignIn(ctx, {
     userId: result.userId,
     sessionId: result.sessionId,

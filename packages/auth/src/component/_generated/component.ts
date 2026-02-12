@@ -363,6 +363,63 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      totpDelete: FunctionReference<
+        "mutation",
+        "internal",
+        { totpId: string },
+        any,
+        Name
+      >;
+      totpGetById: FunctionReference<
+        "query",
+        "internal",
+        { totpId: string },
+        any,
+        Name
+      >;
+      totpGetVerifiedByUserId: FunctionReference<
+        "query",
+        "internal",
+        { userId: string },
+        any,
+        Name
+      >;
+      totpInsert: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          createdAt: number;
+          digits: number;
+          name?: string;
+          period: number;
+          secret: ArrayBuffer;
+          userId: string;
+          verified: boolean;
+        },
+        any,
+        Name
+      >;
+      totpListByUserId: FunctionReference<
+        "query",
+        "internal",
+        { userId: string },
+        any,
+        Name
+      >;
+      totpMarkVerified: FunctionReference<
+        "mutation",
+        "internal",
+        { lastUsedAt: number; totpId: string },
+        any,
+        Name
+      >;
+      totpUpdateLastUsed: FunctionReference<
+        "mutation",
+        "internal",
+        { lastUsedAt: number; totpId: string },
+        any,
+        Name
+      >;
       userFindByVerifiedEmail: FunctionReference<
         "query",
         "internal",

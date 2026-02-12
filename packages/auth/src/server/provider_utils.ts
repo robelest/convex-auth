@@ -80,14 +80,21 @@ function materializeAndDefaultProviders(config_: ConvexAuthConfig) {
   const config = { ...config_, providers };
 
   // setEnvDefaults is from Auth.js and only works with Auth.js provider types.
-  // Filter out passkey providers before passing to setEnvDefaults, then
-  // reinsert them at their original positions.
+  // Filter out passkey and TOTP providers before passing to setEnvDefaults,
+  // then reinsert them at their original positions.
   const passkeyIndices: number[] = [];
   const passkeyProviders: AuthProviderMaterializedConfig[] = [];
+  const totpIndices: number[] = [];
+  const totpProviders: AuthProviderMaterializedConfig[] = [];
   const filteredProviders = config.providers.filter((p, i) => {
     if (p.type === "passkey") {
       passkeyIndices.push(i);
       passkeyProviders.push(p);
+      return false;
+    }
+    if (p.type === "totp") {
+      totpIndices.push(i);
+      totpProviders.push(p);
       return false;
     }
     return true;
@@ -97,10 +104,13 @@ function materializeAndDefaultProviders(config_: ConvexAuthConfig) {
   const tempConfig = { ...config, providers: filteredProviders };
   setEnvDefaults(process.env, tempConfig as any);
 
-  // Reinsert passkey providers at their original positions
+  // Reinsert passkey and TOTP providers at their original positions
   const merged = [...tempConfig.providers];
   for (let i = 0; i < passkeyIndices.length; i++) {
     merged.splice(passkeyIndices[i]!, 0, passkeyProviders[i]!);
+  }
+  for (let i = 0; i < totpIndices.length; i++) {
+    merged.splice(totpIndices[i]!, 0, totpProviders[i]!);
   }
   config.providers = merged;
 
@@ -119,6 +129,10 @@ function materializeAndDefaultProviders(config_: ConvexAuthConfig) {
 function providerDefaults(provider: AuthProviderMaterializedConfig) {
   // Passkey providers don't use Auth.js options merge or OAuth normalization
   if (provider.type === "passkey") {
+    return provider;
+  }
+  // TOTP providers don't use Auth.js options merge or OAuth normalization
+  if (provider.type === "totp") {
     return provider;
   }
   // TODO: Add `redirectProxyUrl` to oauth providers

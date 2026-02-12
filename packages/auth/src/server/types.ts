@@ -247,7 +247,9 @@ export type AuthProviderConfig =
   | PhoneConfig
   | ((...args: any) => PhoneConfig)
   | PasskeyProviderConfig
-  | ((...args: any) => PasskeyProviderConfig);
+  | ((...args: any) => PasskeyProviderConfig)
+  | TotpProviderConfig
+  | ((...args: any) => TotpProviderConfig);
 
 /**
  * Extends the standard Auth.js email provider config
@@ -384,6 +386,22 @@ export interface PasskeyProviderConfig {
   };
 }
 
+/**
+ * Configuration for the TOTP two-factor authentication provider.
+ */
+export interface TotpProviderConfig {
+  id: string;
+  type: "totp";
+  options: {
+    /** Issuer name shown in authenticator apps (e.g. "My App"). */
+    issuer: string;
+    /** Number of digits in each code (default: 6). */
+    digits: number;
+    /** Time period in seconds for code rotation (default: 30). */
+    period: number;
+  };
+}
+
 export type AuthAccountCredentials = {
   id: string;
   secret?: string;
@@ -503,7 +521,8 @@ export type AuthProviderMaterializedConfig =
   | EmailConfig
   | PhoneConfig
   | ConvexCredentialsConfig
-  | PasskeyProviderConfig;
+  | PasskeyProviderConfig
+  | TotpProviderConfig;
 
 /**
  * Component function references required by core auth runtime.
@@ -568,5 +587,12 @@ export type AuthComponentApi = {
     passkeyUpdateCounter: FunctionReference<"mutation", "internal">;
     passkeyUpdateMeta: FunctionReference<"mutation", "internal">;
     passkeyDelete: FunctionReference<"mutation", "internal">;
+    totpInsert: FunctionReference<"mutation", "internal", any, any>;
+    totpGetVerifiedByUserId: FunctionReference<"query", "internal", any, any>;
+    totpListByUserId: FunctionReference<"query", "internal", any, any>;
+    totpGetById: FunctionReference<"query", "internal", any, any>;
+    totpMarkVerified: FunctionReference<"mutation", "internal", any, any>;
+    totpUpdateLastUsed: FunctionReference<"mutation", "internal", any, any>;
+    totpDelete: FunctionReference<"mutation", "internal", any, any>;
   };
 };

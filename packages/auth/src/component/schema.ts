@@ -126,6 +126,32 @@ export default defineSchema({
     .index("credentialId", ["credentialId"]),
 
   /**
+   * TOTP two-factor authentication secrets. Each record links a user to
+   * an authenticator app. A user can have multiple TOTP enrollments
+   * (e.g. different authenticator apps) but typically has one.
+   *
+   * The `verified` flag indicates whether the user has completed setup
+   * by successfully entering a code from their authenticator app.
+   * Unverified enrollments are in-progress setup that can be discarded.
+   */
+  totp: defineTable({
+    userId: v.id("user"),
+    /** Raw TOTP secret key bytes. */
+    secret: v.bytes(),
+    /** Number of digits in each code (typically 6). */
+    digits: v.number(),
+    /** Time period in seconds for code rotation (typically 30). */
+    period: v.number(),
+    /** Whether setup has been confirmed with a valid code. */
+    verified: v.boolean(),
+    /** User-assigned friendly name (e.g. "Google Authenticator"). */
+    name: v.optional(v.string()),
+    createdAt: v.number(),
+    lastUsedAt: v.optional(v.number()),
+  })
+    .index("userId", ["userId"]),
+
+  /**
    * Rate limit tracking for OTP and password sign-in attempts.
    */
   limit: defineTable({

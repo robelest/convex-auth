@@ -430,6 +430,81 @@ export const passkeyDelete = mutation({
 });
 
 // ============================================================================
+// TOTP Two-Factor Authentication
+// ============================================================================
+
+/** Store a new TOTP enrollment for a user. */
+export const totpInsert = mutation({
+  args: {
+    userId: v.id("user"),
+    secret: v.bytes(),
+    digits: v.number(),
+    period: v.number(),
+    verified: v.boolean(),
+    name: v.optional(v.string()),
+    createdAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("totp", args);
+  },
+});
+
+/** Get a verified TOTP enrollment for a user (returns first match). */
+export const totpGetVerifiedByUserId = query({
+  args: { userId: v.id("user") },
+  handler: async (ctx, { userId }) => {
+    return await ctx.db
+      .query("totp")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .filter((q) => q.eq(q.field("verified"), true))
+      .first();
+  },
+});
+
+/** List all TOTP enrollments for a user. */
+export const totpListByUserId = query({
+  args: { userId: v.id("user") },
+  handler: async (ctx, { userId }) => {
+    return await ctx.db
+      .query("totp")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .collect();
+  },
+});
+
+/** Get a TOTP enrollment by its ID. */
+export const totpGetById = query({
+  args: { totpId: v.id("totp") },
+  handler: async (ctx, { totpId }) => {
+    return await ctx.db.get(totpId);
+  },
+});
+
+/** Mark a TOTP enrollment as verified (setup complete). */
+export const totpMarkVerified = mutation({
+  args: { totpId: v.id("totp"), lastUsedAt: v.number() },
+  handler: async (ctx, { totpId, lastUsedAt }) => {
+    await ctx.db.patch(totpId, { verified: true, lastUsedAt });
+  },
+});
+
+/** Update a TOTP enrollment's last used timestamp. */
+export const totpUpdateLastUsed = mutation({
+  args: { totpId: v.id("totp"), lastUsedAt: v.number() },
+  handler: async (ctx, { totpId, lastUsedAt }) => {
+    await ctx.db.patch(totpId, { lastUsedAt });
+  },
+});
+
+/** Delete a TOTP enrollment. */
+export const totpDelete = mutation({
+  args: { totpId: v.id("totp") },
+  handler: async (ctx, { totpId }) => {
+    await ctx.db.delete(totpId);
+  },
+});
+
+// ============================================================================
 // Rate Limits
 // ============================================================================
 
