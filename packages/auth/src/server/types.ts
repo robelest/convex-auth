@@ -245,7 +245,9 @@ export type AuthProviderConfig =
   | ConvexCredentialsConfig
   | ((...args: any) => ConvexCredentialsConfig)
   | PhoneConfig
-  | ((...args: any) => PhoneConfig);
+  | ((...args: any) => PhoneConfig)
+  | PasskeyProviderConfig
+  | ((...args: any) => PasskeyProviderConfig);
 
 /**
  * Extends the standard Auth.js email provider config
@@ -353,6 +355,34 @@ export type ConvexCredentialsConfig = CredentialsUserConfig<any> & {
   type: "credentials";
   id: string;
 };
+
+/**
+ * Configuration for the passkey (WebAuthn) provider.
+ */
+export interface PasskeyProviderConfig {
+  id: string;
+  type: "passkey";
+  options: {
+    /** Relying Party display name. Defaults to SITE_URL hostname. */
+    rpName?: string;
+    /** Relying Party ID (hostname). Defaults to SITE_URL hostname. */
+    rpId?: string;
+    /** Allowed origins for credential verification. Defaults to SITE_URL. */
+    origin?: string | string[];
+    /** Attestation conveyance preference. Defaults to "none". */
+    attestation?: "none" | "direct";
+    /** User verification requirement. Defaults to "required". */
+    userVerification?: "required" | "preferred" | "discouraged";
+    /** Resident key (discoverable credential) preference. Defaults to "preferred". */
+    residentKey?: "required" | "preferred" | "discouraged";
+    /** Restrict to platform or cross-platform authenticators. */
+    authenticatorAttachment?: "platform" | "cross-platform";
+    /** Supported COSE algorithms. Defaults to [-7 (ES256), -257 (RS256)]. */
+    algorithms?: number[];
+    /** Challenge expiration in ms. Defaults to 300_000 (5 minutes). */
+    challengeExpirationMs?: number;
+  };
+}
 
 export type AuthAccountCredentials = {
   id: string;
@@ -472,7 +502,8 @@ export type AuthProviderMaterializedConfig =
   | OAuth2Config<any>
   | EmailConfig
   | PhoneConfig
-  | ConvexCredentialsConfig;
+  | ConvexCredentialsConfig
+  | PasskeyProviderConfig;
 
 /**
  * Component function references required by core auth runtime.
@@ -531,5 +562,11 @@ export type AuthComponentApi = {
     inviteList: FunctionReference<"query", "internal">;
     inviteAccept: FunctionReference<"mutation", "internal">;
     inviteRevoke: FunctionReference<"mutation", "internal">;
+    passkeyInsert: FunctionReference<"mutation", "internal">;
+    passkeyGetByCredentialId: FunctionReference<"query", "internal">;
+    passkeyListByUserId: FunctionReference<"query", "internal">;
+    passkeyUpdateCounter: FunctionReference<"mutation", "internal">;
+    passkeyUpdateMeta: FunctionReference<"mutation", "internal">;
+    passkeyDelete: FunctionReference<"mutation", "internal">;
   };
 };

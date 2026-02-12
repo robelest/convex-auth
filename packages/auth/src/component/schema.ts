@@ -97,6 +97,35 @@ export default defineSchema({
   }).index("signature", ["signature"]),
 
   /**
+   * WebAuthn passkey credentials. Each credential links a user to a
+   * registered authenticator (Touch ID, Face ID, security key, etc.).
+   * A user can have multiple passkeys across different devices.
+   */
+  passkey: defineTable({
+    userId: v.id("user"),
+    /** Base64url-encoded credential ID from the authenticator. */
+    credentialId: v.string(),
+    /** Public key bytes (SEC1 uncompressed for EC, SPKI for RSA). */
+    publicKey: v.bytes(),
+    /** COSE algorithm identifier (-7 for ES256, -257 for RS256, -8 for EdDSA). */
+    algorithm: v.number(),
+    /** Signature counter for clone detection. Many authenticators return 0. */
+    counter: v.number(),
+    /** Authenticator transport hints (e.g. "internal", "hybrid", "usb", "ble", "nfc"). */
+    transports: v.optional(v.array(v.string())),
+    /** Whether this is a single-device or multi-device (synced) credential. */
+    deviceType: v.string(),
+    /** Whether the credential is backed up (synced passkey). */
+    backedUp: v.boolean(),
+    /** User-assigned friendly name (e.g. "MacBook Touch ID"). */
+    name: v.optional(v.string()),
+    createdAt: v.number(),
+    lastUsedAt: v.optional(v.number()),
+  })
+    .index("userId", ["userId"])
+    .index("credentialId", ["credentialId"]),
+
+  /**
    * Rate limit tracking for OTP and password sign-in attempts.
    */
   limit: defineTable({

@@ -361,6 +361,75 @@ export const refreshTokenGetActive = query({
 });
 
 // ============================================================================
+// Passkeys
+// ============================================================================
+
+/** Store a new passkey credential for a user. */
+export const passkeyInsert = mutation({
+  args: {
+    userId: v.id("user"),
+    credentialId: v.string(),
+    publicKey: v.bytes(),
+    algorithm: v.number(),
+    counter: v.number(),
+    transports: v.optional(v.array(v.string())),
+    deviceType: v.string(),
+    backedUp: v.boolean(),
+    name: v.optional(v.string()),
+    createdAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("passkey", args);
+  },
+});
+
+/** Look up a passkey by its credential ID. */
+export const passkeyGetByCredentialId = query({
+  args: { credentialId: v.string() },
+  handler: async (ctx, { credentialId }) => {
+    return await ctx.db
+      .query("passkey")
+      .withIndex("credentialId", (q) => q.eq("credentialId", credentialId))
+      .unique();
+  },
+});
+
+/** List all passkeys for a user. */
+export const passkeyListByUserId = query({
+  args: { userId: v.id("user") },
+  handler: async (ctx, { userId }) => {
+    return await ctx.db
+      .query("passkey")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .collect();
+  },
+});
+
+/** Update a passkey's counter and last used timestamp after authentication. */
+export const passkeyUpdateCounter = mutation({
+  args: { passkeyId: v.id("passkey"), counter: v.number(), lastUsedAt: v.number() },
+  handler: async (ctx, { passkeyId, counter, lastUsedAt }) => {
+    await ctx.db.patch(passkeyId, { counter, lastUsedAt });
+  },
+});
+
+/** Update a passkey's metadata (name). */
+export const passkeyUpdateMeta = mutation({
+  args: { passkeyId: v.id("passkey"), data: v.any() },
+  handler: async (ctx, { passkeyId, data }) => {
+    await ctx.db.patch(passkeyId, data);
+  },
+});
+
+/** Delete a passkey credential. */
+export const passkeyDelete = mutation({
+  args: { passkeyId: v.id("passkey") },
+  handler: async (ctx, { passkeyId }) => {
+    await ctx.db.delete(passkeyId);
+  },
+});
+
+// ============================================================================
 // Rate Limits
 // ============================================================================
 
