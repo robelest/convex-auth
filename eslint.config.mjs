@@ -15,6 +15,8 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/convex/_generated/**",
       "packages/auth/src/component/_generated/**",
+      "packages/portal/.svelte-kit/**",
+      "packages/portal/build/**",
       "examples/**/src/routeTree.gen.ts",
       "**/*.d.ts",
     ],
