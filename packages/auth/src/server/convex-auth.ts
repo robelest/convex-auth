@@ -6,17 +6,15 @@
  *
  * ```ts
  * // convex/auth.ts
- * import { ConvexAuth } from "@robelest/convex-auth/component";
+ * import { ConvexAuth, portalExports } from "@robelest/convex-auth/component";
  * import github from "@auth/core/providers/github";
  * import { components } from "./_generated/api";
  *
  * export const auth = new ConvexAuth(components.auth, {
  *   providers: [github],
  * });
- * export const {
- *   signIn, signOut, store,
- *   portalQuery, portalMutation, portalInternal,
- * } = auth;
+ * export const { signIn, signOut, store } = auth;
+ * export const { portalQuery, portalMutation, portalInternal } = portalExports(auth);
  * ```
  *
  * @module
@@ -89,7 +87,8 @@ async function requirePortalAdmin(
  * export const auth = new ConvexAuth(components.auth, {
  *   providers: [github, resend({ ... })],
  * });
- * export const { signIn, signOut, store, portalQuery, portalMutation, portalInternal } = auth;
+ * export const { signIn, signOut, store } = auth;
+ * export const { portalQuery, portalMutation, portalInternal } = portalExports(auth);
  * ```
  */
 export class ConvexAuth {
@@ -102,15 +101,10 @@ export class ConvexAuth {
   /** The store internal mutation — export this from your convex/auth.ts */
   public readonly store: ReturnType<typeof Auth>["store"];
 
-  /** Portal query (discriminated union) — export this from your convex/auth.ts */
-  public readonly portalQuery: ReturnType<typeof queryGeneric>;
-  /** Portal mutation (discriminated union) — export this from your convex/auth.ts */
-  public readonly portalMutation: ReturnType<typeof mutationGeneric>;
-  /** Portal internal mutation (hosting + invite management) — export this from your convex/auth.ts */
-  public readonly portalInternal: ReturnType<typeof internalMutationGeneric>;
-
-  private readonly component: AuthComponentApi;
-  private readonly portalUrl: string;
+  /** @internal */
+  readonly component: AuthComponentApi;
+  /** @internal */
+  readonly portalUrl: string;
 
   // ---- Proxied auth helper sub-objects ----
   /** User helpers: `.current(ctx)`, `.require(ctx)`, `.get(ctx, userId)`, `.viewer(ctx)` */
@@ -195,10 +189,6 @@ export class ConvexAuth {
     this.signOut = authResult.signOut;
     this.store = authResult.store;
 
-    // Initialize portal exports
-    this.portalQuery = this._createPortalQuery();
-    this.portalMutation = this._createPortalMutation();
-    this.portalInternal = this._createPortalInternal();
   }
 
   /**
@@ -245,233 +235,237 @@ export class ConvexAuth {
       spaFallback: opts?.spaFallback ?? true,
     });
   }
+}
 
-  // ==========================================================================
-  // Private portal function creators
-  // ==========================================================================
+// ============================================================================
+// Portal exports (standalone function)
+// ============================================================================
 
-  private _createPortalQuery() {
-    const authComponent = this.component;
-    const authHelper = this._auth;
+/**
+ * Create portal function definitions from a ConvexAuth instance.
+ *
+ * This is a standalone function (not a class method) because Convex's
+ * bundler can trace through `export const { x } = fn(instance)` but
+ * cannot trace through `instance.method()`.
+ *
+ * ```ts
+ * export const { portalQuery, portalMutation, portalInternal } = portalExports(auth);
+ * ```
+ */
+export function portalExports(auth: ConvexAuth) {
+  const authComponent = auth.component;
+  const authHelper = (auth as any)._auth;
+  const portalUrl = auth.portalUrl;
 
-    return queryGeneric({
-      args: {
-        action: v.string(),
-        userId: v.optional(v.string()),
-      },
-      handler: async (
-        ctx: any,
-        { action, userId }: { action: string; userId?: string },
-      ) => {
-        const currentUserId = await authHelper.user.require(ctx);
+  const portalQuery = queryGeneric({
+    args: {
+      action: v.string(),
+      userId: v.optional(v.string()),
+    },
+    handler: async (
+      ctx: any,
+      { action, userId }: { action: string; userId?: string },
+    ) => {
+      const currentUserId = await authHelper.user.require(ctx);
 
-        // Allow isAdmin check without admin requirement
-        if (action === "isAdmin") {
-          try {
-            await requirePortalAdmin(ctx, authComponent, currentUserId);
-            return true;
-          } catch {
-            return false;
-          }
+      // Allow isAdmin check without admin requirement
+      if (action === "isAdmin") {
+        try {
+          await requirePortalAdmin(ctx, authComponent, currentUserId);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+
+      await requirePortalAdmin(ctx, authComponent, currentUserId);
+
+      switch (action) {
+        case "listUsers":
+          return await ctx.runQuery(authComponent.public.userList);
+
+        case "listSessions":
+          return await ctx.runQuery(authComponent.public.sessionList);
+
+        case "getUser":
+          return await ctx.runQuery(authComponent.public.userGetById, {
+            userId: userId!,
+          });
+
+        case "getUserSessions":
+          return await ctx.runQuery(authComponent.public.sessionListByUser, {
+            userId: userId!,
+          });
+
+        case "getUserAccounts": {
+          const accounts = await ctx.runQuery(
+            authComponent.public.accountListByUser,
+            { userId: userId! },
+          );
+          // Strip secrets — never send password hashes to the frontend
+          return accounts.map(({ secret: _, ...rest }: any) => rest);
         }
 
-        await requirePortalAdmin(ctx, authComponent, currentUserId);
-
-        switch (action) {
-          case "listUsers":
-            return await ctx.runQuery(authComponent.public.userList);
-
-          case "listSessions":
-            return await ctx.runQuery(authComponent.public.sessionList);
-
-          case "getUser":
-            return await ctx.runQuery(authComponent.public.userGetById, {
-              userId: userId!,
-            });
-
-          case "getUserSessions":
-            return await ctx.runQuery(authComponent.public.sessionListByUser, {
-              userId: userId!,
-            });
-
-          case "getUserAccounts": {
-            const accounts = await ctx.runQuery(
-              authComponent.public.accountListByUser,
-              { userId: userId! },
-            );
-            // Strip secrets — never send password hashes to the frontend
-            return accounts.map(({ secret: _, ...rest }: any) => rest);
+        // Invite validation (public within portal context)
+        case "validateInvite": {
+          // userId param repurposed as tokenHash for this action
+          const tokenHash = userId;
+          if (!tokenHash) throw new Error("tokenHash required");
+          const invite = await ctx.runQuery(
+            authComponent.public.inviteGetByTokenHash,
+            { tokenHash },
+          );
+          if (!invite || invite.status !== "pending") {
+            return null;
           }
-
-          // Invite validation (public within portal context)
-          case "validateInvite": {
-            // userId param repurposed as tokenHash for this action
-            const tokenHash = userId;
-            if (!tokenHash) throw new Error("tokenHash required");
-            const invite = await ctx.runQuery(
-              authComponent.public.inviteGetByTokenHash,
-              { tokenHash },
-            );
-            if (!invite || invite.status !== "pending") {
-              return null;
-            }
-            if (invite.expiresTime && invite.expiresTime < Date.now()) {
-              return null;
-            }
-            return { _id: invite._id, role: invite.role };
+          if (invite.expiresTime && invite.expiresTime < Date.now()) {
+            return null;
           }
-
-          case "getCurrentDeployment":
-            return await ctx.runQuery(
-              authComponent.portalBridge.getCurrentDeployment,
-            );
-
-          default:
-            throw new Error(`Unknown portal query action: ${action}`);
+          return { _id: invite._id, role: invite.role };
         }
-      },
-    });
-  }
 
-  private _createPortalMutation() {
-    const authComponent = this.component;
-    const authHelper = this._auth;
+        case "getCurrentDeployment":
+          return await ctx.runQuery(
+            authComponent.portalBridge.getCurrentDeployment,
+          );
 
-    return mutationGeneric({
-      args: {
-        action: v.string(),
-        sessionId: v.optional(v.string()),
-        tokenHash: v.optional(v.string()),
-      },
-      handler: async (
-        ctx: any,
-        {
-          action,
-          sessionId,
-          tokenHash,
-        }: { action: string; sessionId?: string; tokenHash?: string },
-      ) => {
-        const currentUserId = await authHelper.user.require(ctx);
+        default:
+          throw new Error(`Unknown portal query action: ${action}`);
+      }
+    },
+  });
 
-        switch (action) {
-          case "acceptInvite": {
-            if (!tokenHash) throw new Error("tokenHash required");
-            const invite = await ctx.runQuery(
-              authComponent.public.inviteGetByTokenHash,
-              { tokenHash },
-            );
-            if (!invite) throw new Error("Invalid invite token");
-            if (invite.status !== "pending") {
-              throw new Error(`Invite already ${invite.status}`);
-            }
-            if (invite.expiresTime && invite.expiresTime < Date.now()) {
-              throw new Error("Invite has expired");
-            }
-            await ctx.runMutation(authComponent.public.inviteAccept, {
-              inviteId: invite._id,
-              acceptedByUserId: currentUserId,
-            });
-            return;
+  const portalMutation = mutationGeneric({
+    args: {
+      action: v.string(),
+      sessionId: v.optional(v.string()),
+      tokenHash: v.optional(v.string()),
+    },
+    handler: async (
+      ctx: any,
+      {
+        action,
+        sessionId,
+        tokenHash,
+      }: { action: string; sessionId?: string; tokenHash?: string },
+    ) => {
+      const currentUserId = await authHelper.user.require(ctx);
+
+      switch (action) {
+        case "acceptInvite": {
+          if (!tokenHash) throw new Error("tokenHash required");
+          const invite = await ctx.runQuery(
+            authComponent.public.inviteGetByTokenHash,
+            { tokenHash },
+          );
+          if (!invite) throw new Error("Invalid invite token");
+          if (invite.status !== "pending") {
+            throw new Error(`Invite already ${invite.status}`);
           }
-
-          case "revokeSession": {
-            await requirePortalAdmin(ctx, authComponent, currentUserId);
-            await ctx.runMutation(authComponent.public.sessionDelete, {
-              sessionId: sessionId!,
-            });
-            return;
+          if (invite.expiresTime && invite.expiresTime < Date.now()) {
+            throw new Error("Invite has expired");
           }
-
-          default:
-            throw new Error(`Unknown portal mutation action: ${action}`);
+          await ctx.runMutation(authComponent.public.inviteAccept, {
+            inviteId: invite._id,
+            acceptedByUserId: currentUserId,
+          });
+          return;
         }
-      },
-    });
-  }
 
-  private _createPortalInternal() {
-    const authComponent = this.component;
-    const portalUrl = this.portalUrl;
-
-    return internalMutationGeneric({
-      args: {
-        action: v.string(),
-        tokenHash: v.optional(v.string()),
-        path: v.optional(v.string()),
-        storageId: v.optional(v.string()),
-        blobId: v.optional(v.string()),
-        contentType: v.optional(v.string()),
-        deploymentId: v.optional(v.string()),
-        currentDeploymentId: v.optional(v.string()),
-        limit: v.optional(v.number()),
-      },
-      handler: async (ctx: any, args: any) => {
-        switch (args.action) {
-          // ---- Invite management (CLI) ----
-          case "createPortalInvite": {
-            await ctx.runMutation(authComponent.public.inviteCreate, {
-              tokenHash: args.tokenHash,
-              role: "portalAdmin",
-              status: "pending" as const,
-            });
-            return { portalUrl };
-          }
-
-          // ---- Static hosting (CLI upload) ----
-          case "generateUploadUrl": {
-            return await ctx.storage.generateUploadUrl();
-          }
-
-          case "recordAsset": {
-            const { oldStorageId, oldBlobId } = await ctx.runMutation(
-              authComponent.portalBridge.recordAsset,
-              {
-                path: args.path,
-                ...(args.storageId ? { storageId: args.storageId } : {}),
-                ...(args.blobId ? { blobId: args.blobId } : {}),
-                contentType: args.contentType,
-                deploymentId: args.deploymentId,
-              },
-            );
-            if (oldStorageId) {
-              try {
-                await ctx.storage.delete(oldStorageId);
-              } catch {
-                // Ignore — old file may have been in different storage
-              }
-            }
-            return oldBlobId ?? null;
-          }
-
-          case "gcOldAssets": {
-            const { storageIds, blobIds } = await ctx.runMutation(
-              authComponent.portalBridge.gcOldAssets,
-              { currentDeploymentId: args.currentDeploymentId },
-            );
-            for (const storageId of storageIds) {
-              try {
-                await ctx.storage.delete(storageId);
-              } catch {
-                // Ignore
-              }
-            }
-            await ctx.runMutation(
-              authComponent.portalBridge.setCurrentDeployment,
-              { deploymentId: args.currentDeploymentId },
-            );
-            return { deleted: storageIds.length, blobIds };
-          }
-
-          case "listAssets": {
-            return await ctx.runQuery(authComponent.portalBridge.listAssets, {
-              limit: args.limit,
-            });
-          }
-
-          default:
-            throw new Error(`Unknown portalInternal action: ${args.action}`);
+        case "revokeSession": {
+          await requirePortalAdmin(ctx, authComponent, currentUserId);
+          await ctx.runMutation(authComponent.public.sessionDelete, {
+            sessionId: sessionId!,
+          });
+          return;
         }
-      },
-    });
-  }
+
+        default:
+          throw new Error(`Unknown portal mutation action: ${action}`);
+      }
+    },
+  });
+
+  const portalInternal = internalMutationGeneric({
+    args: {
+      action: v.string(),
+      tokenHash: v.optional(v.string()),
+      path: v.optional(v.string()),
+      storageId: v.optional(v.string()),
+      blobId: v.optional(v.string()),
+      contentType: v.optional(v.string()),
+      deploymentId: v.optional(v.string()),
+      currentDeploymentId: v.optional(v.string()),
+      limit: v.optional(v.number()),
+    },
+    handler: async (ctx: any, args: any) => {
+      switch (args.action) {
+        // ---- Invite management (CLI) ----
+        case "createPortalInvite": {
+          await ctx.runMutation(authComponent.public.inviteCreate, {
+            tokenHash: args.tokenHash,
+            role: "portalAdmin",
+            status: "pending" as const,
+          });
+          return { portalUrl };
+        }
+
+        // ---- Static hosting (CLI upload) ----
+        case "generateUploadUrl": {
+          return await ctx.storage.generateUploadUrl();
+        }
+
+        case "recordAsset": {
+          const { oldStorageId, oldBlobId } = await ctx.runMutation(
+            authComponent.portalBridge.recordAsset,
+            {
+              path: args.path,
+              ...(args.storageId ? { storageId: args.storageId } : {}),
+              ...(args.blobId ? { blobId: args.blobId } : {}),
+              contentType: args.contentType,
+              deploymentId: args.deploymentId,
+            },
+          );
+          if (oldStorageId) {
+            try {
+              await ctx.storage.delete(oldStorageId);
+            } catch {
+              // Ignore — old file may have been in different storage
+            }
+          }
+          return oldBlobId ?? null;
+        }
+
+        case "gcOldAssets": {
+          const { storageIds, blobIds } = await ctx.runMutation(
+            authComponent.portalBridge.gcOldAssets,
+            { currentDeploymentId: args.currentDeploymentId },
+          );
+          for (const storageId of storageIds) {
+            try {
+              await ctx.storage.delete(storageId);
+            } catch {
+              // Ignore
+            }
+          }
+          await ctx.runMutation(
+            authComponent.portalBridge.setCurrentDeployment,
+            { deploymentId: args.currentDeploymentId },
+          );
+          return { deleted: storageIds.length, blobIds };
+        }
+
+        case "listAssets": {
+          return await ctx.runQuery(authComponent.portalBridge.listAssets, {
+            limit: args.limit,
+          });
+        }
+
+        default:
+          throw new Error(`Unknown portalInternal action: ${args.action}`);
+      }
+    },
+  });
+
+  return { portalQuery, portalMutation, portalInternal };
 }

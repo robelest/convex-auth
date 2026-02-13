@@ -7,7 +7,7 @@ import password from "@robelest/convex-auth/providers/password";
 import totp from "@robelest/convex-auth/providers/totp";
 import phone from "@robelest/convex-auth/providers/phone";
 import { type RandomReader, generateRandomString } from "@oslojs/crypto/random";
-import { ConvexAuth } from "@robelest/convex-auth/component";
+import { ConvexAuth, portalExports } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
 
 const random: RandomReader = {
@@ -123,4 +123,5 @@ const auth = new ConvexAuth(components.auth, {
 });
 
 export { auth };
-export const { signIn, signOut, store, portalQuery, portalMutation, portalInternal } = auth;
+export const { signIn, signOut, store } = auth;
+export const { portalQuery, portalMutation, portalInternal } = portalExports(auth);
