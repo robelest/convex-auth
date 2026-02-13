@@ -578,6 +578,7 @@ export type AuthComponentApi = {
     memberUpdate: FunctionReference<"mutation", "internal">;
     inviteCreate: FunctionReference<"mutation", "internal">;
     inviteGet: FunctionReference<"query", "internal">;
+    inviteGetByTokenHash: FunctionReference<"query", "internal">;
     inviteList: FunctionReference<"query", "internal">;
     inviteAccept: FunctionReference<"mutation", "internal">;
     inviteRevoke: FunctionReference<"mutation", "internal">;
