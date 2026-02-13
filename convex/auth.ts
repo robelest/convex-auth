@@ -1,4 +1,4 @@
-import github from "@auth/core/providers/github";
+import google from "@auth/core/providers/google";
 import resend from "@auth/core/providers/resend";
 import anonymous from "@robelest/convex-auth/providers/anonymous";
 import email from "@robelest/convex-auth/providers/email";
@@ -103,7 +103,7 @@ function fakePhoneProvider(id: string = "fake-phone") {
 
 const auth = new Auth(components.auth, {
   providers: [
-    github,
+    google,
     resend({
       apiKey: process.env.RESEND_API_KEY,
       from: process.env.AUTH_EMAIL ?? "My App <onboarding@resend.dev>",
