@@ -2,7 +2,7 @@
 
 Component-first authentication for [Convex](https://convex.dev). One component, one class, full TypeScript support.
 
-- **Class-based API** — `new ConvexAuth(components.auth, { providers })` gives you everything: auth, portal, helpers.
+- **Class-based API** — `new Auth(components.auth, { providers })` gives you everything: auth, portal, helpers.
 - **Built-in admin portal** — A dark-themed SvelteKit dashboard served directly from your Convex deployment. Manage users, sessions, and invites. No separate hosting.
 - **Self-hosting as a sub-component** — Portal static files are stored and served through an embedded `@convex-dev/self-hosting` sub-component. You install one component, not two.
 - **Groups, memberships, invites** — Hierarchical groups with roles, atomic invite acceptance, and cascade deletes.
@@ -43,20 +43,20 @@ export default app;
 
 ```ts
 // convex/auth.ts
-import { ConvexAuth, portalExports } from "@robelest/convex-auth/component";
+import { Auth, Portal } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
 import github from "@auth/core/providers/github";
 
-const auth = new ConvexAuth(components.auth, {
+const auth = new Auth(components.auth, {
   providers: [github],
 });
 
 export { auth };
 export const { signIn, signOut, store } = auth;
-export const { portalQuery, portalMutation, portalInternal } = portalExports(auth);
+export const { portalQuery, portalMutation, portalInternal } = Portal(auth);
 ```
 
-`ConvexAuth` wraps auth actions and helper accessors. `portalExports()` creates the portal function definitions as a separate call — this is required because Convex's bundler can only recognize function definitions returned from plain function calls, not from class methods.
+`Auth` wraps auth actions and helper accessors. `Portal()` creates the portal admin function definitions — a separate call because Convex's bundler needs plain function returns to recognize exported function definitions.
 
 ### 3. Wire up HTTP routes
 
@@ -210,7 +210,7 @@ That's it. The portal is now live at `https://<your-deployment>.convex.site/auth
 
 - Portal static files are stored in Convex via the `@convex-dev/self-hosting` sub-component (installed automatically inside the auth component).
 - `addHttpRoutes` registers SPA-fallback static file serving at `/auth`.
-- The portal uses a `portal` email provider (auto-registered by `ConvexAuth`) for magic link sign-in.
+- The portal uses a `portal` email provider (auto-registered by `Auth`) for magic link sign-in.
 - Admin access is controlled by invite records with `role: "portalAdmin"`. The first admin is created via `portal link`.
 - All portal data flows through `portalQuery`, `portalMutation`, and `portalInternal` — exported from your `convex/auth.ts`. The portal client calls these, not component internals directly (components can't expose public endpoints to external clients).
 
@@ -243,7 +243,7 @@ Any `@auth/core` provider works:
 import github from "@auth/core/providers/github";
 import google from "@auth/core/providers/google";
 
-new ConvexAuth(components.auth, {
+new Auth(components.auth, {
   providers: [github, google],
 });
 ```
@@ -255,7 +255,7 @@ Set `AUTH_<PROVIDER>_ID` and `AUTH_<PROVIDER>_SECRET` on your deployment.
 ```ts
 import password from "@robelest/convex-auth/providers/password";
 
-new ConvexAuth(components.auth, {
+new Auth(components.auth, {
   providers: [password],
 });
 ```
@@ -273,7 +273,7 @@ const otp = email({
   },
 });
 
-new ConvexAuth(components.auth, {
+new Auth(components.auth, {
   providers: [
     password({ id: "password-with-verify", verify: otp }),
     otp,
@@ -286,7 +286,7 @@ new ConvexAuth(components.auth, {
 ```ts
 import passkey from "@robelest/convex-auth/providers/passkey";
 
-new ConvexAuth(components.auth, {
+new Auth(components.auth, {
   providers: [passkey],
 });
 ```
@@ -296,7 +296,7 @@ new ConvexAuth(components.auth, {
 ```ts
 import totp from "@robelest/convex-auth/providers/totp";
 
-new ConvexAuth(components.auth, {
+new Auth(components.auth, {
   providers: [totp({ issuer: "My App" })],
 });
 ```
@@ -319,7 +319,7 @@ const sms = phone({
 ```ts
 import anonymous from "@robelest/convex-auth/providers/anonymous";
 
-new ConvexAuth(components.auth, {
+new Auth(components.auth, {
   providers: [anonymous],
 });
 ```
@@ -410,7 +410,7 @@ Key design constraints of the Convex component system:
 - Groups, memberships, invites with cascade operations
 - Admin portal (SvelteKit, dark theme, self-hosted via Convex)
 - Portal CLI (`portal upload`, `portal link`)
-- Class-based `ConvexAuth` API
+- Class-based `Auth` API
 - Self-hosting as embedded sub-component
 
 ### Planned
@@ -439,7 +439,7 @@ bun run test:auth
 
 | Directory | Description |
 |-----------|-------------|
-| `packages/auth/` | Auth component + `ConvexAuth` class + CLI |
+| `packages/auth/` | Auth component + `Auth` class + CLI |
 | `packages/portal/` | Admin portal (SvelteKit + static adapter) |
 | `packages/test/` | Shared test suite |
 | `convex/` | Root Convex functions (dev/test) |

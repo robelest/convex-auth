@@ -1,20 +1,19 @@
 /**
- * The `ConvexAuth` class — a clean, class-based API that combines
- * authentication and portal admin functionality into a single export.
+ * The `Auth` class — the main entry point for Convex Auth.
  *
- * Replaces the separate `Auth()` + `Portal()` factories with one class:
+ * Combines authentication and portal admin functionality:
  *
  * ```ts
  * // convex/auth.ts
- * import { ConvexAuth, portalExports } from "@robelest/convex-auth/component";
+ * import { Auth, Portal } from "@robelest/convex-auth/component";
  * import github from "@auth/core/providers/github";
  * import { components } from "./_generated/api";
  *
- * export const auth = new ConvexAuth(components.auth, {
+ * export const auth = new Auth(components.auth, {
  *   providers: [github],
  * });
  * export const { signIn, signOut, store } = auth;
- * export const { portalQuery, portalMutation, portalInternal } = portalExports(auth);
+ * export const { portalQuery, portalMutation, portalInternal } = Portal(auth);
  * ```
  *
  * @module
@@ -28,7 +27,7 @@ import {
 import type { HttpRouter } from "convex/server";
 import { v } from "convex/values";
 import type { ComponentApi as AuthComponentApi } from "../component/_generated/component.js";
-import { Auth } from "./implementation/index.js";
+import { Auth as AuthFactory } from "./implementation/index.js";
 import type { ConvexAuthConfig } from "./types.js";
 import { registerStaticRoutes } from "@convex-dev/self-hosting";
 import { portalMagicLinkEmail } from "./portal-email.js";
@@ -46,7 +45,7 @@ import email from "../providers/email.js";
  * when you export `portalQuery`, `portalMutation`, `portalInternal` from
  * your `convex/auth.ts` and upload the portal static files via CLI.
  */
-export type ConvexAuthClassConfig = Omit<ConvexAuthConfig, "component">;
+export type AuthClassConfig = Omit<ConvexAuthConfig, "component">;
 
 // ============================================================================
 // Helpers
@@ -76,7 +75,7 @@ async function requirePortalAdmin(
 }
 
 // ============================================================================
-// ConvexAuth class
+// Auth class
 // ============================================================================
 
 /**
@@ -84,22 +83,22 @@ async function requirePortalAdmin(
  * reference and config to get all the exports you need.
  *
  * ```ts
- * export const auth = new ConvexAuth(components.auth, {
+ * export const auth = new Auth(components.auth, {
  *   providers: [github, resend({ ... })],
  * });
  * export const { signIn, signOut, store } = auth;
- * export const { portalQuery, portalMutation, portalInternal } = portalExports(auth);
+ * export const { portalQuery, portalMutation, portalInternal } = Portal(auth);
  * ```
  */
-export class ConvexAuth {
-  /** The inner `auth` helper object from Auth() */
-  private readonly _auth: ReturnType<typeof Auth>["auth"];
+export class Auth {
+  /** The inner `auth` helper object from AuthFactory() */
+  private readonly _auth: ReturnType<typeof AuthFactory>["auth"];
   /** The signIn action — export this from your convex/auth.ts */
-  public readonly signIn: ReturnType<typeof Auth>["signIn"];
+  public readonly signIn: ReturnType<typeof AuthFactory>["signIn"];
   /** The signOut action — export this from your convex/auth.ts */
-  public readonly signOut: ReturnType<typeof Auth>["signOut"];
+  public readonly signOut: ReturnType<typeof AuthFactory>["signOut"];
   /** The store internal mutation — export this from your convex/auth.ts */
-  public readonly store: ReturnType<typeof Auth>["store"];
+  public readonly store: ReturnType<typeof AuthFactory>["store"];
 
   /** @internal */
   readonly component: AuthComponentApi;
@@ -124,7 +123,7 @@ export class ConvexAuth {
   /** TOTP helpers */
   get totp() { return this._auth.totp; }
 
-  constructor(component: AuthComponentApi, config: ConvexAuthClassConfig) {
+  constructor(component: AuthComponentApi, config: AuthClassConfig) {
     this.component = component;
 
     // Derive portal URL from CONVEX_SITE_URL
@@ -177,8 +176,8 @@ export class ConvexAuth {
       }),
     );
 
-    // Initialize the core Auth() factory
-    const authResult = Auth({
+    // Initialize the core AuthFactory()
+    const authResult = AuthFactory({
       ...config,
       component,
       providers,
@@ -249,10 +248,10 @@ export class ConvexAuth {
  * cannot trace through `instance.method()`.
  *
  * ```ts
- * export const { portalQuery, portalMutation, portalInternal } = portalExports(auth);
+ * export const { portalQuery, portalMutation, portalInternal } = Portal(auth);
  * ```
  */
-export function portalExports(auth: ConvexAuth) {
+export function Portal(auth: Auth) {
   const authComponent = auth.component;
   const authHelper = (auth as any)._auth;
   const portalUrl = auth.portalUrl;
