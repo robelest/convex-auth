@@ -5,6 +5,14 @@ import { mutation, query } from "./_generated/server";
 // Users
 // ============================================================================
 
+/** List all users. */
+export const userList = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("user").collect();
+  },
+});
+
 /** Retrieve a user by their document ID. */
 export const userGetById = query({
   args: { userId: v.id("user") },
@@ -79,6 +87,17 @@ export const userPatch = mutation({
 // Accounts
 // ============================================================================
 
+/** List all accounts for a user. */
+export const accountListByUser = query({
+  args: { userId: v.id("user") },
+  handler: async (ctx, { userId }) => {
+    return await ctx.db
+      .query("account")
+      .withIndex("userIdAndProvider", (q) => q.eq("userId", userId as any))
+      .collect();
+  },
+});
+
 /** Look up an account by provider and provider-specific account ID. */
 export const accountGet = query({
   args: { provider: v.string(), providerAccountId: v.string() },
@@ -132,6 +151,14 @@ export const accountDelete = mutation({
 // ============================================================================
 // Sessions
 // ============================================================================
+
+/** List all sessions. */
+export const sessionList = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("session").collect();
+  },
+});
 
 /** Create a new session for a user with an expiration time. */
 export const sessionCreate = mutation({
@@ -773,8 +800,8 @@ export const memberUpdate = mutation({
 export const inviteCreate = mutation({
   args: {
     groupId: v.optional(v.id("group")),
-    invitedByUserId: v.id("user"),
-    email: v.string(),
+    invitedByUserId: v.optional(v.id("user")),
+    email: v.optional(v.string()),
     tokenHash: v.string(),
     role: v.optional(v.string()),
     status: v.union(
@@ -783,42 +810,48 @@ export const inviteCreate = mutation({
       v.literal("revoked"),
       v.literal("expired"),
     ),
-    expiresTime: v.number(),
+    expiresTime: v.optional(v.number()),
     extend: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    if (args.groupId !== undefined) {
-      const existingGroupInvite = await ctx.db
-        .query("invite")
-        .withIndex("groupIdAndStatus", (q) =>
-          q.eq("groupId", args.groupId).eq("status", "pending"),
-        )
-        .filter((q) => q.eq(q.field("email"), args.email))
-        .first();
-      if (existingGroupInvite !== null) {
-        throw new ConvexError({
-          code: "DUPLICATE_INVITE",
-          message: "A pending invite already exists for this email in this group",
-          email: args.email,
-          groupId: args.groupId,
-          existingInviteId: existingGroupInvite._id,
-        });
-      }
-    } else {
-      const existingPlatformInvite = await ctx.db
-        .query("invite")
-        .withIndex("emailAndStatus", (q) =>
-          q.eq("email", args.email).eq("status", "pending"),
-        )
-        .filter((q) => q.eq(q.field("groupId"), undefined))
-        .first();
-      if (existingPlatformInvite !== null) {
-        throw new ConvexError({
-          code: "DUPLICATE_INVITE",
-          message: "A pending platform invite already exists for this email",
-          email: args.email,
-          existingInviteId: existingPlatformInvite._id,
-        });
+    // Only check for duplicates when an email is provided.
+    // CLI-generated invites (no email) are always allowed.
+    if (args.email !== undefined) {
+      if (args.groupId !== undefined) {
+        const existingGroupInvite = await ctx.db
+          .query("invite")
+          .withIndex("groupIdAndStatus", (q) =>
+            q.eq("groupId", args.groupId).eq("status", "pending"),
+          )
+          .filter((q) => q.eq(q.field("email"), args.email))
+          .first();
+        if (existingGroupInvite !== null) {
+          throw new ConvexError({
+            code: "DUPLICATE_INVITE",
+            message:
+              "A pending invite already exists for this email in this group",
+            email: args.email,
+            groupId: args.groupId,
+            existingInviteId: existingGroupInvite._id,
+          });
+        }
+      } else {
+        const existingPlatformInvite = await ctx.db
+          .query("invite")
+          .withIndex("emailAndStatus", (q) =>
+            q.eq("email", args.email).eq("status", "pending"),
+          )
+          .filter((q) => q.eq(q.field("groupId"), undefined))
+          .first();
+        if (existingPlatformInvite !== null) {
+          throw new ConvexError({
+            code: "DUPLICATE_INVITE",
+            message:
+              "A pending platform invite already exists for this email",
+            email: args.email,
+            existingInviteId: existingPlatformInvite._id,
+          });
+        }
       }
     }
     return await ctx.db.insert("invite", args);
@@ -830,6 +863,17 @@ export const inviteGet = query({
   args: { inviteId: v.id("invite") },
   handler: async (ctx, { inviteId }) => {
     return await ctx.db.get(inviteId);
+  },
+});
+
+/** Retrieve an invite by its token hash. Returns `null` if not found. */
+export const inviteGetByTokenHash = query({
+  args: { tokenHash: v.string() },
+  handler: async (ctx, { tokenHash }) => {
+    return await ctx.db
+      .query("invite")
+      .withIndex("tokenHash", (q) => q.eq("tokenHash", tokenHash))
+      .unique();
   },
 });
 
@@ -884,8 +928,11 @@ export const inviteList = query({
  * The caller is responsible for creating the corresponding member record.
  */
 export const inviteAccept = mutation({
-  args: { inviteId: v.id("invite") },
-  handler: async (ctx, { inviteId }) => {
+  args: {
+    inviteId: v.id("invite"),
+    acceptedByUserId: v.optional(v.id("user")),
+  },
+  handler: async (ctx, { inviteId, acceptedByUserId }) => {
     const invite = await ctx.db.get(inviteId);
     if (invite === null) {
       throw new ConvexError({
@@ -905,6 +952,7 @@ export const inviteAccept = mutation({
     await ctx.db.patch(inviteId, {
       status: "accepted",
       acceptedTime: Date.now(),
+      ...(acceptedByUserId ? { acceptedByUserId } : {}),
     });
   },
 });
@@ -937,3 +985,5 @@ export const inviteRevoke = mutation({
     await ctx.db.patch(inviteId, { status: "revoked" });
   },
 });
+
+

@@ -191,14 +191,17 @@ export default defineSchema({
     .index("userId", ["userId"]),
 
   /**
-   * Group invitations. Tracks pending, accepted, revoked, and expired
-   * invitations to join a group. Uses a hashed token for secure
-   * invitation links.
+   * Invitations. Tracks pending, accepted, revoked, and expired
+   * invitations. Optionally scoped to a group via `groupId`, or
+   * platform-level when `groupId` is omitted.
+   *
+   * `email` and `invitedByUserId` are optional to support CLI-generated
+   * invite links where neither is known upfront (e.g. portal admin invites).
    */
   invite: defineTable({
     groupId: v.optional(v.id("group")),
-    invitedByUserId: v.id("user"),
-    email: v.string(),
+    invitedByUserId: v.optional(v.id("user")),
+    email: v.optional(v.string()),
     tokenHash: v.string(),
     role: v.optional(v.string()),
     status: v.union(
@@ -207,7 +210,7 @@ export default defineSchema({
       v.literal("revoked"),
       v.literal("expired"),
     ),
-    expiresTime: v.number(),
+    expiresTime: v.optional(v.number()),
     acceptedByUserId: v.optional(v.id("user")),
     acceptedTime: v.optional(v.number()),
     extend: v.optional(v.any()),
@@ -217,5 +220,10 @@ export default defineSchema({
     .index("emailAndStatus", ["email", "status"])
     .index("invitedByUserIdAndStatus", ["invitedByUserId", "status"])
     .index("groupId", ["groupId"])
-    .index("groupIdAndStatus", ["groupId", "status"]),
+    .index("groupIdAndStatus", ["groupId", "status"])
+    .index("roleAndStatusAndAcceptedByUserId", [
+      "role",
+      "status",
+      "acceptedByUserId",
+    ]),
 });
