@@ -471,13 +471,16 @@ export default app;
 async function initializeAuth(config: ProjectConfig) {
   logStep(config, "Initialize auth file");
   const sourceTemplate = `\
-import { Auth } from "@robelest/convex-auth/component";
+import { Auth, Portal } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
 
-export const { auth, signIn, signOut, store } = Auth({$$
-  component: components.auth,$$
+const auth = new Auth(components.auth, {$$
   providers: [$$],$$
 });
+
+export { auth };
+export const { signIn, signOut, store } = auth;
+export const { portalQuery, portalMutation, portalInternal } = Portal(auth);
 `;
   const source = templateToSource(sourceTemplate);
   const authPath = path.join(config.convexFolderPath, "auth");

@@ -7,7 +7,7 @@ import password from "@robelest/convex-auth/providers/password";
 import totp from "@robelest/convex-auth/providers/totp";
 import phone from "@robelest/convex-auth/providers/phone";
 import { type RandomReader, generateRandomString } from "@oslojs/crypto/random";
-import { ConvexAuth, portalExports } from "@robelest/convex-auth/component";
+import { Auth, Portal } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
 
 const random: RandomReader = {
@@ -101,7 +101,7 @@ function fakePhoneProvider(id: string = "fake-phone") {
   });
 }
 
-const auth = new ConvexAuth(components.auth, {
+const auth = new Auth(components.auth, {
   providers: [
     github,
     resend({
@@ -124,4 +124,4 @@ const auth = new ConvexAuth(components.auth, {
 
 export { auth };
 export const { signIn, signOut, store } = auth;
-export const { portalQuery, portalMutation, portalInternal } = portalExports(auth);
+export const { portalQuery, portalMutation, portalInternal } = Portal(auth);

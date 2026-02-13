@@ -2,21 +2,21 @@
  * Configuration and helpers for using Convex Auth on your Convex
  * backend.
  *
- * Call {@link Auth} to configure your authentication methods
- * and use the helpers it returns.
+ * Use `new Auth(components.auth, config)` to configure authentication
+ * and `Portal(auth)` to create portal admin exports.
  *
  * @module
  */
 
 export {
-  Auth,
+  Auth as AuthFactory,
   Tokens,
   Doc,
   SignInAction,
   SignOutAction,
 } from "../server/implementation/index.js";
-export { Portal } from "../server/portal.js";
-export { ConvexAuth, portalExports } from "../server/convex-auth.js";
+export { Portal as PortalFactory } from "../server/portal.js";
+export { Auth, Portal } from "../server/convex-auth.js";
 export type {
   ConvexAuthConfig,
   AuthProviderConfig,
