@@ -29,7 +29,7 @@
     "build:component": "tsc --project tsconfig.component.json",
     "build": "rm -rf dist && bun run build:bin && bun run build:server && bun run build:client && bun run build:component",
     "docs": "bun run --cwd ../../docs dev",
-    "lint": "tsc && bun run --cwd ../.. lint",
+    "lint": "tsc --project tsconfig.server.json --noEmit && tsc --project tsconfig.client.json --noEmit && tsc --project tsconfig.component.json --noEmit && bun run --cwd ../.. lint",
     "spellcheck": "cspell \"docs/pages/**/*.md*\"",
     "prepare": "bun run build",
     "prepublishOnly": "bun run lint && bun run build && bun run test:once",
