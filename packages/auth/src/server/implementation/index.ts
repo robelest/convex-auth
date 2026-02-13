@@ -446,12 +446,15 @@ export function Auth(config_: ConvexAuthConfig) {
        * Create a new invitation.
        *
        * @param data.groupId - Optional group to invite the user into.
-       * @param data.invitedByUserId - The user sending the invitation.
-       * @param data.email - The email address of the invitee.
+       * @param data.invitedByUserId - Optional user sending the invitation
+       *   (omit for CLI-generated invites).
+       * @param data.email - Optional email of the invitee (omit for
+       *   CLI-generated invite links where the email is unknown upfront).
        * @param data.tokenHash - Hashed token for secure acceptance.
        * @param data.role - Optional role to assign on acceptance.
        * @param data.status - Initial status (typically "pending").
-       * @param data.expiresTime - Timestamp when the invite expires.
+       * @param data.expiresTime - Optional expiration timestamp (omit for
+       *   single-use, non-expiring invites).
        * @param data.extend - Optional arbitrary JSON extension data.
        * @throws ConvexError with code `DUPLICATE_INVITE` if a pending invite
        * already exists for this email and scope.
@@ -461,12 +464,12 @@ export function Auth(config_: ConvexAuthConfig) {
         ctx: ComponentCtx,
         data: {
           groupId?: string;
-          invitedByUserId: string;
-          email: string;
+          invitedByUserId?: string;
+          email?: string;
           tokenHash: string;
           role?: string;
           status: "pending" | "accepted" | "revoked" | "expired";
-          expiresTime: number;
+          expiresTime?: number;
           extend?: Record<string, unknown>;
         },
       ): Promise<string> => {
@@ -477,6 +480,12 @@ export function Auth(config_: ConvexAuthConfig) {
        */
       get: async (ctx: ComponentReadCtx, inviteId: string) => {
         return await ctx.runQuery(config.component.public.inviteGet, { inviteId });
+      },
+      /**
+       * Retrieve an invite by its token hash. Returns `null` if not found.
+       */
+      getByTokenHash: async (ctx: ComponentReadCtx, tokenHash: string) => {
+        return await ctx.runQuery(config.component.public.inviteGetByTokenHash, { tokenHash });
       },
       /**
        * List invites, optionally filtered by group and/or status.
@@ -524,8 +533,11 @@ export function Auth(config_: ConvexAuthConfig) {
        * });
        * ```
        */
-      accept: async (ctx: ComponentCtx, inviteId: string) => {
-        await ctx.runMutation(config.component.public.inviteAccept, { inviteId });
+      accept: async (ctx: ComponentCtx, inviteId: string, acceptedByUserId?: string) => {
+        await ctx.runMutation(config.component.public.inviteAccept, {
+          inviteId,
+          ...(acceptedByUserId ? { acceptedByUserId } : {}),
+        });
       },
        /**
         * Revoke a pending invitation.

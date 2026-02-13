@@ -1,0 +1,95 @@
+/**
+ * Styled dark-theme magic link email template for the Convex Auth Portal.
+ *
+ * Matches the portal's design system:
+ * - Background: #1e1c1a (body), #2a2825 (card)
+ * - Accent: #63a8f8 (Convex blue)
+ * - Text: #ffffff (headings), #b9b1aa (secondary), #8f8780 (muted)
+ * - Border: #4a4743
+ *
+ * @module
+ */
+
+const SHIELD_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#63a8f8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>`;
+
+/**
+ * Generate the styled magic link email HTML.
+ *
+ * @param url - The magic link URL the user clicks to sign in.
+ * @param expiresInHours - How long the link is valid (shown in the email).
+ */
+export function portalMagicLinkEmail(
+  url: string,
+  expiresInHours: number = 24,
+): string {
+  const expiryText =
+    expiresInHours >= 24
+      ? `${Math.floor(expiresInHours / 24)} day${Math.floor(expiresInHours / 24) > 1 ? "s" : ""}`
+      : `${expiresInHours} hour${expiresInHours > 1 ? "s" : ""}`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="supported-color-schemes" content="dark" />
+  <title>Sign in to Convex Auth Portal</title>
+</head>
+<body style="margin:0;padding:0;background-color:#1e1c1a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#1e1c1a;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background-color:#2a2825;border:1px solid #4a4743;border-radius:8px;overflow:hidden;">
+          <!-- Header -->
+          <tr>
+            <td style="padding:32px 32px 0 32px;text-align:center;">
+              ${SHIELD_SVG}
+              <h1 style="margin:16px 0 0 0;font-size:20px;font-weight:600;color:#ffffff;line-height:1.3;">
+                Convex Auth Portal
+              </h1>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:24px 32px;">
+              <p style="margin:0 0 20px 0;font-size:15px;line-height:1.6;color:#b9b1aa;">
+                Click the button below to sign in to the admin portal. This link will expire in ${expiryText}.
+              </p>
+
+              <!-- CTA Button -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center" style="padding:8px 0 24px 0;">
+                    <a href="${url}" target="_blank" style="display:inline-block;background-color:#63a8f8;color:#0a0a0b;font-size:15px;font-weight:600;text-decoration:none;padding:12px 32px;border-radius:6px;line-height:1;">
+                      Sign in to Portal
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 16px 0;font-size:13px;line-height:1.6;color:#8f8780;">
+                If the button doesn't work, copy and paste this URL into your browser:
+              </p>
+              <p style="margin:0;font-size:13px;line-height:1.5;color:#63a8f8;word-break:break-all;">
+                ${url}
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:20px 32px;border-top:1px solid #4a4743;">
+              <p style="margin:0;font-size:12px;line-height:1.5;color:#8f8780;text-align:center;">
+                If you didn't request this email, you can safely ignore it.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}

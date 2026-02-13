@@ -19,19 +19,12 @@ export async function redirectAbsoluteUrl(
 }
 
 async function defaultRedirectCallback({ redirectTo }: { redirectTo: string }) {
-  const baseUrl = siteUrl();
+  // Resolve relative paths against SITE_URL; absolute URLs are passed through
+  // as-is. The developer is trusted to provide valid redirect targets.
   if (redirectTo.startsWith("?") || redirectTo.startsWith("/")) {
-    return `${baseUrl}${redirectTo}`;
+    return `${siteUrl()}${redirectTo}`;
   }
-  if (redirectTo.startsWith(baseUrl)) {
-    const after = redirectTo[baseUrl.length];
-    if (after === undefined || after === "?" || after === "/") {
-      return redirectTo;
-    }
-  }
-  throw new Error(
-    `Invalid \`redirectTo\` ${redirectTo} for configured SITE_URL: ${baseUrl.toString()}`,
-  );
+  return redirectTo;
 }
 
 // Temporary work-around because Convex doesn't support
