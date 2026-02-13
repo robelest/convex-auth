@@ -178,6 +178,36 @@ if (invite.groupId) {
 
 Error codes: `DUPLICATE_MEMBERSHIP`, `DUPLICATE_INVITE`, `INVITE_NOT_FOUND`, `INVITE_NOT_PENDING`.
 
+### API Keys
+
+Programmatic access with scoped permissions, SHA-256 hashed storage, and optional per-key rate limiting.
+
+```ts
+// Create a key
+const { keyId, raw } = await auth.key.create(ctx, {
+  userId,
+  name: "CI Pipeline",
+  scopes: [{ resource: "users", actions: ["read", "list"] }],
+});
+// raw = "cvx_abc123..." — show once, never stored
+
+// Verify a key from a request
+const key = await auth.key.verify(ctx, bearerToken);
+// key = { userId, scopes, ... } or null
+```
+
+| API | Description |
+|-----|-------------|
+| `auth.key.create(ctx, data)` | Create a key (returns raw key + ID) |
+| `auth.key.verify(ctx, rawKey)` | Verify and return key record (or null) |
+| `auth.key.list(ctx)` | List all keys |
+| `auth.key.get(ctx, keyId)` | Get a key by ID |
+| `auth.key.update(ctx, keyId, data)` | Update name, scopes, rate limit |
+| `auth.key.revoke(ctx, keyId)` | Revoke a key (soft delete) |
+| `auth.key.remove(ctx, keyId)` | Permanently delete a key |
+
+Keys support wildcard scopes (`{ resource: "*", actions: ["*"] }`) and optional token-bucket rate limiting via `rateLimit: { maxTokens, refillRate }`.
+
 ## Admin Portal
 
 A dark-themed SvelteKit admin dashboard served directly from your Convex deployment at `/<component_name>` (default: `/auth`). No separate hosting required.
@@ -373,6 +403,79 @@ npx @robelest/convex-auth portal upload --prod
 npx @robelest/convex-auth portal link --prod
 ```
 
+## SSR Integration
+
+The `server()` helper from `@robelest/convex-auth/server` handles OAuth code exchange, token refresh, and httpOnly cookie management for SSR frameworks. It returns structured cookie data that works natively with every framework's cookie API.
+
+```ts
+import { server } from '@robelest/convex-auth/server'
+
+const auth = server({ url: process.env.CONVEX_URL! })
+const { cookies, redirect, token } = await auth.refresh(request)
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cookies` | `AuthCookie[]` | Structured cookies to set (`{ name, value, options }`) |
+| `redirect` | `string?` | Redirect URL after OAuth code exchange |
+| `token` | `string \| null` | JWT for SSR hydration |
+
+The `proxy()` method handles client-initiated sign-in/sign-out POST requests (returns a `Response`).
+
+### SvelteKit
+
+```ts
+// src/hooks.server.ts
+import { server } from '@robelest/convex-auth/server'
+import { redirect } from '@sveltejs/kit'
+
+export const handle = async ({ event, resolve }) => {
+  const auth = server({ url: CONVEX_URL })
+  const { cookies: authCookies, redirect: redirectUrl, token } = await auth.refresh(event.request)
+
+  for (const c of authCookies) {
+    event.cookies.set(c.name, c.value, c.options)
+  }
+  if (redirectUrl) throw redirect(302, redirectUrl)
+
+  event.locals.token = token
+  return resolve(event)
+}
+```
+
+### TanStack Start
+
+```ts
+// src/routes/__root.tsx
+import { server } from '@robelest/convex-auth/server'
+import { getRequest, setCookie } from '@tanstack/react-start/server'
+
+const getAuthState = createServerFn({ method: 'GET' }).handler(async () => {
+  const auth = server({ url: import.meta.env.VITE_CONVEX_URL! })
+  const { cookies, redirect, token } = await auth.refresh(getRequest())
+
+  for (const c of cookies) setCookie(c.name, c.value, c.options)
+  if (redirect) return { token: null, redirect }
+  return { token, redirect: null }
+})
+```
+
+### Next.js (App Router)
+
+```ts
+// app/layout.tsx or middleware.ts
+import { server } from '@robelest/convex-auth/server'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
+
+const auth = server({ url: process.env.CONVEX_URL! })
+const { cookies: authCookies, redirect: redirectUrl, token } = await auth.refresh(request)
+
+const cookieStore = await cookies()
+for (const c of authCookies) cookieStore.set(c.name, c.value, c.options)
+if (redirectUrl) redirect(redirectUrl)
+```
+
 ## Architecture
 
 ```
@@ -412,9 +515,10 @@ Key design constraints of the Convex component system:
 - Portal CLI (`portal upload`, `portal link`)
 - Class-based `Auth` API
 - Self-hosting as embedded sub-component
+- API keys with scoped permissions, SHA-256 hashing, rate limiting
+- Framework-agnostic SSR cookie API (SvelteKit, TanStack Start, Next.js)
 
 ### Planned
-- **API Keys** — hashed key storage, per-key rate limiting, scoped permissions
 - **Bearer Token Auth** — `Authorization: Bearer` header for API-first apps
 - **Device Authorization (RFC 8628)** — OAuth device flow for CLIs/IoT
 - **Arctic migration** — replace `@auth/core` with a lighter OAuth 2.0 layer
