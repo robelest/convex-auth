@@ -5,7 +5,13 @@
   "scripts": {
     "dev:convex": "bunx convex dev",
     "dev:tanstack": "bun run --cwd examples/tanstack dev",
+    "dev:portal": "bun run --cwd packages/portal dev",
     "build": "bun run --cwd packages/auth build",
+    "build:portal": "bun run --cwd packages/portal build",
+    "upload:portal": "bunx @robelest/convex-auth portal upload --dist packages/portal/build --component portal",
+    "upload:portal:prod": "bunx @robelest/convex-auth portal upload --dist packages/portal/build --component portal --prod",
+    "deploy:portal": "bun run build:portal && bun run upload:portal",
+    "deploy:portal:prod": "bun run build:portal && bun run upload:portal:prod",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "bun run --cwd packages/test test:once",
@@ -23,6 +29,7 @@
   },
   "dependencies": {
     "@auth/core": "^0.37.0",
+    "@convex-dev/self-hosting": "^0.1.0",
     "@oslojs/crypto": "^1.0.1",
     "@robelest/convex-auth": "workspace:*",
     "convex": "^1.31.7"
@@ -30,11 +37,15 @@
   "devDependencies": {
     "@convex-dev/eslint-plugin": "^1.1.1",
     "@eslint/js": "^9.37.0",
+    "@sveltejs/adapter-static": "^3.0.8",
+    "@sveltejs/kit": "^2.43.2",
+    "@sveltejs/vite-plugin-svelte": "^6.2.0",
     "eslint": "^9.39.0",
     "eslint-plugin-no-only-tests": "^3.3.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.4.0",
+    "svelte": "^5.39.5",
     "typescript-eslint": "^8.46.1"
   },
   "overrides": {
