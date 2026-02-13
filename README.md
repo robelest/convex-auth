@@ -43,7 +43,7 @@ export default app;
 
 ```ts
 // convex/auth.ts
-import { ConvexAuth } from "@robelest/convex-auth/component";
+import { ConvexAuth, portalExports } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
 import github from "@auth/core/providers/github";
 
@@ -52,13 +52,11 @@ const auth = new ConvexAuth(components.auth, {
 });
 
 export { auth };
-export const {
-  signIn, signOut, store,
-  portalQuery, portalMutation, portalInternal,
-} = auth;
+export const { signIn, signOut, store } = auth;
+export const { portalQuery, portalMutation, portalInternal } = portalExports(auth);
 ```
 
-`ConvexAuth` wraps everything — auth actions, portal functions, and helper accessors — in a single class. Destructure what you need and export it.
+`ConvexAuth` wraps auth actions and helper accessors. `portalExports()` creates the portal function definitions as a separate call — this is required because Convex's bundler can only recognize function definitions returned from plain function calls, not from class methods.
 
 ### 3. Wire up HTTP routes
 
