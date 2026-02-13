@@ -11,12 +11,50 @@ import * as v from "valibot";
 import { actionDescription } from "./command.js";
 import { generateKeys } from "./generateKeys.js";
 
-new Command()
+const program = new Command()
   .name("@robelest/convex-auth")
   .description(
     "Add code and set environment variables for @robelest/convex-auth.\n\n" +
       "Full docs: https://deepwiki.com/robelest/convex-auth",
+  );
+
+// ---- Portal subcommand ----
+const portalCmd = program
+  .command("portal")
+  .description("Manage the auth admin portal");
+
+portalCmd
+  .command("upload")
+  .description("Upload portal static files to Convex storage")
+  .allowUnknownOption(true)
+  .allowExcessArguments(true)
+  .action(async () => {
+    // Pass remaining args after "portal upload" to the upload handler
+    const idx = process.argv.indexOf("upload");
+    const uploadArgs = idx >= 0 ? process.argv.slice(idx + 1) : [];
+    const { portalUploadMain } = await import("./portal-upload.js");
+    await portalUploadMain(uploadArgs);
+  });
+
+portalCmd
+  .command("link")
+  .description("Generate an admin invite link for the portal")
+  .option("--prod", "Use production deployment")
+  .option(
+    "--component <name>",
+    "Convex module with portal functions",
+    "auth",
   )
+  .action(async (opts) => {
+    const { portalLinkMain } = await import("./portal-link.js");
+    await portalLinkMain({
+      prod: opts.prod ?? false,
+      component: opts.component,
+    });
+  });
+
+// ---- Default setup command ----
+program
   .option(
     "--site-url <url>",
     "Your frontend app URL (e.g. 'http://localhost:5173' for dev, 'https://myapp.com' for prod)",
@@ -93,8 +131,9 @@ new Command()
     } else {
       printFinalSuccessMessage(config);
     }
-  })
-  .parse(process.argv);
+  });
+
+program.parse(process.argv);
 
 type ProjectConfig = {
   isExpo: boolean;
