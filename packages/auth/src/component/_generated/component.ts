@@ -23,6 +23,56 @@ import type { FunctionReference } from "convex/server";
  */
 export type ComponentApi<Name extends string | undefined = string | undefined> =
   {
+    portalBridge: {
+      gcOldAssets: FunctionReference<
+        "mutation",
+        "internal",
+        { currentDeploymentId: string },
+        any,
+        Name
+      >;
+      getByPath: FunctionReference<
+        "query",
+        "internal",
+        { path: string },
+        any,
+        Name
+      >;
+      getCurrentDeployment: FunctionReference<
+        "query",
+        "internal",
+        {},
+        any,
+        Name
+      >;
+      listAssets: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number },
+        any,
+        Name
+      >;
+      recordAsset: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          blobId?: string;
+          contentType: string;
+          deploymentId: string;
+          path: string;
+          storageId?: string;
+        },
+        any,
+        Name
+      >;
+      setCurrentDeployment: FunctionReference<
+        "mutation",
+        "internal",
+        { deploymentId: string },
+        null,
+        Name
+      >;
+    };
     public: {
       accountDelete: FunctionReference<
         "mutation",
@@ -54,6 +104,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           secret?: string;
           userId: string;
         },
+        any,
+        Name
+      >;
+      accountListByUser: FunctionReference<
+        "query",
+        "internal",
+        { userId: string },
         any,
         Name
       >;
@@ -102,7 +159,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       inviteAccept: FunctionReference<
         "mutation",
         "internal",
-        { inviteId: string },
+        { acceptedByUserId?: string; inviteId: string },
         any,
         Name
       >;
@@ -110,11 +167,11 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "mutation",
         "internal",
         {
-          email: string;
-          expiresTime: number;
+          email?: string;
+          expiresTime?: number;
           extend?: any;
           groupId?: string;
-          invitedByUserId: string;
+          invitedByUserId?: string;
           role?: string;
           status: "pending" | "accepted" | "revoked" | "expired";
           tokenHash: string;
@@ -126,6 +183,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "query",
         "internal",
         { inviteId: string },
+        any,
+        Name
+      >;
+      inviteGetByTokenHash: FunctionReference<
+        "query",
+        "internal",
+        { tokenHash: string },
         any,
         Name
       >;
@@ -356,6 +420,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      sessionList: FunctionReference<"query", "internal", {}, any, Name>;
       sessionListByUser: FunctionReference<
         "query",
         "internal",
@@ -448,6 +513,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      userList: FunctionReference<"query", "internal", {}, any, Name>;
       userPatch: FunctionReference<
         "mutation",
         "internal",
