@@ -11,12 +11,50 @@ import * as v from "valibot";
 import { actionDescription } from "./command.js";
 import { generateKeys } from "./generateKeys.js";
 
-new Command()
-  .name("@convex-dev/auth")
+const program = new Command()
+  .name("@robelest/convex-auth")
   .description(
-    "Add code and set environment variables for @convex-dev/auth.\n\n" +
+    "Add code and set environment variables for @robelest/convex-auth.\n\n" +
       "Full docs: https://deepwiki.com/robelest/convex-auth",
+  );
+
+// ---- Portal subcommand ----
+const portalCmd = program
+  .command("portal")
+  .description("Manage the auth admin portal");
+
+portalCmd
+  .command("upload")
+  .description("Upload portal static files to Convex storage")
+  .allowUnknownOption(true)
+  .allowExcessArguments(true)
+  .action(async () => {
+    // Pass remaining args after "portal upload" to the upload handler
+    const idx = process.argv.indexOf("upload");
+    const uploadArgs = idx >= 0 ? process.argv.slice(idx + 1) : [];
+    const { portalUploadMain } = await import("./portal-upload.js");
+    await portalUploadMain(uploadArgs);
+  });
+
+portalCmd
+  .command("link")
+  .description("Generate an admin invite link for the portal")
+  .option("--prod", "Use production deployment")
+  .option(
+    "--component <name>",
+    "Convex module with portal functions",
+    "auth",
   )
+  .action(async (opts) => {
+    const { portalLinkMain } = await import("./portal-link.js");
+    await portalLinkMain({
+      prod: opts.prod ?? false,
+      component: opts.component,
+    });
+  });
+
+// ---- Default setup command ----
+program
   .option(
     "--site-url <url>",
     "Your frontend app URL (e.g. 'http://localhost:5173' for dev, 'https://myapp.com' for prod)",
@@ -93,8 +131,9 @@ new Command()
     } else {
       printFinalSuccessMessage(config);
     }
-  })
-  .parse(process.argv);
+  });
+
+program.parse(process.argv);
 
 type ProjectConfig = {
   isExpo: boolean;
@@ -398,7 +437,7 @@ async function configureConvexConfig(config: ProjectConfig) {
   logStep(config, "Configure convex config file");
   const sourceTemplate = `\
 import { defineApp } from "convex/server";
-import auth from "@convex-dev/auth/component/convex.config";
+import auth from "@robelest/convex-auth/component/convex.config";
 
 const app = defineApp();
 
@@ -432,7 +471,7 @@ export default app;
 async function initializeAuth(config: ProjectConfig) {
   logStep(config, "Initialize auth file");
   const sourceTemplate = `\
-import { Auth } from "@convex-dev/auth/component";
+import { Auth } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
 
 export const { auth, signIn, signOut, store } = Auth({$$
@@ -621,7 +660,7 @@ function readPackageJson(): PackageJSON {
     return JSON.parse(data);
   } catch (error: any) {
     logErrorAndExit(
-      "`@convex-dev/auth` must be run from a project directory which " +
+      "`@robelest/convex-auth` must be run from a project directory which " +
         'includes a valid "package.json" file. You can create one by running ' +
         "`npm init`.",
       error.message,
@@ -817,7 +856,7 @@ function printFinalSuccessMessage(config: ProjectConfig) {
     logSuccess(`Setup complete for ${deploymentName}.`);
     print("");
     print(`  ${chalk.bold("To set up production")}, run this command with your production URL:`);
-    print(`    ${chalk.cyan("npx @convex-dev/auth --prod --site-url \"https://myapp.com\"")}`);
+    print(`    ${chalk.cyan("npx @robelest/convex-auth --prod --site-url \"https://myapp.com\"")}`);
     print("");
     print(`  ${chalk.bold("Don't forget")} to set provider secrets on production too:`);
     print(`    ${chalk.grey("npx convex env set --prod AUTH_GITHUB_ID \"...\"")}`);
