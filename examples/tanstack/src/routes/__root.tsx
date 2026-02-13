@@ -7,7 +7,7 @@ import {
   redirect,
 } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'
-import { getRequest, setResponseHeader } from '@tanstack/react-start/server'
+import { getRequest, setCookie } from '@tanstack/react-start/server'
 import { server } from '@robelest/convex-auth/server'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
@@ -28,29 +28,18 @@ const getAuthState = createServerFn({ method: 'GET' }).handler(async () => {
   const request = getRequest()
   const auth = server({ url: import.meta.env.VITE_CONVEX_URL! })
 
-  // Handle OAuth code exchange + token refresh.
-  const result = await auth.refresh(request)
+  const { cookies, redirect: redirectUrl, token } = await auth.refresh(request)
 
-  if (result.response) {
-    // OAuth code exchange produced a redirect response with Set-Cookie headers.
-    // Forward cookies to the browser via the SSR response.
-    const cookieHeaders = result.response.headers.getSetCookie?.() ?? []
-    for (const raw of cookieHeaders) {
-      setResponseHeader('set-cookie', raw)
-    }
-    const location = result.response.headers.get('location')
-    return { token: null as string | null, redirect: location }
+  // Forward auth cookies to the browser via the framework's cookie API.
+  for (const c of cookies) {
+    setCookie(c.name, c.value, c.options)
   }
 
-  if (result.cookies) {
-    // Token was refreshed — forward updated cookies.
-    for (const raw of result.cookies) {
-      setResponseHeader('set-cookie', raw)
-    }
+  if (redirectUrl) {
+    return { token: null as string | null, redirect: redirectUrl }
   }
 
-  // Return the JWT from the httpOnly cookie for client hydration.
-  return { token: auth.token(request), redirect: null as string | null }
+  return { token, redirect: null as string | null }
 })
 
 // ---------------------------------------------------------------------------

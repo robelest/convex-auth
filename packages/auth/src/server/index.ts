@@ -17,6 +17,20 @@ export type AuthCookies = {
   verifier: string | null;
 };
 
+/** A structured cookie ready to be set via any framework's cookie API. */
+export type AuthCookie = {
+  name: string;
+  value: string;
+  options: {
+    path: string;
+    httpOnly: boolean;
+    secure: boolean;
+    sameSite: "lax" | "strict" | "none";
+    maxAge?: number;
+    expires?: Date;
+  };
+};
+
 export type ServerOptions = {
   /** Convex deployment URL. */
   url: string;
@@ -27,8 +41,12 @@ export type ServerOptions = {
 };
 
 export type RefreshResult = {
-  response?: Response;
-  cookies?: string[];
+  /** Structured cookies to set on the response. */
+  cookies: AuthCookie[];
+  /** URL to redirect to (set after OAuth code exchange). */
+  redirect?: string;
+  /** JWT for SSR hydration, or `null` if not authenticated. */
+  token: string | null;
 };
 
 export function authCookieNames(host?: string) {
@@ -83,6 +101,57 @@ export function serializeAuthCookies(
       maxAge: cookies.verifier === null ? 0 : maxAge,
       expires: cookies.verifier === null ? new Date(0) : undefined,
     }),
+  ];
+}
+
+/**
+ * Build structured cookie objects for any SSR framework.
+ *
+ * Use with SvelteKit's `event.cookies.set()`, TanStack Start's `setCookie()`,
+ * Next.js's `cookies().set()`, or any other framework cookie API.
+ */
+export function structuredAuthCookies(
+  cookies: AuthCookies,
+  host?: string,
+  config: AuthCookieConfig = { maxAge: null },
+): AuthCookie[] {
+  const names = authCookieNames(host);
+  const secure = !isLocalHost(host);
+  const base = {
+    path: "/" as const,
+    httpOnly: true as const,
+    secure,
+    sameSite: "lax" as const,
+  };
+  const maxAge = config.maxAge ?? undefined;
+  return [
+    {
+      name: names.token,
+      value: cookies.token ?? "",
+      options: {
+        ...base,
+        maxAge: cookies.token === null ? 0 : maxAge,
+        expires: cookies.token === null ? new Date(0) : undefined,
+      },
+    },
+    {
+      name: names.refreshToken,
+      value: cookies.refreshToken ?? "",
+      options: {
+        ...base,
+        maxAge: cookies.refreshToken === null ? 0 : maxAge,
+        expires: cookies.refreshToken === null ? new Date(0) : undefined,
+      },
+    },
+    {
+      name: names.verifier,
+      value: cookies.verifier ?? "",
+      options: {
+        ...base,
+        maxAge: cookies.verifier === null ? 0 : maxAge,
+        expires: cookies.verifier === null ? new Date(0) : undefined,
+      },
+    },
   ];
 }
 
@@ -348,21 +417,21 @@ export function server(options: ServerOptions) {
 
     async refresh(request: Request): Promise<RefreshResult> {
       const host = cookieHost(request);
+      const currentToken = parseRequestCookies(request).token;
 
+      // CORS request — clear all auth cookies.
       if (isCorsRequest(request)) {
         return {
-          cookies: serializeAuthCookies(
-            {
-              token: null,
-              refreshToken: null,
-              verifier: null,
-            },
+          cookies: structuredAuthCookies(
+            { token: null, refreshToken: null, verifier: null },
             host,
             cookieConfig,
           ),
+          token: null,
         };
       }
 
+      // OAuth code exchange — exchange code for tokens and redirect.
       const requestUrl = new URL(request.url);
       const code = requestUrl.searchParams.get("code");
       const shouldHandleCode =
@@ -392,47 +461,41 @@ export function server(options: ServerOptions) {
           if (result.tokens === undefined) {
             throw new Error("Invalid `auth:signIn` result for code exchange");
           }
-          const response = Response.redirect(redirectUrl.toString(), 302);
           return {
-            response: attachCookies(
-              response,
-              serializeAuthCookies(
-                {
-                  token: result.tokens?.token ?? null,
-                  refreshToken: result.tokens?.refreshToken ?? null,
-                  verifier: null,
-                },
-                host,
-                cookieConfig,
-              ),
+            cookies: structuredAuthCookies(
+              {
+                token: result.tokens?.token ?? null,
+                refreshToken: result.tokens?.refreshToken ?? null,
+                verifier: null,
+              },
+              host,
+              cookieConfig,
             ),
+            redirect: redirectUrl.toString(),
+            token: result.tokens?.token ?? null,
           };
         } catch (error) {
           console.error(error);
-          const response = Response.redirect(redirectUrl.toString(), 302);
           return {
-            response: attachCookies(
-              response,
-              serializeAuthCookies(
-                {
-                  token: null,
-                  refreshToken: null,
-                  verifier: null,
-                },
-                host,
-                cookieConfig,
-              ),
+            cookies: structuredAuthCookies(
+              { token: null, refreshToken: null, verifier: null },
+              host,
+              cookieConfig,
             ),
+            redirect: redirectUrl.toString(),
+            token: null,
           };
         }
       }
 
+      // Normal page load — refresh tokens if needed.
       const tokens = await refreshTokens(request);
       if (tokens === undefined) {
-        return {};
+        // No refresh needed — return current token for hydration.
+        return { cookies: [], token: currentToken };
       }
       return {
-        cookies: serializeAuthCookies(
+        cookies: structuredAuthCookies(
           {
             token: tokens?.token ?? null,
             refreshToken: tokens?.refreshToken ?? null,
@@ -441,6 +504,7 @@ export function server(options: ServerOptions) {
           host,
           cookieConfig,
         ),
+        token: tokens?.token ?? null,
       };
     },
   };
