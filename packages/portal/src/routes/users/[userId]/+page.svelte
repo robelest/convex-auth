@@ -14,6 +14,7 @@
 	const user = useQuery(api.auth.portalQuery, () => ({ action: 'getUser', userId }));
 	const sessions = useQuery(api.auth.portalQuery, () => ({ action: 'getUserSessions', userId }));
 	const accounts = useQuery(api.auth.portalQuery, () => ({ action: 'getUserAccounts', userId }));
+	const userKeys = useQuery(api.auth.portalQuery, () => ({ action: 'getUserKeys', userId }));
 	const client = useConvexClient();
 
 	async function handleRevokeSession(sessionId: string) {
@@ -41,6 +42,33 @@
 		if (provider === 'passkey') return 'info';
 		if (provider === 'password') return 'success';
 		return 'muted';
+	}
+
+	function getKeyStatus(key: any): 'active' | 'revoked' | 'expired' {
+		if (key.revoked) return 'revoked';
+		if (key.expiresAt && Date.now() > key.expiresAt) return 'expired';
+		return 'active';
+	}
+
+	function formatScopes(scopes: Array<{ resource: string; actions: string[] }>): string {
+		if (!scopes || scopes.length === 0) return 'No scopes';
+		return scopes.map((s: any) => `${s.resource}:${s.actions.join(',')}`).join('; ');
+	}
+
+	async function handleRevokeKey(keyId: string) {
+		if (!confirm('Revoke this API key?')) return;
+		await client.mutation(api.auth.portalMutation, {
+			action: 'revokeKey',
+			keyId,
+		});
+	}
+
+	async function handleDeleteKey(keyId: string) {
+		if (!confirm('Permanently delete this API key?')) return;
+		await client.mutation(api.auth.portalMutation, {
+			action: 'deleteKey',
+			keyId,
+		});
 	}
 </script>
 
@@ -189,6 +217,54 @@
 								{#if !isSessionExpired(session.expirationTime)}
 									<Button variant="danger" size="sm" onclick={() => handleRevokeSession(session._id)}>
 										Revoke
+									</Button>
+								{/if}
+							</div>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</Card>
+
+		<!-- API Keys -->
+		<Card title="API Keys">
+			{#if userKeys.isLoading}
+				<div class="px-4 py-3"><div class="cp-skeleton h-4 w-48 rounded"></div></div>
+			{:else if !userKeys.data || userKeys.data.length === 0}
+				<EmptyState title="No API keys" description="This user has no API keys." />
+			{:else}
+				<div class="divide-y divide-cp-border/50">
+					{#each userKeys.data as key}
+						<div class="flex items-center justify-between px-4 py-3">
+							<div class="flex items-center gap-3">
+								<span class="font-mono text-[var(--cp-text-xs)] text-cp-text-muted">
+									{key.prefix}
+								</span>
+								<span class="text-[var(--cp-text-sm)] text-cp-text">
+									{key.name}
+								</span>
+								{#if getKeyStatus(key) === 'active'}
+									<Badge variant="success">Active</Badge>
+								{:else if getKeyStatus(key) === 'revoked'}
+									<Badge variant="error">Revoked</Badge>
+								{:else}
+									<Badge variant="warning">Expired</Badge>
+								{/if}
+							</div>
+							<div class="flex items-center gap-3">
+								<span class="text-[var(--cp-text-xs)] text-cp-text-muted" title={formatScopes(key.scopes)}>
+									{key.scopes?.length ?? 0} scope{(key.scopes?.length ?? 0) !== 1 ? 's' : ''}
+								</span>
+								<span class="text-[var(--cp-text-xs)] text-cp-text-muted">
+									{key.lastUsedAt ? `Used ${formatRelative(key.lastUsedAt)}` : 'Never used'}
+								</span>
+								{#if getKeyStatus(key) === 'active'}
+									<Button variant="danger" size="sm" onclick={() => handleRevokeKey(key._id)}>
+										Revoke
+									</Button>
+								{:else}
+									<Button variant="ghost" size="sm" onclick={() => handleDeleteKey(key._id)}>
+										Delete
 									</Button>
 								{/if}
 							</div>

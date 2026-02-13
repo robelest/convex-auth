@@ -13,6 +13,11 @@
 			href: `${base}/sessions`,
 			icon: 'sessions',
 		},
+		{
+			label: 'API Keys',
+			href: `${base}/keys`,
+			icon: 'keys',
+		},
 	];
 
 	function isActive(href: string): boolean {
@@ -49,13 +54,17 @@
 						<path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
 						<path d="M16 3.13a4 4 0 0 1 0 7.75"/>
 					</svg>
-				{:else if item.icon === 'sessions'}
-					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-						<line x1="8" y1="21" x2="16" y2="21"/>
-						<line x1="12" y1="17" x2="12" y2="21"/>
-					</svg>
-				{/if}
+			{:else if item.icon === 'sessions'}
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+					<line x1="8" y1="21" x2="16" y2="21"/>
+					<line x1="12" y1="17" x2="12" y2="21"/>
+				</svg>
+			{:else if item.icon === 'keys'}
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+				</svg>
+			{/if}
 				{item.label}
 			</a>
 		{/each}

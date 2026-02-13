@@ -986,4 +986,146 @@ export const inviteRevoke = mutation({
   },
 });
 
+// ============================================================================
+// API Keys
+// ============================================================================
 
+/**
+ * Insert a new API key record.
+ *
+ * The caller is responsible for hashing the raw key before passing it here —
+ * this function only stores the hash and metadata.
+ */
+export const keyInsert = mutation({
+  args: {
+    userId: v.id("user"),
+    prefix: v.string(),
+    hashedKey: v.string(),
+    name: v.string(),
+    scopes: v.array(
+      v.object({
+        resource: v.string(),
+        actions: v.array(v.string()),
+      }),
+    ),
+    rateLimit: v.optional(
+      v.object({
+        maxRequests: v.number(),
+        windowMs: v.number(),
+      }),
+    ),
+    expiresAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("key", {
+      ...args,
+      createdAt: Date.now(),
+      revoked: false,
+    });
+  },
+});
+
+/**
+ * Look up an API key by its SHA-256 hash.
+ *
+ * Used during Bearer token verification. Returns the full key record
+ * (including rate limit state) or `null` if not found.
+ */
+export const keyGetByHashedKey = query({
+  args: { hashedKey: v.string() },
+  handler: async (ctx, { hashedKey }) => {
+    return await ctx.db
+      .query("key")
+      .withIndex("hashedKey", (q) => q.eq("hashedKey", hashedKey))
+      .first();
+  },
+});
+
+/** List all API keys for a user. */
+export const keyListByUserId = query({
+  args: { userId: v.id("user") },
+  handler: async (ctx, { userId }) => {
+    return await ctx.db
+      .query("key")
+      .withIndex("userId", (q) => q.eq("userId", userId))
+      .collect();
+  },
+});
+
+/** List all API keys across all users (for portal admin). */
+export const keyList = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("key").collect();
+  },
+});
+
+/** Get a single API key by document ID. */
+export const keyGetById = query({
+  args: { keyId: v.id("key") },
+  handler: async (ctx, { keyId }) => {
+    return await ctx.db.get(keyId);
+  },
+});
+
+/**
+ * Patch an API key record. Used for updating name, scopes, rate limit config,
+ * revocation, and lastUsedAt / rate limit state tracking.
+ */
+export const keyPatch = mutation({
+  args: {
+    keyId: v.id("key"),
+    data: v.object({
+      name: v.optional(v.string()),
+      scopes: v.optional(
+        v.array(
+          v.object({
+            resource: v.string(),
+            actions: v.array(v.string()),
+          }),
+        ),
+      ),
+      rateLimit: v.optional(
+        v.object({
+          maxRequests: v.number(),
+          windowMs: v.number(),
+        }),
+      ),
+      rateLimitState: v.optional(
+        v.object({
+          attemptsLeft: v.number(),
+          lastAttemptTime: v.number(),
+        }),
+      ),
+      revoked: v.optional(v.boolean()),
+      lastUsedAt: v.optional(v.number()),
+    }),
+  },
+  handler: async (ctx, { keyId, data }) => {
+    const key = await ctx.db.get(keyId);
+    if (key === null) {
+      throw new ConvexError({
+        code: "KEY_NOT_FOUND",
+        message: "API key not found",
+        keyId,
+      });
+    }
+    await ctx.db.patch(keyId, data);
+  },
+});
+
+/** Hard delete an API key record. */
+export const keyDelete = mutation({
+  args: { keyId: v.id("key") },
+  handler: async (ctx, { keyId }) => {
+    const key = await ctx.db.get(keyId);
+    if (key === null) {
+      throw new ConvexError({
+        code: "KEY_NOT_FOUND",
+        message: "API key not found",
+        keyId,
+      });
+    }
+    await ctx.db.delete(keyId);
+  },
+});

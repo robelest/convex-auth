@@ -82,6 +82,13 @@ export type ConvexAuthConfig = {
      */
     maxFailedAttempsPerHour?: number;
   };
+  /**
+   * API key configuration for programmatic access.
+   *
+   * Enables `auth.key.*` helpers for creating, verifying, and managing
+   * API keys with scoped permissions and optional per-key rate limiting.
+   */
+  apiKeys?: ApiKeyConfig;
   callbacks?: {
     /**
      * Control which URLs are allowed as a destination after OAuth sign-in
@@ -524,6 +531,91 @@ export type AuthProviderMaterializedConfig =
   | PasskeyProviderConfig
   | TotpProviderConfig;
 
+// ============================================================================
+// API Key types
+// ============================================================================
+
+/**
+ * A single scope entry stored per API key.
+ * Uses a resource:action pattern for structured permissions.
+ *
+ * ```ts
+ * { resource: "users", actions: ["read", "list"] }
+ * ```
+ */
+export interface KeyScope {
+  resource: string;
+  actions: string[];
+}
+
+/**
+ * Result of scope verification. Provides a `.can()` helper
+ * for checking if a key has a specific permission.
+ *
+ * ```ts
+ * const result = await auth.key.verify(ctx, rawKey);
+ * if (result.scopes.can("users", "read")) {
+ *   // authorized
+ * }
+ * ```
+ */
+export interface ScopeChecker {
+  /** Check if the key has permission for a given resource:action. */
+  can(resource: string, action: string): boolean;
+  /** The raw scope entries from the key. */
+  scopes: KeyScope[];
+}
+
+/**
+ * Configuration for API key support on the Auth class.
+ *
+ * ```ts
+ * const auth = new Auth(components.auth, {
+ *   providers: [github],
+ *   apiKeys: {
+ *     scopes: {
+ *       users: ["read", "list", "create", "delete"],
+ *       messages: ["read", "write"],
+ *     },
+ *     defaultRateLimit: { maxRequests: 1000, windowMs: 3600000 },
+ *   },
+ * });
+ * ```
+ */
+export interface ApiKeyConfig {
+  /**
+   * Define the available resource:action scopes for your API keys.
+   * Keys can only be created with scopes that are a subset of these.
+   */
+  scopes?: Record<string, string[]>;
+  /**
+   * Default rate limit applied to new keys when not specified per-key.
+   * Uses a token-bucket algorithm.
+   */
+  defaultRateLimit?: { maxRequests: number; windowMs: number };
+  /**
+   * Key prefix. Defaults to `"sk_live_"`.
+   */
+  prefix?: string;
+}
+
+/**
+ * An API key record as returned by `auth.key.list()` and `auth.key.get()`.
+ * Never includes the raw key material — only the display prefix.
+ */
+export interface KeyRecord {
+  _id: string;
+  userId: string;
+  prefix: string;
+  name: string;
+  scopes: KeyScope[];
+  rateLimit?: { maxRequests: number; windowMs: number };
+  expiresAt?: number;
+  lastUsedAt?: number;
+  createdAt: number;
+  revoked: boolean;
+}
+
 /**
  * Component function references required by core auth runtime.
  */
@@ -582,6 +674,13 @@ export type AuthComponentApi = {
     inviteList: FunctionReference<"query", "internal">;
     inviteAccept: FunctionReference<"mutation", "internal">;
     inviteRevoke: FunctionReference<"mutation", "internal">;
+    keyInsert: FunctionReference<"mutation", "internal">;
+    keyGetByHashedKey: FunctionReference<"query", "internal">;
+    keyGetById: FunctionReference<"query", "internal">;
+    keyList: FunctionReference<"query", "internal">;
+    keyListByUserId: FunctionReference<"query", "internal">;
+    keyPatch: FunctionReference<"mutation", "internal">;
+    keyDelete: FunctionReference<"mutation", "internal">;
     passkeyInsert: FunctionReference<"mutation", "internal">;
     passkeyGetByCredentialId: FunctionReference<"query", "internal">;
     passkeyListByUserId: FunctionReference<"query", "internal">;
