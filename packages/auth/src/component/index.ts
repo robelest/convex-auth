@@ -28,5 +28,9 @@ export type {
   GenericActionCtxWithAuthConfig,
   AuthProviderMaterializedConfig,
   ConvexAuthMaterializedConfig,
+  ApiKeyConfig,
+  KeyScope,
+  ScopeChecker,
+  KeyRecord,
 } from "../server/types.js";
 export type { GenericDoc } from "../server/convex_types.js";

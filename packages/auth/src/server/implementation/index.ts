@@ -632,6 +632,195 @@ export function Auth(config_: ConvexAuthConfig) {
       },
     },
     /**
+     * Manage API keys for programmatic access.
+     *
+     * Keys use SHA-256 hashing (via `@oslojs/crypto`) and support
+     * scoped resource:action permissions with optional per-key rate limiting.
+     *
+     * ```ts
+     * const { keyId, raw } = await auth.key.create(ctx, {
+     *   userId,
+     *   name: "CI Pipeline",
+     *   scopes: [{ resource: "users", actions: ["read", "list"] }],
+     * });
+     * // raw = "sk_live_abc123..." — show once, never stored
+     *
+     * const result = await auth.key.verify(ctx, rawKey);
+     * result.scopes.can("users", "read"); // true
+     * ```
+     */
+    key: {
+      /**
+       * Create a new API key. Returns the raw key **once** — it cannot
+       * be retrieved again after creation.
+       *
+       * @param opts.userId - The user this key belongs to.
+       * @param opts.name - Human-readable name (e.g. "CI Pipeline").
+       * @param opts.scopes - Resource:action permissions for this key.
+       * @param opts.rateLimit - Optional per-key rate limit override.
+       * @param opts.expiresAt - Optional expiration timestamp.
+       * @returns `{ keyId, raw }` where `raw` is the full key string.
+       */
+      create: async (
+        ctx: ComponentCtx,
+        opts: {
+          userId: string;
+          name: string;
+          scopes: import("../types.js").KeyScope[];
+          rateLimit?: { maxRequests: number; windowMs: number };
+          expiresAt?: number;
+        },
+      ): Promise<{ keyId: string; raw: string }> => {
+        const { generateApiKey, validateScopes } = await import("./apiKey.js");
+        const prefix = config.apiKeys?.prefix ?? "sk_live_";
+
+        // Validate scopes against config if defined
+        validateScopes(opts.scopes, config.apiKeys?.scopes);
+
+        const { raw, hashedKey, displayPrefix } = await generateApiKey(prefix);
+
+        const keyId = await ctx.runMutation(
+          config.component.public.keyInsert,
+          {
+            userId: opts.userId as any,
+            prefix: displayPrefix,
+            hashedKey,
+            name: opts.name,
+            scopes: opts.scopes,
+            rateLimit: opts.rateLimit ?? config.apiKeys?.defaultRateLimit,
+            expiresAt: opts.expiresAt,
+          },
+        );
+
+        return { keyId: keyId as string, raw };
+      },
+
+      /**
+       * Verify a raw API key string. Returns the userId and a scope checker
+       * if the key is valid, not revoked, not expired, and not rate-limited.
+       *
+       * Also updates `lastUsedAt` and rate limit state as a side effect.
+       *
+       * @throws Error if the key is invalid, revoked, expired, or rate-limited.
+       */
+      verify: async (
+        ctx: ComponentCtx,
+        rawKey: string,
+      ): Promise<{
+        userId: string;
+        keyId: string;
+        scopes: import("../types.js").ScopeChecker;
+      }> => {
+        const { hashApiKey, buildScopeChecker, checkKeyRateLimit } =
+          await import("./apiKey.js");
+        const hashedKey = await hashApiKey(rawKey);
+
+        const key = await ctx.runQuery(
+          config.component.public.keyGetByHashedKey,
+          { hashedKey },
+        );
+        if (!key) {
+          throw new Error("Invalid API key");
+        }
+        if (key.revoked) {
+          throw new Error("API key has been revoked");
+        }
+        if (key.expiresAt && key.expiresAt < Date.now()) {
+          throw new Error("API key has expired");
+        }
+
+        // Check per-key rate limit
+        const patchData: Record<string, any> = { lastUsedAt: Date.now() };
+
+        if (key.rateLimit) {
+          const { limited, newState } = checkKeyRateLimit(
+            key.rateLimit,
+            key.rateLimitState ?? undefined,
+          );
+          if (limited) {
+            throw new Error("API key rate limit exceeded");
+          }
+          patchData.rateLimitState = newState;
+        }
+
+        // Update lastUsedAt (and rate limit state if applicable)
+        await ctx.runMutation(config.component.public.keyPatch, {
+          keyId: key._id,
+          data: patchData,
+        });
+
+        return {
+          userId: key.userId as string,
+          keyId: key._id as string,
+          scopes: buildScopeChecker(key.scopes),
+        };
+      },
+
+      /**
+       * List all API keys for a user.
+       * Never includes the raw key — only the display prefix.
+       */
+      list: async (ctx: ComponentReadCtx, opts: { userId: string }) => {
+        return await ctx.runQuery(
+          config.component.public.keyListByUserId,
+          { userId: opts.userId as any },
+        );
+      },
+
+      /**
+       * Get a single API key by its document ID.
+       * Returns `null` if not found.
+       */
+      get: async (ctx: ComponentReadCtx, keyId: string) => {
+        return await ctx.runQuery(
+          config.component.public.keyGetById,
+          { keyId: keyId as any },
+        );
+      },
+
+      /**
+       * Update an API key's metadata (name, scopes, rate limit).
+       */
+      update: async (
+        ctx: ComponentCtx,
+        keyId: string,
+        data: {
+          name?: string;
+          scopes?: import("../types.js").KeyScope[];
+          rateLimit?: { maxRequests: number; windowMs: number };
+        },
+      ) => {
+        if (data.scopes) {
+          const { validateScopes } = await import("./apiKey.js");
+          validateScopes(data.scopes, config.apiKeys?.scopes);
+        }
+        await ctx.runMutation(config.component.public.keyPatch, {
+          keyId: keyId as any,
+          data,
+        });
+      },
+
+      /**
+       * Revoke an API key (soft delete). The key record is preserved
+       * for audit purposes but can no longer be used for authentication.
+       */
+      revoke: async (ctx: ComponentCtx, keyId: string) => {
+        await ctx.runMutation(config.component.public.keyPatch, {
+          keyId: keyId as any,
+          data: { revoked: true },
+        });
+      },
+
+      /**
+       * Hard delete an API key record.
+       */
+      remove: async (ctx: ComponentCtx, keyId: string) => {
+        await ctx.runMutation(config.component.public.keyDelete, {
+          keyId: keyId as any,
+        });
+      },
+    },
+    /**
      * Add HTTP actions for JWT verification and OAuth sign-in.
      *
      * ```ts

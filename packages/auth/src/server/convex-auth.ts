@@ -122,6 +122,8 @@ export class Auth {
   get passkey() { return this._auth.passkey; }
   /** TOTP helpers */
   get totp() { return this._auth.totp; }
+  /** API key helpers: `.create(ctx, ...)`, `.verify(ctx, ...)`, `.list(ctx, ...)`, `.revoke(ctx, ...)` */
+  get key() { return this._auth.key; }
 
   constructor(component: AuthComponentApi, config: AuthClassConfig) {
     this.component = component;
@@ -328,6 +330,20 @@ export function Portal(auth: Auth) {
             authComponent.portalBridge.getCurrentDeployment,
           );
 
+        // ---- API Keys (portal admin) ----
+        case "listKeys":
+          return await ctx.runQuery(authComponent.public.keyList);
+
+        case "getUserKeys":
+          return await ctx.runQuery(authComponent.public.keyListByUserId, {
+            userId: userId!,
+          });
+
+        case "getKey":
+          return await ctx.runQuery(authComponent.public.keyGetById, {
+            keyId: userId!, // userId param repurposed as keyId
+          });
+
         default:
           throw new Error(`Unknown portal query action: ${action}`);
       }
@@ -339,23 +355,35 @@ export function Portal(auth: Auth) {
       action: v.string(),
       sessionId: v.optional(v.string()),
       tokenHash: v.optional(v.string()),
+      // API key fields
+      keyId: v.optional(v.string()),
+      keyUserId: v.optional(v.string()),
+      keyName: v.optional(v.string()),
+      keyScopes: v.optional(
+        v.array(
+          v.object({
+            resource: v.string(),
+            actions: v.array(v.string()),
+          }),
+        ),
+      ),
+      keyRateLimit: v.optional(
+        v.object({
+          maxRequests: v.number(),
+          windowMs: v.number(),
+        }),
+      ),
+      keyExpiresAt: v.optional(v.number()),
     },
-    handler: async (
-      ctx: any,
-      {
-        action,
-        sessionId,
-        tokenHash,
-      }: { action: string; sessionId?: string; tokenHash?: string },
-    ) => {
+    handler: async (ctx: any, args: any) => {
       const currentUserId = await authHelper.user.require(ctx);
 
-      switch (action) {
+      switch (args.action) {
         case "acceptInvite": {
-          if (!tokenHash) throw new Error("tokenHash required");
+          if (!args.tokenHash) throw new Error("tokenHash required");
           const invite = await ctx.runQuery(
             authComponent.public.inviteGetByTokenHash,
-            { tokenHash },
+            { tokenHash: args.tokenHash },
           );
           if (!invite) throw new Error("Invalid invite token");
           if (invite.status !== "pending") {
@@ -374,13 +402,49 @@ export function Portal(auth: Auth) {
         case "revokeSession": {
           await requirePortalAdmin(ctx, authComponent, currentUserId);
           await ctx.runMutation(authComponent.public.sessionDelete, {
-            sessionId: sessionId!,
+            sessionId: args.sessionId!,
           });
           return;
         }
 
+        // ---- API Keys (portal admin) ----
+        case "createKey": {
+          await requirePortalAdmin(ctx, authComponent, currentUserId);
+          const result = await authHelper.key.create(ctx, {
+            userId: args.keyUserId!,
+            name: args.keyName!,
+            scopes: args.keyScopes ?? [],
+            rateLimit: args.keyRateLimit,
+            expiresAt: args.keyExpiresAt,
+          });
+          // Return the raw key — portal will show it once
+          return result;
+        }
+
+        case "revokeKey": {
+          await requirePortalAdmin(ctx, authComponent, currentUserId);
+          await authHelper.key.revoke(ctx, args.keyId!);
+          return;
+        }
+
+        case "deleteKey": {
+          await requirePortalAdmin(ctx, authComponent, currentUserId);
+          await authHelper.key.remove(ctx, args.keyId!);
+          return;
+        }
+
+        case "updateKey": {
+          await requirePortalAdmin(ctx, authComponent, currentUserId);
+          const data: Record<string, any> = {};
+          if (args.keyName) data.name = args.keyName;
+          if (args.keyScopes) data.scopes = args.keyScopes;
+          if (args.keyRateLimit) data.rateLimit = args.keyRateLimit;
+          await authHelper.key.update(ctx, args.keyId!, data);
+          return;
+        }
+
         default:
-          throw new Error(`Unknown portal mutation action: ${action}`);
+          throw new Error(`Unknown portal mutation action: ${args.action}`);
       }
     },
   });

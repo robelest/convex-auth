@@ -210,6 +210,67 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      keyDelete: FunctionReference<
+        "mutation",
+        "internal",
+        { keyId: string },
+        any,
+        Name
+      >;
+      keyGetByHashedKey: FunctionReference<
+        "query",
+        "internal",
+        { hashedKey: string },
+        any,
+        Name
+      >;
+      keyGetById: FunctionReference<
+        "query",
+        "internal",
+        { keyId: string },
+        any,
+        Name
+      >;
+      keyInsert: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          expiresAt?: number;
+          hashedKey: string;
+          name: string;
+          prefix: string;
+          rateLimit?: { maxRequests: number; windowMs: number };
+          scopes: Array<{ resource: string; actions: Array<string> }>;
+          userId: string;
+        },
+        any,
+        Name
+      >;
+      keyList: FunctionReference<"query", "internal", {}, any, Name>;
+      keyListByUserId: FunctionReference<
+        "query",
+        "internal",
+        { userId: string },
+        any,
+        Name
+      >;
+      keyPatch: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          data: {
+            lastUsedAt?: number;
+            name?: string;
+            rateLimit?: { maxRequests: number; windowMs: number };
+            rateLimitState?: { attemptsLeft: number; lastAttemptTime: number };
+            revoked?: boolean;
+            scopes?: Array<{ resource: string; actions: Array<string> }>;
+          };
+          keyId: string;
+        },
+        any,
+        Name
+      >;
       memberAdd: FunctionReference<
         "mutation",
         "internal",

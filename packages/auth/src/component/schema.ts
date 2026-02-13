@@ -226,4 +226,56 @@ export default defineSchema({
       "status",
       "acceptedByUserId",
     ]),
+
+  /**
+   * API keys for programmatic access. Each key links a user to a set of
+   * scoped permissions and optional per-key rate limiting.
+   *
+   * The raw key is never stored — only a SHA-256 hash. A short prefix
+   * (e.g. "sk_live_abc1...") is kept for display in the portal.
+   *
+   * Keys support:
+   * - **Scoped permissions**: resource:action pairs (e.g. users:read)
+   * - **Per-key rate limiting**: token-bucket with configurable window
+   * - **Expiration**: optional TTL
+   * - **Soft revocation**: `revoked` flag preserves audit trail
+   */
+  key: defineTable({
+    userId: v.id("user"),
+    /** First chars of the key for display (e.g. "sk_live_abc1..."). */
+    prefix: v.string(),
+    /** SHA-256 hex hash of the full raw key. */
+    hashedKey: v.string(),
+    /** User-assigned name (e.g. "CI Pipeline", "Production API"). */
+    name: v.string(),
+    /** Scoped permissions: [{ resource: "users", actions: ["read", "list"] }]. */
+    scopes: v.array(
+      v.object({
+        resource: v.string(),
+        actions: v.array(v.string()),
+      }),
+    ),
+    /** Optional per-key rate limit configuration. */
+    rateLimit: v.optional(
+      v.object({
+        maxRequests: v.number(),
+        windowMs: v.number(),
+      }),
+    ),
+    /** Rate limit state tracking (token-bucket). */
+    rateLimitState: v.optional(
+      v.object({
+        attemptsLeft: v.number(),
+        lastAttemptTime: v.number(),
+      }),
+    ),
+    /** Expiration timestamp. Null/undefined = never expires. */
+    expiresAt: v.optional(v.number()),
+    lastUsedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    /** Soft-revoke flag. Revoked keys are kept for audit trail. */
+    revoked: v.boolean(),
+  })
+    .index("userId", ["userId"])
+    .index("hashedKey", ["hashedKey"]),
 });
