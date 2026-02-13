@@ -1,50 +1,37 @@
-# @convex-dev/auth
+# @robelest/convex-auth
 
-Authentication for [Convex](https://convex.dev). Pure TypeScript, framework-agnostic, with first-class SSR support via httpOnly cookies and a proxy pattern.
+Component-first authentication for [Convex](https://convex.dev). One component, one class, full TypeScript support.
 
-Works with any framework — React, Svelte, SolidJS, TanStack Start, plain Node — no framework-specific code in the library.
+- **Class-based API** — `new ConvexAuth(components.auth, { providers })` gives you everything: auth, portal, helpers.
+- **Built-in admin portal** — A dark-themed SvelteKit dashboard served directly from your Convex deployment. Manage users, sessions, and invites. No separate hosting.
+- **Self-hosting as a sub-component** — Portal static files are stored and served through an embedded `@convex-dev/self-hosting` sub-component. You install one component, not two.
+- **Groups, memberships, invites** — Hierarchical groups with roles, atomic invite acceptance, and cascade deletes.
+- **Passkeys, TOTP, password, OAuth, magic links, OTP, phone, anonymous** — All built in.
 
 ## Install
 
 ```bash
-npm install @convex-dev/auth
+npm install @robelest/convex-auth
 ```
 
 ## Quick Setup (CLI)
 
 ```bash
-npx @convex-dev/auth --site-url "http://localhost:5173"
+npx @robelest/convex-auth --site-url "http://localhost:5173"
 ```
 
-The CLI will:
-1. Set `SITE_URL` to your provided frontend app URL
-2. Generate and set `JWT_PRIVATE_KEY` and `JWKS`
-3. Update `tsconfig.json` (if needed)
-4. Scaffold `convex/convex.config.ts` with component registration
-5. Create `convex/auth.ts` with auth configuration
-6. Create `convex/http.ts` with HTTP routes
-
-### CLI Options
-
-| Option | Description |
-|--------|-------------|
-| `--site-url <url>` | Your frontend app URL. If omitted, CLI will prompt interactively |
-| `--prod` | Target production deployment |
-| `--preview-name <name>` | Target a specific preview deployment |
-| `--deployment-name <name>` | Target a specific deployment by name |
-| `--variables <json>` | Configure additional provider variables interactively |
-| `--skip-git-check` | Skip Git repository check |
-| `--allow-dirty-git-state` | Allow running with uncommitted changes |
+The CLI scaffolds `convex/convex.config.ts`, `convex/auth.ts`, and `convex/http.ts`, then sets `SITE_URL`, `JWT_PRIVATE_KEY`, and `JWKS` on your deployment.
 
 ## Manual Setup
 
-### 1. Register the auth component
+Three files. That's it.
 
-`convex/convex.config.ts`
+### 1. Register the component
 
 ```ts
+// convex/convex.config.ts
 import { defineApp } from "convex/server";
-import auth from "@convex-dev/auth/convex.config";
+import auth from "@robelest/convex-auth/convex.config";
 
 const app = defineApp();
 app.use(auth);
@@ -52,26 +39,31 @@ app.use(auth);
 export default app;
 ```
 
-### 2. Configure auth with providers
-
-`convex/auth.ts`
+### 2. Configure auth
 
 ```ts
-import { Auth } from "@convex-dev/auth/component";
+// convex/auth.ts
+import { ConvexAuth } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
-import password from "@convex-dev/auth/providers/password";
+import github from "@auth/core/providers/github";
 
-export const { auth, signIn, signOut, store } = Auth({
-  component: components.auth,
-  providers: [password],
+const auth = new ConvexAuth(components.auth, {
+  providers: [github],
 });
+
+export { auth };
+export const {
+  signIn, signOut, store,
+  portalQuery, portalMutation, portalInternal,
+} = auth;
 ```
+
+`ConvexAuth` wraps everything — auth actions, portal functions, and helper accessors — in a single class. Destructure what you need and export it.
 
 ### 3. Wire up HTTP routes
 
-`convex/http.ts`
-
 ```ts
+// convex/http.ts
 import { httpRouter } from "convex/server";
 import { auth } from "./auth";
 
@@ -81,224 +73,14 @@ auth.addHttpRoutes(http);
 export default http;
 ```
 
-## Client API
-
-The `client()` function creates an auth controller that works with any Convex client. It has two modes: **SPA** (direct) and **SSR proxy**.
-
-```ts
-import { client } from "@convex-dev/auth/client";
-```
-
-### SPA mode (client-side only)
-
-Tokens are stored in `localStorage` and sent to Convex directly.
-
-```ts
-const auth = client({ convex });
-
-auth.state;                // { isLoading, isAuthenticated, token }
-auth.onChange(setState);   // subscribe to state changes, returns unsubscribe
-auth.signIn("password", { email, password });
-auth.signOut();
-```
-
-### SSR proxy mode (recommended for SSR frameworks)
-
-Tokens are stored in httpOnly cookies. The client sends requests to your server proxy endpoint, which forwards them to Convex and manages cookies.
-
-```ts
-const auth = client({
-  convex,
-  proxy: "/api/auth",   // your server endpoint
-  token: jwtFromServer, // JWT read from cookie during SSR — prevents loading flash
-});
-```
-
-When `proxy` is set:
-- `signIn`/`signOut`/token refresh POST to the proxy URL with `credentials: "include"`
-- Token storage defaults to in-memory only (cookies handle persistence)
-- OAuth code flow is handled server-side
-- No `localStorage` usage, no cross-tab sync
-
-## Server API
-
-The `server()` function provides server-side auth helpers using standard Web `Request`/`Response` APIs. It works in any server runtime (Node, Deno, Bun, Cloudflare Workers, Nitro, etc.).
-
-```ts
-import { server } from "@convex-dev/auth/server";
-```
-
-### Creating a server instance
-
-The `url` parameter is **required**. The library does not read environment variables — each framework has its own convention (`VITE_`, `PUBLIC_`, `NEXT_PUBLIC_`, `process.env`), so you pass the URL explicitly.
-
-```ts
-// Vite / TanStack Start
-const auth = server({ url: import.meta.env.VITE_CONVEX_URL });
-
-// Next.js
-const auth = server({ url: process.env.NEXT_PUBLIC_CONVEX_URL! });
-
-// SvelteKit
-import { PUBLIC_CONVEX_URL } from "$env/static/public";
-const auth = server({ url: PUBLIC_CONVEX_URL });
-
-// Plain Node
-const auth = server({ url: process.env.CONVEX_URL! });
-```
-
-### Server methods
-
-| Method | Description |
-|--------|-------------|
-| `auth.token(request)` | Read JWT from httpOnly cookies. Returns `string \| null`. |
-| `auth.verify(request)` | Check token expiry. Returns `Promise<boolean>`. |
-| `auth.proxy(request)` | Proxy `signIn`/`signOut` to Convex, set httpOnly cookies. Returns `Promise<Response>`. |
-| `auth.refresh(request)` | Handle OAuth code exchange and token refresh. Returns `Promise<RefreshResult>`. |
-
-### Server options
-
-```ts
-type ServerOptions = {
-  url: string;                    // Convex deployment URL (required)
-  apiRoute?: string;              // Proxy route path (default: "/api/auth")
-  cookieMaxAge?: number | null;   // Cookie max-age in seconds
-  verbose?: boolean;              // Enable debug logging
-};
-```
-
-## SSR Integration
-
-The proxy pattern gives you secure, flash-free SSR auth with httpOnly cookies. Here is the flow:
-
-### How it works
-
-```
-Page Load (SSR):
-  1. Server runs beforeLoad / loader
-  2. server().refresh(request) — handles OAuth code exchange + token refresh
-  3. server().token(request) — reads JWT from httpOnly cookie
-  4. Server returns { token } to client
-  5. client({ convex, proxy, token }) — client starts authenticated, no flash
-
-signIn / signOut:
-  1. Client POSTs to /api/auth with credentials: "include"
-  2. Server calls server().proxy(request) — forwards to Convex, sets httpOnly cookies
-  3. Response contains { tokens: { token, refreshToken: "dummy" } }
-  4. Client stores JWT in memory only (real refresh token stays in httpOnly cookie)
-
-Token Refresh:
-  1. Convex client detects token expiring, calls fetchAccessToken
-  2. Client POSTs to /api/auth with { action: "auth:signIn", refreshToken: true }
-  3. Server reads real refresh token from httpOnly cookie, calls Convex
-  4. Server returns new JWT, sets updated cookies
-```
-
-### Example: TanStack Start
-
-**Server proxy route** — `src/routes/api/auth.ts`
-
-```ts
-import { createFileRoute } from "@tanstack/react-router";
-import { server } from "@convex-dev/auth/server";
-
-export const Route = createFileRoute("/api/auth")({
-  server: {
-    handlers: {
-      POST: async ({ request }) => {
-        return server({ url: import.meta.env.VITE_CONVEX_URL! }).proxy(request);
-      },
-    },
-  },
-});
-```
-
-**SSR auth state** — `src/routes/__root.tsx`
-
-```ts
-import { createServerFn } from "@tanstack/react-start";
-import { getRequest, setResponseHeader } from "@tanstack/react-start/server";
-import { server } from "@convex-dev/auth/server";
-
-const getAuthState = createServerFn({ method: "GET" }).handler(async () => {
-  const request = getRequest();
-  const auth = server({ url: import.meta.env.VITE_CONVEX_URL! });
-
-  // Handle OAuth code exchange + token refresh
-  const result = await auth.refresh(request);
-
-  if (result.response) {
-    // OAuth redirect — forward cookies to browser
-    const cookieHeaders = result.response.headers.getSetCookie?.() ?? [];
-    for (const raw of cookieHeaders) {
-      setResponseHeader("set-cookie", raw);
-    }
-    const location = result.response.headers.get("location");
-    return { token: null, redirect: location };
-  }
-
-  if (result.cookies) {
-    // Token refreshed — forward updated cookies
-    for (const raw of result.cookies) {
-      setResponseHeader("set-cookie", raw);
-    }
-  }
-
-  return { token: auth.token(request), redirect: null };
-});
-```
-
-**Client hydration** — pass the token to the client for flash-free startup:
-
-```ts
-const auth = client({
-  convex,
-  proxy: "/api/auth",
-  token: tokenFromServer,  // JWT from SSR, null if not authenticated
-});
-```
-
-### Example: SvelteKit
-
-**Server proxy route** — `src/routes/api/auth/+server.ts`
-
-```ts
-import { server } from "@convex-dev/auth/server";
-import { PUBLIC_CONVEX_URL } from "$env/static/public";
-
-export async function POST({ request }) {
-  return server({ url: PUBLIC_CONVEX_URL }).proxy(request);
-}
-```
-
-**Layout server load** — `src/routes/+layout.server.ts`
-
-```ts
-import { server } from "@convex-dev/auth/server";
-import { PUBLIC_CONVEX_URL } from "$env/static/public";
-
-export async function load({ request }) {
-  const auth = server({ url: PUBLIC_CONVEX_URL });
-  const result = await auth.refresh(request);
-  // Forward cookies if refreshed, then:
-  return { token: auth.token(request) };
-}
-```
-
-### Security
-
-All cookies are **httpOnly** — the JWT, refresh token, and OAuth verifier are never accessible to client-side JavaScript. This prevents XSS attacks from stealing tokens.
-
-- On HTTPS: cookies use `__Host-` prefix, `Secure`, `SameSite=Lax`
-- On localhost: cookies omit `__Host-` prefix and `Secure` for dev convenience
-- The client never sees the real refresh token (receives `"dummy"` instead)
+`addHttpRoutes` registers OAuth callbacks, JWKS endpoints, and portal static file serving in one call.
 
 ## Backend Usage
 
-Use `auth.user.*` helpers in your Convex functions:
+Use `auth.*` helpers directly in your Convex functions:
 
 ```ts
-import { query } from "./_generated/server";
+import { query, mutation } from "./_generated/server";
 import { auth } from "./auth";
 
 export const viewer = query({
@@ -308,222 +90,358 @@ export const viewer = query({
     return await auth.user.get(ctx, userId);
   },
 });
-```
 
-### Common Helpers
-
-| Helper | Description |
-|--------|-------------|
-| `auth.user.current(ctx)` | Returns signed-in user ID or `null` |
-| `auth.user.require(ctx)` | Returns user ID or throws if not signed in |
-| `auth.user.get(ctx, userId)` | Fetches user document by ID via component API |
-| `auth.user.viewer(ctx)` | Fetches the current signed-in user document |
-
-User profiles include an optional `extend` JSON field for app-specific data (preferences, onboarding state, feature flags, profile attributes).
-
-### Group and membership helpers
-
-The component exposes a hierarchical `group` primitive.
-
-- A root group has no `parentGroupId`.
-- Child groups set `parentGroupId` to another group id.
-- Roles are application-defined strings on membership records (e.g. `owner`, `admin`, `member`, `viewer`).
-- Groups, memberships, and invites each include an optional `extend` JSON field for custom app data.
-
-```ts
-import { mutation } from "./_generated/server";
-import { auth } from "./auth";
-
-export const createGroup = mutation({
-  args: {},
-  handler: async (ctx) => {
+export const updateProfile = mutation({
+  args: { name: v.string() },
+  handler: async (ctx, { name }) => {
     const userId = await auth.user.require(ctx);
-    const groupId = await auth.group.create(ctx, {
-      name: "Acme",
-      extend: { billingPlan: "pro", region: "us" },
-    });
-
-    await auth.group.member.add(ctx, {
-      groupId,
-      userId,
-      role: "owner",
-      status: "active",
-      extend: { invitedVia: "seed-script" },
-    });
-
-    return groupId;
+    // ... your logic
   },
 });
 ```
 
-Main group APIs:
+### Auth helpers
 
-- `auth.group.create(ctx, data)` creates a group.
-- `auth.group.get(ctx, groupId)` fetches a group.
-- `auth.group.list(ctx, { parentGroupId? })` lists root groups or children.
-- `auth.group.update(ctx, groupId, data)` patches a group.
-- `auth.group.delete(ctx, groupId)` deletes a group and cascades to descendants, members, and invites.
+| Helper | Returns |
+|--------|---------|
+| `auth.user.current(ctx)` | User ID or `null` |
+| `auth.user.require(ctx)` | User ID (throws if not signed in) |
+| `auth.user.get(ctx, userId)` | User document |
+| `auth.user.viewer(ctx)` | Current user's document |
 
-Membership APIs:
+### Groups and memberships
 
-- `auth.group.member.add(ctx, data)` creates membership.
-- `auth.group.member.get(ctx, memberId)` fetches membership by id.
-- `auth.group.member.list(ctx, { groupId })` lists members for a group.
-- `auth.group.member.update(ctx, memberId, data)` updates role/status/extend.
-- `auth.group.member.remove(ctx, memberId)` removes membership.
-- `auth.user.group.list(ctx, { userId })` lists all memberships for a user.
-- `auth.user.group.get(ctx, { userId, groupId })` fetches one membership for a user in a group.
-
-### Invite flow
-
-Invites are platform-level records with statuses: `pending`, `accepted`, `revoked`, `expired`.
-Use optional `groupId` when an invite should grant access to a specific group.
+Hierarchical groups with application-defined roles. Groups, memberships, and invites each have an optional `extend` JSON field for app-specific data.
 
 ```ts
-import { mutation } from "./_generated/server";
-import { auth } from "./auth";
+const groupId = await auth.group.create(ctx, {
+  name: "Acme Corp",
+  extend: { billingPlan: "pro" },
+});
 
-export const inviteUser = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const invitedByUserId = await auth.user.require(ctx);
-    const inviteId = await auth.invite.create(ctx, {
-      groupId: "group_id_here",
-      invitedByUserId,
-      email: "new-user@example.com",
-      tokenHash: "hashed-token",
-      status: "pending",
-      expiresTime: Date.now() + 1000 * 60 * 60 * 24,
-      role: "member",
-      extend: { source: "admin-panel" },
-    });
-    return inviteId;
+await auth.group.member.add(ctx, {
+  groupId,
+  userId,
+  role: "owner",
+  status: "active",
+});
+```
+
+| API | Description |
+|-----|-------------|
+| `auth.group.create(ctx, data)` | Create a group |
+| `auth.group.get(ctx, groupId)` | Get a group |
+| `auth.group.list(ctx, { parentGroupId? })` | List root or child groups |
+| `auth.group.update(ctx, groupId, data)` | Update a group |
+| `auth.group.delete(ctx, groupId)` | Delete group + cascade members/invites |
+| `auth.group.member.add(ctx, data)` | Add membership |
+| `auth.group.member.list(ctx, { groupId })` | List members |
+| `auth.group.member.update(ctx, memberId, data)` | Update role/status |
+| `auth.group.member.remove(ctx, memberId)` | Remove membership |
+| `auth.user.group.list(ctx, { userId })` | List user's memberships |
+| `auth.user.group.get(ctx, { userId, groupId })` | Get user's membership in a group |
+
+### Invites
+
+Platform-level invite records with statuses: `pending`, `accepted`, `revoked`, `expired`.
+
+```ts
+const inviteId = await auth.invite.create(ctx, {
+  groupId,
+  invitedByUserId: userId,
+  email: "new@example.com",
+  tokenHash: "hashed-token",
+  status: "pending",
+  expiresTime: Date.now() + 86_400_000,
+  role: "member",
+});
+```
+
+Atomic accept + membership creation in a single mutation:
+
+```ts
+await auth.invite.accept(ctx, inviteId);
+if (invite.groupId) {
+  await auth.group.member.add(ctx, {
+    groupId: invite.groupId,
+    userId,
+    role: invite.role,
+  });
+}
+```
+
+| API | Description |
+|-----|-------------|
+| `auth.invite.create(ctx, data)` | Create an invite |
+| `auth.invite.get(ctx, inviteId)` | Get an invite |
+| `auth.invite.list(ctx, { groupId?, status? })` | List invites |
+| `auth.invite.accept(ctx, inviteId)` | Accept (pending only) |
+| `auth.invite.revoke(ctx, inviteId)` | Revoke (pending only) |
+
+Error codes: `DUPLICATE_MEMBERSHIP`, `DUPLICATE_INVITE`, `INVITE_NOT_FOUND`, `INVITE_NOT_PENDING`.
+
+## Admin Portal
+
+A dark-themed SvelteKit admin dashboard served directly from your Convex deployment at `/<component_name>` (default: `/auth`). No separate hosting required.
+
+The portal lets you:
+- View and search all users
+- Inspect user details, accounts, and sessions
+- Revoke active sessions
+- Manage admin access via invite links
+
+### Setup
+
+1. **Build and upload the portal:**
+
+```bash
+npx @robelest/convex-auth portal upload
+```
+
+2. **Generate an admin invite link:**
+
+```bash
+npx @robelest/convex-auth portal link
+```
+
+3. **Open the link** — sign in with your email (magic link), and you're an admin.
+
+That's it. The portal is now live at `https://<your-deployment>.convex.site/auth`.
+
+### How it works
+
+- Portal static files are stored in Convex via the `@convex-dev/self-hosting` sub-component (installed automatically inside the auth component).
+- `addHttpRoutes` registers SPA-fallback static file serving at `/auth`.
+- The portal uses a `portal` email provider (auto-registered by `ConvexAuth`) for magic link sign-in.
+- Admin access is controlled by invite records with `role: "portalAdmin"`. The first admin is created via `portal link`.
+- All portal data flows through `portalQuery`, `portalMutation`, and `portalInternal` — exported from your `convex/auth.ts`. The portal client calls these, not component internals directly (components can't expose public endpoints to external clients).
+
+### CLI commands
+
+```bash
+# Upload portal static files (builds + deploys)
+npx @robelest/convex-auth portal upload
+
+# Upload to production
+npx @robelest/convex-auth portal upload --prod
+
+# Generate admin invite link
+npx @robelest/convex-auth portal link
+
+# Generate link for production
+npx @robelest/convex-auth portal link --prod
+
+# Specify the convex module name (default: "auth")
+npx @robelest/convex-auth portal link --component myAuth
+```
+
+## Providers
+
+### OAuth
+
+Any `@auth/core` provider works:
+
+```ts
+import github from "@auth/core/providers/github";
+import google from "@auth/core/providers/google";
+
+new ConvexAuth(components.auth, {
+  providers: [github, google],
+});
+```
+
+Set `AUTH_<PROVIDER>_ID` and `AUTH_<PROVIDER>_SECRET` on your deployment.
+
+### Password
+
+```ts
+import password from "@robelest/convex-auth/providers/password";
+
+new ConvexAuth(components.auth, {
+  providers: [password],
+});
+```
+
+Password with email verification:
+
+```ts
+import password from "@robelest/convex-auth/providers/password";
+import email from "@robelest/convex-auth/providers/email";
+
+const otp = email({
+  id: "resend-otp",
+  async sendVerificationRequest({ identifier, token }) {
+    // send OTP via your email provider
+  },
+});
+
+new ConvexAuth(components.auth, {
+  providers: [
+    password({ id: "password-with-verify", verify: otp }),
+    otp,
+  ],
+});
+```
+
+### Passkeys / WebAuthn
+
+```ts
+import passkey from "@robelest/convex-auth/providers/passkey";
+
+new ConvexAuth(components.auth, {
+  providers: [passkey],
+});
+```
+
+### TOTP (authenticator apps)
+
+```ts
+import totp from "@robelest/convex-auth/providers/totp";
+
+new ConvexAuth(components.auth, {
+  providers: [totp({ issuer: "My App" })],
+});
+```
+
+### Phone / SMS
+
+```ts
+import phone from "@robelest/convex-auth/providers/phone";
+
+const sms = phone({
+  id: "twilio",
+  async sendVerificationRequest({ identifier, token }) {
+    // send SMS via Twilio, etc.
   },
 });
 ```
 
-Invite APIs:
+### Anonymous
 
-- `auth.invite.create(ctx, data)` creates an invite.
-- `auth.invite.get(ctx, inviteId)` fetches an invite.
-- `auth.invite.list(ctx, { groupId?, status? })` lists invites.
-- `auth.invite.accept(ctx, inviteId)` accepts a pending invite.
-- `auth.invite.revoke(ctx, inviteId)` revokes a pending invite.
+```ts
+import anonymous from "@robelest/convex-auth/providers/anonymous";
 
-The component does not send emails. Create invites in a mutation, then trigger notifications using your app's provider of choice (e.g. Resend).
+new ConvexAuth(components.auth, {
+  providers: [anonymous],
+});
+```
 
 ## Environment Variables
 
 ### Required
 
-| Variable | Purpose | Example |
-|----------|---------|---------|
-| `JWT_PRIVATE_KEY` | Signs session JWTs | _(generated by CLI)_ |
-| `JWKS` | JSON Web Key Set for JWT verification | _(generated by CLI)_ |
-| `SITE_URL` | Frontend app URL for OAuth/magic link redirects | `http://localhost:5173` |
+| Variable | Purpose |
+|----------|---------|
+| `JWT_PRIVATE_KEY` | Signs session JWTs |
+| `JWKS` | JSON Web Key Set for verification |
+| `SITE_URL` | Frontend URL for OAuth/magic link redirects |
 
 ### System (auto-provided by Convex)
 
 | Variable | Purpose |
 |----------|---------|
-| `CONVEX_SITE_URL` | Deployment's HTTP actions URL. Used as JWT issuer and OAuth callback base. |
+| `CONVEX_SITE_URL` | HTTP actions URL. Used as JWT issuer and OAuth callback base. |
 
-### Provider Variables
+### Provider
 
-| Variable Pattern | Example | Purpose |
-|-----------------|---------|---------|
-| `AUTH_<PROVIDER>_ID` | `AUTH_GITHUB_ID` | OAuth client ID |
-| `AUTH_<PROVIDER>_SECRET` | `AUTH_GITHUB_SECRET` | OAuth client secret |
+| Pattern | Example |
+|---------|---------|
+| `AUTH_<PROVIDER>_ID` | `AUTH_GITHUB_ID` |
+| `AUTH_<PROVIDER>_SECRET` | `AUTH_GITHUB_SECRET` |
 
 ### Optional
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `AUTH_SESSION_TOTAL_DURATION_MS` | Max session lifetime (ms) | 30 days |
-| `AUTH_SESSION_INACTIVE_DURATION_MS` | Inactive session timeout (ms) | _(provider-specific)_ |
-| `AUTH_LOG_LEVEL` | Log verbosity: `DEBUG`, `INFO`, `WARN`, `ERROR` | `INFO` |
+| `AUTH_SESSION_TOTAL_DURATION_MS` | Max session lifetime | 30 days |
+| `AUTH_SESSION_INACTIVE_DURATION_MS` | Inactive session timeout | Provider-specific |
+| `AUTH_LOG_LEVEL` | `DEBUG` / `INFO` / `WARN` / `ERROR` | `INFO` |
 
-## Providers
+## Production Deploy
 
-All providers use lowercase names with default exports:
+```bash
+# Set up production keys + site URL
+npx @robelest/convex-auth --prod --site-url "https://myapp.com"
 
-```ts
-import password from "@convex-dev/auth/providers/password";
-import anonymous from "@convex-dev/auth/providers/anonymous";
-import credentials from "@convex-dev/auth/providers/credentials";
-import email from "@convex-dev/auth/providers/email";
-import phone from "@convex-dev/auth/providers/phone";
+# Set provider secrets
+npx convex env set --prod AUTH_GITHUB_ID "..."
+npx convex env set --prod AUTH_GITHUB_SECRET "..."
+
+# Deploy
+npx convex deploy --cmd 'npm run build'
+
+# Upload portal to production (optional)
+npx @robelest/convex-auth portal upload --prod
+npx @robelest/convex-auth portal link --prod
 ```
 
-## Component System
+## Architecture
 
-Auth runs through a component API boundary (`component: components.auth`). All auth tables live inside the component — you don't modify your schema.
+```
+Your App (convex/)
+  └── components.auth          ← one component install
+        ├── auth tables         ← users, accounts, sessions, groups, members, invites
+        ├── public functions    ← component API (internal to your app)
+        ├── portalBridge        ← delegates to self-hosting sub-component
+        └── selfHosting         ← @convex-dev/self-hosting (portal static files)
+              └── assets table  ← uploaded files, deployments
+```
 
-## Full Documentation
+Key design constraints of the Convex component system:
+- Component functions are **always internal** from the parent's perspective. The portal client cannot call component functions directly — the app must re-export them (`portalQuery`, `portalMutation`, `portalInternal`).
+- Sub-components are **fully encapsulated**. The app only sees `components.auth`, never `components.auth.selfHosting`.
+- Components cannot access `ctx.auth` or `process.env`. Auth checks and env var reads happen at the app layer.
 
-For complete documentation, see: https://deepwiki.com/robelest/convex-auth
+## CLI Options
+
+| Option | Description |
+|--------|-------------|
+| `--site-url <url>` | Frontend URL (prompts if omitted) |
+| `--prod` | Target production deployment |
+| `--preview-name <name>` | Target preview deployment |
+| `--deployment-name <name>` | Target specific deployment |
+| `portal upload` | Build and upload portal static files |
+| `portal link` | Generate admin invite link |
 
 ## Roadmap
 
-### Phase 1 — Complete Core Auth
-- **Two-Factor Authentication (2FA)**: TOTP authenticator app support, backup codes, trusted devices
-- **Passkeys / WebAuthn**: Passwordless authentication via biometrics and security keys (powered by @oslojs/webauthn) ✅
-- **Admin Operations**: User ban/unban, session listing and revocation, user impersonation
-- **Account Deletion**: Full cascade across sessions, tokens, accounts, memberships, and invites
+### Done
+- Password, OAuth, magic links, OTP, phone, anonymous auth
+- Passkeys / WebAuthn
+- TOTP (authenticator apps)
+- Groups, memberships, invites with cascade operations
+- Admin portal (SvelteKit, dark theme, self-hosted via Convex)
+- Portal CLI (`portal upload`, `portal link`)
+- Class-based `ConvexAuth` API
+- Self-hosting as embedded sub-component
 
-### Phase 2 — Developer Platform
-- **API Keys**: Hashed key storage, CRUD, per-key rate limiting, scoped permissions, `x-api-key` header verification
-- **One-Time Tokens**: Secure single-use tokens for cross-domain auth, magic actions, and email verification links
-- **Device Authorization (RFC 8628)**: OAuth device flow for CLIs, smart TVs, and IoT devices
-- **Bearer Token Auth**: `Authorization: Bearer` header support for API-first applications
-
-### Phase 3 — OAuth Foundation
-- **Migrate to Arctic**: Replace `@auth/core` with Arctic for a lighter, actively maintained OAuth 2.0 client layer with zero third-party dependencies
-
-### Phase 4 — Enterprise SSO & Directory Sync
-- **SSO (SAML 2.0 + OIDC)**: Register identity providers dynamically, sign in by domain/email/org, SAML assertion validation, OIDC discovery, attribute mapping (powered by samlify)
-- **SCIM 2.0 Directory Sync**: User lifecycle management — provision, update, and deprovision users from Okta, Azure AD, Google Workspace, and other directory providers. Standard + custom attribute mapping, group sync, and provisioning/deprovisioning events
-- **Domain Verification**: DNS TXT record verification for organization domain ownership
-- **Organization Provisioning**: Auto-add SSO/SCIM users to groups with role mapping
-- **Self-Serve Admin Portal** (`@robelest/convex-auth-portal`): Astro-powered UI served directly from Convex HTTP endpoints. IT admins configure SSO, SCIM, and domain verification through a guided wizard — no developer involvement needed. Generate a secure link, send it to your customer's IT team. Includes per-IdP setup guides for Okta, Azure AD, Google Workspace, OneLogin, JumpCloud, and custom SAML/OIDC. Supports branding customization (logo, colors, app name)
-
-### Phase 5 — Be the Identity Provider
-- **OAuth 2.1 Provider**: Authorization code flow with PKCE, client credentials, refresh tokens, dynamic client registration, token introspection and revocation
-- **OIDC Provider**: id_token issuance, UserInfo endpoint, `.well-known/openid-configuration`
-- **MCP Support**: Model Context Protocol authentication for AI agent integrations
-
-### Phase 6 — Enterprise Hardening
-- **Audit Logging**: Structured auth event log (sign-in, sign-out, password change, 2FA enable, admin actions) with actor/target/context tracking
-- **Webhook Notifications**: Fire webhooks on auth lifecycle events (user created, session created, password changed, user provisioned via SCIM)
-- **Advanced Rate Limiting**: IP-based brute force protection
-- **OAuth Token Storage**: Store provider access/refresh tokens for apps that call provider APIs on behalf of users
+### Planned
+- **API Keys** — hashed key storage, per-key rate limiting, scoped permissions
+- **Bearer Token Auth** — `Authorization: Bearer` header for API-first apps
+- **Device Authorization (RFC 8628)** — OAuth device flow for CLIs/IoT
+- **Arctic migration** — replace `@auth/core` with a lighter OAuth 2.0 layer
+- **SSO (SAML 2.0 + OIDC)** — enterprise identity provider integration
+- **SCIM 2.0 Directory Sync** — user provisioning from Okta, Azure AD, Google Workspace
+- **OAuth 2.1 / OIDC Provider** — become the identity provider
+- **MCP Auth** — Model Context Protocol authentication for AI agents
+- **Audit logging** — structured auth event log
+- **Webhooks** — fire on auth lifecycle events
 
 ---
 
 ## Contributing
 
-### Install Dependencies
-
 ```bash
 bun install
-```
-
-### Start Convex Dev
-
-```bash
 bun run dev:convex
-```
-
-### Run Tests
-
-```bash
 bun run test:auth
 ```
 
-### Monorepo Structure
+### Monorepo structure
 
-- `packages/auth/` — Main auth package
-- `packages/portal/` — Self-serve admin portal (Astro)
-- `packages/test/` — Shared test suite
-- `examples/tanstack/` — TanStack Start example app
-- `convex/` — Root Convex functions for testing
+| Directory | Description |
+|-----------|-------------|
+| `packages/auth/` | Auth component + `ConvexAuth` class + CLI |
+| `packages/portal/` | Admin portal (SvelteKit + static adapter) |
+| `packages/test/` | Shared test suite |
+| `convex/` | Root Convex functions (dev/test) |
