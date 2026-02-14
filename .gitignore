@@ -16,8 +16,9 @@
 /packages/auth/dist
 /packages/auth/src/server/version.ts
 
-# CDN deploy staging
+# CDN deploy staging + build output
 /cdn-stage
+/packages/portal/build-cdn
 
 # testing
 /coverage
