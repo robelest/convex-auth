@@ -1,22 +1,22 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { base } from '$app/paths';
+	import { auth } from '$lib/stores/auth.svelte';
+	import Icon from '$lib/components/ui/icon.svelte';
 	import { signOut } from '$lib/stores/auth.svelte';
 
 	const titles: Record<string, string> = {
 		'/users': 'Users',
 		'/sessions': 'Sessions',
+		'/keys': 'API Keys',
 	};
 
 	function getTitle(): string {
-		const path = page.url.pathname.replace(base, '') || '/';
-		if (titles[path]) return titles[path];
-		if (path.startsWith('/users/')) return 'User Detail';
-		return 'Auth Portal';
-	}
-
-	async function handleLogout() {
-		await signOut();
+		const path = auth.slug
+			? page.url.pathname.replace(`/${auth.slug}`, '') || '/'
+			: page.url.pathname.replace(base, '') || '/';
+		return titles[path]
+			?? (path.startsWith('/users/') ? 'User Detail' : 'Auth Portal');
 	}
 </script>
 
@@ -31,23 +31,10 @@
 		</div>
 
 		<button
-			onclick={handleLogout}
+			onclick={() => signOut()}
 			class="flex items-center gap-1.5 text-[var(--cp-text-xs)] text-cp-text-muted hover:text-cp-text px-2 py-1 rounded-[var(--cp-radius-sm)] hover:bg-[var(--cp-hover)] transition-colors"
 		>
-			<svg
-				width="12"
-				height="12"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-			>
-				<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-				<polyline points="16 17 21 12 16 7" />
-				<line x1="21" y1="12" x2="9" y2="12" />
-			</svg>
+			<Icon name="logout" size={12} />
 			Sign out
 		</button>
 	</div>

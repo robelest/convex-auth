@@ -1,73 +1,162 @@
 /**
- * Svelte auth store — wraps the framework-agnostic convex-auth client
- * with Svelte 5 reactive state ($state).
+ * Portal auth store — Svelte 5 reactive state wrapping the convex-auth client.
  *
- * The portal uses the same Auth() instance as the main app.
- * Portal admins sign in via email magic link and are gated by
- * an accepted invite with `role: "portalAdmin"`.
+ * Single reactive object (`auth`) is the source of truth for all auth state.
+ * All side-effects (magic link, invite acceptance, sign-out) are exported
+ * functions that mutate `auth` properties.
+ *
+ * The layout reads `auth.*` and derives a single `screen` discriminant —
+ * no boolean flag soup.
  */
 import { client as createAuthClient, type AuthState } from "@robelest/convex-auth/client";
 import type { ConvexClient } from "convex/browser";
+import { base } from "$app/paths";
 
 // ---------------------------------------------------------------------------
-// Reactive state (module-level singletons)
+// Constants
 // ---------------------------------------------------------------------------
 
-/** Whether the auth client has been initialized. */
-let _initialized = $state(false);
+const INVITE_STORAGE_KEY = "__portalInviteToken";
+const GITHUB_URL = "https://github.com/robelest/convex-auth";
 
-/** Current auth state from convex-auth. */
-let _authState = $state<AuthState>({
-	isLoading: true,
-	isAuthenticated: false,
-	token: null,
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type FlowState = "idle" | "sending" | "sent" | "error";
+type InviteState = "none" | "pending" | "accepting" | "accepted" | "error";
+
+export interface PortalConfig {
+	convexUrl: string;
+	siteUrl: string;
+	version: string;
+}
+
+export interface DiscoveryResult {
+	url: string;
+	config: PortalConfig | null;
+	slug?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Reactive store (single source of truth)
+// ---------------------------------------------------------------------------
+
+export const auth = $state({
+	initialized: false,
+	state: { isLoading: true, isAuthenticated: false, token: null } as AuthState,
+
+	/** Magic-link login flow */
+	flowState: "idle" as FlowState,
+	errorMessage: null as string | null,
+
+	/** Invite token from URL / sessionStorage */
+	inviteToken: null as string | null,
+	inviteState: "none" as InviteState,
+	inviteError: null as string | null,
+
+	/** Server config from /.well-known/portal-config (null in CDN/dev mode) */
+	serverConfig: null as PortalConfig | null,
+
+	/** Deployment slug from URL path (CDN mode only, e.g. "rapid-cat-62") */
+	slug: null as string | null,
 });
-
-/** Invite token from URL `?invite=...` (only present on first visit). */
-let _inviteToken = $state<string | null>(null);
-
-/** UI flow state for the login form. */
-let _flowState = $state<"idle" | "sending" | "sent" | "error">("idle");
-
-/** Error message if something goes wrong. */
-let _errorMessage = $state<string | null>(null);
 
 // ---------------------------------------------------------------------------
 // Auth client ref (set once during init)
 // ---------------------------------------------------------------------------
 
-let _auth: ReturnType<typeof createAuthClient> | null = null;
+let _client: ReturnType<typeof createAuthClient> | null = null;
+let _convex: ConvexClient | null = null;
 
 // ---------------------------------------------------------------------------
-// Public reactive getters
+// Convex URL Discovery (async)
 // ---------------------------------------------------------------------------
 
-export function getAuthState(): AuthState {
-	return _authState;
+/**
+ * Discover the Convex cloud URL. Called once before the layout mounts.
+ *
+ * **Self-hosted** (`base = '/auth'`): fetches `{origin}/auth/.well-known/portal-config`
+ * from the Convex HTTP action layer. Works for *.convex.site and custom domains.
+ *
+ * **CDN** (`base = ''`): reads `?d=` query param → `https://{slug}.convex.cloud`.
+ * No `?d=`? Returns `null` — caller should redirect to GitHub.
+ *
+ * **Dev** (localhost): uses `VITE_CONVEX_URL` (portal dev server is always Vite).
+ *
+ * @returns Discovery result with URL + optional config, or `null` to trigger redirect.
+ */
+export async function discoverConvexUrl(): Promise<DiscoveryResult | null> {
+	if (typeof window === "undefined") {
+		// SSR safety (shouldn't happen — ssr: false)
+		return { url: import.meta.env.VITE_CONVEX_URL ?? "http://localhost:3210", config: null };
+	}
+
+	const hostname = window.location.hostname;
+
+	// Dev mode — localhost always uses the Vite env var
+	if (hostname === "localhost" || hostname === "127.0.0.1") {
+		return { url: import.meta.env.VITE_CONVEX_URL ?? "http://localhost:3210", config: null };
+	}
+
+	// Self-hosted build: portal lives at {origin}/auth/
+	// Fetch the config endpoint from the same Convex HTTP action origin.
+	if (base === "/auth") {
+		try {
+			const resp = await fetch(`${window.location.origin}/auth/.well-known/portal-config`);
+			if (resp.ok) {
+				const config: PortalConfig = await resp.json();
+				return { url: config.convexUrl, config };
+			}
+		} catch {
+			// Config endpoint unavailable — fall back to hostname derivation
+		}
+
+		// Fallback for older deployments without the config endpoint:
+		// derive cloud URL from *.convex.site hostname
+		if (hostname.endsWith(".convex.site")) {
+			return { url: `https://${hostname.replace(".convex.site", ".convex.cloud")}`, config: null };
+		}
+
+		// Custom domain without config endpoint — can't determine cloud URL
+		return null;
+	}
+
+	// CDN build: portal lives at root of auth.robelest.com (or similar)
+	// First path segment is the deployment slug (e.g. /rapid-cat-62/users).
+	const segments = window.location.pathname.split("/").filter(Boolean);
+	const slug = segments[0] ?? null;
+	if (slug) {
+		return { url: `https://${slug}.convex.cloud`, config: null, slug };
+	}
+
+	// CDN without ?d= → signal caller to redirect to GitHub
+	return null;
 }
 
-export function getIsAuthenticated(): boolean {
-	return _authState.isAuthenticated;
-}
+/** The GitHub URL for redirect when CDN is visited without ?d= */
+export { GITHUB_URL };
 
-export function getIsLoading(): boolean {
-	return _authState.isLoading;
-}
+// ---------------------------------------------------------------------------
+// Invite token extraction (pure, called once during init)
+// ---------------------------------------------------------------------------
 
-export function getInviteToken(): string | null {
-	return _inviteToken;
-}
+function extractInviteToken(): string | null {
+	if (typeof window === "undefined") return null;
 
-export function getFlowState(): typeof _flowState {
-	return _flowState;
-}
+	const url = new URL(window.location.href);
+	const invite = url.searchParams.get("invite");
 
-export function getErrorMessage(): string | null {
-	return _errorMessage;
-}
+	if (invite) {
+		sessionStorage.setItem(INVITE_STORAGE_KEY, invite);
+		// Clean the invite param from URL without triggering navigation
+		url.searchParams.delete("invite");
+		window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+		return invite;
+	}
 
-export function getInitialized(): boolean {
-	return _initialized;
+	// Restore from sessionStorage (after magic link redirect round-trip)
+	return sessionStorage.getItem(INVITE_STORAGE_KEY);
 }
 
 // ---------------------------------------------------------------------------
@@ -77,99 +166,129 @@ export function getInitialized(): boolean {
 /**
  * Initialize the auth client. Call once from the root layout after
  * `setupConvex()` has been called and a `ConvexClient` is available.
- *
- * The client auto-handles `?code=...` in the URL (magic link callback)
- * and hydrates from localStorage.
  */
 export function initAuth(convex: ConvexClient): void {
-	if (_initialized) return;
+	if (auth.initialized) return;
 
-	// Extract invite token from URL before the auth client rewrites it
-	if (typeof window !== "undefined") {
-		const url = new URL(window.location.href);
-		const invite = url.searchParams.get("invite");
-		if (invite) {
-			_inviteToken = invite;
-			// Store in sessionStorage so it survives the magic link round-trip
-			sessionStorage.setItem("__portalInviteToken", invite);
-			// Clean the invite param from the URL
-			url.searchParams.delete("invite");
-			window.history.replaceState({}, "", url.pathname + url.search + url.hash);
-		} else {
-			// Restore from sessionStorage (after magic link redirect back)
-			const stored = sessionStorage.getItem("__portalInviteToken");
-			if (stored) {
-				_inviteToken = stored;
-			}
-		}
-	}
+	_convex = convex;
+	auth.inviteToken = extractInviteToken();
+	auth.inviteState = auth.inviteToken ? "pending" : "none";
 
-	_auth = createAuthClient({ convex });
+	_client = createAuthClient({ convex });
+	_client.onChange((state) => { auth.state = state; });
 
-	// Subscribe to auth state changes
-	_auth.onChange((state) => {
-		_authState = state;
-	});
-
-	_initialized = true;
+	auth.initialized = true;
 }
 
 // ---------------------------------------------------------------------------
-// Actions
+// Actions — Magic Link
 // ---------------------------------------------------------------------------
 
 /**
- * Send a magic link email. The `redirectTo` URL should be the portal's
- * full URL so the user lands back here after clicking the link.
+ * Build the redirect URL for magic link, preserving `?d=` for CDN mode.
+ */
+function getPortalRedirectUrl(): string {
+	if (typeof window === "undefined") return "";
+	return auth.slug
+		? `${window.location.origin}/${auth.slug}`
+		: `${window.location.origin}${base}`;
+}
+
+/**
+ * Build a slug-aware internal href. In CDN mode, prepends `/${slug}`.
+ * In self-hosted mode, prepends `${base}`.
  *
- * @param email — The admin's email address
- * @param redirectTo — The portal URL (e.g. `https://xxx.convex.site/auth`)
- * @param provider — The email provider ID (default: auto-detect)
+ * @param path — route path starting with `/`, e.g. `/users` or `/users/${id}`
+ */
+export function portalHref(path: string): string {
+	return auth.slug ? `/${auth.slug}${path}` : `${base}${path}`;
+}
+
+/**
+ * Send a magic link email for portal sign-in.
  */
 export async function sendMagicLink(
 	email: string,
-	redirectTo: string,
-	provider: string = "portal",
+	provider = "portal",
 ): Promise<void> {
-	if (!_auth) throw new Error("Auth not initialized");
+	if (!_client) throw new Error("Auth not initialized");
 
-	_flowState = "sending";
-	_errorMessage = null;
+	auth.flowState = "sending";
+	auth.errorMessage = null;
 
 	try {
-		await _auth.signIn(provider, { email, redirectTo });
-		_flowState = "sent";
-	} catch (e: any) {
-		_flowState = "error";
-		_errorMessage = e?.message ?? "Failed to send magic link";
+		await _client.signIn(provider, { email, redirectTo: getPortalRedirectUrl() });
+		auth.flowState = "sent";
+	} catch (e: unknown) {
+		auth.flowState = "error";
+		auth.errorMessage = e instanceof Error ? e.message : "Failed to send magic link";
 	}
 }
 
-/**
- * Reset the flow state (e.g. to go back from "check your inbox" to the form).
- */
+/** Reset the login form flow state. */
 export function resetFlow(): void {
-	_flowState = "idle";
-	_errorMessage = null;
+	auth.flowState = "idle";
+	auth.errorMessage = null;
+}
+
+// ---------------------------------------------------------------------------
+// Actions — Invite Acceptance
+// ---------------------------------------------------------------------------
+
+/**
+ * Hash a token string with SHA-256 (matches what the CLI stores).
+ */
+async function hashToken(token: string): Promise<string> {
+	const data = new TextEncoder().encode(token);
+	const buf = await crypto.subtle.digest("SHA-256", data);
+	return Array.from(new Uint8Array(buf))
+		.map((b) => b.toString(16).padStart(2, "0"))
+		.join("");
 }
 
 /**
- * Sign out the current user.
+ * Accept a portal invite. Called by the layout when the user is authenticated
+ * and has an invite token but isn't yet an admin.
+ *
+ * @param portalMutationRef — the `api.auth.portalMutation` reference
  */
+export async function acceptInvite(
+	portalMutationRef: unknown,
+): Promise<void> {
+	if (!_convex || !auth.inviteToken) return;
+	if (auth.inviteState === "accepting" || auth.inviteState === "accepted") return;
+
+	auth.inviteState = "accepting";
+	auth.inviteError = null;
+
+	try {
+		const tokenHash = await hashToken(auth.inviteToken);
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		await _convex.mutation(portalMutationRef as any, {
+			action: "acceptInvite",
+			tokenHash,
+		});
+		auth.inviteState = "accepted";
+		sessionStorage.removeItem(INVITE_STORAGE_KEY);
+		auth.inviteToken = null;
+	} catch (e: unknown) {
+		auth.inviteState = "error";
+		auth.inviteError = e instanceof Error ? e.message : "Failed to accept invite";
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Actions — Sign Out
+// ---------------------------------------------------------------------------
+
+/** Sign out and clear all stored state. */
 export async function signOut(): Promise<void> {
-	if (!_auth) return;
-	await _auth.signOut();
-	// Clear any stored invite token
-	sessionStorage.removeItem("__portalInviteToken");
-	_inviteToken = null;
-	_flowState = "idle";
-	_errorMessage = null;
-}
-
-/**
- * Clear the stored invite token after it has been accepted.
- */
-export function clearInviteToken(): void {
-	sessionStorage.removeItem("__portalInviteToken");
-	_inviteToken = null;
+	if (!_client) return;
+	await _client.signOut();
+	sessionStorage.removeItem(INVITE_STORAGE_KEY);
+	auth.inviteToken = null;
+	auth.inviteState = "none";
+	auth.inviteError = null;
+	auth.flowState = "idle";
+	auth.errorMessage = null;
 }
