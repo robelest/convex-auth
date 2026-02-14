@@ -1,4 +1,4 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { auth } from "./auth";
 
@@ -21,5 +21,15 @@ export const send = mutation({
   handler: async (ctx, { body }) => {
     const userId = await auth.user.require(ctx);
     await ctx.db.insert("messages", { body, userId });
+  },
+});
+
+/** Insert a message on behalf of a user (API key auth, no session). */
+export const sendAsUser = internalMutation({
+  args: { userId: v.string(), body: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { userId, body }) => {
+    await ctx.db.insert("messages", { body, userId });
+    return null;
   },
 });
