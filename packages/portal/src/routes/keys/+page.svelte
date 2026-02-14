@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { base } from '$app/paths';
+	import { portalHref } from '$lib/stores/auth.svelte';
 	import { useQuery, useConvexClient } from 'convex-svelte';
 	import { api } from '@convex/_generated/api';
 	import DataTable from '$lib/components/ui/data-table.svelte';
@@ -56,7 +56,7 @@
 	}
 
 	function handleRowClick(key: any) {
-		goto(`${base}/users/${key.userId}`);
+		goto(portalHref(`/users/${key.userId}`));
 	}
 </script>
 
@@ -91,7 +91,7 @@
 				</td>
 				<td class="px-4 py-2.5 font-mono text-[var(--cp-text-xs)] text-cp-text-secondary">
 					<a
-						href="{base}/users/{key.userId}"
+						href={portalHref(`/users/${key.userId}`)}
 						class="hover:text-cp-accent transition-colors"
 						onclick={(e) => e.stopPropagation()}
 					>

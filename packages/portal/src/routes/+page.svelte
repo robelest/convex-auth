@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { base } from '$app/paths';
+	import { portalHref } from '$lib/stores/auth.svelte';
 	import { onMount } from 'svelte';
 
 	onMount(() => {
-		goto(`${base}/users`, { replaceState: true });
+		goto(portalHref('/users'), { replaceState: true });
 	});
 </script>
 

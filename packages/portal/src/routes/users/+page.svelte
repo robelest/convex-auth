@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { base } from '$app/paths';
+	import { portalHref } from '$lib/stores/auth.svelte';
 	import { useQuery } from 'convex-svelte';
 	import { api } from '@convex/_generated/api';
 	import DataTable from '$lib/components/ui/data-table.svelte';
@@ -30,7 +30,7 @@
 	];
 
 	function handleRowClick(user: PortalUser) {
-		goto(`${base}/users/${user._id}`);
+		goto(portalHref(`/users/${user._id}`));
 	}
 </script>
 
