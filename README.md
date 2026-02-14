@@ -17,10 +17,23 @@ npm install @robelest/convex-auth
 ## Quick Setup (CLI)
 
 ```bash
-npx @robelest/convex-auth --site-url "http://localhost:5173"
+npx @robelest/convex-auth
 ```
 
-The CLI scaffolds `convex/convex.config.ts`, `convex/auth.ts`, and `convex/http.ts`, then sets `SITE_URL`, `JWT_PRIVATE_KEY`, and `JWKS` on your deployment.
+The interactive setup wizard runs 6 steps:
+
+1. **Configure `SITE_URL`** — auto-detects your framework (Vite `:5173`, Next.js `:3000`, etc.)
+2. **Generate key pair** — creates RS256 `JWT_PRIVATE_KEY` and `JWKS`, sets them on your deployment
+3. **Configure `tsconfig.json`** — sets `moduleResolution: "Bundler"` and `skipLibCheck: true`
+4. **Create `convex/convex.config.ts`** — registers the auth component with `app.use(auth)`
+5. **Create `convex/auth.ts`** — scaffolds `new Auth(components.auth, { providers })` with `Portal()` exports
+6. **Create `convex/http.ts`** — wires up `auth.addHttpRoutes(http)` for OAuth callbacks, JWKS, and portal serving
+
+Pass `--site-url` to skip the URL prompt:
+
+```bash
+npx @robelest/convex-auth --site-url "http://localhost:5173"
+```
 
 ## Manual Setup
 
@@ -210,58 +223,69 @@ Keys support wildcard scopes (`{ resource: "*", actions: ["*"] }`) and optional 
 
 ## Admin Portal
 
-A dark-themed SvelteKit admin dashboard served directly from your Convex deployment at `/<component_name>` (default: `/auth`). No separate hosting required.
+A dark-themed SvelteKit admin dashboard for managing users, sessions, and API keys. Available in two modes: **hosted CDN** (zero setup) and **self-hosted** (served from your Convex deployment).
 
 The portal lets you:
 - View and search all users
 - Inspect user details, accounts, and sessions
 - Revoke active sessions
-- Manage admin access via invite links
+- Create and manage API keys
+- Control admin access via invite links
 
-### Setup
+### Option A: Hosted CDN (recommended)
 
-1. **Build and upload the portal:**
+The portal is hosted at `auth.robelest.com` and connects to any Convex deployment via the deployment slug in the URL. No upload, no build, no hosting.
 
-```bash
-npx @robelest/convex-auth portal upload
-```
-
-2. **Generate an admin invite link:**
+**1. Generate an admin invite link:**
 
 ```bash
 npx @robelest/convex-auth portal link
 ```
 
-3. **Open the link** — sign in with your email (magic link), and you're an admin.
+**2. Open the link** — sign in with your email (magic link), and you're an admin.
 
-That's it. The portal is now live at `https://<your-deployment>.convex.site/auth`.
+The portal is immediately available at:
+
+```
+https://auth.robelest.com/<your-deployment-slug>
+```
+
+For example, if your Convex URL is `https://rapid-cat-62.convex.cloud`, the portal lives at `https://auth.robelest.com/rapid-cat-62`. Sub-pages use clean paths: `/rapid-cat-62/users`, `/rapid-cat-62/sessions`, `/rapid-cat-62/keys`.
+
+### Option B: Self-Hosted
+
+Portal static files are stored in Convex via the `@convex-dev/self-hosting` sub-component and served from your own deployment at `https://<deployment>.convex.site/auth`.
+
+**1. Upload the portal:**
+
+```bash
+npx @robelest/convex-auth portal upload
+```
+
+**2. Generate an admin invite link:**
+
+```bash
+npx @robelest/convex-auth portal link
+```
+
+**3. Open the link** — the portal is live at `https://<your-deployment>.convex.site/auth`.
 
 ### How it works
 
-- Portal static files are stored in Convex via the `@convex-dev/self-hosting` sub-component (installed automatically inside the auth component).
-- `addHttpRoutes` registers SPA-fallback static file serving at `/auth`.
+**Self-hosted mode:**
+- `addHttpRoutes` registers a `GET /auth/.well-known/portal-config` endpoint that returns the Convex URL, site URL, and version. The SPA fetches this on boot to discover its backend.
+- Static files (HTML, JS, CSS) are served from Convex storage with SPA fallback at `/auth/*`.
+- The SvelteKit build uses `base: "/auth"` so all routes nest under the `/auth` prefix.
+
+**CDN mode:**
+- The same SvelteKit app is built with `base: ""` (root) and deployed to Cloudflare Pages at `auth.robelest.com`.
+- The first path segment is the deployment slug (e.g. `/rapid-cat-62`). A SvelteKit `reroute` hook strips the slug before route matching, so `/rapid-cat-62/users` renders the `/users` route while keeping the full path in the address bar.
+- No config endpoint is needed — the slug directly encodes the Convex cloud URL (`https://{slug}.convex.cloud`).
+
+**Shared architecture:**
 - The portal uses a `portal` email provider (auto-registered by `Auth`) for magic link sign-in.
 - Admin access is controlled by invite records with `role: "portalAdmin"`. The first admin is created via `portal link`.
-- All portal data flows through `portalQuery`, `portalMutation`, and `portalInternal` — exported from your `convex/auth.ts`. The portal client calls these, not component internals directly (components can't expose public endpoints to external clients).
-
-### CLI commands
-
-```bash
-# Upload portal static files (builds + deploys)
-npx @robelest/convex-auth portal upload
-
-# Upload to production
-npx @robelest/convex-auth portal upload --prod
-
-# Generate admin invite link
-npx @robelest/convex-auth portal link
-
-# Generate link for production
-npx @robelest/convex-auth portal link --prod
-
-# Specify the convex module name (default: "auth")
-npx @robelest/convex-auth portal link --component myAuth
-```
+- All portal data flows through `portalQuery`, `portalMutation`, and `portalInternal` — exported from your `convex/auth.ts`. The portal client calls these, not component internals directly.
 
 ## Providers
 
@@ -280,6 +304,27 @@ new Auth(components.auth, {
 
 Set `AUTH_<PROVIDER>_ID` and `AUTH_<PROVIDER>_SECRET` on your deployment.
 
+### Magic Links (Email)
+
+Configure `email` on the `Auth` constructor to enable magic link sign-in. The library auto-registers two providers: `"email"` (user-facing) and `"portal"` (portal admin sign-in).
+
+```ts
+import { Resend } from "resend";
+
+const auth = new Auth(components.auth, {
+  providers: [github],
+  email: {
+    from: "My App <noreply@example.com>",
+    send: async (ctx, { from, to, subject, html }) => {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      await resend.emails.send({ from, to, subject, html });
+    },
+  },
+});
+```
+
+Works with any email provider (Resend, SendGrid, SES, Postmark, etc.). The `ctx` parameter is a Convex `ActionCtx` so you can access environment variables and the database.
+
 ### Password
 
 ```ts
@@ -287,27 +332,6 @@ import password from "@robelest/convex-auth/providers/password";
 
 new Auth(components.auth, {
   providers: [password],
-});
-```
-
-Password with email verification:
-
-```ts
-import password from "@robelest/convex-auth/providers/password";
-import email from "@robelest/convex-auth/providers/email";
-
-const otp = email({
-  id: "resend-otp",
-  async sendVerificationRequest({ identifier, token }) {
-    // send OTP via your email provider
-  },
-});
-
-new Auth(components.auth, {
-  providers: [
-    password({ id: "password-with-verify", verify: otp }),
-    otp,
-  ],
 });
 ```
 
@@ -398,7 +422,10 @@ npx convex env set --prod AUTH_GITHUB_SECRET "..."
 # Deploy
 npx convex deploy --cmd 'npm run build'
 
-# Upload portal to production (optional)
+# Generate a portal admin link (uses hosted CDN by default)
+npx @robelest/convex-auth portal link --prod
+
+# Or self-host the portal on your deployment
 npx @robelest/convex-auth portal upload --prod
 npx @robelest/convex-auth portal link --prod
 ```
@@ -480,12 +507,26 @@ if (redirectUrl) redirect(redirectUrl)
 
 ```
 Your App (convex/)
-  └── components.auth          ← one component install
-        ├── auth tables         ← users, accounts, sessions, groups, members, invites
-        ├── public functions    ← component API (internal to your app)
-        ├── portalBridge        ← delegates to self-hosting sub-component
-        └── selfHosting         ← @convex-dev/self-hosting (portal static files)
-              └── assets table  ← uploaded files, deployments
+  └── components.auth             ← one component install
+        ├── auth tables            ← users, accounts, sessions, groups, members, invites, keys
+        ├── public functions       ← component API (internal to your app)
+        ├── portalBridge           ← delegates to self-hosting sub-component
+        └── selfHosting            ← @convex-dev/self-hosting (portal static files)
+              └── assets table     ← uploaded files, deployments
+```
+
+### Portal serving
+
+```
+Self-hosted:
+  Browser → {deployment}.convex.site/auth/*
+    ├── /auth/.well-known/portal-config  → returns { convexUrl, siteUrl }
+    └── /auth/**                          → static files from Convex storage
+
+CDN (auth.robelest.com):
+  Browser → auth.robelest.com/{slug}/*
+    ├── SvelteKit reroute hook strips slug for route matching
+    └── discoverConvexUrl() derives https://{slug}.convex.cloud from the path
 ```
 
 Key design constraints of the Convex component system:
@@ -493,16 +534,52 @@ Key design constraints of the Convex component system:
 - Sub-components are **fully encapsulated**. The app only sees `components.auth`, never `components.auth.selfHosting`.
 - Components cannot access `ctx.auth` or `process.env`. Auth checks and env var reads happen at the app layer.
 
-## CLI Options
+## CLI Reference
+
+### Setup wizard
+
+```bash
+npx @robelest/convex-auth [options]
+```
 
 | Option | Description |
 |--------|-------------|
 | `--site-url <url>` | Frontend URL (prompts if omitted) |
+| `--skip-git-check` | Don't warn when running outside a Git repo |
+| `--allow-dirty-git-state` | Don't warn when Git state is dirty |
+
+### Portal commands
+
+```bash
+# Generate an admin invite link
+npx @robelest/convex-auth portal link [options]
+
+# Upload portal to your Convex deployment (self-hosted mode)
+npx @robelest/convex-auth portal upload [options]
+```
+
+**`portal link`** generates a single-use invite URL. The first person to click it becomes a portal admin.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--component <name>` | Convex module name with portal exports | `auth` |
+
+**`portal upload`** uploads the SvelteKit portal build to Convex storage for self-hosted serving.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-d, --dist <path>` | Path to portal build directory | `./dist` |
+| `-c, --component <name>` | Convex module name | `auth` |
+| `-b, --build` | Run build before uploading | `false` |
+| `-j, --concurrency <n>` | Parallel upload count | `5` |
+
+### Deployment selection (all commands)
+
+| Option | Description |
+|--------|-------------|
 | `--prod` | Target production deployment |
 | `--preview-name <name>` | Target preview deployment |
-| `--deployment-name <name>` | Target specific deployment |
-| `portal upload` | Build and upload portal static files |
-| `portal link` | Generate admin invite link |
+| `--deployment-name <name>` | Target specific named deployment |
 
 ## Roadmap
 
@@ -511,12 +588,13 @@ Key design constraints of the Convex component system:
 - Passkeys / WebAuthn
 - TOTP (authenticator apps)
 - Groups, memberships, invites with cascade operations
-- Admin portal (SvelteKit, dark theme, self-hosted via Convex)
+- Admin portal (SvelteKit, dark theme) — self-hosted and hosted CDN
 - Portal CLI (`portal upload`, `portal link`)
-- Class-based `Auth` API
+- Class-based `Auth` API with library-native email transport
 - Self-hosting as embedded sub-component
 - API keys with scoped permissions, SHA-256 hashing, rate limiting
 - Framework-agnostic SSR cookie API (SvelteKit, TanStack Start, Next.js)
+- Hosted CDN portal at `auth.robelest.com` with path-based deployment routing
 
 ### Planned
 - **Bearer Token Auth** — `Authorization: Bearer` header for API-first apps
