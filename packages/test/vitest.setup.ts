@@ -1,5 +1,5 @@
 process.env.AUTH_APPLE_SECRET ??= "test-apple-secret";
-process.env.AUTH_RESEND_KEY ??= "test-resend-key";
+process.env.RESEND_API_KEY ??= "test-resend-key";
 process.env.AUTH_EMAIL ??= "My App <onboarding@resend.dev>";
 process.env.CONVEX_SITE_URL ??= "https://test-123.convex.site";
 
