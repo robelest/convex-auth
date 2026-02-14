@@ -44,6 +44,13 @@ import {
 } from "./mutations/index.js";
 import { signInImpl } from "./signIn.js";
 import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects.js";
+import {
+  generateApiKey,
+  hashApiKey,
+  buildScopeChecker,
+  validateScopes,
+  checkKeyRateLimit,
+} from "./apiKey.js";
 import { getAuthorizationUrl } from "../oauth/authorizationUrl.js";
 import {
   defaultCookiesOptions,
@@ -671,7 +678,6 @@ export function Auth(config_: ConvexAuthConfig) {
           expiresAt?: number;
         },
       ): Promise<{ keyId: string; raw: string }> => {
-        const { generateApiKey, validateScopes } = await import("./apiKey.js");
         const prefix = config.apiKeys?.prefix ?? "sk_live_";
 
         // Validate scopes against config if defined
@@ -711,8 +717,6 @@ export function Auth(config_: ConvexAuthConfig) {
         keyId: string;
         scopes: import("../types.js").ScopeChecker;
       }> => {
-        const { hashApiKey, buildScopeChecker, checkKeyRateLimit } =
-          await import("./apiKey.js");
         const hashedKey = await hashApiKey(rawKey);
 
         const key = await ctx.runQuery(
@@ -791,7 +795,6 @@ export function Auth(config_: ConvexAuthConfig) {
         },
       ) => {
         if (data.scopes) {
-          const { validateScopes } = await import("./apiKey.js");
           validateScopes(data.scopes, config.apiKeys?.scopes);
         }
         await ctx.runMutation(config.component.public.keyPatch, {
