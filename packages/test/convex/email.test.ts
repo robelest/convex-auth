@@ -35,7 +35,7 @@ test("sign in with email", async () => {
   );
 
   await t.action(api.auth.signIn, {
-    provider: "resend",
+    provider: "email",
     params: { email: "tom@gmail.com" },
   });
   vi.unstubAllGlobals();
@@ -75,7 +75,7 @@ test("redirectTo with email", async () => {
   );
 
   await t.action(api.auth.signIn, {
-    provider: "resend",
+    provider: "email",
     params: { email: "tom@gmail.com", redirectTo: "/dashboard" },
   });
   vi.unstubAllGlobals();
