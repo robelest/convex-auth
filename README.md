@@ -545,6 +545,10 @@ npx @robelest/convex-auth [options]
 | Option | Description |
 |--------|-------------|
 | `--site-url <url>` | Frontend URL (prompts if omitted) |
+| `--prod` | Target production deployment |
+| `--preview-name <name>` | Target preview deployment |
+| `--deployment-name <name>` | Target specific named deployment |
+| `--variables <json>` | Additional variables for interactive configuration |
 | `--skip-git-check` | Don't warn when running outside a Git repo |
 | `--allow-dirty-git-state` | Don't warn when Git state is dirty |
 
@@ -562,24 +566,18 @@ npx @robelest/convex-auth portal upload [options]
 
 | Option | Description | Default |
 |--------|-------------|---------|
+| `--prod` | Target production deployment | — |
 | `--component <name>` | Convex module name with portal exports | `auth` |
 
 **`portal upload`** uploads the SvelteKit portal build to Convex storage for self-hosted serving.
 
 | Option | Description | Default |
 |--------|-------------|---------|
+| `--prod` | Target production deployment | — |
 | `-d, --dist <path>` | Path to portal build directory | `./dist` |
 | `-c, --component <name>` | Convex module name | `auth` |
 | `-b, --build` | Run build before uploading | `false` |
 | `-j, --concurrency <n>` | Parallel upload count | `5` |
-
-### Deployment selection (all commands)
-
-| Option | Description |
-|--------|-------------|
-| `--prod` | Target production deployment |
-| `--preview-name <name>` | Target preview deployment |
-| `--deployment-name <name>` | Target specific named deployment |
 
 ## Roadmap
 
