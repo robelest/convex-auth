@@ -243,6 +243,13 @@ export function client(options: ClientOptions) {
     isLoading = false;
     const changed = updateSnapshot();
     if (hadPendingLoad || changed) {
+      // Re-sync the Convex client so it picks up the new token immediately.
+      // Without this, the initial convex.setAuth(fetchAccessToken) from
+      // initialization never re-polls and queries run unauthenticated after
+      // magic link code exchange.
+      if (!proxy) {
+        convex.setAuth(fetchAccessToken);
+      }
       notify();
     }
   };
@@ -555,7 +562,11 @@ export function client(options: ClientOptions) {
       }
     } else {
       // SPA mode: hydrate from localStorage, then handle OAuth code flow.
-      void hydrateFromStorage().then(() => handleCodeFlow());
+      void hydrateFromStorage().then(() =>
+        handleCodeFlow().catch((error: unknown) => {
+          console.error("[convex-auth] Code exchange failed:", error);
+        }),
+      );
     }
   }
 
