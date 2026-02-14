@@ -3,7 +3,7 @@ import { expect, test, vi } from "vitest";
 import { api } from "@convex/_generated/api";
 import schema from "./schema";
 import {
-  AUTH_RESEND_KEY,
+  RESEND_API_KEY,
   CONVEX_SITE_URL,
   JWKS,
   JWT_PRIVATE_KEY,
@@ -22,7 +22,7 @@ test("sign in with email", async () => {
         input === "https://api.resend.com/emails"
       ) {
         expect(init.headers.Authorization).toBe(
-          `Bearer ${process.env.AUTH_RESEND_KEY}`,
+          `Bearer ${process.env.RESEND_API_KEY}`,
         );
         expect(init.body).toBeTypeOf("string");
 
@@ -59,7 +59,7 @@ test("redirectTo with email", async () => {
         input === "https://api.resend.com/emails"
       ) {
         expect(init.headers.Authorization).toBe(
-          `Bearer ${process.env.AUTH_RESEND_KEY}`,
+          `Bearer ${process.env.RESEND_API_KEY}`,
         );
         expect(init.body).toBeTypeOf("string");
 
@@ -86,6 +86,6 @@ function setupEnv() {
   process.env.CONVEX_SITE_URL = CONVEX_SITE_URL;
   process.env.JWT_PRIVATE_KEY = JWT_PRIVATE_KEY;
   process.env.JWKS = JWKS;
-  process.env.AUTH_RESEND_KEY = AUTH_RESEND_KEY;
+  process.env.RESEND_API_KEY = RESEND_API_KEY;
   process.env.AUTH_LOG_LEVEL = "ERROR";
 }
