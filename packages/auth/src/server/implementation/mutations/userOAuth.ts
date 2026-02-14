@@ -6,6 +6,7 @@ import { upsertUserAndAccount } from "../users.js";
 import { generateRandomString, logWithLevel, sha256 } from "../utils.js";
 import { authDb } from "../db.js";
 import { AUTH_STORE_REF } from "./storeRef.js";
+import { throwAuthError } from "../../errors.js";
 
 const OAUTH_SIGN_IN_EXPIRATION_MS = 1000 * 60 * 2; // 2 minutes
 
@@ -32,7 +33,7 @@ export async function userOAuthImpl(
 
   const verifier = await db.verifiers.getBySignature(signature);
   if (verifier === null) {
-    throw new Error("Invalid state");
+    throwAuthError("OAUTH_INVALID_STATE");
   }
 
   const { accountId } = await upsertUserAndAccount(

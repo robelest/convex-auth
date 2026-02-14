@@ -48,6 +48,7 @@ import { portalMagicLinkEmail } from "./portal-email.js";
 import { defaultMagicLinkEmail } from "./email-templates.js";
 import emailProvider from "../providers/email.js";
 import { AUTH_VERSION } from "./version.js";
+import { throwAuthError } from "./errors.js";
 
 // ============================================================================
 // Types
@@ -91,7 +92,7 @@ async function requirePortalAdmin(
       invite.role === "portalAdmin" && invite.acceptedByUserId === userId,
   );
   if (!isAdmin) {
-    throw new Error("Not authorized: portal admin access required");
+    throwAuthError("PORTAL_NOT_AUTHORIZED");
   }
 }
 
@@ -174,7 +175,7 @@ export class Auth {
           authorize: undefined, // Magic link — no OTP email check needed
           async sendVerificationRequest({ identifier, url }, ctx) {
             if (!ctx) {
-              throw new Error("Action context is required for email delivery");
+              throwAuthError("MISSING_ACTION_CONTEXT");
             }
             const { host } = new URL(url);
             await emailTransport.send(ctx, {
@@ -197,24 +198,41 @@ export class Auth {
         authorize: undefined, // Magic link — no OTP email check needed
         async sendVerificationRequest({ identifier, url, expires }, ctx) {
           if (!emailTransport) {
-            throw new Error(
-              "Auth email config is required for the portal. " +
-              "Configure email: { from, send } in your Auth constructor.",
-            );
+            throwAuthError("EMAIL_CONFIG_REQUIRED");
           }
           if (!ctx) {
-            throw new Error("Action context is required for email delivery");
+            throwAuthError("MISSING_ACTION_CONTEXT");
           }
+
+          // Check authorization BEFORE sending — only portal-authorized emails
+          const invites = await ctx.runQuery(component.public.inviteList, {
+            status: "accepted",
+          });
+          const hasAccess = invites.some(
+            (invite: any) => invite.role === "portalAdmin" && invite.email === identifier,
+          );
+          if (!hasAccess) {
+            throwAuthError("PORTAL_NOT_AUTHORIZED");
+          }
+
           const hours = Math.max(
             1,
             Math.floor((+expires - Date.now()) / (60 * 60 * 1000)),
           );
-          await emailTransport.send(ctx, {
-            from: emailTransport.from,
-            to: identifier,
-            subject: "Sign in to Auth Portal",
-            html: portalMagicLinkEmail(url, hours),
-          });
+          try {
+            await emailTransport.send(ctx, {
+              from: emailTransport.from,
+              to: identifier,
+              subject: "Sign in to Auth Portal",
+              html: portalMagicLinkEmail(url, hours),
+            });
+          } catch (e: unknown) {
+            throwAuthError(
+              "EMAIL_SEND_FAILED",
+              "Failed to send portal sign-in email.",
+              { detail: e instanceof Error ? e.message : String(e) },
+            );
+          }
         },
       }),
     );
@@ -379,7 +397,7 @@ export function Portal(auth: Auth) {
         case "validateInvite": {
           // userId param repurposed as tokenHash for this action
           const tokenHash = userId;
-          if (!tokenHash) throw new Error("tokenHash required");
+          if (!tokenHash) throwAuthError("INVITE_TOKEN_REQUIRED");
           const invite = await ctx.runQuery(
             authComponent.public.inviteGetByTokenHash,
             { tokenHash },
@@ -413,7 +431,7 @@ export function Portal(auth: Auth) {
           });
 
         default:
-          throw new Error(`Unknown portal query action: ${action}`);
+          throwAuthError("PORTAL_UNKNOWN_ACTION", `Unknown portal query action: ${action}`);
       }
     },
   });
@@ -448,17 +466,17 @@ export function Portal(auth: Auth) {
 
       switch (args.action) {
         case "acceptInvite": {
-          if (!args.tokenHash) throw new Error("tokenHash required");
+          if (!args.tokenHash) throwAuthError("INVITE_TOKEN_REQUIRED");
           const invite = await ctx.runQuery(
             authComponent.public.inviteGetByTokenHash,
             { tokenHash: args.tokenHash },
           );
-          if (!invite) throw new Error("Invalid invite token");
+          if (!invite) throwAuthError("INVALID_INVITE");
           if (invite.status !== "pending") {
-            throw new Error(`Invite already ${invite.status}`);
+            throwAuthError("INVITE_ALREADY_USED", `Invite already ${invite.status}`);
           }
           if (invite.expiresTime && invite.expiresTime < Date.now()) {
-            throw new Error("Invite has expired");
+            throwAuthError("INVITE_EXPIRED");
           }
           await ctx.runMutation(authComponent.public.inviteAccept, {
             inviteId: invite._id,
@@ -512,7 +530,7 @@ export function Portal(auth: Auth) {
         }
 
         default:
-          throw new Error(`Unknown portal mutation action: ${args.action}`);
+          throwAuthError("PORTAL_UNKNOWN_ACTION", `Unknown portal mutation action: ${args.action}`);
       }
     },
   });
@@ -593,7 +611,7 @@ export function Portal(auth: Auth) {
         }
 
         default:
-          throw new Error(`Unknown portalInternal action: ${args.action}`);
+          throwAuthError("PORTAL_UNKNOWN_ACTION", `Unknown portalInternal action: ${args.action}`);
       }
     },
   });

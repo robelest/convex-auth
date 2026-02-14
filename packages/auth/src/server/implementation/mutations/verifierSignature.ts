@@ -3,6 +3,7 @@ import { ActionCtx, MutationCtx } from "../types.js";
 import * as Provider from "../provider.js";
 import { authDb } from "../db.js";
 import { AUTH_STORE_REF } from "./storeRef.js";
+import { throwAuthError } from "../../errors.js";
 
 export const verifierSignatureArgs = v.object({
   verifier: v.string(),
@@ -20,7 +21,7 @@ export async function verifierSignatureImpl(
   const db = authDb(ctx, config);
   const verifierDoc = await db.verifiers.getById(verifier as GenericId<"verifier">);
   if (verifierDoc === null) {
-    throw new Error("Invalid verifier");
+    throwAuthError("INVALID_VERIFIER");
   }
   return await db.verifiers.patch(verifierDoc._id, { signature });
 }

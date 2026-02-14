@@ -10,6 +10,7 @@
 
 import { sha256, generateRandomString } from "./utils.js";
 import type { KeyScope, ScopeChecker } from "../types.js";
+import { throwAuthError } from "../errors.js";
 
 // ============================================================================
 // Constants
@@ -110,16 +111,16 @@ export function validateScopes(
   for (const scope of requested) {
     const allowedActions = allowed[scope.resource];
     if (!allowedActions) {
-      throw new Error(
-        `Unknown resource "${scope.resource}" in API key scopes. ` +
-          `Allowed resources: ${Object.keys(allowed).join(", ")}`,
+      throwAuthError(
+        "API_KEY_INVALID_SCOPE",
+        `Unknown resource "${scope.resource}" in API key scopes. Allowed resources: ${Object.keys(allowed).join(", ")}`,
       );
     }
     for (const action of scope.actions) {
       if (action !== "*" && !allowedActions.includes(action)) {
-        throw new Error(
-          `Unknown action "${action}" for resource "${scope.resource}". ` +
-            `Allowed actions: ${allowedActions.join(", ")}`,
+        throwAuthError(
+          "API_KEY_INVALID_SCOPE",
+          `Unknown action "${action}" for resource "${scope.resource}". Allowed actions: ${allowedActions.join(", ")}`,
         );
       }
     }

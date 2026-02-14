@@ -1,5 +1,6 @@
 import { GenericId } from "convex/values";
 import { ConvexAuthConfig } from "../types.js";
+import { throwAuthError } from "../errors.js";
 import { Doc, MutationCtx } from "./types.js";
 import {
   LOG_LEVELS,
@@ -47,7 +48,7 @@ export const parseRefreshToken = (
 } => {
   const [refreshTokenId, sessionId] = refreshToken.split(REFRESH_TOKEN_DIVIDER);
   if (!refreshTokenId || !sessionId) {
-    throw new Error(`Can't parse refresh token: ${maybeRedact(refreshToken)}`);
+    throwAuthError("INVALID_REFRESH_TOKEN", `Can't parse refresh token: ${maybeRedact(refreshToken)}`);
   }
   return {
     refreshTokenId: refreshTokenId as GenericId<"token">,

@@ -7,6 +7,7 @@ import {
 } from "./convexAuth.js";
 import { Cookie } from "@auth/core/lib/utils/cookie.js";
 import { logWithLevel } from "../implementation/utils.js";
+import { throwAuthError } from "../errors.js";
 
 /**
  * Generates an authorization/request token URL.
@@ -25,7 +26,7 @@ export async function getAuthorizationUrl(
   const { as, authorization: authorizationEndpoint, configSource } = provider;
 
   if (!authorizationEndpoint) {
-    throw new TypeError("Could not determine the authorization endpoint.");
+    throwAuthError("PROVIDER_NOT_CONFIGURED", "Could not determine the authorization endpoint.");
   }
   if (!url) {
     url = new URL(authorizationEndpoint.url);

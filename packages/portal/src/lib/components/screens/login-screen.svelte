@@ -10,7 +10,26 @@
 	let email = $state('');
 
 	const flowState = $derived(auth.flowState);
+	const errorCode = $derived(auth.errorCode);
 	const errorMessage = $derived(auth.errorMessage);
+
+	/** Map error codes to user-friendly portal messages. */
+	const ERROR_DISPLAY: Record<string, { title: string; hint: string }> = {
+		PORTAL_NOT_AUTHORIZED: {
+			title: 'Not authorized',
+			hint: 'This email is not a portal admin. Ask an existing admin for an invite link.',
+		},
+		EMAIL_SEND_FAILED: {
+			title: 'Email failed',
+			hint: 'Could not send the magic link email. Check your server email configuration.',
+		},
+		EMAIL_CONFIG_REQUIRED: {
+			title: 'Email not configured',
+			hint: 'The server has no email transport configured. Add an email config to your Auth constructor.',
+		},
+	};
+
+	const errorDisplay = $derived(errorCode ? ERROR_DISPLAY[errorCode] : null);
 
 	async function handleSubmit(e: Event) {
 		e.preventDefault();
@@ -74,11 +93,16 @@
 					/>
 				</div>
 
-				{#if flowState === 'error' && errorMessage}
-					<div class="rounded-[var(--cp-radius-md)] bg-[rgba(248,113,113,0.08)] border border-[rgba(248,113,113,0.2)] px-3 py-2">
+			{#if flowState === 'error' && errorMessage}
+				<div class="rounded-[var(--cp-radius-md)] bg-[rgba(248,113,113,0.08)] border border-[rgba(248,113,113,0.2)] px-3 py-2">
+					{#if errorDisplay}
+						<p class="text-[var(--cp-text-xs)] text-[var(--cp-error)] font-medium">{errorDisplay.title}</p>
+						<p class="text-[var(--cp-text-xs)] text-cp-text-muted mt-0.5">{errorDisplay.hint}</p>
+					{:else}
 						<p class="text-[var(--cp-text-xs)] text-[var(--cp-error)]">{errorMessage}</p>
-					</div>
-				{/if}
+					{/if}
+				</div>
+			{/if}
 
 				<button
 					type="submit"

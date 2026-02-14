@@ -3,6 +3,7 @@ import { Doc, MutationCtx } from "./types.js";
 import { AuthProviderMaterializedConfig, ConvexAuthConfig } from "../types.js";
 import { LOG_LEVELS, logWithLevel } from "./utils.js";
 import { authDb } from "./db.js";
+import { throwAuthError } from "../errors.js";
 
 type CreateOrUpdateUserArgs = {
   type: "oauth" | "credentials" | "email" | "phone" | "verification";
@@ -137,12 +138,10 @@ async function defaultCreateOrUpdateUser(
     try {
       await db.users.patch(userId, userData);
     } catch (error) {
-      throw new Error(
-        `Could not update user document with ID \`${userId}\`, ` +
+      throwAuthError("USER_UPDATE_FAILED", `Could not update user document with ID \`${userId}\`, ` +
           `either the user has been deleted but their account has not, ` +
           `or the profile data doesn't match the \`users\` table schema: ` +
-          `${(error as Error).message}`,
-      );
+          `${(error as Error).message}`);
     }
   } else {
     userId = (await db.users.insert(userData)) as GenericId<"user">;
@@ -231,9 +230,7 @@ export async function getAccountOrThrow(
 ) {
   const existingAccount = await authDb(ctx, config).accounts.getById(existingAccountId);
   if (existingAccount === null) {
-    throw new Error(
-      `Expected an account to exist for ID "${existingAccountId}"`,
-    );
+    throwAuthError("ACCOUNT_NOT_FOUND", `Expected an account to exist for ID "${existingAccountId}"`);
   }
   return existingAccount;
 }

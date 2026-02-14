@@ -8,7 +8,12 @@
  * The layout reads `auth.*` and derives a single `screen` discriminant —
  * no boolean flag soup.
  */
-import { client as createAuthClient, type AuthState } from "@robelest/convex-auth/client";
+import {
+	client as createAuthClient,
+	parseAuthError,
+	type AuthState,
+	type AuthErrorCode,
+} from "@robelest/convex-auth/client";
 import type { ConvexClient } from "convex/browser";
 import { base } from "$app/paths";
 
@@ -48,6 +53,7 @@ export const auth = $state({
 
 	/** Magic-link login flow */
 	flowState: "idle" as FlowState,
+	errorCode: null as AuthErrorCode | null,
 	errorMessage: null as string | null,
 
 	/** Invite token from URL / sessionStorage */
@@ -221,13 +227,16 @@ export async function sendMagicLink(
 		auth.flowState = "sent";
 	} catch (e: unknown) {
 		auth.flowState = "error";
-		auth.errorMessage = e instanceof Error ? e.message : "Failed to send magic link";
+		const parsed = parseAuthError(e);
+		auth.errorCode = parsed?.code ?? null;
+		auth.errorMessage = parsed?.message ?? "Failed to send magic link";
 	}
 }
 
 /** Reset the login form flow state. */
 export function resetFlow(): void {
 	auth.flowState = "idle";
+	auth.errorCode = null;
 	auth.errorMessage = null;
 }
 
@@ -273,7 +282,8 @@ export async function acceptInvite(
 		auth.inviteToken = null;
 	} catch (e: unknown) {
 		auth.inviteState = "error";
-		auth.inviteError = e instanceof Error ? e.message : "Failed to accept invite";
+		const parsed = parseAuthError(e);
+		auth.inviteError = parsed?.message ?? "Failed to accept invite";
 	}
 }
 
@@ -290,5 +300,6 @@ export async function signOut(): Promise<void> {
 	auth.inviteState = "none";
 	auth.inviteError = null;
 	auth.flowState = "idle";
+	auth.errorCode = null;
 	auth.errorMessage = null;
 }

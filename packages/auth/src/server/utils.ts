@@ -1,7 +1,9 @@
+import { throwAuthError } from "./errors.js";
+
 export function requireEnv(name: string) {
   const value = process.env[name];
   if (value === undefined) {
-    throw new Error(`Missing environment variable \`${name}\``);
+    throwAuthError("MISSING_ENV_VAR", `Missing environment variable \`${name}\``, { variable: name });
   }
   return value;
 }

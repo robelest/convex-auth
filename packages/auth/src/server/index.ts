@@ -1,4 +1,5 @@
 import { ConvexHttpClient } from "convex/browser";
+import { ConvexError } from "convex/values";
 import { jwtDecode } from "jwt-decode";
 import { parse, serialize } from "cookie";
 import type {
@@ -377,8 +378,16 @@ export function server(options: ServerOptions) {
             );
           }
           return jsonResponse(result);
-        } catch (error) {
-          const response = jsonResponse({ error: (error as Error).message }, 400);
+        } catch (error: unknown) {
+          // Forward structured error data when available (ConvexError with { code, message }).
+          const errorBody =
+            error instanceof ConvexError &&
+            typeof error.data === "object" &&
+            error.data !== null &&
+            "code" in error.data
+              ? { error: (error.data as { message?: string }).message ?? String(error), authError: error.data }
+              : { error: error instanceof Error ? error.message : String(error) };
+          const response = jsonResponse(errorBody, 400);
           return attachCookies(
             response,
             serializeAuthCookies(

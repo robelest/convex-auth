@@ -7,6 +7,7 @@ import * as o from "oauth4webapi";
 import { normalizeEndpoint } from "../provider_utils.js";
 import { isLocalHost } from "../utils.js";
 import { OAuthConfig } from "@auth/core/providers/oauth.js";
+import { throwAuthError } from "../errors.js";
 
 // ConvexAuth: The logic for the callback URL is different from Auth.js
 export function callbackUrl(providerId: string) {
@@ -92,7 +93,8 @@ export async function oAuthConfigToInternalProvider(config: OAuthConfig<any>): P
   if (!config.authorization || !config.token || !config.userinfo) {
     // Taken from https://github.com/nextauthjs/next-auth/blob/a7491dcb9355ff2d01fb8e9236636605e2090145/packages/core/src/lib/actions/callback/oauth/callback.ts#L63
     if (!config.issuer) {
-      throw new Error(
+      throwAuthError(
+        "PROVIDER_NOT_CONFIGURED",
         `Provider \`${config.id}\` is missing an \`issuer\` URL configuration. Consult the provider docs.`,
       );
     }
@@ -109,8 +111,9 @@ export async function oAuthConfigToInternalProvider(config: OAuthConfig<any>): P
     );
 
     if (!discoveredAs.token_endpoint)
-      throw new TypeError(
-        "TODO: Authorization server did not provide a token endpoint.",
+      throwAuthError(
+        "PROVIDER_NOT_CONFIGURED",
+        "Authorization server did not provide a token endpoint.",
       );
 
     const as: o.AuthorizationServer = discoveredAs;

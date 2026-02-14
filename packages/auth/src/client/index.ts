@@ -1,5 +1,13 @@
 import { ConvexHttpClient } from "convex/browser";
-import { Value } from "convex/values";
+import { ConvexError, Value } from "convex/values";
+
+// Re-export error utilities so consumers can import from `@robelest/convex-auth/client`.
+export {
+  isAuthError,
+  parseAuthError,
+  AUTH_ERRORS,
+  type AuthErrorCode,
+} from "../server/errors.js";
 
 /**
  * Structural interface for any Convex client.
@@ -266,9 +274,19 @@ export function client(options: ClientOptions) {
       body: JSON.stringify(body),
     });
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
+      const errorBody = await response.json().catch(() => ({} as Record<string, unknown>));
+      // Reconstruct ConvexError when the proxy forwards structured auth error data.
+      if (
+        typeof errorBody === "object" &&
+        errorBody !== null &&
+        "authError" in errorBody &&
+        typeof (errorBody as Record<string, unknown>).authError === "object"
+      ) {
+        throw new ConvexError((errorBody as Record<string, unknown>).authError as Value);
+      }
       throw new Error(
-        (error as any).error ?? `Proxy request failed: ${response.status}`,
+        (errorBody as Record<string, unknown>).error as string ??
+          `Proxy request failed: ${response.status}`,
       );
     }
     return response.json();

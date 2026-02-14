@@ -7,6 +7,7 @@ import { getAuthSessionId } from "../sessions.js";
 import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils.js";
 import { authDb } from "../db.js";
 import { AUTH_STORE_REF } from "./storeRef.js";
+import { throwAuthError } from "../../errors.js";
 
 export const createAccountFromCredentialsArgs = v.object({
   provider: v.string(),
@@ -53,7 +54,7 @@ export async function createAccountFromCredentialsImpl(
         existingAccount.secret ?? "",
       ))
     ) {
-      throw new Error(`Account ${account.id} already exists`);
+      throwAuthError("ACCOUNT_ALREADY_EXISTS", `Account ${account.id} already exists`);
     }
     return {
       account: existingAccount,

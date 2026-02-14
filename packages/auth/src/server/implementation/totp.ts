@@ -25,6 +25,7 @@ import {
 import { AuthDataModel, SessionInfo } from "./types.js";
 import { callSignIn, callVerifier } from "./mutations/index.js";
 import { callVerifierSignature } from "./mutations/verifierSignature.js";
+import { throwAuthError } from "../errors.js";
 
 type EnrichedActionCtx = GenericActionCtxWithAuthConfig<AuthDataModel>;
 
@@ -53,10 +54,7 @@ async function handleSetup(
   // TOTP enrollment requires an authenticated user
   const identity = await ctx.auth.getUserIdentity();
   if (identity === null) {
-    throw new Error(
-      "TOTP enrollment requires an authenticated user. " +
-        "Sign in first, then add TOTP to your account.",
-    );
+    throwAuthError("TOTP_AUTH_REQUIRED");
   }
   const [userId] = identity.subject.split("|");
 
@@ -143,21 +141,18 @@ async function handleConfirm(
   // TOTP confirmation requires an authenticated user
   const identity = await ctx.auth.getUserIdentity();
   if (identity === null) {
-    throw new Error(
-      "TOTP confirmation requires an authenticated user. " +
-        "Sign in first, then confirm your TOTP enrollment.",
-    );
+    throwAuthError("TOTP_AUTH_REQUIRED");
   }
   const [userId] = identity.subject.split("|");
 
   if (!verifierValue) {
-    throw new Error("Missing verifier");
+    throwAuthError("TOTP_MISSING_VERIFIER");
   }
   if (!params.code) {
-    throw new Error("Missing `code` parameter");
+    throwAuthError("TOTP_MISSING_CODE");
   }
   if (!params.totpId) {
-    throw new Error("Missing `totpId` parameter");
+    throwAuthError("TOTP_MISSING_ID");
   }
 
   // Look up the TOTP record
@@ -166,10 +161,10 @@ async function handleConfirm(
     { totpId: params.totpId },
   );
   if (!totpDoc) {
-    throw new Error("TOTP enrollment not found");
+    throwAuthError("TOTP_NOT_FOUND");
   }
   if ((totpDoc as any).verified) {
-    throw new Error("TOTP enrollment is already verified");
+    throwAuthError("TOTP_ALREADY_VERIFIED");
   }
 
   // Extract the secret from the TOTP record
@@ -184,7 +179,7 @@ async function handleConfirm(
     30,
   );
   if (!valid) {
-    throw new Error("Invalid TOTP code");
+    throwAuthError("TOTP_INVALID_CODE");
   }
 
   // Mark the enrollment as verified
@@ -225,10 +220,10 @@ async function handleVerify(
   verifierValue: string | undefined,
 ): Promise<{ kind: "signedIn"; signedIn: SessionInfo | null }> {
   if (!verifierValue) {
-    throw new Error("Missing verifier");
+    throwAuthError("TOTP_MISSING_VERIFIER");
   }
   if (!params.code) {
-    throw new Error("Missing `code` parameter");
+    throwAuthError("TOTP_MISSING_CODE");
   }
 
   // Look up the verifier to retrieve the stored userId
@@ -237,7 +232,7 @@ async function handleVerify(
     { verifierId: verifierValue },
   );
   if (!verifierDoc) {
-    throw new Error("Invalid or expired verifier");
+    throwAuthError("TOTP_INVALID_VERIFIER");
   }
 
   // Parse the signature to extract userId
@@ -250,7 +245,7 @@ async function handleVerify(
     { userId: userId as any },
   );
   if (!totpDoc) {
-    throw new Error("No TOTP enrollment found");
+    throwAuthError("TOTP_NO_ENROLLMENT");
   }
 
   // Extract the secret from the TOTP record
@@ -265,7 +260,7 @@ async function handleVerify(
     30,
   );
   if (!valid) {
-    throw new Error("Invalid TOTP code");
+    throwAuthError("TOTP_INVALID_CODE");
   }
 
   // Update last used timestamp
@@ -317,7 +312,8 @@ export async function handleTotp(
 > {
   const flow = args.params?.flow;
   if (!flow) {
-    throw new Error(
+    throwAuthError(
+      "TOTP_MISSING_FLOW",
       "Missing `flow` parameter. Expected one of: setup, confirm, verify",
     );
   }
@@ -340,7 +336,8 @@ export async function handleTotp(
         args.verifier,
       );
     default:
-      throw new Error(
+      throwAuthError(
+        "TOTP_UNKNOWN_FLOW",
         `Unknown TOTP flow: ${flow}. Expected one of: setup, confirm, verify`,
       );
   }
