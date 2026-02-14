@@ -28,6 +28,7 @@ import { OAuth2Config, OIDCConfig } from "@auth/core/providers/oauth.js";
 import { generateRandomString } from "./utils.js";
 import { handlePasskey } from "./passkey.js";
 import { handleTotp, checkTotpRequired } from "./totp.js";
+import { throwAuthError } from "../errors.js";
 
 const DEFAULT_EMAIL_VERIFICATION_CODE_DURATION_S = 60 * 60 * 24; // 24 hours
 
@@ -82,9 +83,7 @@ export async function signInImpl(
   }
 
   if (provider === null) {
-    throw new Error(
-      "Cannot sign in: Missing `provider`, `params.code` or `refreshToken`",
-    );
+    throwAuthError("SIGN_IN_MISSING_PARAMS");
   }
   if (provider.type === "email" || provider.type === "phone") {
     return handleEmailAndPhoneProvider(ctx, provider, args, options);
@@ -102,7 +101,8 @@ export async function signInImpl(
     return handleTotp(ctx, provider, args);
   }
   const _typecheck: never = provider;
-  throw new Error(
+  throwAuthError(
+    "UNSUPPORTED_PROVIDER_TYPE",
     `Provider type ${(provider as any).type} is not supported yet`,
   );
 }
@@ -130,7 +130,7 @@ async function handleEmailAndPhoneProvider(
       allowExtraProviders: options.allowExtraProviders,
     });
     if (result === null) {
-      throw new Error("Could not verify code");
+      throwAuthError("INVALID_VERIFICATION_CODE");
     }
     return {
       kind: "signedIn",
@@ -271,7 +271,8 @@ async function handleOAuthProvider(
   redirect.searchParams.set("code", verifier);
   if (args.params?.redirectTo !== undefined) {
     if (typeof args.params.redirectTo !== "string") {
-      throw new Error(
+      throwAuthError(
+        "INVALID_REDIRECT",
         `Expected \`redirectTo\` to be a string, got ${args.params.redirectTo}`,
       );
     }

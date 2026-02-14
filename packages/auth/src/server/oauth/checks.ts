@@ -6,6 +6,7 @@ import type { InternalOptions } from "./types.js";
 import { Cookie } from "@auth/core/lib/utils/cookie.js";
 import { CookiesOptions } from "@auth/core/types.js";
 import { logWithLevel } from "../implementation/utils.js";
+import { throwAuthError } from "../errors.js";
 
 const COOKIE_TTL = 60 * 15; // 15 minutes
 
@@ -97,7 +98,8 @@ export const state = {
     const { provider } = options;
     if (!provider.checks.includes("state")) {
       if (origin) {
-        throw new Error(
+        throwAuthError(
+          "OAUTH_INVALID_STATE",
           "State data was provided but the provider is not configured to use state",
         );
       }

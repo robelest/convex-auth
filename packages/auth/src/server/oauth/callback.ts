@@ -12,6 +12,7 @@ import {
   callbackUrl,
   getAuthorizationSignature,
 } from "./convexAuth.js";
+import { throwAuthError } from "../errors.js";
 
 function formUrlEncode(token: string) {
   return encodeURIComponent(token).replace(/%20/g, "+");
@@ -88,7 +89,7 @@ export async function handleOAuth(
       });
       break;
     default:
-      throw new Error("unsupported client authentication method");
+      throwAuthError("OAUTH_UNSUPPORTED_AUTH_METHOD");
   }
 
   const resCookies: Cookie[] = [];
@@ -110,7 +111,7 @@ export async function handleOAuth(
         ...Object.fromEntries(err.cause.entries()),
       };
       logWithLevel("DEBUG", "OAuthCallbackError", cause);
-      throw new Error("OAuth Provider returned an error", { cause });
+      throwAuthError("OAUTH_PROVIDER_ERROR", "OAuth provider returned an error", { cause: JSON.stringify(cause) });
     }
     throw err;
   }
@@ -174,7 +175,7 @@ export async function handleOAuth(
       processedCodeResponse,
     );
     if (idTokenClaimsOrUndefined === undefined) {
-      throw new Error("ID Token claims are missing");
+      throwAuthError("OAUTH_MISSING_ID_TOKEN");
     }
     const idTokenClaims = idTokenClaimsOrUndefined;
     profile = idTokenClaims;
@@ -221,7 +222,7 @@ export async function handleOAuth(
       );
       profile = await userinfoResponse.json();
     } else {
-      throw new TypeError("No userinfo endpoint configured");
+      throwAuthError("OAUTH_NO_USERINFO");
     }
   }
 

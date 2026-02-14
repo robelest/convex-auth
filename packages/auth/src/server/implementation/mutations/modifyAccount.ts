@@ -5,6 +5,7 @@ import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils.js";
 import * as Provider from "../provider.js";
 import { authDb } from "../db.js";
 import { AUTH_STORE_REF } from "./storeRef.js";
+import { throwAuthError } from "../../errors.js";
 
 export const modifyAccountArgs = v.object({
   provider: v.string(),
@@ -28,9 +29,7 @@ export async function modifyAccountImpl(
   });
   const existingAccount = await db.accounts.get(provider, account.id);
   if (existingAccount === null) {
-    throw new Error(
-      `Cannot modify account with ID ${account.id} because it does not exist`,
-    );
+    throwAuthError("ACCOUNT_NOT_FOUND", `Cannot modify account with ID ${account.id} because it does not exist`);
   }
   await db.accounts.patch(existingAccount._id, {
     secret: await hash(getProviderOrThrow(provider), account.secret),

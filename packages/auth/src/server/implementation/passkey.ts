@@ -48,6 +48,7 @@ import { AuthDataModel, SessionInfo } from "./types.js";
 import { callSignIn, callVerifier } from "./mutations/index.js";
 import { callVerifierSignature } from "./mutations/verifierSignature.js";
 import { authDb } from "./db.js";
+import { throwAuthError } from "../errors.js";
 
 
 type EnrichedActionCtx = GenericActionCtxWithAuthConfig<AuthDataModel>;
@@ -64,7 +65,8 @@ function resolveRpOptions(provider: PasskeyProviderConfig) {
   // because the RP ID wouldn't match the page origin.
   const siteUrl = process.env.SITE_URL;
   if (!siteUrl && !provider.options.rpId) {
-    throw new Error(
+    throwAuthError(
+      "PASSKEY_MISSING_CONFIG",
       "Passkey provider requires SITE_URL env var (your frontend URL) " +
       "or explicit rpId / origin in the provider config. " +
       "CONVEX_SITE_URL cannot be used because WebAuthn RP ID must match the frontend domain.",
@@ -124,10 +126,7 @@ async function handleRegisterOptions(
   // Passkey registration requires an authenticated user
   const identity = await ctx.auth.getUserIdentity();
   if (identity === null) {
-    throw new Error(
-      "Passkey registration requires an authenticated user. " +
-      "Sign in first, then add a passkey to your account.",
-    );
+    throwAuthError("PASSKEY_AUTH_REQUIRED");
   }
   const [userId] = identity.subject.split("|");
 
@@ -215,17 +214,14 @@ async function handleRegisterVerify(
   // Passkey registration requires an authenticated user
   const identity = await ctx.auth.getUserIdentity();
   if (identity === null) {
-    throw new Error(
-      "Passkey registration requires an authenticated user. " +
-      "Sign in first, then add a passkey to your account.",
-    );
+    throwAuthError("PASSKEY_AUTH_REQUIRED");
   }
   const [userId] = identity.subject.split("|");
 
   const rp = resolveRpOptions(provider);
 
   if (!verifierValue) {
-    throw new Error("Missing verifier for passkey registration");
+    throwAuthError("PASSKEY_MISSING_VERIFIER");
   }
 
   // Decode client data
@@ -234,13 +230,14 @@ async function handleRegisterVerify(
 
   // Verify client data type is "webauthn.create"
   if (clientData.type !== ClientDataType.Create) {
-    throw new Error("Invalid client data type: expected webauthn.create");
+    throwAuthError("PASSKEY_INVALID_CLIENT_DATA", "Invalid client data type: expected webauthn.create");
   }
 
   // Verify origin
   const allowedOrigins = Array.isArray(rp.origin) ? rp.origin : [rp.origin];
   if (!allowedOrigins.includes(clientData.origin)) {
-    throw new Error(
+    throwAuthError(
+      "PASSKEY_INVALID_ORIGIN",
       `Invalid origin: ${clientData.origin}, expected one of: ${allowedOrigins.join(", ")}`,
     );
   }
@@ -254,7 +251,7 @@ async function handleRegisterVerify(
     { verifierId: verifierValue },
   );
   if (!verifierDoc || (verifierDoc as any).signature !== challengeHash) {
-    throw new Error("Invalid or expired challenge");
+    throwAuthError("PASSKEY_INVALID_CHALLENGE");
   }
 
   // Clean up the verifier
@@ -270,21 +267,21 @@ async function handleRegisterVerify(
 
   // Verify RP ID hash
   if (!authenticatorData.verifyRelyingPartyIdHash(rp.rpId)) {
-    throw new Error("Relying party ID mismatch");
+    throwAuthError("PASSKEY_RP_MISMATCH");
   }
 
   // Verify user presence and verification flags
   if (!authenticatorData.userPresent) {
-    throw new Error("User presence flag not set");
+    throwAuthError("PASSKEY_USER_PRESENCE");
   }
   if (rp.userVerification === "required" && !authenticatorData.userVerified) {
-    throw new Error("User verification required but not performed");
+    throwAuthError("PASSKEY_USER_VERIFICATION");
   }
 
   // Extract credential
   const credential = authenticatorData.credential;
   if (!credential) {
-    throw new Error("No credential in attestation");
+    throwAuthError("PASSKEY_NO_CREDENTIAL");
   }
 
   const credentialId = encodeBase64urlNoPadding(credential.id);
@@ -320,7 +317,7 @@ async function handleRegisterVerify(
     const rsaPubKey = new RSAPublicKey(rsa.n, rsa.e);
     publicKeyBytes = rsaPubKey.encodePKCS1();
   } else {
-    throw new Error(`Unsupported algorithm: ${algorithm}`);
+    throwAuthError("PASSKEY_UNSUPPORTED_ALGORITHM", `Unsupported algorithm: ${algorithm}`);
   }
 
   const deviceType = params.deviceType ?? "single-device";
@@ -447,7 +444,7 @@ async function handleAuthVerify(
   const rp = resolveRpOptions(provider);
 
   if (!verifierValue) {
-    throw new Error("Missing verifier for passkey authentication");
+    throwAuthError("PASSKEY_MISSING_VERIFIER");
   }
 
   // Decode client data
@@ -456,13 +453,14 @@ async function handleAuthVerify(
 
   // Verify client data type is "webauthn.get"
   if (clientData.type !== ClientDataType.Get) {
-    throw new Error("Invalid client data type: expected webauthn.get");
+    throwAuthError("PASSKEY_INVALID_CLIENT_DATA", "Invalid client data type: expected webauthn.get");
   }
 
   // Verify origin
   const allowedOrigins = Array.isArray(rp.origin) ? rp.origin : [rp.origin];
   if (!allowedOrigins.includes(clientData.origin)) {
-    throw new Error(
+    throwAuthError(
+      "PASSKEY_INVALID_ORIGIN",
       `Invalid origin: ${clientData.origin}, expected one of: ${allowedOrigins.join(", ")}`,
     );
   }
@@ -476,7 +474,7 @@ async function handleAuthVerify(
     { verifierId: verifierValue },
   );
   if (!verifierDoc || (verifierDoc as any).signature !== challengeHash) {
-    throw new Error("Invalid or expired challenge");
+    throwAuthError("PASSKEY_INVALID_CHALLENGE");
   }
 
   // Clean up the verifier
@@ -488,7 +486,7 @@ async function handleAuthVerify(
   // Look up the credential
   const credentialId = params.credentialId;
   if (!credentialId) {
-    throw new Error("Missing credential ID");
+    throwAuthError("PASSKEY_UNKNOWN_CREDENTIAL", "Missing credential ID");
   }
 
   const passkeyDoc = await ctx.runQuery(
@@ -496,7 +494,7 @@ async function handleAuthVerify(
     { credentialId },
   );
   if (!passkeyDoc) {
-    throw new Error("Unknown credential");
+    throwAuthError("PASSKEY_UNKNOWN_CREDENTIAL", "Unknown credential");
   }
   const passkey = passkeyDoc as any;
 
@@ -506,15 +504,15 @@ async function handleAuthVerify(
 
   // Verify RP ID hash
   if (!authenticatorData.verifyRelyingPartyIdHash(rp.rpId)) {
-    throw new Error("Relying party ID mismatch");
+    throwAuthError("PASSKEY_RP_MISMATCH");
   }
 
   // Verify user presence
   if (!authenticatorData.userPresent) {
-    throw new Error("User presence flag not set");
+    throwAuthError("PASSKEY_USER_PRESENCE");
   }
   if (rp.userVerification === "required" && !authenticatorData.userVerified) {
-    throw new Error("User verification required but not performed");
+    throwAuthError("PASSKEY_USER_VERIFICATION");
   }
 
   // Verify signature
@@ -538,7 +536,7 @@ async function handleAuthVerify(
       ecdsaSignature,
     );
     if (!valid) {
-      throw new Error("Invalid signature");
+      throwAuthError("PASSKEY_INVALID_SIGNATURE");
     }
   } else if (passkey.algorithm === coseAlgorithmRS256) {
     // RSA PKCS#1 v1.5 with SHA-256 verification
@@ -552,10 +550,10 @@ async function handleAuthVerify(
       signature,
     );
     if (!valid) {
-      throw new Error("Invalid signature");
+      throwAuthError("PASSKEY_INVALID_SIGNATURE");
     }
   } else {
-    throw new Error(`Unsupported algorithm: ${passkey.algorithm}`);
+    throwAuthError("PASSKEY_UNSUPPORTED_ALGORITHM", `Unsupported algorithm: ${passkey.algorithm}`);
   }
 
   // Verify counter (clone detection)
@@ -565,9 +563,7 @@ async function handleAuthVerify(
     authenticatorData.signatureCounter !== 0 &&
     authenticatorData.signatureCounter <= passkey.counter
   ) {
-    throw new Error(
-      "Authenticator counter did not increase — possible credential cloning detected",
-    );
+    throwAuthError("PASSKEY_COUNTER_ERROR");
   }
 
   // Update counter and last used timestamp
@@ -611,7 +607,8 @@ export async function handlePasskey(
 > {
   const flow = args.params?.flow;
   if (!flow) {
-    throw new Error(
+    throwAuthError(
+      "PASSKEY_MISSING_FLOW",
       "Missing `flow` parameter. Expected one of: register-options, register-verify, auth-options, auth-verify",
     );
   }
@@ -626,7 +623,8 @@ export async function handlePasskey(
     case "auth-verify":
       return handleAuthVerify(ctx, provider, args.params ?? {}, args.verifier);
     default:
-      throw new Error(
+      throwAuthError(
+        "PASSKEY_UNKNOWN_FLOW",
         `Unknown passkey flow: ${flow}. Expected one of: register-options, register-verify, auth-options, auth-verify`,
       );
   }

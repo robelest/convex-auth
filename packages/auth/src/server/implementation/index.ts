@@ -9,6 +9,7 @@ import {
   internalMutationGeneric,
 } from "convex/server";
 import { ConvexError, GenericId, v } from "convex/values";
+import { throwAuthError, isAuthError } from "../errors.js";
 import { parse as parseCookies, serialize as serializeCookie } from "cookie";
 import { redirectToParamCookie, useRedirectToParam } from "../cookies.js";
 import { FunctionReferenceFromExport } from "../convex_types.js";
@@ -113,11 +114,11 @@ export function Auth(config_: ConvexAuthConfig) {
   ) => {
     const provider = getProvider(id, allowExtraProviders);
     if (provider === undefined) {
-      const message =
+      const detail =
         `Provider \`${id}\` is not configured, ` +
         `available providers are ${listAvailableProviders(config, allowExtraProviders)}.`;
-      logWithLevel(LOG_LEVELS.ERROR, message);
-      throw new Error(message);
+      logWithLevel(LOG_LEVELS.ERROR, detail);
+      throwAuthError("PROVIDER_NOT_CONFIGURED", detail, { provider: id });
     }
     return provider;
   };
@@ -162,7 +163,7 @@ export function Auth(config_: ConvexAuthConfig) {
       require: async (ctx: { auth: Auth }) => {
         const identity = await ctx.auth.getUserIdentity();
         if (identity === null) {
-          throw new Error("Not signed in");
+          throwAuthError("NOT_SIGNED_IN");
         }
         const [userId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
         return userId as GenericId<"user">;
@@ -259,7 +260,7 @@ export function Auth(config_: ConvexAuthConfig) {
         const actionCtx = ctx as unknown as ActionCtx;
         const result = await callRetreiveAccountWithCredentials(actionCtx, args);
         if (typeof result === "string") {
-          throw new Error(result);
+          throwAuthError("ACCOUNT_NOT_FOUND", result);
         }
         return result;
       },
@@ -724,13 +725,13 @@ export function Auth(config_: ConvexAuthConfig) {
           { hashedKey },
         );
         if (!key) {
-          throw new Error("Invalid API key");
+          throwAuthError("INVALID_API_KEY");
         }
         if (key.revoked) {
-          throw new Error("API key has been revoked");
+          throwAuthError("API_KEY_REVOKED");
         }
         if (key.expiresAt && key.expiresAt < Date.now()) {
-          throw new Error("API key has expired");
+          throwAuthError("API_KEY_EXPIRED");
         }
 
         // Check per-key rate limit
@@ -742,7 +743,7 @@ export function Auth(config_: ConvexAuthConfig) {
             key.rateLimitState ?? undefined,
           );
           if (limited) {
-            throw new Error("API key rate limit exceeded");
+            throwAuthError("API_KEY_RATE_LIMITED");
           }
           patchData.rateLimitState = newState;
         }
@@ -899,11 +900,11 @@ export function Auth(config_: ConvexAuthConfig) {
               const pathParts = url.pathname.split("/");
               const providerId = pathParts.at(-1)!;
               if (providerId === null) {
-                throw new Error("Missing provider id");
+                throwAuthError("OAUTH_MISSING_PROVIDER");
               }
               const verifier = url.searchParams.get("code");
               if (verifier === null) {
-                throw new Error("Missing sign-in verifier");
+                throwAuthError("OAUTH_MISSING_VERIFIER");
               }
               const provider = getProviderOrThrow(
                 providerId,
@@ -992,8 +993,10 @@ export function Auth(config_: ConvexAuthConfig) {
               );
 
               if (typeof id !== "string") {
-                throw new Error(
+                throwAuthError(
+                  "OAUTH_INVALID_PROFILE",
                   `The profile method of the ${providerId} config must return a string ID`,
+                  { provider: providerId },
                 );
               }
 
@@ -1106,7 +1109,7 @@ export function Auth(config_: ConvexAuthConfig) {
             return { totpSetup: { uri: result.uri, secret: result.secret, totpId: result.totpId }, verifier: result.verifier };
           default: {
             const _typecheck: never = result;
-            throw new Error(`Unexpected result from signIn, ${result as any}`);
+            throwAuthError("INTERNAL_ERROR", `Unexpected result from signIn, ${result as any}`);
           }
         }
       },
@@ -1143,10 +1146,18 @@ function convertErrorsToResponse(
     try {
       return await action(ctx, request);
     } catch (error) {
-      if (error instanceof ConvexError) {
+      if (isAuthError(error)) {
+        return new Response(
+          JSON.stringify({ code: error.data.code, message: error.data.message }),
+          {
+            status: errorStatusCode,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      } else if (error instanceof ConvexError) {
         return new Response(null, {
           status: errorStatusCode,
-          statusText: error.data,
+          statusText: typeof error.data === "string" ? error.data : "Error",
         });
       } else {
         logError(error);
