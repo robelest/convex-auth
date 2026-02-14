@@ -94,6 +94,9 @@ export interface CredentialsUserConfig<
 /**
  * The Credentials provider allows you to handle signing in with arbitrary credentials,
  * such as a username and password, domain, or two factor authentication or hardware device (e.g. YubiKey U2F / FIDO).
+ *
+ * @param config - Credential-specific options (authorize callback, profile, etc.).
+ * @returns A `ConvexCredentialsConfig` to include in your `providers` array.
  */
 export default function credentials<DataModel extends GenericDataModel>(
   config: CredentialsUserConfig<DataModel>,

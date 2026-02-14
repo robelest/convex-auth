@@ -1,3 +1,9 @@
+/**
+ * TOTP (Time-based One-Time Password) two-factor authentication provider.
+ *
+ * @module
+ */
+
 import { TotpProviderConfig } from "../server/types.js";
 
 /**
@@ -10,6 +16,9 @@ import { TotpProviderConfig } from "../server/types.js";
  *   providers: [TOTP({ issuer: "My App" })],
  * });
  * ```
+ *
+ * @param config - TOTP options: issuer name, digit count, and period.
+ * @returns A `TotpProviderConfig` to include in your `providers` array.
  */
 export default function totp(
   config?: Partial<TotpProviderConfig["options"]>,

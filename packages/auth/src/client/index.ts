@@ -39,17 +39,32 @@ type AuthSession = {
   refreshToken: string;
 };
 
-type SignInResult = {
+/**
+ * Result of a `signIn` call.
+ *
+ * - `signingIn: true` — credentials were accepted and the user is authenticated.
+ * - `redirect` — OAuth flow initiated; redirect the user to `redirect.toString()`.
+ * - `totpRequired` — credentials valid but 2FA is needed; call `auth.totp.verify()`.
+ * - `verifier` — opaque string for multi-step flows (TOTP, passkey).
+ */
+export type SignInResult = {
+  /** `true` when sign-in completed and the user is authenticated. */
   signingIn: boolean;
+  /** OAuth redirect URL. Present when the provider requires a browser redirect. */
   redirect?: URL;
+  /** `true` when the account has TOTP enabled and a code is required. */
   totpRequired?: boolean;
+  /** Opaque verifier for multi-step flows (pass to `totp.verify` or passkey phase 2). */
   verifier?: string;
 };
 
 /** Reactive auth state snapshot returned by `auth.state` and `auth.onChange`. */
 export type AuthState = {
+  /** `true` during initial hydration before the first token is resolved. */
   isLoading: boolean;
+  /** `true` when a valid JWT exists (user is signed in). */
   isAuthenticated: boolean;
+  /** The raw JWT string, or `null` when not authenticated. */
   token: string | null;
 };
 
@@ -118,14 +133,17 @@ function resolveUrl(convex: ConvexTransport, explicit?: string): string {
 /**
  * Create a framework-agnostic auth client.
  *
+ * Returns an object with `signIn`, `signOut`, `onChange`, `state`,
+ * `passkey`, and `totp` — everything needed for client-side auth.
+ *
  * ### SPA mode (default)
  *
  * ```ts
- * import { ConvexClient } from 'convex/browser'
- * import { client } from '\@robelest/convex-auth/client'
+ * import { ConvexClient } from 'convex/browser';
+ * import { client } from '@robelest/convex-auth/client';
  *
- * const convex = new ConvexClient(CONVEX_URL)
- * const auth = client({ convex })
+ * const convex = new ConvexClient(CONVEX_URL);
+ * const auth = client({ convex });
  * ```
  *
  * ### SSR / proxy mode
@@ -134,13 +152,16 @@ function resolveUrl(convex: ConvexTransport, explicit?: string): string {
  * const auth = client({
  *   convex,
  *   proxy: '/api/auth',
- *   initialToken: tokenFromServer, // read from httpOnly cookie during SSR
- * })
+ *   token: tokenFromServer, // JWT read from httpOnly cookie during SSR
+ * });
  * ```
  *
  * In proxy mode all auth operations go through the proxy URL.
  * Tokens are stored in httpOnly cookies server-side — the client
- * only holds the JWT in memory.
+ * holds the JWT in memory only.
+ *
+ * @param options - Client configuration. See {@link ClientOptions}.
+ * @returns Auth client with `signIn`, `signOut`, `onChange`, `state`, `passkey`, and `totp`.
  */
 export function client(options: ClientOptions) {
   const { convex, proxy } = options;
@@ -337,6 +358,33 @@ export function client(options: ClientOptions) {
   // signIn
   // ---------------------------------------------------------------------------
 
+  /**
+   * Sign in with a provider.
+   *
+   * @param provider - Provider ID (e.g. `"email"`, `"password"`, `"google"`).
+   *   Omit when exchanging an OAuth code (the code carries the provider info).
+   * @param args - Provider-specific arguments. Pass a `Record<string, Value>`
+   *   or `FormData`. Common fields: `email`, `password`, `code`, `redirectTo`.
+   * @returns A {@link SignInResult} indicating the outcome.
+   *
+   * @example Email magic link
+   * ```ts
+   * await auth.signIn('email', { email: 'user@example.com' });
+   * ```
+   *
+   * @example Password
+   * ```ts
+   * const result = await auth.signIn('password', { email, password, flow: 'signIn' });
+   * if (result.totpRequired) {
+   *   await auth.totp.verify({ code: totpCode, verifier: result.verifier! });
+   * }
+   * ```
+   *
+   * @example OAuth (triggers redirect)
+   * ```ts
+   * await auth.signIn('google'); // redirects to Google
+   * ```
+   */
   const signIn = async (
     provider?: string,
     args?: FormData | Record<string, Value>,
@@ -415,6 +463,13 @@ export function client(options: ClientOptions) {
   // signOut
   // ---------------------------------------------------------------------------
 
+  /**
+   * Sign out the current user.
+   *
+   * Invalidates the server session and clears local token state.
+   * Errors are silently caught — calling `signOut` on an already
+   * signed-out user is a no-op.
+   */
   const signOut = async () => {
     if (proxy) {
       try {
@@ -527,12 +582,15 @@ export function client(options: ClientOptions) {
   // ---------------------------------------------------------------------------
 
   /**
-   * Subscribe to auth state changes. Immediately invokes the callback
-   * with the current state and returns an unsubscribe function.
+   * Subscribe to auth state changes. Invokes the callback immediately
+   * with the current state, then again on every state transition.
    *
    * ```ts
-   * const unsub = auth.onChange(setState)
+   * const unsub = auth.onChange(setState);
    * ```
+   *
+   * @param cb - Callback receiving the latest {@link AuthState}.
+   * @returns An unsubscribe function.
    */
   const onChange = (cb: (state: AuthState) => void): (() => void) => {
     cb(snapshot);
@@ -1058,8 +1116,11 @@ export function client(options: ClientOptions) {
     get state(): AuthState {
       return snapshot;
     },
+    /** Sign in with a provider. See {@link SignInResult} for return shape. */
     signIn,
+    /** Sign out and clear all token state. */
     signOut,
+    /** Subscribe to auth state changes. Returns an unsubscribe function. */
     onChange,
     /** Passkey (WebAuthn) authentication helpers. */
     passkey,

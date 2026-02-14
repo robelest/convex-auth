@@ -136,6 +136,13 @@ export type ConvexAuthConfig = {
    * ```
    */
   email?: EmailTransport;
+  /**
+   * Lifecycle callbacks for customizing sign-in behavior.
+   *
+   * Use `redirect` to control post-OAuth redirect URLs, and
+   * `createOrUpdateUser` or `afterUserCreatedOrUpdated` to
+   * customize account linking and user document creation.
+   */
   callbacks?: {
     /**
      * Control which URLs are allowed as a destination after OAuth sign-in
@@ -287,9 +294,11 @@ export type ConvexAuthConfig = {
 };
 
 /**
- * Same as Auth.js provider configs, but adds phone provider
- * for verification via SMS or another phone-number-connected messaging
- * service.
+ * Union of all supported auth provider config types.
+ *
+ * Includes Auth.js OAuth/OIDC providers, plus library-native providers:
+ * credentials, email, phone, passkey (WebAuthn), and TOTP (2FA).
+ * Each can be passed as a config object or a factory function.
  */
 export type AuthProviderConfig =
   | Exclude<
@@ -475,11 +484,15 @@ export interface TotpProviderConfig {
   };
 }
 
+/** Credentials identifying a provider account (e.g. email + hashed password). */
 export type AuthAccountCredentials = {
+  /** Provider-specific account identifier (e.g. email address). */
   id: string;
+  /** Optional secret (e.g. hashed password). */
   secret?: string;
 };
 
+/** Arguments for `auth.account.create()`. */
 export type AuthCreateAccountArgs = {
   provider: string;
   account: AuthAccountCredentials;
@@ -493,11 +506,13 @@ export type AuthCreateAccountArgs = {
   shouldLinkViaPhone?: boolean;
 };
 
+/** Arguments for `auth.account.get()`. */
 export type AuthRetrieveAccountArgs = {
   provider: string;
   account: AuthAccountCredentials;
 };
 
+/** Arguments for `auth.account.updateCredentials()`. */
 export type AuthUpdateAccountCredentialsArgs = {
   provider: string;
   account: {
@@ -506,21 +521,25 @@ export type AuthUpdateAccountCredentialsArgs = {
   };
 };
 
+/** Arguments for `auth.session.invalidate()`. */
 export type AuthInvalidateSessionsArgs = {
   userId: GenericId<"user">;
   except?: GenericId<"session">[];
 };
 
+/** Arguments for `auth.provider.signIn()`. */
 export type AuthProviderSignInArgs = {
   accountId?: GenericId<"account">;
   params?: Record<string, Value | undefined>;
 };
 
+/** Return type of `auth.provider.signIn()` — user and session IDs, or `null` on failure. */
 export type AuthProviderSignInResult = {
   userId: GenericId<"user">;
   sessionId: GenericId<"session">;
 } | null;
 
+/** Server-side auth helpers available on enriched action contexts. */
 export type AuthServerHelpers = {
   account: {
     create: (
@@ -722,20 +741,33 @@ export interface ApiKeyConfig {
  * Never includes the raw key material — only the display prefix.
  */
 export interface KeyRecord {
+  /** Document ID. */
   _id: string;
+  /** Owner user ID. */
   userId: string;
+  /** Display prefix (e.g. `"sk_live_abc1"`). Safe to show in UIs. */
   prefix: string;
+  /** Human-readable name (e.g. "CI Pipeline"). */
   name: string;
+  /** Resource:action permissions granted to this key. */
   scopes: KeyScope[];
+  /** Per-key rate limit, if configured. */
   rateLimit?: { maxRequests: number; windowMs: number };
+  /** Expiration timestamp (ms since epoch), or `undefined` for no expiry. */
   expiresAt?: number;
+  /** Timestamp of last successful verification, or `undefined` if never used. */
   lastUsedAt?: number;
+  /** Creation timestamp (ms since epoch). */
   createdAt: number;
+  /** `true` when the key has been revoked (soft-deleted). */
   revoked: boolean;
 }
 
 /**
  * Component function references required by core auth runtime.
+ *
+ * @internal Consumers should not depend on this shape — it may change
+ * between minor versions. Pass `components.auth` directly to the `Auth` constructor.
  */
 export type AuthComponentApi = {
   public: {

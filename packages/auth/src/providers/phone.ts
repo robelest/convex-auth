@@ -19,6 +19,9 @@ import { PhoneConfig, PhoneUserConfig } from "../server/types.js";
  * When you use this function to create your config, it
  * checks that there is a `phone` field during token verification
  * that matches the `phone` used during the initial `signIn` call.
+ *
+ * @param config - Phone provider options including `sendVerificationRequest`.
+ * @returns A `PhoneConfig` to include in your `providers` array.
  */
 export default function phone<DataModel extends GenericDataModel>(
   config: PhoneUserConfig & Pick<PhoneConfig, "sendVerificationRequest">,

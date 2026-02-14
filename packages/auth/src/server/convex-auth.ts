@@ -132,25 +132,29 @@ export class Auth {
   readonly portalUrl: string;
 
   // ---- Proxied auth helper sub-objects ----
-  /** User helpers: `.current(ctx)`, `.require(ctx)`, `.get(ctx, userId)`, `.viewer(ctx)` */
+  /** User helpers: `.current(ctx)`, `.require(ctx)`, `.get(ctx, userId)`, `.viewer(ctx)`, `.group.list(ctx, ...)`, `.group.get(ctx, ...)` */
   get user() { return this._auth.user; }
-  /** Session helpers */
+  /** Session helpers: `.current(ctx)`, `.invalidate(ctx, { userId, except? })` */
   get session() { return this._auth.session; }
-  /** Provider helpers */
+  /** Provider helpers: `.signIn(ctx, provider, args)` */
   get provider() { return this._auth.provider; }
-  /** Account helpers */
+  /** Account helpers: `.create(ctx, args)`, `.get(ctx, args)`, `.updateCredentials(ctx, args)` */
   get account() { return this._auth.account; }
-  /** Group helpers */
+  /** Group helpers: `.create(ctx, ...)`, `.get(ctx, id)`, `.list(ctx, ...)`, `.update(ctx, ...)`, `.delete(ctx, id)`, `.member.*` */
   get group() { return this._auth.group; }
-  /** Invite helpers */
+  /** Invite helpers: `.create(ctx, ...)`, `.get(ctx, id)`, `.getByTokenHash(ctx, hash)`, `.list(ctx, ...)`, `.accept(ctx, ...)`, `.revoke(ctx, id)` */
   get invite() { return this._auth.invite; }
-  /** Passkey helpers */
+  /** Passkey helpers: `.list(ctx, { userId })`, `.rename(ctx, id, name)`, `.remove(ctx, id)` */
   get passkey() { return this._auth.passkey; }
-  /** TOTP helpers */
+  /** TOTP helpers: `.list(ctx, { userId })`, `.remove(ctx, id)` */
   get totp() { return this._auth.totp; }
-  /** API key helpers: `.create(ctx, ...)`, `.verify(ctx, ...)`, `.list(ctx, ...)`, `.revoke(ctx, ...)` */
+  /** API key helpers: `.create(ctx, ...)`, `.verify(ctx, rawKey)`, `.list(ctx, ...)`, `.get(ctx, id)`, `.update(ctx, ...)`, `.revoke(ctx, id)`, `.remove(ctx, id)` */
   get key() { return this._auth.key; }
 
+  /**
+   * @param component - The auth component reference from `components.auth`.
+   * @param config - Auth configuration (providers, email transport, session, JWT, callbacks).
+   */
   constructor(component: AuthComponentApi, config: AuthClassConfig) {
     this.component = component;
 
@@ -264,6 +268,10 @@ export class Auth {
    * auth.addHttpRoutes(http);
    * export default http;
    * ```
+   *
+   * @param http - The Convex HTTP router to register routes on.
+   * @param opts.pathPrefix - URL prefix for portal static files. Defaults to `"/auth"`.
+   * @param opts.spaFallback - Serve `index.html` for unmatched sub-paths. Defaults to `true`.
    */
   addHttpRoutes(
     http: HttpRouter,
@@ -329,15 +337,17 @@ export class Auth {
 // ============================================================================
 
 /**
- * Create portal function definitions from a ConvexAuth instance.
+ * Create portal function definitions from an `Auth` instance.
  *
- * This is a standalone function (not a class method) because Convex's
- * bundler can trace through `export const { x } = fn(instance)` but
- * cannot trace through `instance.method()`.
+ * Standalone function (not a class method) because Convex's bundler
+ * can trace `export const { x } = fn(instance)` but not `instance.method()`.
  *
  * ```ts
  * export const { portalQuery, portalMutation, portalInternal } = Portal(auth);
  * ```
+ *
+ * @param auth - The `Auth` class instance from your `convex/auth.ts`.
+ * @returns `{ portalQuery, portalMutation, portalInternal }` — export all three.
  */
 export function Portal(auth: Auth) {
   const authComponent = auth.component;

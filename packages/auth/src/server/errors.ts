@@ -14,6 +14,18 @@ import { ConvexError } from "convex/values";
 // Error code → default message map  (single source of truth)
 // ============================================================================
 
+/**
+ * Map of every auth error code to its default human-readable message.
+ *
+ * Use the keys as the `code` argument to {@link throwAuthError}.
+ * Clients can match on these codes for conditional error handling.
+ *
+ * @example
+ * ```ts
+ * throwAuthError("NOT_SIGNED_IN");
+ * // ConvexError { data: { code: "NOT_SIGNED_IN", message: "You must be signed in..." } }
+ * ```
+ */
 export const AUTH_ERRORS = {
   // ---- Configuration ----
   PROVIDER_NOT_CONFIGURED:
@@ -166,6 +178,7 @@ export const AUTH_ERRORS = {
     "An unexpected error occurred.",
 } as const satisfies Record<string, string>;
 
+/** Union of all recognized auth error code strings (keys of {@link AUTH_ERRORS}). */
 export type AuthErrorCode = keyof typeof AUTH_ERRORS;
 
 // ============================================================================
@@ -192,7 +205,18 @@ export function throwAuthError(
 }
 
 /**
- * Type guard to check if a caught value is an auth `ConvexError`.
+ * Type guard: check whether a caught value is a structured auth `ConvexError`.
+ *
+ * @param error - The caught value (typically from a `catch` block).
+ * @returns `true` when `error` is a `ConvexError` with `{ code, message }` data.
+ *
+ * @example
+ * ```ts
+ * try { await auth.signIn('email', { email }); }
+ * catch (e) {
+ *   if (isAuthError(e)) console.log(e.data.code); // "EMAIL_SEND_FAILED"
+ * }
+ * ```
  */
 export function isAuthError(
   error: unknown,
@@ -209,11 +233,16 @@ export function isAuthError(
 /**
  * Extract `{ code, message }` from a caught error.
  *
- * Works for both `ConvexError` (thrown by Convex actions) and plain
- * `Error` instances. Returns `null` if the value isn't an error.
+ * Works for `ConvexError` (from Convex actions), plain `Error`
+ * instances, and structured auth errors. Returns `null` when the
+ * value is not an error object.
  *
- * Useful on the client to normalize error handling:
+ * @param error - The caught value to parse.
+ * @returns `{ code, message }` when extractable, or `null`.
+ *   When `code` is `null`, the error is not a structured auth error
+ *   but `message` still contains the error text.
  *
+ * @example
  * ```ts
  * try {
  *   await auth.signIn("email", { email });

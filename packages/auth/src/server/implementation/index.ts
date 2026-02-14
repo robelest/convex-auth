@@ -147,6 +147,9 @@ export function Auth(config_: ConvexAuthConfig) {
       /**
        * Get the current user's ID from the auth context, or `null` if
        * not signed in.
+       *
+       * @param ctx - Any Convex context with an `auth` field (query, mutation, or action).
+       * @returns The user's `Id<"user">`, or `null` when unauthenticated.
        */
       current: async (ctx: { auth: Auth }) => {
         const identity = await ctx.auth.getUserIdentity();
@@ -159,6 +162,10 @@ export function Auth(config_: ConvexAuthConfig) {
       /**
        * Get the current user's ID, or throw if not signed in.
        * Use this when authentication is required.
+       *
+       * @param ctx - Any Convex context with an `auth` field.
+       * @returns The user's `Id<"user">`.
+       * @throws `ConvexError` with code `NOT_SIGNED_IN` when unauthenticated.
        */
       require: async (ctx: { auth: Auth }) => {
         const identity = await ctx.auth.getUserIdentity();
@@ -170,13 +177,20 @@ export function Auth(config_: ConvexAuthConfig) {
       },
       /**
        * Retrieve a user document by their ID.
+       *
+       * @param ctx - Convex context with `runQuery`.
+       * @param userId - The user document ID.
+       * @returns The user document, or `null` if not found.
        */
       get: async (ctx: ComponentReadCtx, userId: string) => {
         return await ctx.runQuery(config.component.public.userGetById, { userId });
       },
       /**
        * Get the currently signed-in user's document, or `null` if not
-       * signed in. Convenience method combining `current` + `get`.
+       * signed in. Convenience combining `current()` + `get()`.
+       *
+       * @param ctx - Convex context with `auth` and `runQuery`.
+       * @returns The user document, or `null` when unauthenticated.
        */
       viewer: async (ctx: ComponentAuthReadCtx) => {
         const userId = await auth.user.current(ctx);
@@ -216,6 +230,9 @@ export function Auth(config_: ConvexAuthConfig) {
       /**
        * Get the current session ID from the auth context, or `null` if
        * not signed in.
+       *
+       * @param ctx - Any Convex context with an `auth` field.
+       * @returns The session's `Id<"session">`, or `null` when unauthenticated.
        */
       current: async (ctx: { auth: Auth }) => {
         const identity = await ctx.auth.getUserIdentity();
@@ -227,6 +244,10 @@ export function Auth(config_: ConvexAuthConfig) {
       },
       /**
        * Invalidate sessions for a user, optionally preserving specific sessions.
+       *
+       * @param ctx - Convex action context.
+       * @param args.userId - The user whose sessions to invalidate.
+       * @param args.except - Session IDs to preserve (e.g. the current session).
        */
       invalidate: async <DataModel extends GenericDataModel>(
         ctx: GenericActionCtx<DataModel>,
@@ -242,6 +263,10 @@ export function Auth(config_: ConvexAuthConfig) {
     account: {
       /**
        * Create an account and user for a credentials provider.
+       *
+       * @param ctx - Convex action context.
+       * @param args - Provider ID, account credentials, profile data, and link flags.
+       * @returns `{ account, user }` — the created account and user documents.
        */
       create: async <DataModel extends GenericDataModel>(
         ctx: GenericActionCtx<DataModel>,
@@ -252,6 +277,11 @@ export function Auth(config_: ConvexAuthConfig) {
       },
       /**
        * Retrieve an account and user for a credentials provider.
+       *
+       * @param ctx - Convex action context.
+       * @param args - Provider ID and account credentials (id, optional secret).
+       * @returns `{ account, user }` — the matched account and user documents.
+       * @throws `ConvexError` with code `ACCOUNT_NOT_FOUND` when no match exists.
        */
       get: async <DataModel extends GenericDataModel>(
         ctx: GenericActionCtx<DataModel>,
@@ -265,7 +295,10 @@ export function Auth(config_: ConvexAuthConfig) {
         return result;
       },
       /**
-       * Update credentials for an existing account.
+       * Update credentials (secret) for an existing account.
+       *
+       * @param ctx - Convex action context.
+       * @param args - Provider ID and new account credentials (id + secret).
        */
       updateCredentials: async <DataModel extends GenericDataModel>(
         ctx: GenericActionCtx<DataModel>,
@@ -278,6 +311,11 @@ export function Auth(config_: ConvexAuthConfig) {
     provider: {
       /**
        * Sign in via another provider, typically from a credentials flow.
+       *
+       * @param ctx - Convex action context.
+       * @param provider - The provider config to sign in with.
+       * @param args - Optional account ID and params.
+       * @returns `{ userId, sessionId }` on success, or `null`.
        */
       signIn: async <DataModel extends GenericDataModel>(
         ctx: GenericActionCtx<DataModel>,
@@ -515,15 +553,17 @@ export function Auth(config_: ConvexAuthConfig) {
        * the timestamp. If the invite has a group, the caller is responsible
        * for creating the member record via `auth.group.member.add` in the
        * same Convex mutation for transactional safety.
-        *
-        * @throws ConvexError with code `INVITE_NOT_FOUND` when the invite does
-        * not exist.
-        * @throws ConvexError with code `INVITE_NOT_PENDING` when the invite is
-        * not in `pending` status.
        *
+       * @param ctx - Convex context with `runMutation`.
+       * @param inviteId - The invite document ID.
+       * @param acceptedByUserId - User accepting the invite (recorded for audit).
+       * @throws `ConvexError` with code `INVITE_NOT_FOUND` when the invite does not exist.
+       * @throws `ConvexError` with code `INVITE_NOT_PENDING` when the invite is not in `pending` status.
+       *
+       * @example
        * ```ts
-        * export const acceptInvite = mutation({
-        *   args: { inviteId: v.string() },
+       * export const acceptInvite = mutation({
+       *   args: { inviteId: v.string() },
        *   handler: async (ctx, { inviteId }) => {
        *     const userId = await auth.user.require(ctx);
        *     const invite = await auth.invite.get(ctx, inviteId);
@@ -547,14 +587,14 @@ export function Auth(config_: ConvexAuthConfig) {
           ...(acceptedByUserId ? { acceptedByUserId } : {}),
         });
       },
-       /**
-        * Revoke a pending invitation.
-        *
-        * @throws ConvexError with code `INVITE_NOT_FOUND` when the invite does
-        * not exist.
-        * @throws ConvexError with code `INVITE_NOT_PENDING` when the invite is
-        * not in `pending` status.
-        */
+      /**
+       * Revoke a pending invitation.
+       *
+       * @param ctx - Convex context with `runMutation`.
+       * @param inviteId - The invite document ID.
+       * @throws `ConvexError` with code `INVITE_NOT_FOUND` when the invite does not exist.
+       * @throws `ConvexError` with code `INVITE_NOT_PENDING` when the invite is not in `pending` status.
+       */
       revoke: async (ctx: ComponentCtx, inviteId: string) => {
         await ctx.runMutation(config.component.public.inviteRevoke, { inviteId });
       },

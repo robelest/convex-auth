@@ -8,13 +8,19 @@ import type {
 } from "./implementation/index.js";
 import { isLocalHost } from "./utils.js";
 
+/** Cookie lifetime configuration for auth tokens. */
 export type AuthCookieConfig = {
+  /** Maximum age in seconds, or `null` for session cookies. */
   maxAge: number | null;
 };
 
+/** Raw cookie values extracted from a request. */
 export type AuthCookies = {
+  /** The JWT access token, or `null` when absent. */
   token: string | null;
+  /** The refresh token, or `null` when absent. */
   refreshToken: string | null;
+  /** The OAuth PKCE verifier, or `null` when absent. */
   verifier: string | null;
 };
 
@@ -32,12 +38,28 @@ export type AuthCookie = {
   };
 };
 
+/**
+ * Options for the SSR auth helper returned by {@link server}.
+ */
 export type ServerOptions = {
-  /** Convex deployment URL. */
+  /** Convex deployment URL (e.g. `https://your-app.convex.cloud`). */
   url: string;
+  /**
+   * Path the client POSTs auth actions to. Defaults to `"/api/auth"`.
+   * Must match the `proxy` option on the client.
+   */
   apiRoute?: string;
+  /** Cookie `maxAge` in seconds, or `null` for session cookies. */
   cookieMaxAge?: number | null;
+  /** Enable verbose debug logging for token refresh and cookie operations. */
   verbose?: boolean;
+  /**
+   * Control whether `refresh()` handles OAuth `?code=` query parameters.
+   *
+   * - `true` (default): always exchange the code on GET requests with `text/html` accept.
+   * - `false`: never exchange — useful when only the client handles codes.
+   * - A function: called with the `Request` for per-request decisions.
+   */
   shouldHandleCode?: ((request: Request) => boolean | Promise<boolean>) | boolean;
 };
 
@@ -50,6 +72,15 @@ export type RefreshResult = {
   token: string | null;
 };
 
+/**
+ * Derive the cookie names used for auth tokens.
+ *
+ * On localhost the names are unprefixed; on production hosts they
+ * use the `__Host-` prefix for tighter security.
+ *
+ * @param host - The `Host` header value. Omit to use unprefixed names.
+ * @returns An object with `token`, `refreshToken`, and `verifier` cookie names.
+ */
 export function authCookieNames(host?: string) {
   const prefix = isLocalHost(host) ? "" : "__Host-";
   return {
@@ -59,6 +90,13 @@ export function authCookieNames(host?: string) {
   };
 }
 
+/**
+ * Parse auth cookie values from a raw `Cookie` header string.
+ *
+ * @param cookieHeader - The raw `Cookie` header, or `null`/`undefined`.
+ * @param host - The `Host` header, used to determine cookie name prefixes.
+ * @returns Parsed {@link AuthCookies} with `token`, `refreshToken`, and `verifier`.
+ */
 export function parseAuthCookies(
   cookieHeader: string | null | undefined,
   host?: string,
@@ -72,6 +110,16 @@ export function parseAuthCookies(
   };
 }
 
+/**
+ * Serialize auth cookies into `Set-Cookie` header strings.
+ *
+ * Nulled-out values produce deletion cookies (maxAge 0, expired date).
+ *
+ * @param cookies - The auth cookie values to serialize.
+ * @param host - The `Host` header, used for cookie name prefixes and `Secure` flag.
+ * @param config - Cookie lifetime config. Defaults to session cookies.
+ * @returns An array of three `Set-Cookie` header strings.
+ */
 export function serializeAuthCookies(
   cookies: AuthCookies,
   host?: string,
@@ -156,6 +204,16 @@ export function structuredAuthCookies(
   ];
 }
 
+/**
+ * Check whether a request pathname matches the auth proxy route.
+ *
+ * Handles trailing-slash ambiguity: both `/api/auth` and `/api/auth/`
+ * match regardless of how `apiRoute` is configured.
+ *
+ * @param pathname - The request URL pathname.
+ * @param apiRoute - The configured proxy route (e.g. `"/api/auth"`).
+ * @returns `true` when the pathname matches the proxy route.
+ */
 export function shouldProxyAuthAction(pathname: string, apiRoute: string) {
   if (apiRoute.endsWith("/")) {
     return pathname === apiRoute || pathname === apiRoute.slice(0, -1);
@@ -168,6 +226,39 @@ const MINIMUM_REQUIRED_TOKEN_LIFETIME_MS = 10_000;
 
 type DecodedToken = { exp?: number; iat?: number };
 
+/**
+ * Create an SSR auth helper for server-side frameworks.
+ *
+ * Handles cookie-based token management, OAuth code exchange,
+ * and automatic JWT refresh on page loads. Works with any
+ * framework that gives you a `Request` object — SvelteKit,
+ * TanStack Start, Remix, Next.js, etc.
+ *
+ * @param options - SSR configuration (Convex URL, proxy route, cookie lifetime).
+ * @returns An object with `token`, `verify`, `proxy`, and `refresh` methods.
+ *
+ * @example SvelteKit hooks
+ * ```ts
+ * // src/hooks.server.ts
+ * import { server } from '@robelest/convex-auth/server';
+ *
+ * const auth = server({ url: CONVEX_URL });
+ *
+ * export const handle = async ({ event, resolve }) => {
+ *   const { cookies, token } = await auth.refresh(event.request);
+ *   for (const c of cookies) event.cookies.set(c.name, c.value, c.options);
+ *   event.locals.token = token;
+ *   return resolve(event);
+ * };
+ * ```
+ *
+ * @example Generic proxy endpoint
+ * ```ts
+ * if (shouldProxyAuthAction(url.pathname, '/api/auth')) {
+ *   return auth.proxy(request);
+ * }
+ * ```
+ */
 export function server(options: ServerOptions) {
   const convexUrl = options.url;
   const apiRoute = options.apiRoute ?? "/api/auth";
@@ -286,10 +377,25 @@ export function server(options: ServerOptions) {
   };
 
   return {
+    /**
+     * Read the JWT from the request cookies without any validation.
+     *
+     * @param request - The incoming HTTP request.
+     * @returns The raw JWT string, or `null` when no token cookie exists.
+     */
     token(request: Request): string | null {
       return parseRequestCookies(request).token;
     },
 
+    /**
+     * Check whether the request carries a non-expired JWT.
+     *
+     * Performs local expiration checking only (no network call).
+     * Use for lightweight auth guards in middleware.
+     *
+     * @param request - The incoming HTTP request.
+     * @returns `true` when a valid, non-expired JWT exists in the cookies.
+     */
     async verify(request: Request): Promise<boolean> {
       const token = parseRequestCookies(request).token;
       if (token === null) {
@@ -302,6 +408,17 @@ export function server(options: ServerOptions) {
       return decodedToken.exp * 1000 > Date.now();
     },
 
+    /**
+     * Handle a proxied `signIn` or `signOut` POST from the client.
+     *
+     * Validates the route, method, and origin, then forwards the
+     * action to Convex and returns a `Response` with updated
+     * `Set-Cookie` headers. The client never sees the real
+     * refresh token — it stays in httpOnly cookies.
+     *
+     * @param request - The incoming POST request from the client.
+     * @returns A JSON `Response` with auth result and cookie headers.
+     */
     async proxy(request: Request): Promise<Response> {
       const requestUrl = new URL(request.url);
       if (!shouldProxyAuthAction(requestUrl.pathname, apiRoute)) {
@@ -424,6 +541,19 @@ export function server(options: ServerOptions) {
       );
     },
 
+    /**
+     * Refresh auth tokens on page load.
+     *
+     * Call this in your server hooks/middleware on every request.
+     * It handles three scenarios:
+     *
+     * 1. **OAuth code exchange** — exchanges a `?code=` query param for tokens and returns a redirect URL.
+     * 2. **Token refresh** — refreshes the JWT if it's close to expiry.
+     * 3. **No-op** — returns the existing token when no refresh is needed.
+     *
+     * @param request - The incoming HTTP request.
+     * @returns Structured cookies to set on the response, an optional redirect URL, and the current JWT.
+     */
     async refresh(request: Request): Promise<RefreshResult> {
       const host = cookieHost(request);
       const currentToken = parseRequestCookies(request).token;
