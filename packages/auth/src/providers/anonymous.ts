@@ -56,6 +56,9 @@ export interface AnonymousConfig<DataModel extends GenericDataModel> {
  * An anonymous authentication provider.
  *
  * This provider doesn't require any user-provided information.
+ *
+ * @param config - Optional overrides (custom ID, profile, etc.).
+ * @returns A `ConvexCredentialsConfig` to include in your `providers` array.
  */
 export default function anonymous<DataModel extends GenericDataModel>(
   config: AnonymousConfig<DataModel> = {},

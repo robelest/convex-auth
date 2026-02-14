@@ -9,6 +9,11 @@
  */
 
 export {
+  /**
+   * The low-level factory function used internally by the `Auth` class.
+   * Re-exported as `AuthFactory` to avoid naming conflicts with the
+   * `Auth` class (the recommended public API). Prefer `new Auth(...)`.
+   */
   Auth as AuthFactory,
   Tokens,
   Doc,

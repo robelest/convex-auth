@@ -1,3 +1,9 @@
+/**
+ * Passkey (WebAuthn) authentication provider.
+ *
+ * @module
+ */
+
 import { PasskeyProviderConfig } from "../server/types.js";
 
 /**
@@ -15,7 +21,8 @@ import { PasskeyProviderConfig } from "../server/types.js";
  * });
  * ```
  *
- * @param config Optional configuration for the relying party and credential options.
+ * @param config - Optional relying party and credential options.
+ * @returns A `PasskeyProviderConfig` to include in your `providers` array.
  */
 export default function passkey(
   config?: Partial<PasskeyProviderConfig["options"]>,

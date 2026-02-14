@@ -105,6 +105,9 @@ export interface PasswordConfig<DataModel extends GenericDataModel> {
  *
  * Email verification is not required unless you pass
  * an email provider to the `verify` option.
+ *
+ * @param config - Password options (custom ID, crypto, verify, profile, etc.).
+ * @returns A `ConvexCredentialsConfig` to include in your `providers` array.
  */
 export default function password<DataModel extends GenericDataModel>(
   config: PasswordConfig<DataModel> = {},

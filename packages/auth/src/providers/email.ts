@@ -30,6 +30,9 @@ import { EmailConfig, EmailUserConfig } from "../server/types.js";
  * ```
  *
  * Make sure the token has high enough entropy to be secure.
+ *
+ * @param config - Email provider options including `sendVerificationRequest`.
+ * @returns An `EmailConfig` to include in your `providers` array.
  */
 export default function email<DataModel extends GenericDataModel>(
   config: EmailUserConfig<DataModel> &
