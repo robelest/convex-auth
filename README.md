@@ -1,4 +1,4 @@
-# @robelest/convex-auth
+# @convex-dev/auth
 
 Component-first authentication for [Convex](https://convex.dev). One component, one class, full TypeScript support.
 
@@ -11,13 +11,13 @@ Component-first authentication for [Convex](https://convex.dev). One component, 
 ## Install
 
 ```bash
-npm install @robelest/convex-auth
+npm install @convex-dev/auth
 ```
 
 ## Quick Setup (CLI)
 
 ```bash
-npx @robelest/convex-auth
+npx @convex-dev/auth
 ```
 
 The interactive setup wizard runs 6 steps:
@@ -32,7 +32,7 @@ The interactive setup wizard runs 6 steps:
 Pass `--site-url` to skip the URL prompt:
 
 ```bash
-npx @robelest/convex-auth --site-url "http://localhost:5173"
+npx @convex-dev/auth --site-url "http://localhost:5173"
 ```
 
 ## Manual Setup
@@ -44,7 +44,7 @@ Three files. That's it.
 ```ts
 // convex/convex.config.ts
 import { defineApp } from "convex/server";
-import auth from "@robelest/convex-auth/convex.config";
+import auth from "@convex-dev/auth/convex.config";
 
 const app = defineApp();
 app.use(auth);
@@ -56,7 +56,7 @@ export default app;
 
 ```ts
 // convex/auth.ts
-import { Auth, Portal } from "@robelest/convex-auth/component";
+import { Auth, Portal } from "@convex-dev/auth/component";
 import { components } from "./_generated/api";
 import github from "@auth/core/providers/github";
 
@@ -239,7 +239,7 @@ The portal is hosted at `auth.robelest.com` and connects to any Convex deploymen
 **1. Generate an admin invite link:**
 
 ```bash
-npx @robelest/convex-auth portal link
+npx @convex-dev/auth portal link
 ```
 
 **2. Open the link** — sign in with your email (magic link), and you're an admin.
@@ -259,13 +259,13 @@ Portal static files are stored in Convex via the `@convex-dev/self-hosting` sub-
 **1. Upload the portal:**
 
 ```bash
-npx @robelest/convex-auth portal upload
+npx @convex-dev/auth portal upload
 ```
 
 **2. Generate an admin invite link:**
 
 ```bash
-npx @robelest/convex-auth portal link
+npx @convex-dev/auth portal link
 ```
 
 **3. Open the link** — the portal is live at `https://<your-deployment>.convex.site/auth`.
@@ -328,7 +328,7 @@ Works with any email provider (Resend, SendGrid, SES, Postmark, etc.). The `ctx`
 ### Password
 
 ```ts
-import password from "@robelest/convex-auth/providers/password";
+import password from "@convex-dev/auth/providers/password";
 
 new Auth(components.auth, {
   providers: [password],
@@ -338,7 +338,7 @@ new Auth(components.auth, {
 ### Passkeys / WebAuthn
 
 ```ts
-import passkey from "@robelest/convex-auth/providers/passkey";
+import passkey from "@convex-dev/auth/providers/passkey";
 
 new Auth(components.auth, {
   providers: [passkey],
@@ -348,7 +348,7 @@ new Auth(components.auth, {
 ### TOTP (authenticator apps)
 
 ```ts
-import totp from "@robelest/convex-auth/providers/totp";
+import totp from "@convex-dev/auth/providers/totp";
 
 new Auth(components.auth, {
   providers: [totp({ issuer: "My App" })],
@@ -358,7 +358,7 @@ new Auth(components.auth, {
 ### Phone / SMS
 
 ```ts
-import phone from "@robelest/convex-auth/providers/phone";
+import phone from "@convex-dev/auth/providers/phone";
 
 const sms = phone({
   id: "twilio",
@@ -371,7 +371,7 @@ const sms = phone({
 ### Anonymous
 
 ```ts
-import anonymous from "@robelest/convex-auth/providers/anonymous";
+import anonymous from "@convex-dev/auth/providers/anonymous";
 
 new Auth(components.auth, {
   providers: [anonymous],
@@ -413,7 +413,7 @@ new Auth(components.auth, {
 
 ```bash
 # Set up production keys + site URL
-npx @robelest/convex-auth --prod --site-url "https://myapp.com"
+npx @convex-dev/auth --prod --site-url "https://myapp.com"
 
 # Set provider secrets
 npx convex env set --prod AUTH_GITHUB_ID "..."
@@ -423,19 +423,19 @@ npx convex env set --prod AUTH_GITHUB_SECRET "..."
 npx convex deploy --cmd 'npm run build'
 
 # Generate a portal admin link (uses hosted CDN by default)
-npx @robelest/convex-auth portal link --prod
+npx @convex-dev/auth portal link --prod
 
 # Or self-host the portal on your deployment
-npx @robelest/convex-auth portal upload --prod
-npx @robelest/convex-auth portal link --prod
+npx @convex-dev/auth portal upload --prod
+npx @convex-dev/auth portal link --prod
 ```
 
 ## SSR Integration
 
-The `server()` helper from `@robelest/convex-auth/server` handles OAuth code exchange, token refresh, and httpOnly cookie management for SSR frameworks. It returns structured cookie data that works natively with every framework's cookie API.
+The `server()` helper from `@convex-dev/auth/server` handles OAuth code exchange, token refresh, and httpOnly cookie management for SSR frameworks. It returns structured cookie data that works natively with every framework's cookie API.
 
 ```ts
-import { server } from '@robelest/convex-auth/server'
+import { server } from '@convex-dev/auth/server'
 
 const auth = server({ url: process.env.CONVEX_URL! })
 const { cookies, redirect, token } = await auth.refresh(request)
@@ -453,7 +453,7 @@ The `proxy()` method handles client-initiated sign-in/sign-out POST requests (re
 
 ```ts
 // src/hooks.server.ts
-import { server } from '@robelest/convex-auth/server'
+import { server } from '@convex-dev/auth/server'
 import { redirect } from '@sveltejs/kit'
 
 export const handle = async ({ event, resolve }) => {
@@ -474,7 +474,7 @@ export const handle = async ({ event, resolve }) => {
 
 ```ts
 // src/routes/__root.tsx
-import { server } from '@robelest/convex-auth/server'
+import { server } from '@convex-dev/auth/server'
 import { getRequest, setCookie } from '@tanstack/react-start/server'
 
 const getAuthState = createServerFn({ method: 'GET' }).handler(async () => {
@@ -491,7 +491,7 @@ const getAuthState = createServerFn({ method: 'GET' }).handler(async () => {
 
 ```ts
 // app/layout.tsx or middleware.ts
-import { server } from '@robelest/convex-auth/server'
+import { server } from '@convex-dev/auth/server'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
@@ -539,7 +539,7 @@ Key design constraints of the Convex component system:
 ### Setup wizard
 
 ```bash
-npx @robelest/convex-auth [options]
+npx @convex-dev/auth [options]
 ```
 
 | Option | Description |
@@ -552,10 +552,10 @@ npx @robelest/convex-auth [options]
 
 ```bash
 # Generate an admin invite link
-npx @robelest/convex-auth portal link [options]
+npx @convex-dev/auth portal link [options]
 
 # Upload portal to your Convex deployment (self-hosted mode)
-npx @robelest/convex-auth portal upload [options]
+npx @convex-dev/auth portal upload [options]
 ```
 
 **`portal link`** generates a single-use invite URL. The first person to click it becomes a portal admin.

@@ -17,7 +17,7 @@ export default defineConfig({
 		alias: {
 			// Resolve the workspace auth package directly so Vite's SSR
 			// bundler can find the client export from the built dist.
-			'@robelest/convex-auth/client': resolve(__dirname, '../auth/dist/client/index.js'),
+			'@convex-dev/auth/client': resolve(__dirname, '../auth/dist/client/index.js'),
 		},
 	},
 	server: {

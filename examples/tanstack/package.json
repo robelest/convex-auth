@@ -16,7 +16,7 @@
     "@fontsource-variable/geist": "^5.2.8",
     "@fontsource-variable/geist-mono": "^5.2.7",
     "@remixicon/react": "^4.9.0",
-    "@robelest/convex-auth": "workspace:*",
+    "@convex-dev/auth": "workspace:*",
     "@tailwindcss/vite": "^4.0.6",
     "@tanstack/react-devtools": "^0.7.0",
     "@tanstack/react-router": "^1.132.0",

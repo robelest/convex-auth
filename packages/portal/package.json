@@ -1,5 +1,5 @@
 {
-	"name": "@robelest/convex-auth-portal",
+	"name": "@convex-dev/auth-portal",
 	"private": true,
 	"version": "0.0.1",
 	"type": "module",
@@ -21,7 +21,7 @@
 		"vite": "catalog:"
 	},
 	"dependencies": {
-		"@robelest/convex-auth": "workspace:*",
+		"@convex-dev/auth": "workspace:*",
 		"convex": "catalog:",
 		"convex-svelte": "^0.0.12"
 	}

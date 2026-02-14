@@ -4,7 +4,7 @@ import { TotpProviderConfig } from "../server/types.js";
  * Add TOTP (Time-based One-Time Password) authentication.
  *
  * ```ts
- * import TOTP from "@robelest/convex-auth/providers/totp";
+ * import TOTP from "@convex-dev/auth/providers/totp";
  *
  * export const { auth, signIn, signOut, store } = Auth({
  *   providers: [TOTP({ issuer: "My App" })],

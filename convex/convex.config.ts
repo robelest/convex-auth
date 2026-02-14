@@ -1,5 +1,5 @@
 import { defineApp } from "convex/server";
-import auth from "@robelest/convex-auth/convex.config";
+import auth from "@convex-dev/auth/convex.config";
 
 const app = defineApp();
 

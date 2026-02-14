@@ -7,7 +7,7 @@
  * can visit to accept the invite.
  *
  * Usage:
- *   npx @robelest/convex-auth portal link [options]
+ *   npx @convex-dev/auth portal link [options]
  *
  * Options:
  *   --prod                   Use production deployment

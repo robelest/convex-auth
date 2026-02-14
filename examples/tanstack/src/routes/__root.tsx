@@ -130,7 +130,7 @@ function AppLayout() {
       <footer className="border-border/40 border-t">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between px-6 py-4">
           <p className="text-muted-foreground/60 font-mono text-[10px] tracking-wide">
-            @robelest/convex-auth
+            @convex-dev/auth
           </p>
         </div>
       </footer>

@@ -1,9 +1,9 @@
 import google from "@auth/core/providers/google";
-import anonymous from "@robelest/convex-auth/providers/anonymous";
-import passkey from "@robelest/convex-auth/providers/passkey";
-import password from "@robelest/convex-auth/providers/password";
-import totp from "@robelest/convex-auth/providers/totp";
-import { Auth, Portal } from "@robelest/convex-auth/component";
+import anonymous from "@convex-dev/auth/providers/anonymous";
+import passkey from "@convex-dev/auth/providers/passkey";
+import password from "@convex-dev/auth/providers/password";
+import totp from "@convex-dev/auth/providers/totp";
+import { Auth, Portal } from "@convex-dev/auth/component";
 import { components } from "./_generated/api";
 
 const auth = new Auth(components.auth, {

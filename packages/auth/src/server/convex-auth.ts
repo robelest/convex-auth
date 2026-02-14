@@ -5,7 +5,7 @@
  *
  * ```ts
  * // convex/auth.ts
- * import { Auth, Portal } from "@robelest/convex-auth/component";
+ * import { Auth, Portal } from "@convex-dev/auth/component";
  * import google from "@auth/core/providers/google";
  * import { components } from "./_generated/api";
  *

@@ -8,7 +8,7 @@
  * The layout reads `auth.*` and derives a single `screen` discriminant —
  * no boolean flag soup.
  */
-import { client as createAuthClient, type AuthState } from "@robelest/convex-auth/client";
+import { client as createAuthClient, type AuthState } from "@convex-dev/auth/client";
 import type { ConvexClient } from "convex/browser";
 import { base } from "$app/paths";
 

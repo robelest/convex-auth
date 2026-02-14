@@ -6,7 +6,7 @@
  * consolidated `portalInternal` internal mutation with action discriminator.
  *
  * Usage:
- *   npx @robelest/convex-auth portal upload [options]
+ *   npx @convex-dev/auth portal upload [options]
  *
  * Options:
  *   --dist <path>            Path to dist directory (default: ./dist)
@@ -91,7 +91,7 @@ export function parsePortalUploadArgs(args: string[]): ParsedArgs {
 
 function showHelp(): void {
   console.log(`
-Usage: npx @robelest/convex-auth portal upload [options]
+Usage: npx @convex-dev/auth portal upload [options]
 
 Upload portal static files to Convex storage.
 
@@ -104,9 +104,9 @@ Options:
   -h, --help                  Show this help message
 
 Examples:
-  npx @robelest/convex-auth portal upload
-  npx @robelest/convex-auth portal upload --dist packages/portal/build --prod
-  npx @robelest/convex-auth portal upload --build --prod
+  npx @convex-dev/auth portal upload
+  npx @convex-dev/auth portal upload --dist packages/portal/build --prod
+  npx @convex-dev/auth portal upload --build --prod
 `);
 }
 

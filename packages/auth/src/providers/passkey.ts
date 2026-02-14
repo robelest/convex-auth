@@ -7,7 +7,7 @@ import { PasskeyProviderConfig } from "../server/types.js";
  * and synced passkeys using the Web Authentication API.
  *
  * ```ts
- * import passkey from "@robelest/convex-auth/providers/passkey";
+ * import passkey from "@convex-dev/auth/providers/passkey";
  *
  * export const { auth, signIn, signOut, store } = Auth({
  *   component: components.auth,
