@@ -25,7 +25,7 @@ test.todo("convert anonymous user to permanent", async () => {
   const asAnonymous = t.withIdentity({ subject: claims.sub });
   const newTokens = await signInViaMagicLink(
     asAnonymous,
-    "resend",
+    "email",
     "mike@gmail.com",
   );
   expect(newTokens).not.toBeNull();

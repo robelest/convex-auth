@@ -111,25 +111,16 @@ export async function signInViaMagicLink(
   provider: string,
   email: string,
 ) {
-  let code;
+  let code: string;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input, init) => {
       if (
         typeof input === "string" &&
-        (input === "https://api.resend.com/emails" ||
-          input === `${CONVEX_SITE_URL}/auth-email-dispatch`)
+        input === "https://api.resend.com/emails"
       ) {
         const body = String(init.body ?? "");
-        if (input === "https://api.resend.com/emails") {
-          code = body.match(/\?code=([^\s\\]+)/)?.[1] ?? "";
-        } else {
-          const parsed = JSON.parse(body) as { html?: string };
-          code =
-            parsed.html?.match(/\b(\d{6,8})\b/)?.[1] ??
-            parsed.html?.match(/\?code=([^\s\\"'&<>]+)/)?.[1] ??
-            "";
-        }
+        code = body.match(/\?code=([^\s\\]+)/)?.[1] ?? "";
         expect(code).not.toEqual("");
         return new Response(null, { status: 200 });
       }
@@ -143,7 +134,7 @@ export async function signInViaMagicLink(
   // Note: The client doesn't use auth for this call,
   // so ideally this should be `t.withoutIdentity().action(...)`
   const result = await t.action(api.auth.signIn, {
-    params: { code },
+    params: { code: code! },
   });
   return result.tokens ?? null;
 }
@@ -173,16 +164,11 @@ export async function mockResendOTP<T>(send: () => Promise<T>) {
     vi.fn(async (input, init) => {
       if (
         typeof input === "string" &&
-        (input === "https://api.resend.com/emails" ||
-          input === `${CONVEX_SITE_URL}/auth-email-dispatch`)
+        input === "https://api.resend.com/emails"
       ) {
         const body = String(init.body ?? "");
-        const html =
-          input === "https://api.resend.com/emails"
-            ? body
-            : ((JSON.parse(body) as { html?: string }).html ?? "");
-        const byHtmlSelector = cheerio(html)('p[style*="font-size:2.25rem"]').text();
-        const byRegex = html.match(/\b(\d{6,8})\b/)?.[1] ?? "";
+        const byHtmlSelector = cheerio(body)('p[style*="font-size:2.25rem"]').text();
+        const byRegex = body.match(/\b(\d{6,8})\b/)?.[1] ?? "";
         code = byHtmlSelector || byRegex;
         expect(code).not.toEqual("");
         return new Response(JSON.stringify(null), { status: 200 });
@@ -195,32 +181,3 @@ export async function mockResendOTP<T>(send: () => Promise<T>) {
   vi.unstubAllGlobals();
   return { result, code: code! };
 }
-
-export async function signInViaPhone(
-  t: TestConvexForDataModel<DataModel>,
-  provider: string,
-  params: Record<string, unknown>,
-) {
-  await t.action(api.auth.signIn, { provider, params });
-  const code = "123456";
-
-  // Note: The client doesn't use auth for this call,
-  // so ideally this should be `t.withoutIdentity().action(...)`
-  const result = await t.action(api.auth.signIn, {
-    provider,
-    params: { code, ...params },
-  });
-  return result.tokens ?? null;
-}
-
-// function clientId(providerId: string) {
-//   return `AUTH_${envProviderId(providerId)}_ID`;
-// }
-
-// function clientSecret(providerId: string) {
-//   return `AUTH_${envProviderId(providerId)}_SECRET`;
-// }
-
-// function envProviderId(provider: string) {
-//   return provider.toUpperCase().replace(/-/g, "_");
-// }

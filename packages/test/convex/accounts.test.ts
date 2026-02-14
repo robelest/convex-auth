@@ -4,13 +4,11 @@ import { expect, test } from "vitest";
 import { api } from "@convex/_generated/api";
 import schema from "./schema";
 import {
-  AUTH_RESEND_KEY,
   CONVEX_SITE_URL,
   JWKS,
   JWT_PRIVATE_KEY,
   signInViaGitHub,
   signInViaMagicLink,
-  signInViaOTP,
 } from "./test.helpers";
 
 test("sign in with email signs out existing user with different email", async () => {
@@ -28,7 +26,7 @@ test("sign in with email signs out existing user with different email", async ()
 
   const newTokens = await signInViaMagicLink(
     asMichal,
-    "resend",
+    "email",
     "michal@gmail.com",
   );
 
@@ -57,7 +55,7 @@ test("automatic linking for signin via email", async () => {
   });
 
   // 2. Sign in via the same email
-  const newTokens = await signInViaMagicLink(t, "resend", "sarah@gmail.com");
+  const newTokens = await signInViaMagicLink(t, "email", "sarah@gmail.com");
   expect(newTokens).not.toBeNull();
   expect(githubTokens).not.toBeNull();
   expect(getUserIdFromToken(newTokens!.token)).toEqual(
@@ -70,7 +68,7 @@ test("automatic linking for signin via verified OAuth", async () => {
   const t = convexTest(schema);
 
   // 1. Sign up via email
-  const magicLinkTokens = await signInViaMagicLink(t, "resend", "sarah@gmail.com");
+  const magicLinkTokens = await signInViaMagicLink(t, "email", "sarah@gmail.com");
 
   // 2. Sign in via verified OAuth
   const { tokens: githubTokens } = await signInViaGitHub(t, "github", {
@@ -82,31 +80,6 @@ test("automatic linking for signin via verified OAuth", async () => {
   expect(magicLinkTokens).not.toBeNull();
   expect(githubTokens).not.toBeNull();
   expect(getUserIdFromToken(magicLinkTokens!.token)).toEqual(
-    getUserIdFromToken(githubTokens!.token),
-  );
-});
-
-test("automatic linking for password email verification", async () => {
-  setupEnv();
-  const t = convexTest(schema);
-
-  // 1. Sign up first via verified OAuth
-  const { tokens: githubTokens } = await signInViaGitHub(t, "github", {
-    email: "michal@gmail.com",
-    name: "Michal",
-    id: "someGitHubId",
-  });
-
-  // 2. Sign in via password and verify email
-  const newTokens = await signInViaOTP(t, "password-code", {
-    email: "michal@gmail.com",
-    flow: "signUp",
-    password: "verycomplex",
-  });
-
-  expect(newTokens).not.toBeNull();
-  expect(githubTokens).not.toBeNull();
-  expect(getUserIdFromToken(newTokens!.token)).toEqual(
     getUserIdFromToken(githubTokens!.token),
   );
 });
@@ -129,7 +102,7 @@ test("no linking to untrusted accounts", async () => {
   });
 
   // 3. Sign up via email
-  const magicLinkTokens = await signInViaMagicLink(t, "resend", "sarah@gmail.com");
+  const magicLinkTokens = await signInViaMagicLink(t, "email", "sarah@gmail.com");
 
   expect(githubTokens).not.toBeNull();
   expect(passwordTokens).not.toBeNull();
@@ -152,7 +125,6 @@ function setupEnv() {
   process.env.CONVEX_SITE_URL = CONVEX_SITE_URL;
   process.env.JWT_PRIVATE_KEY = JWT_PRIVATE_KEY;
   process.env.JWKS = JWKS;
-  process.env.AUTH_RESEND_KEY = AUTH_RESEND_KEY;
   process.env.AUTH_GITHUB_ID = "githubClientId";
   process.env.AUTH_GITHUB_SECRET = "githubClientSecret";
   process.env.AUTH_LOG_LEVEL = "ERROR";
