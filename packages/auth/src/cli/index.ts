@@ -437,7 +437,7 @@ async function configureConvexConfig(config: ProjectConfig) {
   logStep(config, "Configure convex config file");
   const sourceTemplate = `\
 import { defineApp } from "convex/server";
-import auth from "@robelest/convex-auth/component/convex.config";
+import auth from "@robelest/convex-auth/convex.config";
 
 const app = defineApp();
 
