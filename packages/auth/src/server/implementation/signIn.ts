@@ -170,20 +170,10 @@ async function handleEmailAndPhoneProvider(
     await provider.sendVerificationRequest(
       {
         ...verificationArgs,
-        provider: {
-          ...provider,
-          from:
-            // Simplifies demo configuration of Resend
-            provider.from === "Auth.js <no-reply@authjs.dev>" &&
-            provider.id === "resend"
-              ? "My App <onboarding@resend.dev>"
-              : provider.from,
-        },
-        request: new Request("http://localhost"), // TODO: Document
+        provider,
+        request: new Request("http://localhost"),
         theme: ctx.auth.config.theme,
       },
-      // @ts-expect-error Figure out typing for email providers so they can
-      // access ctx.
       ctx,
     );
   } else if (provider.type === "phone") {

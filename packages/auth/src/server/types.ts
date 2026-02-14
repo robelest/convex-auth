@@ -5,7 +5,7 @@ import {
   OAuth2Config,
   OIDCConfig,
 } from "@auth/core/providers";
-import { Theme } from "@auth/core/types";
+import { Awaitable, Theme } from "@auth/core/types";
 import {
   AnyDataModel,
   FunctionReference,
@@ -89,6 +89,53 @@ export type ConvexAuthConfig = {
    * API keys with scoped permissions and optional per-key rate limiting.
    */
   apiKeys?: ApiKeyConfig;
+  /**
+   * Email transport configuration.
+   *
+   * Required for magic link authentication and the admin portal.
+   * The library generates email content (subject, styled HTML); you
+   * provide the delivery mechanism — Resend, SendGrid, SES, Postmark,
+   * or any other provider.
+   *
+   * When configured, a magic link email provider (`id: "email"`) is
+   * auto-registered — no need to add a separate Auth.js email provider
+   * to `providers`.
+   *
+   * Works seamlessly with the `@convex-dev/resend` Convex component:
+   *
+   * ```ts
+   * import { Resend } from "@convex-dev/resend";
+   *
+   * const resend = new Resend(components.resend, { testMode: false });
+   *
+   * const auth = new Auth(components.auth, {
+   *   providers: [google],
+   *   email: {
+   *     from: "My App <noreply@example.com>",
+   *     send: (ctx, params) => resend.sendEmail(ctx, params),
+   *   },
+   * });
+   * ```
+   *
+   * Or with any email API directly:
+   *
+   * ```ts
+   * email: {
+   *   from: "My App <noreply@example.com>",
+   *   send: async (_ctx, { from, to, subject, html }) => {
+   *     await fetch("https://api.resend.com/emails", {
+   *       method: "POST",
+   *       headers: {
+   *         Authorization: `Bearer ${process.env.AUTH_RESEND_KEY}`,
+   *         "Content-Type": "application/json",
+   *       },
+   *       body: JSON.stringify({ from, to, subject, html }),
+   *     });
+   *   },
+   * },
+   * ```
+   */
+  email?: EmailTransport;
   callbacks?: {
     /**
      * Control which URLs are allowed as a destination after OAuth sign-in
@@ -266,10 +313,29 @@ export interface EmailConfig<
   DataModel extends GenericDataModel = GenericDataModel,
 > extends AuthjsEmailConfig {
   /**
+   * Send the verification token to the user.
+   *
+   * Overrides the Auth.js 1-arg signature to accept an optional
+   * Convex action context as the second argument. Library-native
+   * email providers use `ctx` to call `email.send(ctx, params)`.
+   */
+  sendVerificationRequest: (
+    params: {
+      identifier: string;
+      url: string;
+      expires: Date;
+      provider: AuthjsEmailConfig;
+      token: string;
+      theme: Theme;
+      request: Request;
+    },
+    ctx?: GenericActionCtx<AnyDataModel>,
+  ) => Awaitable<void>;
+  /**
    * Before the token is verified, check other
    * provided parameters.
    *
-   * Used to make sure tha OTPs are accompanied
+   * Used to make sure that OTPs are accompanied
    * with the correct email address.
    */
   authorize?: (
@@ -530,6 +596,58 @@ export type AuthProviderMaterializedConfig =
   | ConvexCredentialsConfig
   | PasskeyProviderConfig
   | TotpProviderConfig;
+
+// ============================================================================
+// Email transport types
+// ============================================================================
+
+/**
+ * Email delivery parameters passed to `EmailTransport.send`.
+ */
+export interface EmailMessage {
+  /** Sender address (from `email.from` in your Auth config). */
+  from: string;
+  /** Recipient email address. */
+  to: string;
+  /** Email subject line. */
+  subject: string;
+  /** HTML body content. */
+  html: string;
+}
+
+/**
+ * Email transport configuration for the Auth library.
+ *
+ * Provides a delivery mechanism for library-generated emails
+ * (magic links, portal admin sign-in). The library owns the
+ * email content; you provide the transport.
+ */
+export interface EmailTransport {
+  /** Sender address shown in the From field (e.g. "My App \<noreply@example.com\>"). */
+  from: string;
+  /**
+   * Deliver an email. Called by the library for magic links and portal emails.
+   *
+   * Receives the Convex action context as the first argument, enabling
+   * use with Convex components like `@convex-dev/resend`:
+   *
+   * ```ts
+   * send: (ctx, params) => resend.sendEmail(ctx, params)
+   * ```
+   *
+   * For plain HTTP email APIs, ignore the `ctx` parameter:
+   *
+   * ```ts
+   * send: async (_ctx, { from, to, subject, html }) => {
+   *   await fetch("https://api.resend.com/emails", { ... });
+   * }
+   * ```
+   */
+  send: (
+    ctx: GenericActionCtx<any>,
+    params: EmailMessage,
+  ) => Promise<void>;
+}
 
 // ============================================================================
 // API Key types

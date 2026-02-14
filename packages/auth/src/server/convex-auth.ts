@@ -6,11 +6,24 @@
  * ```ts
  * // convex/auth.ts
  * import { Auth, Portal } from "@robelest/convex-auth/component";
- * import github from "@auth/core/providers/github";
+ * import google from "@auth/core/providers/google";
  * import { components } from "./_generated/api";
  *
  * export const auth = new Auth(components.auth, {
- *   providers: [github],
+ *   providers: [google],
+ *   email: {
+ *     from: "My App <noreply@example.com>",
+ *     send: async (_ctx, { from, to, subject, html }) => {
+ *       await fetch("https://api.resend.com/emails", {
+ *         method: "POST",
+ *         headers: {
+ *           Authorization: `Bearer ${process.env.AUTH_RESEND_KEY}`,
+ *           "Content-Type": "application/json",
+ *         },
+ *         body: JSON.stringify({ from, to, subject, html }),
+ *       });
+ *     },
+ *   },
  * });
  * export const { signIn, signOut, store } = auth;
  * export const { portalQuery, portalMutation, portalInternal } = Portal(auth);
@@ -23,27 +36,35 @@ import {
   queryGeneric,
   mutationGeneric,
   internalMutationGeneric,
+  httpActionGeneric,
 } from "convex/server";
 import type { HttpRouter } from "convex/server";
 import { v } from "convex/values";
 import type { ComponentApi as AuthComponentApi } from "../component/_generated/component.js";
 import { Auth as AuthFactory } from "./implementation/index.js";
-import type { ConvexAuthConfig } from "./types.js";
+import type { ConvexAuthConfig, EmailTransport } from "./types.js";
 import { registerStaticRoutes } from "@convex-dev/self-hosting";
 import { portalMagicLinkEmail } from "./portal-email.js";
-import email from "../providers/email.js";
+import { defaultMagicLinkEmail } from "./email-templates.js";
+import emailProvider from "../providers/email.js";
+import { AUTH_VERSION } from "./version.js";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 /**
- * Config for the ConvexAuth class. Extends the standard auth config.
+ * Config for the Auth class. Extends the standard auth config
+ * minus `component` (which is passed as the first constructor argument).
  *
- * Portal functionality (admin dashboard, magic link provider, static hosting)
- * is always available — no configuration flag needed. The portal UI works
- * when you export `portalQuery`, `portalMutation`, `portalInternal` from
- * your `convex/auth.ts` and upload the portal static files via CLI.
+ * When `email` is configured, the library auto-registers:
+ * - A magic link provider (`id: "email"`) for user-facing sign-in
+ * - A portal provider (`id: "portal"`) for admin dashboard sign-in
+ *
+ * Portal functionality is always available — no configuration flag
+ * needed. The portal UI works when you export `portalQuery`,
+ * `portalMutation`, `portalInternal` from your `convex/auth.ts`
+ * and upload the portal static files via CLI.
  */
 export type AuthClassConfig = Omit<ConvexAuthConfig, "component">;
 
@@ -84,7 +105,11 @@ async function requirePortalAdmin(
  *
  * ```ts
  * export const auth = new Auth(components.auth, {
- *   providers: [github, resend({ ... })],
+ *   providers: [google, password],
+ *   email: {
+ *     from: "My App <noreply@example.com>",
+ *     send: (ctx, params) => resend.sendEmail(ctx, params),
+ *   },
  * });
  * export const { signIn, signOut, store } = auth;
  * export const { portalQuery, portalMutation, portalInternal } = Portal(auth);
@@ -133,47 +158,63 @@ export class Auth {
       ? `${process.env.CONVEX_SITE_URL.replace(/\/$/, "")}/auth`
       : "/auth";
 
-    // Auto-register the `portal` email provider for magic link sign-in
+    const emailTransport = config.email;
     const providers = [...config.providers];
+
+    // Auto-register user-facing magic link provider when email is configured.
+    // Skipped if the user already registered their own provider with id "email".
+    const hasUserEmailProvider = providers.some(
+      (p) => typeof p === "object" && "id" in p && p.id === "email",
+    );
+    if (emailTransport && !hasUserEmailProvider) {
+      providers.push(
+        emailProvider({
+          id: "email",
+          maxAge: 60 * 60 * 24, // 24 hours
+          authorize: undefined, // Magic link — no OTP email check needed
+          async sendVerificationRequest({ identifier, url }, ctx) {
+            if (!ctx) {
+              throw new Error("Action context is required for email delivery");
+            }
+            const { host } = new URL(url);
+            await emailTransport.send(ctx, {
+              from: emailTransport.from,
+              to: identifier,
+              subject: `Sign in to ${host}`,
+              html: defaultMagicLinkEmail(url, host),
+            });
+          },
+        }),
+      );
+    }
+
+    // Auto-register portal admin magic link provider.
+    // Uses its own styled dark-theme email template.
     providers.push(
-      email({
+      emailProvider({
         id: "portal",
         maxAge: 60 * 60 * 24, // 24 hours
-        authorize: undefined, // Magic link — no email check needed
-        async sendVerificationRequest({ identifier, url, expires }) {
+        authorize: undefined, // Magic link — no OTP email check needed
+        async sendVerificationRequest({ identifier, url, expires }, ctx) {
+          if (!emailTransport) {
+            throw new Error(
+              "Auth email config is required for the portal. " +
+              "Configure email: { from, send } in your Auth constructor.",
+            );
+          }
+          if (!ctx) {
+            throw new Error("Action context is required for email delivery");
+          }
           const hours = Math.max(
             1,
             Math.floor((+expires - Date.now()) / (60 * 60 * 1000)),
           );
-          const html = portalMagicLinkEmail(url, hours);
-          const siteUrl = process.env.CONVEX_SITE_URL;
-          if (!siteUrl) {
-            throw new Error(
-              "CONVEX_SITE_URL is required to send portal magic link email",
-            );
-          }
-          const response = await fetch(`${siteUrl}/auth-email-dispatch`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(process.env.AUTH_EMAIL_DISPATCH_SECRET
-                ? {
-                    "x-auth-email-dispatch-secret":
-                      process.env.AUTH_EMAIL_DISPATCH_SECRET,
-                  }
-                : {}),
-            },
-            body: JSON.stringify({
-              to: identifier,
-              subject: "Sign in to Convex Auth Portal",
-              html,
-            }),
+          await emailTransport.send(ctx, {
+            from: emailTransport.from,
+            to: identifier,
+            subject: "Sign in to Auth Portal",
+            html: portalMagicLinkEmail(url, hours),
           });
-          if (!response.ok) {
-            throw new Error(
-              `Could not send portal magic link email: ${response.status}`,
-            );
-          }
         },
       }),
     );
@@ -213,8 +254,35 @@ export class Auth {
     // Core auth routes (OAuth, JWKS, etc.)
     this._auth.addHttpRoutes(http);
 
-    // Portal static file serving
     const prefix = opts?.pathPrefix ?? "/auth";
+
+    // Portal configuration endpoint — serves Convex URLs + version info.
+    // The portal SPA fetches this at startup to discover its Convex backend,
+    // which is critical for custom domain deployments where the hostname
+    // alone doesn't reveal the Convex cloud URL.
+    // Registered as an exact path match before the static file prefix catch-all.
+    http.route({
+      path: `${prefix}/.well-known/portal-config`,
+      method: "GET",
+      handler: httpActionGeneric(async () => {
+        return new Response(
+          JSON.stringify({
+            convexUrl: process.env.CONVEX_CLOUD_URL,
+            siteUrl: process.env.CONVEX_SITE_URL,
+            version: AUTH_VERSION,
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control":
+                "public, max-age=60, stale-while-revalidate=60",
+              "Access-Control-Allow-Origin": "*",
+            },
+          },
+        );
+      }),
+    });
 
     // Create a shim that maps the self-hosting ComponentApi shape
     // to the auth component's portalBridge functions
