@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { base } from '$app/paths';
+	import { portalHref } from '$lib/stores/auth.svelte';
 	import { useQuery, useConvexClient } from 'convex-svelte';
 	import { api } from '@convex/_generated/api';
 	import Badge from '$lib/components/ui/badge.svelte';
@@ -75,7 +75,7 @@
 <div class="space-y-4">
 	<!-- Back link -->
 	<a
-		href="{base}/users"
+		href={portalHref('/users')}
 		class="inline-flex items-center gap-1 text-[var(--cp-text-xs)] text-cp-text-muted hover:text-cp-text transition-colors"
 	>
 		<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
