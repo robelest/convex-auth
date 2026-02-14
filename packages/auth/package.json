@@ -23,11 +23,12 @@
   "bin": "./dist/bin.cjs",
   "sideEffects": false,
   "scripts": {
+    "build:version": "node ../../scripts/generate-version.js",
     "build:bin": "esbuild src/cli/index.ts --bundle --platform=node --format=cjs --outfile=dist/bin.cjs",
     "build:server": "tsc --project tsconfig.server.json",
     "build:client": "tsc --project tsconfig.client.json",
     "build:component": "tsc --project tsconfig.component.json",
-    "build": "rm -rf dist && bun run build:bin && bun run build:server && bun run build:client && bun run build:component",
+    "build": "rm -rf dist && bun run build:version && bun run build:bin && bun run build:server && bun run build:client && bun run build:component",
     "docs": "bun run --cwd ../../docs dev",
     "lint": "tsc --project tsconfig.server.json --noEmit && tsc --project tsconfig.client.json --noEmit && tsc --project tsconfig.component.json --noEmit && bun run --cwd ../.. lint",
     "spellcheck": "cspell \"docs/pages/**/*.md*\"",

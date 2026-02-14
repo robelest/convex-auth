@@ -14,6 +14,10 @@
 
 # package build artifacts
 /packages/auth/dist
+/packages/auth/src/server/version.ts
+
+# CDN deploy staging
+/cdn-stage
 
 # testing
 /coverage
