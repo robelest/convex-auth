@@ -36,11 +36,26 @@ type TotpActions = {
   verify: (opts: { code: string; verifier: string }) => Promise<void>
 }
 
+type DeviceCodeResult = {
+  deviceCode: string
+  userCode: string
+  verificationUri: string
+  verificationUriComplete: string
+  expiresIn: number
+  interval: number
+}
+
+type DeviceActions = {
+  poll: (code: DeviceCodeResult) => Promise<void>
+  verify: (userCode: string) => Promise<void>
+}
+
 const AuthContext = createContext<{
   signIn: (provider?: string, params?: FormData | Record<string, Value>) => Promise<{ totpRequired?: boolean; verifier?: string }>
   signOut: () => Promise<void>
   passkey: PasskeyActions
   totp: TotpActions
+  device: DeviceActions
   state: AuthState
 } | null>(null)
 
@@ -57,10 +72,10 @@ export function useAuthState() {
   return useAuth().state
 }
 
-/** Access `signIn`, `signOut`, and `passkey` actions. */
+/** Access `signIn`, `signOut`, `passkey`, `totp`, and `device` actions. */
 export function useAuthActions() {
-  const { signIn, signOut, passkey, totp } = useAuth()
-  return { signIn, signOut, passkey, totp }
+  const { signIn, signOut, passkey, totp, device } = useAuth()
+  return { signIn, signOut, passkey, totp, device }
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +127,7 @@ export function ConvexAuthProvider({
       signOut: auth.signOut,
       passkey: auth.passkey,
       totp: auth.totp,
+      device: auth.device,
       state,
     }),
     [auth, state],

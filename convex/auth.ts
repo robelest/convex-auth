@@ -1,18 +1,31 @@
-import google from "@auth/core/providers/google";
-import anonymous from "@convex-dev/auth/providers/anonymous";
-import passkey from "@convex-dev/auth/providers/passkey";
-import password from "@convex-dev/auth/providers/password";
-import totp from "@convex-dev/auth/providers/totp";
-import { Auth, Portal } from "@convex-dev/auth/component";
+import { Google } from "arctic";
+import { Device, OAuth } from "@robelest/convex-auth/providers";
+import anonymous from "@robelest/convex-auth/providers/anonymous";
+import passkey from "@robelest/convex-auth/providers/passkey";
+import password from "@robelest/convex-auth/providers/password";
+import totp from "@robelest/convex-auth/providers/totp";
+import { Auth, Portal } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
 
 const auth = new Auth(components.auth, {
   providers: [
-    google,
+    OAuth(
+      new Google(
+        process.env.AUTH_GOOGLE_ID!,
+        process.env.AUTH_GOOGLE_SECRET!,
+        `${process.env.CONVEX_SITE_URL}/api/auth/signin/google`,
+      ),
+      { scopes: ["openid", "profile", "email"] },
+    ),
     password,
     passkey,
     totp({ issuer: "ConvexAuth Example" }),
     anonymous,
+    new Device({
+      verificationUri: process.env.APP_URL
+        ? `${process.env.APP_URL}/device`
+        : "http://localhost:3000/device",
+    }),
   ],
   email: {
     from: process.env.AUTH_EMAIL ?? "My App <onboarding@resend.dev>",
