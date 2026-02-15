@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { portalHref } from '$lib/stores/auth.svelte';
-	import Icon from '$lib/components/ui/icon.svelte';
+	import { portalHref, signOut } from '$lib/stores/auth.svelte';
+	import { Users, Monitor, Key, ShieldCheck, UsersRound, LogOut } from '@lucide/svelte';
+	import type { Component } from 'svelte';
 
-	type IconName = 'users' | 'sessions' | 'keys';
-
-	const navItems: { label: string; href: string; icon: IconName }[] = [
-		{ label: 'Users', href: portalHref('/users'), icon: 'users' },
-		{ label: 'Sessions', href: portalHref('/sessions'), icon: 'sessions' },
-		{ label: 'API Keys', href: portalHref('/keys'), icon: 'keys' },
+	const navItems: { label: string; href: string; icon: Component }[] = [
+		{ label: 'Users', href: portalHref('/users'), icon: Users },
+		{ label: 'Groups', href: portalHref('/groups'), icon: UsersRound },
+		{ label: 'Sessions', href: portalHref('/sessions'), icon: Monitor },
+		{ label: 'API Keys', href: portalHref('/keys'), icon: Key },
 	];
 
 	function isActive(href: string): boolean {
@@ -17,14 +17,14 @@
 </script>
 
 <aside
-	class="flex flex-col w-[var(--cp-sidebar-width)] border-r border-cp-border bg-cp-bg shrink-0"
+	class="flex flex-col w-[var(--cp-sidebar-width)] border-r border-border bg-background shrink-0"
 >
 	<!-- Logo / Title -->
-	<div class="flex items-center gap-2 h-[var(--cp-header-height)] px-4 border-b border-cp-border">
-		<div class="w-5 h-5 rounded bg-cp-accent flex items-center justify-center">
-			<Icon name="shield" size={12} class="text-white" strokeWidth={2.5} />
+	<div class="flex items-center gap-2 h-[var(--cp-header-height)] px-4 border-b border-border">
+		<div class="w-5 h-5 rounded bg-primary flex items-center justify-center">
+			<ShieldCheck class="text-primary-foreground" size={12} strokeWidth={2.5} />
 		</div>
-		<span class="font-semibold text-[var(--cp-text-md)] text-cp-text">Auth Portal</span>
+		<span class="font-semibold text-[var(--cp-text-md)] text-foreground">Auth Portal</span>
 	</div>
 
 	<!-- Navigation -->
@@ -32,20 +32,24 @@
 		{#each navItems as item}
 			<a
 				href={item.href}
-				class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-[var(--cp-radius-sm)] text-[var(--cp-text-sm)] transition-colors {isActive(item.href)
-					? 'bg-cp-active text-cp-text'
-					: 'text-cp-text-secondary hover:bg-cp-hover hover:text-cp-text'}"
+				class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[var(--cp-text-sm)] transition-colors {isActive(item.href)
+					? 'bg-accent text-accent-foreground'
+					: 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
 			>
-				<Icon name={item.icon} size={14} />
+				<item.icon size={14} />
 				{item.label}
 			</a>
 		{/each}
 	</nav>
 
-	<!-- Footer -->
-	<div class="px-3 py-3 border-t border-cp-border">
-		<div class="text-[var(--cp-text-xs)] text-cp-text-muted">
-			Convex Auth Portal
-		</div>
+	<!-- Sign out -->
+	<div class="px-2 py-3 border-t border-border">
+		<button
+			onclick={() => signOut()}
+			class="flex items-center gap-2.5 w-full px-2.5 py-1.5 rounded-md text-[var(--cp-text-sm)] text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+		>
+			<LogOut size={14} />
+			Sign out
+		</button>
 	</div>
 </aside>

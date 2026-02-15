@@ -3,8 +3,8 @@
 	import { portalHref } from '$lib/stores/auth.svelte';
 	import { useQuery } from 'convex-svelte';
 	import { api } from '@convex/_generated/api';
-	import DataTable from '$lib/components/ui/data-table.svelte';
-	import Badge from '$lib/components/ui/badge.svelte';
+	import * as Table from '$lib/components/ui/table';
+	import { Badge } from '$lib/components/ui/badge';
 	import { formatRelative, truncateId } from '$lib/utils/format';
 
 	interface PortalUser {
@@ -20,78 +20,102 @@
 	const users = useQuery(api.auth.portalQuery, { action: 'listUsers' });
 
 	const typedUsers = $derived((users.data ?? []) as PortalUser[]);
-
-	const columns = [
-		{ key: 'id', label: 'ID', width: '120px' },
-		{ key: 'name', label: 'Name' },
-		{ key: 'email', label: 'Email' },
-		{ key: 'status', label: 'Status', width: '100px' },
-		{ key: 'created', label: 'Created', width: '120px' },
-	];
-
-	function handleRowClick(user: PortalUser) {
-		goto(portalHref(`/users/${user._id}`));
-	}
 </script>
 
 <div class="space-y-4">
 	<!-- Page header -->
 	<div class="flex items-center justify-between">
 		<div>
-			<p class="text-[var(--cp-text-xs)] text-cp-text-muted">
+			<h1 class="text-lg font-semibold">Users</h1>
+			<p class="text-sm text-muted-foreground">
 				{users.isLoading ? '...' : `${typedUsers.length} users`}
 			</p>
 		</div>
 	</div>
 
 	<!-- Users table -->
-	<div class="rounded-[var(--cp-radius-lg)] border border-cp-border bg-cp-bg-secondary overflow-hidden">
-		<DataTable
-			data={typedUsers}
-			{columns}
-			loading={users.isLoading}
-			emptyTitle="No users found"
-			emptyDescription="Users will appear here once they sign up."
-			onRowClick={handleRowClick}
-		>
-			{#snippet row(user)}
-				<td class="px-4 py-2.5 font-mono text-[var(--cp-text-xs)] text-cp-text-muted">
-					{truncateId(user._id)}
-				</td>
-				<td class="px-4 py-2.5">
-					<div class="flex items-center gap-2">
-						{#if user.image}
-							<img
-								src={user.image}
-								alt=""
-								class="w-5 h-5 rounded-full"
-							/>
-						{:else}
-							<div class="w-5 h-5 rounded-full bg-cp-bg-tertiary flex items-center justify-center text-[var(--cp-text-xs)] text-cp-text-muted">
-								{(user.name ?? user.email ?? '?')[0]?.toUpperCase()}
+	<div class="rounded-lg border">
+		<Table.Root>
+			<Table.Header>
+				<Table.Row>
+					<Table.Head class="w-[120px]">ID</Table.Head>
+					<Table.Head>Name</Table.Head>
+					<Table.Head>Email</Table.Head>
+					<Table.Head class="w-[100px]">Status</Table.Head>
+					<Table.Head class="w-[120px]">Created</Table.Head>
+				</Table.Row>
+			</Table.Header>
+			<Table.Body>
+				{#if users.isLoading}
+					{#each Array(5) as _}
+						<Table.Row>
+							<Table.Cell><div class="cp-skeleton h-3 w-24 rounded"></div></Table.Cell>
+							<Table.Cell>
+								<div class="flex items-center gap-2">
+									<div class="cp-skeleton h-5 w-5 rounded-full"></div>
+									<div class="cp-skeleton h-3 w-28 rounded"></div>
+								</div>
+							</Table.Cell>
+							<Table.Cell><div class="cp-skeleton h-3 w-32 rounded"></div></Table.Cell>
+							<Table.Cell><div class="cp-skeleton h-5 w-16 rounded-full"></div></Table.Cell>
+							<Table.Cell><div class="cp-skeleton h-3 w-16 rounded"></div></Table.Cell>
+						</Table.Row>
+					{/each}
+				{:else if typedUsers.length === 0}
+					<Table.Row>
+						<Table.Cell colspan={5}>
+							<div class="flex flex-col items-center justify-center py-12 text-center">
+								<p class="text-sm font-medium">No users found</p>
+								<p class="text-sm text-muted-foreground">Users will appear here once they sign up.</p>
 							</div>
-						{/if}
-						<span class="text-cp-text truncate">
-							{user.name ?? '—'}
-						</span>
-					</div>
-				</td>
-				<td class="px-4 py-2.5 text-cp-text-secondary truncate">
-					{user.email ?? '—'}
-				</td>
-				<td class="px-4 py-2.5">
-					{#if user.isAnonymous}
-						<Badge variant="muted">Anonymous</Badge>
-					{:else if user.emailVerificationTime}
-						<Badge variant="success">Verified</Badge>
-					{:else}
-						<Badge variant="warning">Unverified</Badge>
-					{/if}
-				</td>
-				<td class="px-4 py-2.5 text-[var(--cp-text-xs)] text-cp-text-muted whitespace-nowrap">
-					{formatRelative(user._creationTime)}
-				</td>
-			{/snippet}
-		</DataTable>
+						</Table.Cell>
+					</Table.Row>
+				{:else}
+					{#each typedUsers as user (user._id)}
+						<Table.Row
+							class="hover:bg-accent/50 cursor-pointer"
+							onclick={() => goto(portalHref(`/users/${user._id}`))}
+						>
+							<Table.Cell class="font-mono text-xs text-muted-foreground">
+								{truncateId(user._id)}
+							</Table.Cell>
+							<Table.Cell>
+								<div class="flex items-center gap-2">
+									{#if user.image}
+										<img
+											src={user.image}
+											alt=""
+											class="h-5 w-5 rounded-full object-cover"
+										/>
+									{:else}
+										<div
+											class="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-xs text-muted-foreground"
+										>
+											{(user.name ?? user.email ?? '?')[0]?.toUpperCase()}
+										</div>
+									{/if}
+									<span class="truncate">{user.name ?? '—'}</span>
+								</div>
+							</Table.Cell>
+							<Table.Cell class="text-muted-foreground truncate">
+								{user.email ?? '—'}
+							</Table.Cell>
+							<Table.Cell>
+								{#if user.isAnonymous}
+									<Badge variant="secondary">Anonymous</Badge>
+								{:else if user.emailVerificationTime}
+									<Badge variant="default" class="bg-green-600 hover:bg-green-600/90 border-transparent">Verified</Badge>
+								{:else}
+									<Badge variant="outline" class="text-yellow-600 dark:text-yellow-500">Unverified</Badge>
+								{/if}
+							</Table.Cell>
+							<Table.Cell class="text-xs text-muted-foreground whitespace-nowrap">
+								{formatRelative(user._creationTime)}
+							</Table.Cell>
+						</Table.Row>
+					{/each}
+				{/if}
+			</Table.Body>
+		</Table.Root>
 	</div>
 </div>

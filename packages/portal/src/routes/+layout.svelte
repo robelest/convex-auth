@@ -1,9 +1,10 @@
 <script lang="ts">
 	import '../app.css';
+	import { untrack } from 'svelte';
 	import { setupConvex, useConvexClient, useQuery } from 'convex-svelte';
 	import { api } from '@convex/_generated/api';
 	import Sidebar from '$lib/components/layout/sidebar.svelte';
-	import Header from '$lib/components/layout/header.svelte';
+
 	import LoadingScreen from '$lib/components/screens/loading.svelte';
 	import LoginScreen from '$lib/components/screens/login-screen.svelte';
 	import InviteScreen from '$lib/components/screens/invite-screen.svelte';
@@ -19,29 +20,27 @@
 
 	const { data, children } = $props();
 
-	// Extract discovery result once — it's set by the load function and
-	// never changes (not a reactive subscription). Using $derived to read
-	// from the reactive `data` prop silences the Svelte compiler warning.
-	const discovery = $derived(data.discovery);
-	const hasConvex = $derived(!!discovery);
+	// Capture discovery once — the load function resolves it before mount
+	// and it never changes. Use untrack to avoid Svelte warning about
+	// reading reactive props outside a reactive context.
+	const discovery = untrack(() => data.discovery);
+	const hasConvex = !!discovery;
 
 	// ---- Convex setup (only if we have a URL) ----
 	// setupConvex + useConvexClient must be called synchronously during
 	// component init (they use Svelte context). Safe because the load
 	// function has already resolved `discovery` before this component mounts.
 
-	if (data.discovery) {
-		setupConvex(data.discovery.url);
+	if (discovery) {
+		setupConvex(discovery.url);
 		const convex = useConvexClient();
 		initAuth(convex);
 
-		// Store server config if available (self-hosted mode)
-		if (data.discovery.config) {
-			auth.serverConfig = data.discovery.config;
+		if (discovery.config) {
+			auth.serverConfig = discovery.config;
 		}
-		// Store deployment slug (CDN mode)
-		if (data.discovery.slug) {
-			auth.slug = data.discovery.slug;
+		if (discovery.slug) {
+			auth.slug = discovery.slug;
 		}
 	}
 
@@ -116,13 +115,10 @@
 
 {:else}
 	<!-- dashboard -->
-	<div class="flex h-screen overflow-hidden bg-cp-bg text-cp-text">
+	<div class="flex h-screen overflow-hidden bg-background text-foreground">
 		<Sidebar />
-		<div class="flex flex-col flex-1 min-w-0">
-			<Header />
-			<main class="flex-1 overflow-y-auto p-6">
-				{@render children()}
-			</main>
-		</div>
+		<main class="flex-1 min-w-0 overflow-y-auto p-6">
+			{@render children()}
+		</main>
 	</div>
 {/if}

@@ -181,7 +181,7 @@ export function initAuth(convex: ConvexClient): void {
 	auth.inviteState = auth.inviteToken ? "pending" : "none";
 
 	_client = createAuthClient({ convex });
-	_client.onChange((state) => { auth.state = state; });
+	_client.onChange((state: { isLoading: boolean; isAuthenticated: boolean; token: string | null }) => { auth.state = state; });
 
 	auth.initialized = true;
 }
