@@ -1,4 +1,4 @@
-import { throwAuthError } from "./errors.js";
+import { throwAuthError } from "./errors";
 
 export function requireEnv(name: string) {
   const value = process.env[name];

@@ -1,6 +1,6 @@
 // Workspace settings
 {
-  "typescript.preferences.importModuleSpecifierEnding": "js",
+  "typescript.preferences.importModuleSpecifierEnding": "minimal",
   "files.exclude": {
     ".vscode": true,
     "dist": true,

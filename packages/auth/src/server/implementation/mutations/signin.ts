@@ -1,12 +1,12 @@
 import { GenericId, Infer, v } from "convex/values";
-import { ActionCtx, MutationCtx, SessionInfo } from "../types.js";
-import * as Provider from "../provider.js";
+import { ActionCtx, MutationCtx, SessionInfo } from "../types";
+import * as Provider from "../provider";
 import {
   createNewAndDeleteExistingSession,
   maybeGenerateTokensForSession,
-} from "../sessions.js";
-import { LOG_LEVELS, logWithLevel } from "../utils.js";
-import { AUTH_STORE_REF } from "./store.js";
+} from "../sessions";
+import { LOG_LEVELS, logWithLevel } from "../utils";
+import { AUTH_STORE_REF } from "./store";
 
 export const signInArgs = v.object({
   userId: v.string(),

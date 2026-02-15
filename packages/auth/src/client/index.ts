@@ -7,7 +7,7 @@ export {
   parseAuthError,
   AUTH_ERRORS,
   type AuthErrorCode,
-} from "../server/errors.js";
+} from "../server/errors";
 
 /**
  * Structural interface for any Convex client.

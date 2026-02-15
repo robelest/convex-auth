@@ -1,10 +1,10 @@
 import { GenericId, Infer, v } from "convex/values";
-import { deleteSession } from "../sessions.js";
-import { ActionCtx, MutationCtx } from "../types.js";
-import { LOG_LEVELS, logWithLevel } from "../utils.js";
-import * as Provider from "../provider.js";
-import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./store.js";
+import { deleteSession } from "../sessions";
+import { ActionCtx, MutationCtx } from "../types";
+import { LOG_LEVELS, logWithLevel } from "../utils";
+import * as Provider from "../provider";
+import { authDb } from "../db";
+import { AUTH_STORE_REF } from "./store";
 
 export const invalidateSessionsArgs = v.object({
   userId: v.string(),

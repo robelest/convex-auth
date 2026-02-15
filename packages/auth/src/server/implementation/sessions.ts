@@ -1,6 +1,6 @@
 import { GenericId } from "convex/values";
-import { ConvexAuthConfig } from "../types.js";
-import { Doc, MutationCtx, SessionInfo } from "./types.js";
+import { ConvexAuthConfig } from "../types";
+import { Doc, MutationCtx, SessionInfo } from "./types";
 import { Auth } from "convex/server";
 import {
   LOG_LEVELS,
@@ -8,14 +8,14 @@ import {
   logWithLevel,
   maybeRedact,
   stringToNumber,
-} from "./utils.js";
-import { generateToken } from "./tokens.js";
+} from "./utils";
+import { generateToken } from "./tokens";
 import {
   createRefreshToken,
   formatRefreshToken,
   deleteAllRefreshTokens,
-} from "./refresh.js";
-import { authDb } from "./db.js";
+} from "./refresh";
+import { authDb } from "./db";
 
 const DEFAULT_SESSION_TOTAL_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 

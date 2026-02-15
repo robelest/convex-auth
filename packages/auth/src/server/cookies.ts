@@ -1,4 +1,4 @@
-import { isLocalHost } from "./utils.js";
+import { isLocalHost } from "./utils";
 
 export const SHARED_COOKIE_OPTIONS = {
   httpOnly: true,

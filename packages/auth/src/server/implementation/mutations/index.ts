@@ -1,49 +1,49 @@
 import { Infer, v } from "convex/values";
-import { MutationCtx } from "../types.js";
-import { signInArgs, signInImpl } from "./signin.js";
-import { signOutImpl } from "./signout.js";
-import { refreshSessionArgs, refreshSessionImpl } from "./refresh.js";
+import { MutationCtx } from "../types";
+import { signInArgs, signInImpl } from "./signin";
+import { signOutImpl } from "./signout";
+import { refreshSessionArgs, refreshSessionImpl } from "./refresh";
 import {
   verifyCodeAndSignInArgs,
   verifyCodeAndSignInImpl,
-} from "./verify.js";
+} from "./verify";
 import {
   verifierSignatureArgs,
   verifierSignatureImpl,
-} from "./signature.js";
-import { userOAuthArgs, userOAuthImpl } from "./oauth.js";
+} from "./signature";
+import { userOAuthArgs, userOAuthImpl } from "./oauth";
 import {
   createVerificationCodeArgs,
   createVerificationCodeImpl,
-} from "./code.js";
+} from "./code";
 import {
   createAccountFromCredentialsArgs,
   createAccountFromCredentialsImpl,
-} from "./register.js";
+} from "./register";
 import {
   retrieveAccountWithCredentialsArgs,
   retrieveAccountWithCredentialsImpl,
-} from "./retrieve.js";
-import { modifyAccountArgs, modifyAccountImpl } from "./account.js";
+} from "./retrieve";
+import { modifyAccountArgs, modifyAccountImpl } from "./account";
 import {
   invalidateSessionsArgs,
   invalidateSessionsImpl,
-} from "./invalidate.js";
-import * as Provider from "../provider.js";
-import { verifierImpl } from "./verifier.js";
-import { LOG_LEVELS, logWithLevel } from "../utils.js";
-export { callInvalidateSessions } from "./invalidate.js";
-export { callModifyAccount } from "./account.js";
-export { callRetreiveAccountWithCredentials } from "./retrieve.js";
-export { callCreateAccountFromCredentials } from "./register.js";
-export { callCreateVerificationCode } from "./code.js";
-export { callUserOAuth } from "./oauth.js";
-export { callVerifierSignature } from "./signature.js";
-export { callVerifyCodeAndSignIn } from "./verify.js";
-export { callVerifier } from "./verifier.js";
-export { callRefreshSession } from "./refresh.js";
-export { callSignOut } from "./signout.js";
-export { callSignIn } from "./signin.js";
+} from "./invalidate";
+import * as Provider from "../provider";
+import { verifierImpl } from "./verifier";
+import { LOG_LEVELS, logWithLevel } from "../utils";
+export { callInvalidateSessions } from "./invalidate";
+export { callModifyAccount } from "./account";
+export { callRetreiveAccountWithCredentials } from "./retrieve";
+export { callCreateAccountFromCredentials } from "./register";
+export { callCreateVerificationCode } from "./code";
+export { callUserOAuth } from "./oauth";
+export { callVerifierSignature } from "./signature";
+export { callVerifyCodeAndSignIn } from "./verify";
+export { callVerifier } from "./verifier";
+export { callRefreshSession } from "./refresh";
+export { callSignOut } from "./signout";
+export { callSignIn } from "./signin";
 
 export const storeArgs = v.object({
   args: v.union(

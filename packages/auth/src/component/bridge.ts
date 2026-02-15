@@ -8,8 +8,8 @@
  */
 
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server.js";
-import { components } from "./_generated/api.js";
+import { query, mutation } from "./_generated/server";
+import { components } from "./_generated/api";
 
 // ============================================================================
 // Queries — delegate to selfHosting.lib.*

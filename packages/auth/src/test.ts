@@ -1,6 +1,6 @@
 import type { GenericSchema, SchemaDefinition } from "convex/server";
 import type { TestConvex } from "convex-test";
-import schema from "./component/schema.js";
+import schema from "./component/schema";
 
 type ImportMetaWithGlob = ImportMeta & {
   glob: (pattern: string) => Record<string, () => Promise<unknown>>;

@@ -8,9 +8,9 @@
  * @module
  */
 
-import { sha256, generateRandomString } from "./utils.js";
-import type { KeyScope, ScopeChecker } from "../types.js";
-import { throwAuthError } from "../errors.js";
+import { sha256, generateRandomString } from "./utils";
+import type { KeyScope, ScopeChecker } from "../types";
+import { throwAuthError } from "../errors";
 
 // ============================================================================
 // Constants

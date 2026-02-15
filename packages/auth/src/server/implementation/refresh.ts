@@ -1,15 +1,15 @@
 import { GenericId } from "convex/values";
-import { ConvexAuthConfig } from "../types.js";
-import { throwAuthError } from "../errors.js";
-import { Doc, MutationCtx } from "./types.js";
+import { ConvexAuthConfig } from "../types";
+import { throwAuthError } from "../errors";
+import { Doc, MutationCtx } from "./types";
 import {
   LOG_LEVELS,
   REFRESH_TOKEN_DIVIDER,
   logWithLevel,
   maybeRedact,
   stringToNumber,
-} from "./utils.js";
-import { authDb } from "./db.js";
+} from "./utils";
+import { authDb } from "./db";
 
 const DEFAULT_SESSION_INACTIVE_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 export const REFRESH_TOKEN_REUSE_WINDOW_MS = 10 * 1000; // 10 seconds

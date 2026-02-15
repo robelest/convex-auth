@@ -1,9 +1,9 @@
 import { GenericId, Infer, v } from "convex/values";
-import { ActionCtx, MutationCtx } from "../types.js";
-import * as Provider from "../provider.js";
-import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./store.js";
-import { throwAuthError } from "../../errors.js";
+import { ActionCtx, MutationCtx } from "../types";
+import * as Provider from "../provider";
+import { authDb } from "../db";
+import { AUTH_STORE_REF } from "./store";
+import { throwAuthError } from "../../errors";
 
 export const verifierSignatureArgs = v.object({
   verifier: v.string(),

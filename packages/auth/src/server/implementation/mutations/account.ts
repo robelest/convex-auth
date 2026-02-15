@@ -1,11 +1,11 @@
 import { Infer, v } from "convex/values";
-import { ActionCtx, MutationCtx } from "../types.js";
-import { GetProviderOrThrowFunc, hash } from "../provider.js";
-import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils.js";
-import * as Provider from "../provider.js";
-import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./store.js";
-import { throwAuthError } from "../../errors.js";
+import { ActionCtx, MutationCtx } from "../types";
+import { GetProviderOrThrowFunc, hash } from "../provider";
+import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils";
+import * as Provider from "../provider";
+import { authDb } from "../db";
+import { AUTH_STORE_REF } from "./store";
+import { throwAuthError } from "../../errors";
 
 export const modifyAccountArgs = v.object({
   provider: v.string(),

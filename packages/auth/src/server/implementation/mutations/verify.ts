@@ -1,21 +1,21 @@
 import { GenericId, Infer, v } from "convex/values";
-import { ActionCtx, MutationCtx, SessionInfo } from "../types.js";
+import { ActionCtx, MutationCtx, SessionInfo } from "../types";
 import {
   isSignInRateLimited,
   recordFailedSignIn,
   resetSignInRateLimit,
-} from "../ratelimit.js";
-import * as Provider from "../provider.js";
+} from "../ratelimit";
+import * as Provider from "../provider";
 import {
   createNewAndDeleteExistingSession,
   getAuthSessionId,
   maybeGenerateTokensForSession,
-} from "../sessions.js";
-import { ConvexAuthConfig } from "../../types.js";
-import { LOG_LEVELS, logWithLevel, sha256 } from "../utils.js";
-import { upsertUserAndAccount } from "../users.js";
-import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./store.js";
+} from "../sessions";
+import { ConvexAuthConfig } from "../../types";
+import { LOG_LEVELS, logWithLevel, sha256 } from "../utils";
+import { upsertUserAndAccount } from "../users";
+import { authDb } from "../db";
+import { AUTH_STORE_REF } from "./store";
 
 export const verifyCodeAndSignInArgs = v.object({
   params: v.any(),
@@ -169,7 +169,7 @@ async function verifyCodeOnly(
   }
   let userId = account.userId;
   const provider = getProviderOrThrow(account.provider);
-  if (!(provider.type === "oauth" || provider.type === "oidc")) {
+  if (provider.type !== "oauth") {
     ({ userId } = await upsertUserAndAccount(
       ctx,
       sessionId,

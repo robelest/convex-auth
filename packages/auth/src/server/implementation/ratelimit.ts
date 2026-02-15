@@ -1,6 +1,6 @@
-import { ConvexAuthConfig } from "../types.js";
-import { Doc, MutationCtx } from "./types.js";
-import { authDb } from "./db.js";
+import { ConvexAuthConfig } from "../types";
+import { Doc, MutationCtx } from "./types";
+import { authDb } from "./db";
 
 const DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR = 10;
 

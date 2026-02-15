@@ -19,9 +19,9 @@ export {
   Doc,
   SignInAction,
   SignOutAction,
-} from "../server/implementation/index.js";
-export { Auth, Portal, AuthCtx } from "../server/auth.js";
-export type { AuthCtxConfig, InferAuth, UserDoc } from "../server/auth.js";
+} from "../server/implementation/index";
+export { Auth, Portal, AuthCtx } from "../server/auth";
+export type { AuthCtxConfig, InferAuth, UserDoc } from "../server/auth";
 export type {
   ConvexAuthConfig,
   AuthProviderConfig,
@@ -39,5 +39,5 @@ export type {
   KeyRecord,
   HttpKeyContext,
   CorsConfig,
-} from "../server/types.js";
-export type { GenericDoc } from "../server/types.js";
+} from "../server/types";
+export type { GenericDoc } from "../server/types";

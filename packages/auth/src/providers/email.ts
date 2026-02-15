@@ -5,7 +5,7 @@
  */
 
 import { GenericDataModel } from "convex/server";
-import { EmailConfig, EmailUserConfig } from "../server/types.js";
+import { EmailConfig, EmailUserConfig } from "../server/types";
 
 /**
  * Email providers send a token to the user's email address

@@ -1,8 +1,8 @@
 import { GenericId } from "convex/values";
-import { ConvexAuthConfig } from "../types.js";
+import { ConvexAuthConfig } from "../types";
 import { SignJWT, importPKCS8 } from "jose";
-import { requireEnv } from "../utils.js";
-import { TOKEN_SUB_CLAIM_DIVIDER } from "./utils.js";
+import { requireEnv } from "../utils";
+import { TOKEN_SUB_CLAIM_DIVIDER } from "./utils";
 
 const DEFAULT_JWT_DURATION_MS = 1000 * 60 * 60; // 1 hour
 

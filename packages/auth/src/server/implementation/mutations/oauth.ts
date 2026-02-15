@@ -1,12 +1,12 @@
 import { Infer, v } from "convex/values";
-import { ActionCtx, MutationCtx } from "../types.js";
-import * as Provider from "../provider.js";
-import { OAuthConfig } from "@auth/core/providers/oauth.js";
-import { upsertUserAndAccount } from "../users.js";
-import { generateRandomString, logWithLevel, sha256 } from "../utils.js";
-import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./store.js";
-import { throwAuthError } from "../../errors.js";
+import { ActionCtx, MutationCtx } from "../types";
+import * as Provider from "../provider";
+import type { AuthProviderMaterializedConfig } from "../../types";
+import { upsertUserAndAccount } from "../users";
+import { generateRandomString, logWithLevel, sha256 } from "../utils";
+import { authDb } from "../db";
+import { AUTH_STORE_REF } from "./store";
+import { throwAuthError } from "../../errors";
 
 const OAUTH_SIGN_IN_EXPIRATION_MS = 1000 * 60 * 2; // 2 minutes
 
@@ -28,7 +28,7 @@ export async function userOAuthImpl(
   logWithLevel("DEBUG", "userOAuthImpl args:", args);
   const { profile, provider, providerAccountId, signature } = args;
   const db = authDb(ctx, config);
-  const providerConfig = getProviderOrThrow(provider) as OAuthConfig<any>;
+  const providerConfig = getProviderOrThrow(provider) as AuthProviderMaterializedConfig;
   const existingAccount = await db.accounts.get(provider, providerAccountId);
 
   const verifier = await db.verifiers.getBySignature(signature);

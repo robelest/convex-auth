@@ -5,8 +5,8 @@ import { parse, serialize } from "cookie";
 import type {
   SignInAction,
   SignOutAction,
-} from "./implementation/index.js";
-import { isLocalHost } from "./utils.js";
+} from "./implementation/index";
+import { isLocalHost } from "./utils";
 
 /** Cookie lifetime configuration for auth tokens. */
 export type AuthCookieConfig = {

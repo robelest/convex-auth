@@ -1,5 +1,5 @@
 import { GenericActionCtx, GenericDataModel, GenericMutationCtx } from "convex/server";
-import { AuthComponentApi } from "../types.js";
+import { AuthComponentApi } from "../types";
 
 type MutationCtxLike = Pick<GenericMutationCtx<GenericDataModel>, "runQuery" | "runMutation">;
 type ActionCtxLike = Pick<

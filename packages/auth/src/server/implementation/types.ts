@@ -6,9 +6,9 @@ import {
   TableNamesInDataModel,
 } from "convex/server";
 import { GenericId } from "convex/values";
-import { GenericDoc } from "../types.js";
-import schema from "../../component/schema.js";
-import { AuthComponentApi } from "../types.js";
+import { GenericDoc } from "../types";
+import schema from "../../component/schema";
+import { AuthComponentApi } from "../types";
 
 /** Data model derived from the component schema. */
 export type AuthDataModel = DataModelFromSchemaDefinition<typeof schema>;

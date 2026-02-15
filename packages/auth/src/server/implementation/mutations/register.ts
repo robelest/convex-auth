@@ -1,13 +1,13 @@
 import { Infer, v } from "convex/values";
-import { ActionCtx, Doc, MutationCtx } from "../types.js";
-import * as Provider from "../provider.js";
-import { ConvexCredentialsConfig } from "../../types.js";
-import { upsertUserAndAccount } from "../users.js";
-import { getAuthSessionId } from "../sessions.js";
-import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils.js";
-import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./store.js";
-import { throwAuthError } from "../../errors.js";
+import { ActionCtx, Doc, MutationCtx } from "../types";
+import * as Provider from "../provider";
+import { ConvexCredentialsConfig } from "../../types";
+import { upsertUserAndAccount } from "../users";
+import { getAuthSessionId } from "../sessions";
+import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils";
+import { authDb } from "../db";
+import { AUTH_STORE_REF } from "./store";
+import { throwAuthError } from "../../errors";
 
 export const createAccountFromCredentialsArgs = v.object({
   provider: v.string(),

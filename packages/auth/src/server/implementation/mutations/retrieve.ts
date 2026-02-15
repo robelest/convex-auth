@@ -1,14 +1,14 @@
 import { Infer, v } from "convex/values";
-import { ActionCtx, Doc, MutationCtx } from "../types.js";
+import { ActionCtx, Doc, MutationCtx } from "../types";
 import {
   isSignInRateLimited,
   recordFailedSignIn,
   resetSignInRateLimit,
-} from "../ratelimit.js";
-import * as Provider from "../provider.js";
-import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils.js";
-import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./store.js";
+} from "../ratelimit";
+import * as Provider from "../provider";
+import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils";
+import { authDb } from "../db";
+import { AUTH_STORE_REF } from "./store";
 
 export const retrieveAccountWithCredentialsArgs = v.object({
   provider: v.string(),

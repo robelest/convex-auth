@@ -8,9 +8,9 @@
  * @module
  */
 
-import type * as index from "../index.js";
-import type * as bridge from "../bridge.js";
-import type * as public_ from "../public.js";
+import type * as index from "../index";
+import type * as bridge from "../bridge";
+import type * as public_ from "../public";
 
 import type {
   ApiFromModules,

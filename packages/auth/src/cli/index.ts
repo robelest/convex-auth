@@ -8,8 +8,8 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import inquirer from "inquirer";
 import path from "path";
 import * as v from "valibot";
-import { actionDescription } from "./command.js";
-import { generateKeys } from "./keys.js";
+import { actionDescription } from "./command";
+import { generateKeys } from "./keys";
 
 const program = new Command()
   .name("@robelest/convex-auth")

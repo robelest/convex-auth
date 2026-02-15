@@ -1,6 +1,6 @@
-import { ConvexAuthMaterializedConfig } from "../types.js";
-import { requireEnv } from "../utils.js";
-import { throwAuthError } from "../errors.js";
+import { ConvexAuthMaterializedConfig } from "../types";
+import { requireEnv } from "../utils";
+import { throwAuthError } from "../errors";
 
 export async function redirectAbsoluteUrl(
   config: ConvexAuthMaterializedConfig,

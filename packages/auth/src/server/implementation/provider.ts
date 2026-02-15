@@ -1,6 +1,6 @@
-import { AuthProviderMaterializedConfig } from "../types.js";
-import { ConvexAuthMaterializedConfig } from "../types.js";
-import { throwAuthError } from "../errors.js";
+import { AuthProviderMaterializedConfig } from "../types";
+import { ConvexAuthMaterializedConfig } from "../types";
+import { throwAuthError } from "../errors";
 
 export async function hash(provider: any, secret: string) {
   if (provider.type !== "credentials") {

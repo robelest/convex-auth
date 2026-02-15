@@ -1,7 +1,7 @@
 import { Infer, v } from "convex/values";
-import { ActionCtx, Doc, MutationCtx } from "../types.js";
-import * as Provider from "../provider.js";
-import { logWithLevel, maybeRedact } from "../utils.js";
+import { ActionCtx, Doc, MutationCtx } from "../types";
+import * as Provider from "../provider";
+import { logWithLevel, maybeRedact } from "../utils";
 import {
   deleteAllRefreshTokens,
   invalidateRefreshTokensInSubtree,
@@ -9,10 +9,10 @@ import {
   parseRefreshToken,
   REFRESH_TOKEN_REUSE_WINDOW_MS,
   refreshTokenIfValid,
-} from "../refresh.js";
-import { generateTokensForSession } from "../sessions.js";
-import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./store.js";
+} from "../refresh";
+import { generateTokensForSession } from "../sessions";
+import { authDb } from "../db";
+import { AUTH_STORE_REF } from "./store";
 
 export const refreshSessionArgs = v.object({
   refreshToken: v.string(),

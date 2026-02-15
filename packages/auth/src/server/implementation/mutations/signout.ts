@@ -1,9 +1,9 @@
 import { GenericId } from "convex/values";
-import { ActionCtx, MutationCtx } from "../types.js";
-import { deleteSession, getAuthSessionId } from "../sessions.js";
-import * as Provider from "../provider.js";
-import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./store.js";
+import { ActionCtx, MutationCtx } from "../types";
+import { deleteSession, getAuthSessionId } from "../sessions";
+import * as Provider from "../provider";
+import { authDb } from "../db";
+import { AUTH_STORE_REF } from "./store";
 
 type ReturnType = {
   userId: GenericId<"user">;
