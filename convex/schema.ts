@@ -5,5 +5,6 @@ export default defineSchema({
   messages: defineTable({
     userId: v.string(),
     body: v.string(),
+    groupId: v.optional(v.string()),
   }),
 });

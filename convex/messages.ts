@@ -4,12 +4,17 @@ import { query, mutation } from "./functions";
 import { auth } from "./auth";
 
 export const list = query({
-  args: {},
-  handler: async (ctx) => {
-    const messages = await ctx.db.query("messages").order("desc").take(100);
+  args: { groupId: v.optional(v.string()) },
+  handler: async (ctx, { groupId }) => {
+    const allMessages = await ctx.db.query("messages").order("desc").take(100);
+    // Filter by groupId (undefined = general channel)
+    const messages = allMessages.filter((m) =>
+      groupId ? m.groupId === groupId : !m.groupId,
+    );
     return Promise.all(
       messages.reverse().map(async (message) => {
-        const { name, email, phone } = (await auth.user.get(ctx, message.userId))!;
+        const { name, email, phone } =
+          (await auth.user.get(ctx, message.userId))!;
         return { ...message, author: name ?? email ?? phone ?? "Anonymous" };
       }),
     );
@@ -17,9 +22,13 @@ export const list = query({
 });
 
 export const send = mutation({
-  args: { body: v.string() },
-  handler: async (ctx, { body }) => {
-    await ctx.db.insert("messages", { body, userId: ctx.auth.userId });
+  args: { body: v.string(), groupId: v.optional(v.string()) },
+  handler: async (ctx, { body, groupId }) => {
+    await ctx.db.insert("messages", {
+      body,
+      userId: ctx.auth.userId,
+      ...(groupId ? { groupId } : {}),
+    });
   },
 });
 
