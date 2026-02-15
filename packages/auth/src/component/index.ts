@@ -21,7 +21,7 @@ export {
   SignOutAction,
 } from "../server/implementation/index.js";
 export { Auth, Portal, AuthCtx } from "../server/auth.js";
-export type { AuthCtxConfig, UserDoc } from "../server/auth.js";
+export type { AuthCtxConfig, InferAuth, UserDoc } from "../server/auth.js";
 export type {
   ConvexAuthConfig,
   AuthProviderConfig,
