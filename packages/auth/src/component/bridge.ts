@@ -4,7 +4,7 @@
  * The auth component uses self-hosting as a sub-component for serving
  * portal static assets. These functions expose the self-hosting API
  * as internal queries/mutations within the auth component, so the
- * app layer can call them via `ctx.runQuery(components.auth.portalBridge.getByPath, ...)`.
+ * app layer can call them via `ctx.runQuery(components.auth.bridge.getByPath, ...)`.
  */
 
 import { v } from "convex/values";

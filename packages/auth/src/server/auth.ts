@@ -325,15 +325,15 @@ export class Auth {
         });
 
         // Create a shim that maps the self-hosting ComponentApi shape
-        // to the auth component's portalBridge functions
+        // to the auth component's bridge functions
         const selfHostingShim = {
           lib: {
-            getByPath: component.portalBridge.getByPath,
-            getCurrentDeployment: component.portalBridge.getCurrentDeployment,
-            listAssets: component.portalBridge.listAssets,
-            recordAsset: component.portalBridge.recordAsset,
-            gcOldAssets: component.portalBridge.gcOldAssets,
-            setCurrentDeployment: component.portalBridge.setCurrentDeployment,
+            getByPath: component.bridge.getByPath,
+            getCurrentDeployment: component.bridge.getCurrentDeployment,
+            listAssets: component.bridge.listAssets,
+            recordAsset: component.bridge.recordAsset,
+            gcOldAssets: component.bridge.gcOldAssets,
+            setCurrentDeployment: component.bridge.setCurrentDeployment,
             // generateUploadUrl is not needed — we use app storage directly
             generateUploadUrl: undefined as any,
           },
@@ -417,7 +417,7 @@ export function Portal(auth: Auth) {
 
         case "getCurrentDeployment":
           return await ctx.runQuery(
-            authComponent.portalBridge.getCurrentDeployment,
+            authComponent.bridge.getCurrentDeployment,
           );
 
         // ---- User queries (public auth API) ----
@@ -680,7 +680,7 @@ export function Portal(auth: Auth) {
 
         case "recordAsset": {
           const { oldStorageId, oldBlobId } = await ctx.runMutation(
-            authComponent.portalBridge.recordAsset,
+            authComponent.bridge.recordAsset,
             {
               path: args.path,
               ...(args.storageId ? { storageId: args.storageId } : {}),
@@ -701,7 +701,7 @@ export function Portal(auth: Auth) {
 
         case "gcOldAssets": {
           const { storageIds, blobIds } = await ctx.runMutation(
-            authComponent.portalBridge.gcOldAssets,
+            authComponent.bridge.gcOldAssets,
             { currentDeploymentId: args.currentDeploymentId },
           );
           for (const storageId of storageIds) {
@@ -712,14 +712,14 @@ export function Portal(auth: Auth) {
             }
           }
           await ctx.runMutation(
-            authComponent.portalBridge.setCurrentDeployment,
+            authComponent.bridge.setCurrentDeployment,
             { deploymentId: args.currentDeploymentId },
           );
           return { deleted: storageIds.length, blobIds };
         }
 
         case "listAssets": {
-          return await ctx.runQuery(authComponent.portalBridge.listAssets, {
+          return await ctx.runQuery(authComponent.bridge.listAssets, {
             limit: args.limit,
           });
         }

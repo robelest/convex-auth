@@ -9,7 +9,7 @@
  */
 
 import type * as index from "../index.js";
-import type * as portalBridge from "../bridge.js";
+import type * as bridge from "../bridge.js";
 import type * as public_ from "../public.js";
 
 import type {
@@ -21,7 +21,7 @@ import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
   index: typeof index;
-  portalBridge: typeof portalBridge;
+  bridge: typeof bridge;
   public: typeof public_;
 }> = anyApi as any;
 
