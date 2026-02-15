@@ -86,9 +86,104 @@ export default http;
 
 `addHttpRoutes` registers OAuth callbacks, JWKS endpoints, and portal static file serving in one call.
 
-## Backend Usage
+## Context Enrichment (`AuthCtx`)
 
-Use `auth.*` helpers directly in your Convex functions:
+Eliminate per-handler auth boilerplate with `AuthCtx`. Set up once, and every query/mutation gets `ctx.auth.userId` and `ctx.auth.user` automatically.
+
+Requires [`convex-helpers`](https://github.com/get-convex/convex-helpers) (`bun add convex-helpers`).
+
+### Setup
+
+```ts
+// convex/functions.ts
+import { customQuery, customMutation } from "convex-helpers/server/customFunctions";
+import { query as rawQuery, mutation as rawMutation } from "./_generated/server";
+import { AuthCtx } from "@robelest/convex-auth/component";
+import { auth } from "./auth";
+
+const authCtx = AuthCtx(auth);
+
+export const query = customQuery(rawQuery, authCtx);
+export const mutation = customMutation(rawMutation, authCtx);
+```
+
+### Usage
+
+Import `query` and `mutation` from `./functions` instead of `./_generated/server`:
+
+```ts
+// convex/messages.ts
+import { query, mutation } from "./functions";
+
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    // ctx.auth.userId — authenticated user ID (throws if not signed in)
+    // ctx.auth.user   — full user document
+    return ctx.db.query("messages").collect();
+  },
+});
+
+export const send = mutation({
+  args: { body: v.string() },
+  handler: async (ctx, { body }) => {
+    await ctx.db.insert("messages", { body, userId: ctx.auth.userId });
+  },
+});
+```
+
+### Optional auth (public routes)
+
+```ts
+// convex/functions.ts
+export const publicQuery = customQuery(rawQuery, AuthCtx(auth, { optional: true }));
+// ctx.auth.userId is null when unauthenticated, no error thrown
+```
+
+### Multi-tenant with group resolution
+
+```ts
+// convex/functions.ts
+const authCtx = AuthCtx(auth, {
+  resolve: async (ctx, user) => {
+    const groupId = user?.extend?.lastActiveGroup;
+    const membership = await auth.user.group.get(ctx, { userId: user._id, groupId });
+    return { groupId, role: membership?.role ?? "member" };
+  },
+});
+
+export const query = customQuery(rawQuery, authCtx);
+// ctx.auth.groupId and ctx.auth.role available in all handlers
+```
+
+### Composing with triggers
+
+`AuthCtx` returns a standard `{ args, input }` customization object, so it composes with other `convex-helpers` patterns:
+
+```ts
+import { Triggers } from "convex-helpers/server/triggers";
+
+const triggers = new Triggers<DataModel>();
+triggers.register("messages", async (ctx, change) => { /* ... */ });
+
+const triggeredMutation = customMutation(rawMutation, customCtx(triggers.wrapDB));
+export const mutation = customMutation(triggeredMutation, AuthCtx(auth));
+```
+
+### What's on `ctx.auth`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `userId` | `string` | Authenticated user's document ID |
+| `user` | `object \| null` | Full user document from the auth component |
+| `getUserIdentity()` | `Promise<UserIdentity \| null>` | Native Convex method (preserved) |
+| `...extra` | varies | Whatever `resolve()` returns (e.g. `groupId`, `role`) |
+
+With `{ optional: true }`, `userId` and `user` are `null` when unauthenticated instead of throwing.
+
+## Direct API Usage
+
+For fine-grained control or when calling non-user methods (`auth.group.*`, `auth.key.*`, etc.), use `auth.*` helpers directly:
 
 ```ts
 import { query, mutation } from "./_generated/server";
@@ -118,6 +213,7 @@ export const updateProfile = mutation({
 | `auth.user.current(ctx)` | User ID or `null` |
 | `auth.user.require(ctx)` | User ID (throws if not signed in) |
 | `auth.user.get(ctx, userId)` | User document |
+| `auth.user.patch(ctx, userId, data)` | Update user with partial data |
 | `auth.user.viewer(ctx)` | Current user's document |
 
 ### Groups and memberships
@@ -593,6 +689,7 @@ npx @robelest/convex-auth portal upload [options]
 - API keys with scoped permissions, SHA-256 hashing, rate limiting
 - Framework-agnostic SSR cookie API (SvelteKit, TanStack Start, Next.js)
 - Hosted CDN portal at `auth.robelest.com` with path-based deployment routing
+- Context enrichment (`AuthCtx`) — zero-boilerplate `ctx.auth.userId` / `ctx.auth.user` via `convex-helpers`
 
 ### Planned
 - **Bearer Token Auth** — `Authorization: Bearer` header for API-first apps
