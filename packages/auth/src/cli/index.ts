@@ -513,7 +513,7 @@ import { auth } from "./auth";
 
 const http = httpRouter();
 
-auth.addHttpRoutes(http);
+auth.http.add(http);
 
 export default http;
 `;
@@ -526,7 +526,7 @@ export default http;
       logSuccess(`The ${chalk.bold(existingHttpPath)} is already set up.`);
     } else {
       logInfo(
-        `You already have a ${chalk.bold(existingHttpPath)}, make sure it includes the call to \`auth.addHttpRoutes\`:`,
+        `You already have a ${chalk.bold(existingHttpPath)}, make sure it includes the call to \`auth.http.add\`:`,
       );
       print(indent(`\n${source}\n`));
       await promptForConfirmationOrExit("Ready to continue?");

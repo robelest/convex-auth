@@ -21,6 +21,8 @@ import {
 import {
   AuthProviderConfig,
   ConvexAuthConfig,
+  CorsConfig,
+  HttpKeyContext,
 } from "../types.js";
 import { requireEnv } from "../utils.js";
 import { ActionCtx, MutationCtx, Tokens } from "./types.js";
@@ -382,6 +384,7 @@ export function Auth(config_: ConvexAuthConfig) {
         data: {
           name: string;
           slug?: string;
+          type?: string;
           parentGroupId?: string;
           extend?: Record<string, unknown>;
         },
@@ -401,8 +404,12 @@ export function Auth(config_: ConvexAuthConfig) {
        * List groups. When `parentGroupId` is provided, returns children of
        * that group. When omitted, returns root-level groups (no parent).
        */
-      list: async (ctx: ComponentReadCtx, opts?: { parentGroupId?: string }) => {
+      list: async (
+        ctx: ComponentReadCtx,
+        opts?: { type?: string; parentGroupId?: string },
+      ) => {
         return await ctx.runQuery(config.component.public.groupList, {
+          type: opts?.type,
           parentGroupId: opts?.parentGroupId,
         });
       },
@@ -882,32 +889,36 @@ export function Auth(config_: ConvexAuthConfig) {
       },
     },
     /**
-     * Add HTTP actions for JWT verification and OAuth sign-in.
-     *
-     * ```ts
-     * import { httpRouter } from "convex/server";
-     * import { auth } from "./auth.js";
-     *
-     * const http = httpRouter();
-     *
-     * auth.addHttpRoutes(http);
-     *
-     * export default http;
-     * ```
-     *
-     * The following routes are handled always:
-     *
-     * - `/.well-known/openid-configuration`
-     * - `/.well-known/jwks.json`
-     *
-     * The following routes are handled if OAuth is configured:
-     *
-     * - `/api/auth/signin/*`
-     * - `/api/auth/callback/*`
-     *
-     * @param http your HTTP router
+     * HTTP namespace — route registration and Bearer-authenticated endpoints.
      */
-    addHttpRoutes: (http: HttpRouter) => {
+    http: {
+      /**
+       * Register core HTTP routes for JWT verification and OAuth sign-in.
+       *
+       * ```ts
+       * import { httpRouter } from "convex/server";
+       * import { auth } from "./auth.js";
+       *
+       * const http = httpRouter();
+       *
+       * auth.http.add(http);
+       *
+       * export default http;
+       * ```
+       *
+       * The following routes are handled always:
+       *
+       * - `/.well-known/openid-configuration`
+       * - `/.well-known/jwks.json`
+       *
+       * The following routes are handled if OAuth is configured:
+       *
+       * - `/api/auth/signin/*`
+       * - `/api/auth/callback/*`
+       *
+       * @param http your HTTP router
+       */
+      add: (http: HttpRouter) => {
       http.route({
         path: "/.well-known/openid-configuration",
         method: "GET",
@@ -1094,6 +1105,203 @@ export function Auth(config_: ConvexAuthConfig) {
           handler: callbackAction,
         });
       }
+    },
+
+      /**
+       * Wrap an HTTP action handler with Bearer token authentication.
+       *
+       * Extracts the `Authorization: Bearer <key>` header, verifies the
+       * API key via `auth.key.verify()`, and injects `ctx.key` with the
+       * verified key info. Returns structured JSON error responses for
+       * missing/invalid/revoked/expired/rate-limited keys.
+       *
+       * If the handler returns a plain object, it is auto-wrapped in a
+       * `200 JSON` response. If it returns a `Response`, CORS headers
+       * are merged and the response is passed through.
+       *
+       * ```ts
+       * const handler = auth.http.action(async (ctx, request) => {
+       *   const data = await ctx.runQuery(api.data.get, { userId: ctx.key.userId });
+       *   return { data };
+       * });
+       * http.route({ path: "/api/data", method: "GET", handler });
+       * ```
+       *
+       * @param handler - Receives enriched `ctx` (with `ctx.key`) and the raw `Request`.
+       * @param options.scope - Optional scope check; returns 403 if the key lacks permission.
+       * @param options.cors - CORS config; defaults to permissive (`*`).
+       */
+      action: (
+        handler: (
+          ctx: GenericActionCtx<GenericDataModel> & HttpKeyContext,
+          request: Request,
+        ) => Promise<Response | Record<string, unknown>>,
+        options?: {
+          scope?: { resource: string; action: string };
+          cors?: CorsConfig;
+        },
+      ) => {
+        const corsConfig = options?.cors ?? {};
+        const corsHeaders: Record<string, string> = {
+          "Access-Control-Allow-Origin": corsConfig.origin ?? "*",
+          "Access-Control-Allow-Methods":
+            corsConfig.methods ?? "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+          "Access-Control-Allow-Headers":
+            corsConfig.headers ?? "Content-Type,Authorization",
+        };
+
+        const jsonError = (
+          status: number,
+          code: string,
+          message: string,
+        ) =>
+          new Response(JSON.stringify({ error: message, code }), {
+            status,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+
+        return httpActionGeneric(async (genericCtx, request) => {
+          const ctx = genericCtx as unknown as GenericActionCtx<GenericDataModel>;
+
+          try {
+            // 1. Extract Bearer token
+            const authHeader = request.headers.get("Authorization");
+            if (!authHeader?.startsWith("Bearer ")) {
+              return jsonError(
+                401,
+                "MISSING_BEARER_TOKEN",
+                "Missing or malformed Authorization: Bearer header.",
+              );
+            }
+            const rawKey = authHeader.slice(7);
+
+            // 2. Verify API key
+            let keyResult: { userId: string; keyId: string; scopes: import("../types.js").ScopeChecker };
+            try {
+              keyResult = await auth.key.verify(ctx, rawKey);
+            } catch (error: unknown) {
+              if (isAuthError(error)) {
+                const { code, message } = error.data as { code: string; message: string };
+                return jsonError(403, code, message);
+              }
+              throw error;
+            }
+
+            // 3. Optional scope check
+            if (options?.scope) {
+              if (!keyResult.scopes.can(options.scope.resource, options.scope.action)) {
+                return jsonError(
+                  403,
+                  "SCOPE_CHECK_FAILED",
+                  "This API key does not have the required permissions.",
+                );
+              }
+            }
+
+            // 4. Enrich context with key info
+            const enrichedCtx = Object.assign(ctx, {
+              key: {
+                userId: keyResult.userId,
+                keyId: keyResult.keyId,
+                scopes: keyResult.scopes,
+              },
+            });
+
+            // 5. Call handler
+            const result = await handler(enrichedCtx, request);
+
+            // 6. Auto-wrap plain objects as JSON responses
+            if (result instanceof Response) {
+              // Merge CORS headers into existing response
+              const headers = new Headers(result.headers);
+              for (const [k, val] of Object.entries(corsHeaders)) {
+                if (!headers.has(k)) headers.set(k, val);
+              }
+              return new Response(result.body, {
+                status: result.status,
+                statusText: result.statusText,
+                headers,
+              });
+            }
+
+            return new Response(JSON.stringify(result), {
+              status: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          } catch (error: unknown) {
+            logError(error);
+            return jsonError(500, "INTERNAL_ERROR", "An unexpected error occurred.");
+          }
+        });
+      },
+
+      /**
+       * Register a Bearer-authenticated route **and** its OPTIONS preflight
+       * in a single call.
+       *
+       * ```ts
+       * auth.http.route(http, {
+       *   path: "/api/messages",
+       *   method: "POST",
+       *   handler: async (ctx, request) => {
+       *     const { body } = await request.json();
+       *     await ctx.runMutation(internal.messages.sendAsUser, {
+       *       userId: ctx.key.userId,
+       *       body,
+       *     });
+       *     return { success: true };
+       *   },
+       * });
+       * ```
+       *
+       * @param http - The Convex HTTP router.
+       * @param routeConfig.path - The URL path to match.
+       * @param routeConfig.method - HTTP method (GET, POST, PUT, PATCH, DELETE).
+       * @param routeConfig.handler - Receives enriched `ctx` (with `ctx.key`) and the raw `Request`.
+       * @param routeConfig.scope - Optional scope check; returns 403 if the key lacks permission.
+       * @param routeConfig.cors - CORS config; defaults to permissive (`*`).
+       */
+      route: (
+        http: HttpRouter,
+        routeConfig: {
+          path: string;
+          method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+          handler: (
+            ctx: GenericActionCtx<GenericDataModel> & HttpKeyContext,
+            request: Request,
+          ) => Promise<Response | Record<string, unknown>>;
+          scope?: { resource: string; action: string };
+          cors?: CorsConfig;
+        },
+      ) => {
+        const corsConfig = routeConfig.cors ?? {};
+        const corsHeaders: Record<string, string> = {
+          "Access-Control-Allow-Origin": corsConfig.origin ?? "*",
+          "Access-Control-Allow-Methods":
+            corsConfig.methods ?? "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+          "Access-Control-Allow-Headers":
+            corsConfig.headers ?? "Content-Type,Authorization",
+        };
+
+        // Register OPTIONS preflight
+        http.route({
+          path: routeConfig.path,
+          method: "OPTIONS",
+          handler: httpActionGeneric(async () => {
+            return new Response(null, { status: 204, headers: corsHeaders });
+          }),
+        });
+
+        // Register the main route with Bearer auth wrapping
+        http.route({
+          path: routeConfig.path,
+          method: routeConfig.method,
+          handler: auth.http.action(routeConfig.handler, {
+            scope: routeConfig.scope,
+            cors: routeConfig.cors,
+          }),
+        });
+      },
     },
   };
   const enrichCtx = <DataModel extends GenericDataModel>(

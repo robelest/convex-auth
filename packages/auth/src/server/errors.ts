@@ -81,6 +81,12 @@ export const AUTH_ERRORS = {
   API_KEY_INVALID_SCOPE:
     "Invalid scope requested for API key.",
 
+  // ---- HTTP Bearer Auth ----
+  MISSING_BEARER_TOKEN:
+    "Missing or malformed Authorization: Bearer header.",
+  SCOPE_CHECK_FAILED:
+    "This API key does not have the required permissions.",
+
   // ---- OAuth ----
   OAUTH_MISSING_PROVIDER:
     "Missing OAuth provider ID.",

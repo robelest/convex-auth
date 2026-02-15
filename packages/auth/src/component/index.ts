@@ -21,7 +21,7 @@ export {
   SignOutAction,
 } from "../server/implementation/index.js";
 export { Auth, Portal, AuthCtx } from "../server/convex-auth.js";
-export type { AuthCtxConfig } from "../server/convex-auth.js";
+export type { AuthCtxConfig, UserDoc } from "../server/convex-auth.js";
 export type {
   ConvexAuthConfig,
   AuthProviderConfig,
@@ -37,5 +37,7 @@ export type {
   KeyScope,
   ScopeChecker,
   KeyRecord,
+  HttpKeyContext,
+  CorsConfig,
 } from "../server/types.js";
 export type { GenericDoc } from "../server/convex_types.js";
