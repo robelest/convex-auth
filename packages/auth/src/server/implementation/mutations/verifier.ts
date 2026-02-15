@@ -3,7 +3,7 @@ import { ActionCtx, MutationCtx } from "../types.js";
 import { getAuthSessionId } from "../sessions.js";
 import * as Provider from "../provider.js";
 import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./storeRef.js";
+import { AUTH_STORE_REF } from "./store.js";
 
 type ReturnType = GenericId<"verifier">;
 

@@ -4,7 +4,7 @@ import {
   isSignInRateLimited,
   recordFailedSignIn,
   resetSignInRateLimit,
-} from "../rateLimit.js";
+} from "../ratelimit.js";
 import * as Provider from "../provider.js";
 import {
   createNewAndDeleteExistingSession,
@@ -15,7 +15,7 @@ import { ConvexAuthConfig } from "../../types.js";
 import { LOG_LEVELS, logWithLevel, sha256 } from "../utils.js";
 import { upsertUserAndAccount } from "../users.js";
 import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./storeRef.js";
+import { AUTH_STORE_REF } from "./store.js";
 
 export const verifyCodeAndSignInArgs = v.object({
   params: v.any(),

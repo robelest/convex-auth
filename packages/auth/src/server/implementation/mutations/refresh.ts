@@ -9,10 +9,10 @@ import {
   parseRefreshToken,
   REFRESH_TOKEN_REUSE_WINDOW_MS,
   refreshTokenIfValid,
-} from "../refreshTokens.js";
+} from "../refresh.js";
 import { generateTokensForSession } from "../sessions.js";
 import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./storeRef.js";
+import { AUTH_STORE_REF } from "./store.js";
 
 export const refreshSessionArgs = v.object({
   refreshToken: v.string(),

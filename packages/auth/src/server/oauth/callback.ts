@@ -3,7 +3,7 @@
 import * as checks from "./checks.js";
 import * as o from "oauth4webapi";
 import { InternalOptions } from "./types.js";
-import { fetchOpt } from "./lib/utils/customFetch.js";
+import { fetchOpt } from "./lib/utils/fetch.js";
 import { Cookie } from "@auth/core/lib/utils/cookie.js";
 import { logWithLevel } from "../implementation/utils.js";
 import { Account, Profile, TokenSet } from "@auth/core/types.js";
@@ -11,7 +11,7 @@ import { isOIDCProvider } from "./lib/utils/providers.js";
 import {
   callbackUrl,
   getAuthorizationSignature,
-} from "./convexAuth.js";
+} from "./helpers.js";
 import { throwAuthError } from "../errors.js";
 
 function formUrlEncode(token: string) {

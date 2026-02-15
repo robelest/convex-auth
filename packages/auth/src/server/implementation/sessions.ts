@@ -14,7 +14,7 @@ import {
   createRefreshToken,
   formatRefreshToken,
   deleteAllRefreshTokens,
-} from "./refreshTokens.js";
+} from "./refresh.js";
 import { authDb } from "./db.js";
 
 const DEFAULT_SESSION_TOTAL_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days

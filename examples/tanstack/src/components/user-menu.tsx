@@ -1,7 +1,6 @@
 import {
   RiLogoutBoxLine,
   RiSettings3Line,
-  RiUser3Line,
 } from '@remixicon/react'
 import { useState } from 'react'
 

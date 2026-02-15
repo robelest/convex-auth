@@ -44,10 +44,10 @@ import type { GenericId } from "convex/values";
 import type { Doc } from "./implementation/types.js";
 import type { ComponentApi as AuthComponentApi } from "../component/_generated/component.js";
 import { Auth as AuthFactory } from "./implementation/index.js";
-import type { ConvexAuthConfig, EmailTransport } from "./types.js";
+import type { ConvexAuthConfig } from "./types.js";
 import { registerStaticRoutes } from "@convex-dev/self-hosting";
-import { portalMagicLinkEmail } from "./portal-email.js";
-import { defaultMagicLinkEmail } from "./email-templates.js";
+import { portalMagicLinkEmail } from "./templates.js";
+import { defaultMagicLinkEmail } from "./templates.js";
 import emailProvider from "../providers/email.js";
 import { AUTH_VERSION } from "./version.js";
 import { throwAuthError } from "./errors.js";
@@ -275,7 +275,6 @@ export class Auth {
     // Cache the object so repeated access returns the same reference
     const inner = this._auth.http;
     const component = this.component;
-    const portalUrl = this.portalUrl;
 
     return {
       ...inner,

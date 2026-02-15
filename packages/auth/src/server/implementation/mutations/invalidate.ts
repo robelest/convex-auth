@@ -4,7 +4,7 @@ import { ActionCtx, MutationCtx } from "../types.js";
 import { LOG_LEVELS, logWithLevel } from "../utils.js";
 import * as Provider from "../provider.js";
 import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./storeRef.js";
+import { AUTH_STORE_REF } from "./store.js";
 
 export const invalidateSessionsArgs = v.object({
   userId: v.string(),

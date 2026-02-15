@@ -9,7 +9,7 @@ import inquirer from "inquirer";
 import path from "path";
 import * as v from "valibot";
 import { actionDescription } from "./command.js";
-import { generateKeys } from "./generateKeys.js";
+import { generateKeys } from "./keys.js";
 
 const program = new Command()
   .name("@robelest/convex-auth")
@@ -32,7 +32,7 @@ portalCmd
     // Pass remaining args after "portal upload" to the upload handler
     const idx = process.argv.indexOf("upload");
     const uploadArgs = idx >= 0 ? process.argv.slice(idx + 1) : [];
-    const { portalUploadMain } = await import("./portal-upload.js");
+    const { portalUploadMain } = await import("./upload.js");
     await portalUploadMain(uploadArgs);
   });
 
@@ -46,7 +46,7 @@ portalCmd
     "auth",
   )
   .action(async (opts) => {
-    const { portalLinkMain } = await import("./portal-link.js");
+    const { portalLinkMain } = await import("./link.js");
     await portalLinkMain({
       prod: opts.prod ?? false,
       component: opts.component,

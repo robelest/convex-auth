@@ -272,7 +272,7 @@ export async function acceptInvite(
 
 	try {
 		const tokenHash = await hashToken(auth.inviteToken);
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		 
 		await _convex.mutation(portalMutationRef as any, {
 			action: "acceptInvite",
 			tokenHash,

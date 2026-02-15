@@ -12,12 +12,12 @@ import { ConvexError, GenericId, v } from "convex/values";
 import { throwAuthError, isAuthError } from "../errors.js";
 import { parse as parseCookies, serialize as serializeCookie } from "cookie";
 import { redirectToParamCookie, useRedirectToParam } from "../cookies.js";
-import { FunctionReferenceFromExport } from "../convex_types.js";
+import { FunctionReferenceFromExport } from "../types.js";
 import {
   configDefaults,
   listAvailableProviders,
   materializeProvider,
-} from "../provider_utils.js";
+} from "../providers.js";
 import {
   AuthProviderConfig,
   ConvexAuthConfig,
@@ -25,7 +25,12 @@ import {
   HttpKeyContext,
 } from "../types.js";
 import { requireEnv } from "../utils.js";
-import { ActionCtx, MutationCtx, Tokens } from "./types.js";
+import {
+  ActionCtx,
+  MutationCtx,
+  Tokens,
+  KeyDoc,
+} from "./types.js";
 export { Doc, Tokens } from "./types.js";
 import {
   LOG_LEVELS,
@@ -45,7 +50,7 @@ import {
   storeArgs,
   storeImpl,
 } from "./mutations/index.js";
-import { signInImpl } from "./signIn.js";
+import { signInImpl } from "./signin.js";
 import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects.js";
 import {
   generateApiKey,
@@ -53,12 +58,12 @@ import {
   buildScopeChecker,
   validateScopes,
   checkKeyRateLimit,
-} from "./apiKey.js";
-import { getAuthorizationUrl } from "../oauth/authorizationUrl.js";
+} from "./keys.js";
+import { getAuthorizationUrl } from "../oauth/authorization.js";
 import {
   defaultCookiesOptions,
   oAuthConfigToInternalProvider,
-} from "../oauth/convexAuth.js";
+} from "../oauth/helpers.js";
 import { handleOAuth } from "../oauth/callback.js";
 
 /**
@@ -98,7 +103,7 @@ export type SignOutAction = FunctionReferenceFromExport<
  *          `convex/auth.ts` file.
  */
 export function Auth(config_: ConvexAuthConfig) {
-  const config = configDefaults(config_ as any);
+  const config = configDefaults(config_);
   const hasOAuth = config.providers.some(
     (provider) => provider.type === "oauth" || provider.type === "oidc",
   );
@@ -292,7 +297,7 @@ export function Auth(config_: ConvexAuthConfig) {
         args: CreateAccountArgs,
       ) => {
         const actionCtx = ctx as unknown as ActionCtx;
-        return await callCreateAccountFromCredentials(actionCtx, args as any);
+        return await callCreateAccountFromCredentials(actionCtx, args);
       },
       /**
        * Retrieve an account and user for a credentials provider.
@@ -347,7 +352,8 @@ export function Auth(config_: ConvexAuthConfig) {
         const result = await signInImpl(
           enrichCtx(ctx),
           materializeProvider(provider),
-          args as any,
+          // params type widened: Record<string, unknown> → Record<string, any>
+          args as { accountId?: GenericId<"account">; params?: Record<string, any> },
           {
             generateTokens: false,
             allowExtraProviders: true,
@@ -750,10 +756,10 @@ export function Auth(config_: ConvexAuthConfig) {
 
         const { raw, hashedKey, displayPrefix } = await generateApiKey(prefix);
 
-        const keyId = await ctx.runMutation(
+        const keyId = (await ctx.runMutation(
           config.component.public.keyInsert,
           {
-            userId: opts.userId as any,
+            userId: opts.userId,
             prefix: displayPrefix,
             hashedKey,
             name: opts.name,
@@ -761,9 +767,9 @@ export function Auth(config_: ConvexAuthConfig) {
             rateLimit: opts.rateLimit ?? config.apiKeys?.defaultRateLimit,
             expiresAt: opts.expiresAt,
           },
-        );
+        )) as string;
 
-        return { keyId: keyId as string, raw };
+        return { keyId, raw };
       },
 
       /**
@@ -784,10 +790,10 @@ export function Auth(config_: ConvexAuthConfig) {
       }> => {
         const hashedKey = await hashApiKey(rawKey);
 
-        const key = await ctx.runQuery(
+        const key = (await ctx.runQuery(
           config.component.public.keyGetByHashedKey,
           { hashedKey },
-        );
+        )) as KeyDoc | null;
         if (!key) {
           throwAuthError("INVALID_API_KEY");
         }
@@ -799,7 +805,7 @@ export function Auth(config_: ConvexAuthConfig) {
         }
 
         // Check per-key rate limit
-        const patchData: Record<string, any> = { lastUsedAt: Date.now() };
+        const patchData: Record<string, unknown> = { lastUsedAt: Date.now() };
 
         if (key.rateLimit) {
           const { limited, newState } = checkKeyRateLimit(
@@ -819,8 +825,8 @@ export function Auth(config_: ConvexAuthConfig) {
         });
 
         return {
-          userId: key.userId as string,
-          keyId: key._id as string,
+          userId: key.userId,
+          keyId: key._id,
           scopes: buildScopeChecker(key.scopes),
         };
       },
@@ -829,22 +835,22 @@ export function Auth(config_: ConvexAuthConfig) {
        * List all API keys for a user.
        * Never includes the raw key — only the display prefix.
        */
-      list: async (ctx: ComponentReadCtx, opts: { userId: string }) => {
-        return await ctx.runQuery(
+      list: async (ctx: ComponentReadCtx, opts: { userId: string }): Promise<KeyDoc[]> => {
+        return (await ctx.runQuery(
           config.component.public.keyListByUserId,
-          { userId: opts.userId as any },
-        );
+          { userId: opts.userId },
+        )) as KeyDoc[];
       },
 
       /**
        * Get a single API key by its document ID.
        * Returns `null` if not found.
        */
-      get: async (ctx: ComponentReadCtx, keyId: string) => {
-        return await ctx.runQuery(
+      get: async (ctx: ComponentReadCtx, keyId: string): Promise<KeyDoc | null> => {
+        return (await ctx.runQuery(
           config.component.public.keyGetById,
-          { keyId: keyId as any },
-        );
+          { keyId },
+        )) as KeyDoc | null;
       },
 
       /**
@@ -863,7 +869,7 @@ export function Auth(config_: ConvexAuthConfig) {
           validateScopes(data.scopes, config.apiKeys?.scopes);
         }
         await ctx.runMutation(config.component.public.keyPatch, {
-          keyId: keyId as any,
+          keyId,
           data,
         });
       },
@@ -874,7 +880,7 @@ export function Auth(config_: ConvexAuthConfig) {
        */
       revoke: async (ctx: ComponentCtx, keyId: string) => {
         await ctx.runMutation(config.component.public.keyPatch, {
-          keyId: keyId as any,
+          keyId,
           data: { revoked: true },
         });
       },
@@ -884,7 +890,7 @@ export function Auth(config_: ConvexAuthConfig) {
        */
       remove: async (ctx: ComponentCtx, keyId: string) => {
         await ctx.runMutation(config.component.public.keyDelete, {
-          keyId: keyId as any,
+          keyId,
         });
       },
     },
@@ -1374,7 +1380,7 @@ export function Auth(config_: ConvexAuthConfig) {
             return { totpSetup: { uri: result.uri, secret: result.secret, totpId: result.totpId }, verifier: result.verifier };
           default: {
             const _typecheck: never = result;
-            throwAuthError("INTERNAL_ERROR", `Unexpected result from signIn, ${result as any}`);
+            throwAuthError("INTERNAL_ERROR", `Unexpected result from signIn, ${String(result)}`);
           }
         }
       },

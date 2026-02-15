@@ -25,7 +25,7 @@ let useProd = false;
 
 /**
  * Run a Convex internal function via the CLI.
- * Follows the same pattern as portal-upload.ts.
+ * Follows the same pattern as upload.ts.
  */
 function convexRunAsync(
   functionPath: string,

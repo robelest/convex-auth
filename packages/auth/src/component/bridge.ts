@@ -8,7 +8,7 @@
  */
 
 import { v } from "convex/values";
-import { query, mutation, internalMutation } from "./_generated/server.js";
+import { query, mutation } from "./_generated/server.js";
 import { components } from "./_generated/api.js";
 
 // ============================================================================
