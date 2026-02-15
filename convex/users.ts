@@ -1,7 +1,6 @@
-import { query } from "./_generated/server";
-import { auth } from "./auth";
+import { query } from "./functions";
 
 export const viewer = query({
   args: {},
-  handler: async (ctx) => auth.user.viewer(ctx),
+  handler: async (ctx) => ctx.auth.user,
 });
