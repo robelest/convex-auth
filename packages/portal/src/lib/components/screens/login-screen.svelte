@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Icon from '$lib/components/ui/icon.svelte';
+	import { ShieldCheck, Mail } from '@lucide/svelte';
 	import { auth, sendMagicLink, resetFlow } from '$lib/stores/auth.svelte';
 
 	interface Props {
@@ -44,7 +44,7 @@
 		<div
 			class="w-12 h-12 rounded-[var(--cp-radius-md)] bg-[rgba(99,168,248,0.1)] border border-[rgba(99,168,248,0.2)] flex items-center justify-center mb-6"
 		>
-			<Icon name="shield" size={24} color="var(--cp-accent)" />
+			<ShieldCheck size={24} color="var(--cp-accent)" />
 		</div>
 
 		<h1 class="text-[var(--cp-text-lg)] font-semibold mb-1">Admin Portal</h1>
@@ -113,7 +113,7 @@
 						<div class="w-4 h-4 border-2 border-[#0a0a0b]/30 border-t-[#0a0a0b] rounded-full animate-spin"></div>
 						Sending...
 					{:else}
-						<Icon name="email" size={14} />
+						<Mail size={14} />
 						Send magic link
 					{/if}
 				</button>

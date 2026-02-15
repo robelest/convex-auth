@@ -3,24 +3,14 @@
 	import { portalHref } from '$lib/stores/auth.svelte';
 	import { useQuery, useConvexClient } from 'convex-svelte';
 	import { api } from '@convex/_generated/api';
-	import DataTable from '$lib/components/ui/data-table.svelte';
-	import Badge from '$lib/components/ui/badge.svelte';
-	import Button from '$lib/components/ui/button.svelte';
+	import * as Table from '$lib/components/ui/table';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
 	import { formatRelative, truncateId } from '$lib/utils/format';
+	import { Ban, Trash2 } from '@lucide/svelte';
 
 	const keys = useQuery(api.auth.portalQuery, { action: 'listKeys' });
 	const client = useConvexClient();
-
-	const columns = [
-		{ key: 'prefix', label: 'Key', width: '180px' },
-		{ key: 'name', label: 'Name', width: '160px' },
-		{ key: 'userId', label: 'User', width: '140px' },
-		{ key: 'scopes', label: 'Scopes', width: '180px' },
-		{ key: 'status', label: 'Status', width: '100px' },
-		{ key: 'lastUsed', label: 'Last Used', width: '120px' },
-		{ key: 'created', label: 'Created', width: '120px' },
-		{ key: 'actions', label: '', width: '80px', align: 'right' as const },
-	];
 
 	function isExpired(key: any): boolean {
 		return key.expiresAt ? Date.now() > key.expiresAt : false;
@@ -32,12 +22,7 @@
 		return 'active';
 	}
 
-	function formatScopes(scopes: Array<{ resource: string; actions: string[] }>): string {
-		if (!scopes || scopes.length === 0) return 'No scopes';
-		return scopes.map((s) => `${s.resource}:${s.actions.join(',')}`).join('; ');
-	}
-
-	async function handleRevokeKey(e: Event, keyId: string) {
+	async function handleRevoke(e: Event, keyId: string) {
 		e.stopPropagation();
 		if (!confirm('Revoke this API key? It will no longer be usable for authentication.')) return;
 		await client.mutation(api.auth.portalMutation, {
@@ -46,7 +31,7 @@
 		});
 	}
 
-	async function handleDeleteKey(e: Event, keyId: string) {
+	async function handleDelete(e: Event, keyId: string) {
 		e.stopPropagation();
 		if (!confirm('Permanently delete this API key? This cannot be undone.')) return;
 		await client.mutation(api.auth.portalMutation, {
@@ -54,91 +39,134 @@
 			keyId,
 		});
 	}
-
-	function handleRowClick(key: any) {
-		goto(portalHref(`/users/${key.userId}`));
-	}
 </script>
 
 <div class="space-y-4">
 	<!-- Page header -->
 	<div class="flex items-center justify-between">
 		<div>
-			<p class="text-[var(--cp-text-xs)] text-cp-text-muted">
+			<h1 class="text-lg font-semibold">API Keys</h1>
+			<p class="text-sm text-muted-foreground">
 				{keys.isLoading ? '...' : `${keys.data?.length ?? 0} API keys`}
 			</p>
 		</div>
 	</div>
 
 	<!-- Keys table -->
-	<div
-		class="rounded-[var(--cp-radius-lg)] border border-cp-border bg-cp-bg-secondary overflow-hidden"
-	>
-		<DataTable
-			data={keys.data ?? []}
-			{columns}
-			loading={keys.isLoading}
-			emptyTitle="No API keys"
-			emptyDescription="API keys created via auth.key.create() will appear here."
-			onRowClick={handleRowClick}
-		>
-			{#snippet row(key)}
-				<td class="px-4 py-2.5 font-mono text-[var(--cp-text-xs)] text-cp-text-muted">
-					{key.prefix}
-				</td>
-				<td class="px-4 py-2.5 text-[var(--cp-text-sm)] text-cp-text">
-					{key.name}
-				</td>
-				<td class="px-4 py-2.5 font-mono text-[var(--cp-text-xs)] text-cp-text-secondary">
-					<a
-						href={portalHref(`/users/${key.userId}`)}
-						class="hover:text-cp-accent transition-colors"
-						onclick={(e) => e.stopPropagation()}
-					>
-						{truncateId(key.userId)}
-					</a>
-				</td>
-				<td
-					class="px-4 py-2.5 text-[var(--cp-text-xs)] text-cp-text-muted max-w-[180px] truncate"
-					title={formatScopes(key.scopes)}
-				>
-					{formatScopes(key.scopes)}
-				</td>
-				<td class="px-4 py-2.5">
-					{#if getKeyStatus(key) === 'active'}
-						<Badge variant="success">Active</Badge>
-					{:else if getKeyStatus(key) === 'revoked'}
-						<Badge variant="error">Revoked</Badge>
-					{:else}
-						<Badge variant="warning">Expired</Badge>
-					{/if}
-				</td>
-				<td class="px-4 py-2.5 text-[var(--cp-text-xs)] text-cp-text-muted whitespace-nowrap">
-					{key.lastUsedAt ? formatRelative(key.lastUsedAt) : 'Never'}
-				</td>
-				<td class="px-4 py-2.5 text-[var(--cp-text-xs)] text-cp-text-muted whitespace-nowrap">
-					{formatRelative(key.createdAt)}
-				</td>
-				<td class="px-4 py-2.5 text-right">
-					{#if getKeyStatus(key) === 'active'}
-						<Button
-							variant="danger"
-							size="sm"
-							onclick={(e) => handleRevokeKey(e, key._id)}
+	<div class="rounded-lg border bg-card">
+		<Table.Root>
+			<Table.Header>
+				<Table.Row>
+					<Table.Head class="w-[180px]">Key Prefix</Table.Head>
+					<Table.Head class="w-[160px]">Name</Table.Head>
+					<Table.Head class="w-[140px]">User</Table.Head>
+					<Table.Head class="w-[180px]">Scopes</Table.Head>
+					<Table.Head class="w-[100px]">Status</Table.Head>
+					<Table.Head class="w-[120px]">Last Used</Table.Head>
+					<Table.Head class="w-[120px]">Created</Table.Head>
+					<Table.Head class="w-[100px] text-right">Actions</Table.Head>
+				</Table.Row>
+			</Table.Header>
+			<Table.Body>
+				{#if keys.isLoading}
+					{#each Array(5) as _}
+						<Table.Row>
+							<Table.Cell><div class="cp-skeleton h-3 w-28 rounded"></div></Table.Cell>
+							<Table.Cell><div class="cp-skeleton h-3 w-24 rounded"></div></Table.Cell>
+							<Table.Cell><div class="cp-skeleton h-3 w-24 rounded"></div></Table.Cell>
+							<Table.Cell><div class="cp-skeleton h-5 w-20 rounded-full"></div></Table.Cell>
+							<Table.Cell><div class="cp-skeleton h-5 w-16 rounded-full"></div></Table.Cell>
+							<Table.Cell><div class="cp-skeleton h-3 w-16 rounded"></div></Table.Cell>
+							<Table.Cell><div class="cp-skeleton h-3 w-16 rounded"></div></Table.Cell>
+							<Table.Cell><div class="cp-skeleton h-7 w-16 rounded float-right"></div></Table.Cell>
+						</Table.Row>
+					{/each}
+				{:else if (keys.data?.length ?? 0) === 0}
+					<Table.Row>
+						<Table.Cell colspan={8}>
+							<div class="flex flex-col items-center justify-center py-12 text-center">
+								<p class="text-sm font-medium">No API keys</p>
+								<p class="text-sm text-muted-foreground">API keys created via auth.key.create() will appear here.</p>
+							</div>
+						</Table.Cell>
+					</Table.Row>
+				{:else}
+					{#each keys.data as key (key._id)}
+						{@const status = getKeyStatus(key)}
+						<Table.Row
+							class="hover:bg-accent/50 cursor-pointer"
+							onclick={() => goto(portalHref(`/users/${key.userId}`))}
 						>
-							Revoke
-						</Button>
-					{:else}
-						<Button
-							variant="ghost"
-							size="sm"
-							onclick={(e) => handleDeleteKey(e, key._id)}
-						>
-							Delete
-						</Button>
-					{/if}
-				</td>
-			{/snippet}
-		</DataTable>
+							<Table.Cell class="font-mono text-xs text-muted-foreground">
+								{key.prefix}
+							</Table.Cell>
+							<Table.Cell class="text-foreground">
+								{key.name}
+							</Table.Cell>
+							<Table.Cell>
+								<button
+									class="font-mono text-xs text-foreground hover:underline"
+									onclick={(e: MouseEvent) => {
+										e.stopPropagation();
+										goto(portalHref(`/users/${key.userId}`));
+									}}
+								>
+									{truncateId(key.userId)}
+								</button>
+							</Table.Cell>
+							<Table.Cell>
+								<div class="flex flex-wrap gap-1">
+									{#if key.scopes && key.scopes.length > 0}
+										{#each key.scopes as scope}
+											{#each scope.actions as action}
+												<Badge variant="outline">{scope.resource}:{action}</Badge>
+											{/each}
+										{/each}
+									{:else}
+										<span class="text-xs text-muted-foreground">No scopes</span>
+									{/if}
+								</div>
+							</Table.Cell>
+							<Table.Cell>
+								{#if status === 'active'}
+									<Badge variant="default" class="bg-green-600 hover:bg-green-600/90 border-transparent">Active</Badge>
+								{:else if status === 'revoked'}
+									<Badge variant="destructive">Revoked</Badge>
+								{:else}
+									<Badge variant="secondary">Expired</Badge>
+								{/if}
+							</Table.Cell>
+							<Table.Cell class="text-xs text-muted-foreground whitespace-nowrap">
+								{key.lastUsedAt ? formatRelative(key.lastUsedAt) : 'Never'}
+							</Table.Cell>
+							<Table.Cell class="text-xs text-muted-foreground whitespace-nowrap">
+								{formatRelative(key.createdAt)}
+							</Table.Cell>
+							<Table.Cell class="text-right">
+								{#if status === 'active'}
+									<Button
+										variant="destructive"
+										size="sm"
+										onclick={(e: MouseEvent) => handleRevoke(e, key._id)}
+									>
+										<Ban class="size-3.5" />
+										Revoke
+									</Button>
+								{:else}
+									<Button
+										variant="ghost"
+										size="sm"
+										onclick={(e: MouseEvent) => handleDelete(e, key._id)}
+									>
+										<Trash2 class="size-3.5" />
+										Delete
+									</Button>
+								{/if}
+							</Table.Cell>
+						</Table.Row>
+					{/each}
+				{/if}
+			</Table.Body>
+		</Table.Root>
 	</div>
 </div>
