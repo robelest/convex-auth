@@ -1,4 +1,5 @@
-import google from "@auth/core/providers/google";
+import { Google } from "arctic";
+import { OAuth } from "@robelest/convex-auth/providers";
 import anonymous from "@robelest/convex-auth/providers/anonymous";
 import passkey from "@robelest/convex-auth/providers/passkey";
 import password from "@robelest/convex-auth/providers/password";
@@ -8,7 +9,14 @@ import { components } from "./_generated/api";
 
 const auth = new Auth(components.auth, {
   providers: [
-    google,
+    OAuth(
+      new Google(
+        process.env.GOOGLE_CLIENT_ID!,
+        process.env.GOOGLE_CLIENT_SECRET!,
+        process.env.CONVEX_SITE_URL + "/api/auth/callback/google",
+      ),
+      { scopes: ["openid", "profile", "email"] },
+    ),
     password,
     passkey,
     totp({ issuer: "ConvexAuth Example" }),

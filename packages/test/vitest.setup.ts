@@ -2,6 +2,8 @@ process.env.AUTH_APPLE_SECRET ??= "test-apple-secret";
 process.env.RESEND_API_KEY ??= "test-resend-key";
 process.env.AUTH_EMAIL ??= "My App <onboarding@resend.dev>";
 process.env.CONVEX_SITE_URL ??= "https://test-123.convex.site";
+process.env.GOOGLE_CLIENT_ID ??= "test-google-client-id";
+process.env.GOOGLE_CLIENT_SECRET ??= "test-google-client-secret";
 
 const DIRECT_CALL_WARNING =
   "Convex functions should not directly call other Convex functions.";
