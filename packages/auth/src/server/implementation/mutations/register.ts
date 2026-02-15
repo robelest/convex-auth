@@ -6,7 +6,7 @@ import { upsertUserAndAccount } from "../users.js";
 import { getAuthSessionId } from "../sessions.js";
 import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils.js";
 import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./storeRef.js";
+import { AUTH_STORE_REF } from "./store.js";
 import { throwAuthError } from "../../errors.js";
 
 export const createAccountFromCredentialsArgs = v.object({

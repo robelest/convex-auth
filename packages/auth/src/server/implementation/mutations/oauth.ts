@@ -5,7 +5,7 @@ import { OAuthConfig } from "@auth/core/providers/oauth.js";
 import { upsertUserAndAccount } from "../users.js";
 import { generateRandomString, logWithLevel, sha256 } from "../utils.js";
 import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./storeRef.js";
+import { AUTH_STORE_REF } from "./store.js";
 import { throwAuthError } from "../../errors.js";
 
 const OAUTH_SIGN_IN_EXPIRATION_MS = 1000 * 60 * 2; // 2 minutes

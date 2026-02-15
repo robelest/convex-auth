@@ -4,11 +4,11 @@ import {
   isSignInRateLimited,
   recordFailedSignIn,
   resetSignInRateLimit,
-} from "../rateLimit.js";
+} from "../ratelimit.js";
 import * as Provider from "../provider.js";
 import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils.js";
 import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./storeRef.js";
+import { AUTH_STORE_REF } from "./store.js";
 
 export const retrieveAccountWithCredentialsArgs = v.object({
   provider: v.string(),

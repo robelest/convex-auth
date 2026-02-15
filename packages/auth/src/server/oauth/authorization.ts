@@ -4,7 +4,7 @@ import { InternalOptions } from "./types.js";
 import {
   callbackUrl,
   getAuthorizationSignature,
-} from "./convexAuth.js";
+} from "./helpers.js";
 import { Cookie } from "@auth/core/lib/utils/cookie.js";
 import { logWithLevel } from "../implementation/utils.js";
 import { throwAuthError } from "../errors.js";

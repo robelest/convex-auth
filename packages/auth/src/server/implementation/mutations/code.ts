@@ -6,7 +6,7 @@ import { getAccountOrThrow, upsertUserAndAccount } from "../users.js";
 import { getAuthSessionId } from "../sessions.js";
 import { LOG_LEVELS, logWithLevel, sha256 } from "../utils.js";
 import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./storeRef.js";
+import { AUTH_STORE_REF } from "./store.js";
 
 export const createVerificationCodeArgs = v.object({
   accountId: v.optional(v.string()),

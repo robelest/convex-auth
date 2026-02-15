@@ -1,7 +1,7 @@
 /**
  * Shared CLI utilities — logging, subprocess execution, file helpers.
  *
- * Eliminates duplication across index.ts, portal-upload.ts, portal-link.ts.
+ * Eliminates duplication across index.ts, upload.ts, link.ts.
  * All output goes to stderr so stdout can be piped cleanly.
  */
 

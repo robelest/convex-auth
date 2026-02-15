@@ -6,9 +6,9 @@
       "name": "@robelest/convex-auth",
       "dependencies": {
         "@auth/core": "^0.37.0",
-        "@convex-dev/auth": "workspace:*",
         "@convex-dev/self-hosting": "^0.1.0",
         "@oslojs/crypto": "^1.0.1",
+        "@robelest/convex-auth": "workspace:*",
         "convex": "^1.31.7",
         "convex-helpers": "^0.1.111",
       },
@@ -31,9 +31,9 @@
       "name": "tanstack",
       "dependencies": {
         "@base-ui/react": "^1.1.0",
-        "@convex-dev/auth": "workspace:*",
         "@fontsource-variable/inter": "^5.2.8",
         "@remixicon/react": "^4.9.0",
+        "@robelest/convex-auth": "workspace:*",
         "@tailwindcss/vite": "^4.0.6",
         "@tanstack/react-devtools": "^0.7.0",
         "@tanstack/react-router": "^1.132.0",
@@ -72,8 +72,8 @@
       },
     },
     "packages/auth": {
-      "name": "@convex-dev/auth",
-      "version": "0.0.90",
+      "name": "@robelest/convex-auth",
+      "version": "0.0.3-preview.2",
       "bin": "./dist/bin.cjs",
       "dependencies": {
         "@convex-dev/self-hosting": "^0.1.0",
@@ -121,10 +121,10 @@
       },
     },
     "packages/portal": {
-      "name": "@convex-dev/auth-portal",
+      "name": "@robelest/convex-auth-portal",
       "version": "0.0.1",
       "dependencies": {
-        "@convex-dev/auth": "workspace:*",
+        "@robelest/convex-auth": "workspace:*",
         "convex": "catalog:",
         "convex-svelte": "^0.0.12",
       },
@@ -150,8 +150,8 @@
     "packages/test": {
       "name": "auth-test-suite",
       "devDependencies": {
-        "@convex-dev/auth": "workspace:*",
         "@edge-runtime/vm": "^3.2.0",
+        "@robelest/convex-auth": "workspace:*",
         "cheerio": "^1.0.0-rc.12",
         "convex": "catalog:",
         "convex-test": "catalog:",
@@ -250,10 +250,6 @@
     "@base-ui/utils": ["@base-ui/utils@0.2.4", "", { "dependencies": { "@babel/runtime": "^7.28.4", "@floating-ui/utils": "^0.2.10", "reselect": "^5.1.1", "use-sync-external-store": "^1.6.0" }, "peerDependencies": { "@types/react": "^17 || ^18 || ^19", "react": "^17 || ^18 || ^19", "react-dom": "^17 || ^18 || ^19" }, "optionalPeers": ["@types/react"] }, "sha512-smZwpMhjO29v+jrZusBSc5T+IJ3vBb9cjIiBjtKcvWmRj9Z4DWGVR3efr1eHR56/bqY5a4qyY9ElkOY5ljo3ng=="],
 
     "@commander-js/extra-typings": ["@commander-js/extra-typings@14.0.0", "", { "peerDependencies": { "commander": "~14.0.0" } }, "sha512-hIn0ncNaJRLkZrxBIp5AsW/eXEHNKYQBh0aPdoUqNgD+Io3NIykQqpKFyKcuasZhicGaEZJX/JBSIkZ4e5x8Dg=="],
-
-    "@convex-dev/auth": ["@convex-dev/auth@workspace:packages/auth"],
-
-    "@convex-dev/auth-portal": ["@convex-dev/auth-portal@workspace:packages/portal"],
 
     "@convex-dev/eslint-plugin": ["@convex-dev/eslint-plugin@1.1.1", "", { "dependencies": { "@typescript-eslint/utils": "~8.49.0" }, "peerDependencies": { "convex": "^1.31.0" } }, "sha512-4NsTWNJJLPbti10LZsV1/7UkbaMPFxNz5Ekd3yW5bDkaoU1I0b4TJxk0V+ShbNFTJ2fSqTxm+iGy9XSNCmAoVA=="],
 
@@ -898,6 +894,10 @@
     "@radix-ui/rect": ["@radix-ui/rect@1.1.1", "", {}, "sha512-HPwpGIzkl28mWyZqG52jiqDJ12waP11Pa1lGoiyUkIEuMLBP0oeK/C89esbXrxsky5we7dfd8U58nm0SgAWpVw=="],
 
     "@remixicon/react": ["@remixicon/react@4.9.0", "", { "peerDependencies": { "react": ">=18.2.0" } }, "sha512-5/jLDD4DtKxH2B4QVXTobvV1C2uL8ab9D5yAYNtFt+w80O0Ys1xFOrspqROL3fjrZi+7ElFUWE37hBfaAl6U+Q=="],
+
+    "@robelest/convex-auth": ["@robelest/convex-auth@workspace:packages/auth"],
+
+    "@robelest/convex-auth-portal": ["@robelest/convex-auth-portal@workspace:packages/portal"],
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.0-rc.3", "", {}, "sha512-eybk3TjzzzV97Dlj5c+XrBFW57eTNhzod66y9HrBlzJ6NsCrWCp/2kaPS3K9wJmurBC0Tdw4yPjXKZqlznim3Q=="],
 

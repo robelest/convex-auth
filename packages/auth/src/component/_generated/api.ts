@@ -9,7 +9,7 @@
  */
 
 import type * as index from "../index.js";
-import type * as portalBridge from "../portalBridge.js";
+import type * as portalBridge from "../bridge.js";
 import type * as public_ from "../public.js";
 
 import type {

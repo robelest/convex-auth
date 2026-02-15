@@ -2,7 +2,7 @@ import { GenericId, Infer, v } from "convex/values";
 import { ActionCtx, MutationCtx } from "../types.js";
 import * as Provider from "../provider.js";
 import { authDb } from "../db.js";
-import { AUTH_STORE_REF } from "./storeRef.js";
+import { AUTH_STORE_REF } from "./store.js";
 import { throwAuthError } from "../../errors.js";
 
 export const verifierSignatureArgs = v.object({
