@@ -1,7 +1,7 @@
 /**
- * Configure {@link password} provider given a {@link PasswordConfig}.
+ * Configure {@link Password} provider for email/password authentication.
  *
- * The `password` provider supports the following flows, determined
+ * The `Password` provider supports the following flows, determined
  * by the `flow` parameter:
  *
  * - `"signUp"`: Create a new account with a password.
@@ -12,25 +12,22 @@
  *    included in params, verify an OTP.
  *
  * ```ts
- * import password from "@robelest/convex-auth/providers/password";
- * import { Auth } from "@robelest/convex-auth/component";
+ * import { Password } from "@robelest/convex-auth/providers";
  *
- * export const { auth, signIn, signOut, store } = Auth({
- *   providers: [password],
- * });
+ * new Password()
  * ```
  *
  * @module
  */
 
-import credentials, {
-  CredentialsUserConfig,
-} from "@robelest/convex-auth/providers/credentials";
-import {
+import { Credentials, type CredentialsConfig } from "./credentials";
+import type {
   EmailConfig,
   GenericActionCtxWithAuthConfig,
   GenericDoc,
-} from "@robelest/convex-auth/component";
+  AuthProviderConfig,
+  ConvexCredentialsConfig,
+} from "../server/types";
 import {
   DocumentByName,
   GenericDataModel,
@@ -40,7 +37,7 @@ import { Value } from "convex/values";
 import { Scrypt } from "lucia";
 
 /**
- * The available options to a {@link password} provider for Convex Auth.
+ * The available options to a {@link Password} provider for Convex Auth.
  */
 export interface PasswordConfig<DataModel extends GenericDataModel> {
   /**
@@ -84,7 +81,7 @@ export interface PasswordConfig<DataModel extends GenericDataModel> {
    * Provide hashing and verification functions if you want to control
    * how passwords are hashed.
    */
-  crypto?: CredentialsUserConfig["crypto"];
+  crypto?: CredentialsConfig["crypto"];
   /**
    * An Auth.js email provider used to require verification
    * before password reset.
@@ -106,137 +103,174 @@ export interface PasswordConfig<DataModel extends GenericDataModel> {
  * Email verification is not required unless you pass
  * an email provider to the `verify` option.
  *
- * @param config - Password options (custom ID, crypto, verify, profile, etc.).
- * @returns A `ConvexCredentialsConfig` to include in your `providers` array.
+ * @example
+ * ```ts
+ * import { Password } from "@robelest/convex-auth/providers";
+ *
+ * new Password()
+ * new Password({ verify: myEmailProvider })
+ * ```
  */
-export default function password<DataModel extends GenericDataModel>(
-  config: PasswordConfig<DataModel> = {},
-) {
-  const provider = config.id ?? "password";
-  return credentials<DataModel>({
-    id: "password",
-    authorize: async (params, ctx) => {
-      const flow = params.flow as string;
-      const passwordToValidate =
-        flow === "signUp"
-          ? (params.password as string)
-          : flow === "reset-verification"
-            ? (params.newPassword as string)
-            : null;
-      if (passwordToValidate !== null) {
-        if (config.validatePasswordRequirements !== undefined) {
-          config.validatePasswordRequirements(passwordToValidate);
+export class Password<DataModel extends GenericDataModel = GenericDataModel> {
+  readonly id: string;
+  readonly type = "credentials" as const;
+  readonly config: PasswordConfig<DataModel>;
+
+  constructor(config: PasswordConfig<DataModel> = {} as PasswordConfig<DataModel>) {
+    this.id = config.id ?? "password";
+    this.config = config;
+  }
+
+  /** @internal Convert to the internal materialized config shape. */
+  _toMaterialized(): ConvexCredentialsConfig {
+    const config = this.config;
+    const provider = this.id;
+
+    return new Credentials<DataModel>({
+      id: "password",
+      authorize: async (params, ctx) => {
+        const flow = params.flow as string;
+        const passwordToValidate =
+          flow === "signUp"
+            ? (params.password as string)
+            : flow === "reset-verification"
+              ? (params.newPassword as string)
+              : null;
+        if (passwordToValidate !== null) {
+          if (config.validatePasswordRequirements !== undefined) {
+            config.validatePasswordRequirements(passwordToValidate);
+          } else {
+            validateDefaultPasswordRequirements(passwordToValidate);
+          }
+        }
+        const profile = config.profile?.(params, ctx) ?? defaultProfile(params);
+        const { email } = profile;
+        const secret = params.password as string;
+        let account: GenericDoc<DataModel, "account">;
+        let user: GenericDoc<DataModel, "user">;
+        if (flow === "signUp") {
+          if (secret === undefined) {
+            throw new Error("Missing `password` param for `signUp` flow");
+          }
+          const created = await ctx.auth.account.create(ctx, {
+            provider,
+            account: { id: email, secret },
+            profile: profile as any,
+            shouldLinkViaEmail: config.verify !== undefined,
+            shouldLinkViaPhone: false,
+          });
+          ({ account, user } = created);
+        } else if (flow === "signIn") {
+          if (secret === undefined) {
+            throw new Error("Missing `password` param for `signIn` flow");
+          }
+          const retrieved = await ctx.auth.account.get(ctx, {
+            provider,
+            account: { id: email, secret },
+          });
+          if (retrieved === null) {
+            throw new Error("Invalid credentials");
+          }
+          ({ account, user } = retrieved);
+        } else if (flow === "reset") {
+          if (!config.reset) {
+            throw new Error(`Password reset is not enabled for ${provider}`);
+          }
+          const { account } = await ctx.auth.account.get(ctx, {
+            provider,
+            account: { id: email },
+          });
+          return await ctx.auth.provider.signIn(ctx, config.reset as AuthProviderConfig, {
+            accountId: account._id,
+            params,
+          });
+        } else if (flow === "reset-verification") {
+          if (!config.reset) {
+            throw new Error(`Password reset is not enabled for ${provider}`);
+          }
+          if (params.newPassword === undefined) {
+            throw new Error(
+              "Missing `newPassword` param for `reset-verification` flow",
+            );
+          }
+          const result = await ctx.auth.provider.signIn(
+            ctx,
+            config.reset as AuthProviderConfig,
+            { params },
+          );
+          if (result === null) {
+            throw new Error("Invalid code");
+          }
+          const { userId, sessionId } = result;
+          const secret = params.newPassword as string;
+          await ctx.auth.account.updateCredentials(ctx, {
+            provider,
+            account: { id: email, secret },
+          });
+          await ctx.auth.session.invalidate(ctx, { userId, except: [sessionId] });
+          return { userId, sessionId };
+        } else if (flow === "email-verification") {
+          if (!config.verify) {
+            throw new Error(
+              `Email verification is not enabled for ${provider}`,
+            );
+          }
+          const { account } = await ctx.auth.account.get(ctx, {
+            provider,
+            account: { id: email },
+          });
+          return await ctx.auth.provider.signIn(ctx, config.verify as AuthProviderConfig, {
+            accountId: account._id,
+            params,
+          });
         } else {
-          validateDefaultPasswordRequirements(passwordToValidate);
-        }
-      }
-      const profile = config.profile?.(params, ctx) ?? defaultProfile(params);
-      const { email } = profile;
-      const secret = params.password as string;
-      let account: GenericDoc<DataModel, "account">;
-      let user: GenericDoc<DataModel, "user">;
-      if (flow === "signUp") {
-        if (secret === undefined) {
-          throw new Error("Missing `password` param for `signUp` flow");
-        }
-        const created = await ctx.auth.account.create(ctx, {
-          provider,
-          account: { id: email, secret },
-          profile: profile as any,
-          shouldLinkViaEmail: config.verify !== undefined,
-          shouldLinkViaPhone: false,
-        });
-        ({ account, user } = created);
-      } else if (flow === "signIn") {
-        if (secret === undefined) {
-          throw new Error("Missing `password` param for `signIn` flow");
-        }
-        const retrieved = await ctx.auth.account.get(ctx, {
-          provider,
-          account: { id: email, secret },
-        });
-        if (retrieved === null) {
-          throw new Error("Invalid credentials");
-        }
-        ({ account, user } = retrieved);
-        // START: Optional, support password reset
-      } else if (flow === "reset") {
-        if (!config.reset) {
-          throw new Error(`Password reset is not enabled for ${provider}`);
-        }
-        const { account } = await ctx.auth.account.get(ctx, {
-          provider,
-          account: { id: email },
-        });
-        return await ctx.auth.provider.signIn(ctx, config.reset, {
-          accountId: account._id,
-          params,
-        });
-      } else if (flow === "reset-verification") {
-        if (!config.reset) {
-          throw new Error(`Password reset is not enabled for ${provider}`);
-        }
-        if (params.newPassword === undefined) {
           throw new Error(
-            "Missing `newPassword` param for `reset-verification` flow",
+            "Missing `flow` param, it must be one of " +
+              '"signUp", "signIn", "reset", "reset-verification" or ' +
+              '"email-verification"!',
           );
         }
-        const result = await ctx.auth.provider.signIn(ctx, config.reset, { params });
-        if (result === null) {
-          throw new Error("Invalid code");
+        if (config.verify && !account.emailVerified) {
+          return await ctx.auth.provider.signIn(ctx, config.verify as AuthProviderConfig, {
+            accountId: account._id,
+            params,
+          });
         }
-        const { userId, sessionId } = result;
-        const secret = params.newPassword as string;
-        await ctx.auth.account.updateCredentials(ctx, {
-          provider,
-          account: { id: email, secret },
-        });
-        await ctx.auth.session.invalidate(ctx, { userId, except: [sessionId] });
-        return { userId, sessionId };
-        // END
-        // START: Optional, email verification during sign in
-      } else if (flow === "email-verification") {
-        if (!config.verify) {
-          throw new Error(`Email verification is not enabled for ${provider}`);
-        }
-        const { account } = await ctx.auth.account.get(ctx, {
-          provider,
-          account: { id: email },
-        });
-        return await ctx.auth.provider.signIn(ctx, config.verify, {
-          accountId: account._id,
-          params,
-        });
-        // END
-      } else {
-        throw new Error(
-          "Missing `flow` param, it must be one of " +
-            '"signUp", "signIn", "reset", "reset-verification" or ' +
-            '"email-verification"!',
-        );
-      }
-      // START: Optional, email verification during sign in
-      if (config.verify && !account.emailVerified) {
-        return await ctx.auth.provider.signIn(ctx, config.verify, {
-          accountId: account._id,
-          params,
-        });
-      }
-      // END
-      return { userId: user._id };
-    },
-    crypto: {
-      async hashSecret(password: string) {
-        return await new Scrypt().hash(password);
+        return { userId: user._id };
       },
-      async verifySecret(password: string, hash: string) {
-        return await new Scrypt().verify(hash, password);
+      crypto: config.crypto ?? {
+        async hashSecret(password: string) {
+          return await new Scrypt().hash(password);
+        },
+        async verifySecret(password: string, hash: string) {
+          return await new Scrypt().verify(hash, password);
+        },
       },
-    },
-    extraProviders: [config.reset, config.verify],
-    ...config,
-  });
+      extraProviders: [
+        config.reset as AuthProviderConfig | undefined,
+        config.verify as AuthProviderConfig | undefined,
+      ],
+      ...config,
+    })._toMaterialized();
+  }
 }
+
+// ============================================================================
+// Backward-compatible default export
+// ============================================================================
+
+/**
+ * @deprecated Use `new Password(config)` instead.
+ */
+export default function password<DataModel extends GenericDataModel>(
+  config: PasswordConfig<DataModel> = {} as PasswordConfig<DataModel>,
+): ConvexCredentialsConfig {
+  return new Password(config)._toMaterialized();
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
 
 function validateDefaultPasswordRequirements(password: string) {
   if (!password || password.length < 8) {

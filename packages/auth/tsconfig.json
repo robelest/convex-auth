@@ -12,7 +12,7 @@
     "strict": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "paths": {
       "@robelest/convex-auth/component": ["./src/component/index"],
       "@robelest/convex-auth/providers/*": ["./src/providers/*"],

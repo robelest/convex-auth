@@ -40,7 +40,7 @@ import {
 import {
   PasskeyProviderConfig,
   GenericActionCtxWithAuthConfig,
-} from "../types.js";
+} from "../types";
 import {
   AuthDataModel,
   SessionInfo,
@@ -52,11 +52,11 @@ import {
   mutatePasskeyInsert,
   mutatePasskeyUpdateCounter,
   mutateVerifierDelete,
-} from "./types.js";
-import { callSignIn, callVerifier } from "./mutations/index.js";
-import { callVerifierSignature } from "./mutations/signature.js";
-import { authDb } from "./db.js";
-import { throwAuthError } from "../errors.js";
+} from "./types";
+import { callSignIn, callVerifier } from "./mutations/index";
+import { callVerifierSignature } from "./mutations/signature";
+import { authDb } from "./db";
+import { throwAuthError } from "../errors";
 
 
 type EnrichedActionCtx = GenericActionCtxWithAuthConfig<AuthDataModel>;

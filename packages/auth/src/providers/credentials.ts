@@ -1,22 +1,14 @@
 /**
- * Configure {@link credentials} provider given a {@link CredentialsUserConfig}.
- *
- * This is for a very custom authentication implementation, often you can
- * use the [`password`](https://labs.convex.dev/auth/api_reference/providers/password) provider instead.
+ * Credentials provider for custom authentication flows.
  *
  * ```ts
- * import credentials from "@robelest/convex-auth/providers/credentials";
- * import { Auth } from "@robelest/convex-auth/component";
+ * import { Credentials } from "@robelest/convex-auth/providers";
  *
- * export const { auth, signIn, signOut, store } = Auth({
- *   providers: [
- *     credentials({
- *       authorize: async (credentials, ctx) => {
- *         // Your custom logic here...
- *       },
- *     }),
- *   ],
- * });
+ * new Credentials({
+ *   authorize: async (credentials, ctx) => {
+ *     // Your custom logic here...
+ *   },
+ * })
  * ```
  *
  * @module
@@ -31,32 +23,19 @@ import { GenericDataModel } from "convex/server";
 import { GenericId, Value } from "convex/values";
 
 /**
- * The available options to a {@link credentials} provider for Convex Auth.
+ * Configuration for the Credentials provider.
  */
-export interface CredentialsUserConfig<
+export interface CredentialsConfig<
   DataModel extends GenericDataModel = GenericDataModel,
 > {
-  /**
-   * Uniquely identifies the provider, allowing to use
-   * multiple different {@link credentials} providers.
-   */
+  /** Uniquely identifies the provider. Defaults to `"credentials"`. */
   id?: string;
   /**
-   * Gives full control over how you handle the credentials received from the user
-   * via the client-side `signIn` function.
+   * Handle credentials received from the client-side `signIn` call.
    *
-   * @returns This method expects a user ID to be returned for a successful login.
-   * A session ID can be also returned and that session will be used.
-   * If an error is thrown or `null` is returned, the sign-in will fail.
+   * @returns A user ID for successful login, or `null` to reject.
    */
   authorize: (
-    /**
-     * The available keys are determined by your call to `signIn()` on the client.
-     *
-     * You can add basic validation depending on your use case,
-     * or you can use a popular library like [Zod](https://zod.dev) for validating
-     * the input.
-     */
     credentials: Partial<Record<string, Value | undefined>>,
     ctx: GenericActionCtxWithAuthConfig<DataModel>,
   ) => Promise<{
@@ -64,48 +43,68 @@ export interface CredentialsUserConfig<
     sessionId?: GenericId<"session">;
   } | null>;
   /**
-   * Provide hashing and verification functions if you're
-   * storing account secrets and want to control
-   * how they're hashed.
-   *
-   * These functions will be called during
-   * the `createAccount` and `retrieveAccount` execution when the
-   * `secret` option is used.
+   * Provide hashing and verification functions for account secrets.
    */
   crypto?: {
-    /**
-     * Function used to hash the secret.
-     */
     hashSecret: (secret: string) => Promise<string>;
-    /**
-     * Function used to verify that the secret
-     * matches the stored hash.
-     */
     verifySecret: (secret: string, hash: string) => Promise<boolean>;
   };
   /**
-   * Register extra providers used in the implementation of the credentials
-   * provider. They will only be available to the `signInViaProvider`
-   * function, and not to the `signIn` function exposed to clients.
+   * Extra providers used internally (e.g. email verification in password flow).
+   * Not exposed to clients.
    */
   extraProviders?: (AuthProviderConfig | undefined)[];
 }
 
 /**
- * The Credentials provider allows you to handle signing in with arbitrary credentials,
- * such as a username and password, domain, or two factor authentication or hardware device (e.g. YubiKey U2F / FIDO).
+ * Credentials provider for custom authentication flows.
  *
- * @param config - Credential-specific options (authorize callback, profile, etc.).
- * @returns A `ConvexCredentialsConfig` to include in your `providers` array.
+ * This is the escape hatch for fully custom auth logic. For email/password
+ * flows, use the `Password` class instead.
+ *
+ * @example
+ * ```ts
+ * import { Credentials } from "@robelest/convex-auth/providers";
+ *
+ * new Credentials({
+ *   authorize: async (credentials, ctx) => {
+ *     const user = await validateUser(credentials);
+ *     return user ? { userId: user._id } : null;
+ *   },
+ * })
+ * ```
  */
-export default function credentials<DataModel extends GenericDataModel>(
-  config: CredentialsUserConfig<DataModel>,
-): ConvexCredentialsConfig {
-  return {
-    id: "credentials",
-    type: "credentials",
-    authorize: async () => null,
-    // @ts-expect-error Internal
-    options: config,
-  };
+export class Credentials<DataModel extends GenericDataModel = GenericDataModel> {
+  readonly id: string;
+  readonly type = "credentials" as const;
+  readonly config: CredentialsConfig<DataModel>;
+
+  constructor(config: CredentialsConfig<DataModel>) {
+    this.id = config.id ?? "credentials";
+    this.config = config;
+  }
+
+  /** @internal Convert to the internal materialized config shape. */
+  _toMaterialized(): ConvexCredentialsConfig {
+    return {
+      ...this.config,
+      id: this.id,
+      type: "credentials",
+    } as ConvexCredentialsConfig;
+  }
 }
+
+// Keep the old factory function as default export for backward compatibility
+// during the transition. New code should use `new Credentials(...)`.
+
+/** @deprecated Use `new Credentials(config)` instead. */
+export default function credentials<DataModel extends GenericDataModel>(
+  config: CredentialsConfig<DataModel>,
+): ConvexCredentialsConfig {
+  return new Credentials(config)._toMaterialized();
+}
+
+// Re-export the old type name for backward compat
+export type CredentialsUserConfig<
+  DataModel extends GenericDataModel = GenericDataModel,
+> = CredentialsConfig<DataModel>;

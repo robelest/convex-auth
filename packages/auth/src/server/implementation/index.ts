@@ -1,4 +1,3 @@
-import { OAuth2Config, OAuthConfig } from "@auth/core/providers";
 import {
   Auth,
   GenericActionCtx,
@@ -9,36 +8,36 @@ import {
   internalMutationGeneric,
 } from "convex/server";
 import { ConvexError, GenericId, v } from "convex/values";
-import { throwAuthError, isAuthError } from "../errors.js";
+import { throwAuthError, isAuthError } from "../errors";
 import { parse as parseCookies, serialize as serializeCookie } from "cookie";
-import { redirectToParamCookie, useRedirectToParam } from "../cookies.js";
-import { FunctionReferenceFromExport } from "../types.js";
+import { redirectToParamCookie, useRedirectToParam } from "../cookies";
+import { FunctionReferenceFromExport } from "../types";
 import {
   configDefaults,
   listAvailableProviders,
   materializeProvider,
-} from "../providers.js";
+} from "../providers";
 import {
   AuthProviderConfig,
   ConvexAuthConfig,
   CorsConfig,
   HttpKeyContext,
-} from "../types.js";
-import { requireEnv } from "../utils.js";
+} from "../types";
+import { requireEnv } from "../utils";
 import {
   ActionCtx,
   MutationCtx,
   Tokens,
   KeyDoc,
-} from "./types.js";
-export { Doc, Tokens } from "./types.js";
+} from "./types";
+export { Doc, Tokens } from "./types";
 import {
   LOG_LEVELS,
   TOKEN_SUB_CLAIM_DIVIDER,
   logError,
   logWithLevel,
-} from "./utils.js";
-import { GetProviderOrThrowFunc } from "./provider.js";
+} from "./utils";
+import { GetProviderOrThrowFunc } from "./provider";
 import {
   callCreateAccountFromCredentials,
   callInvalidateSessions,
@@ -49,22 +48,21 @@ import {
   callVerifierSignature,
   storeArgs,
   storeImpl,
-} from "./mutations/index.js";
-import { signInImpl } from "./signin.js";
-import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects.js";
+} from "./mutations/index";
+import { signInImpl } from "./signin";
+import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects";
 import {
   generateApiKey,
   hashApiKey,
   buildScopeChecker,
   validateScopes,
   checkKeyRateLimit,
-} from "./keys.js";
-import { getAuthorizationUrl } from "../oauth/authorization.js";
+} from "./keys";
 import {
-  defaultCookiesOptions,
-  oAuthConfigToInternalProvider,
-} from "../oauth/helpers.js";
-import { handleOAuth } from "../oauth/callback.js";
+  createOAuthAuthorizationURL,
+  handleOAuthCallback,
+} from "../oauth";
+import type { OAuthMaterializedConfig } from "../types";
 
 /**
  * The type of the signIn Convex Action returned from the auth() helper.
@@ -105,7 +103,7 @@ export type SignOutAction = FunctionReferenceFromExport<
 export function Auth(config_: ConvexAuthConfig) {
   const config = configDefaults(config_);
   const hasOAuth = config.providers.some(
-    (provider) => provider.type === "oauth" || provider.type === "oidc",
+    (provider) => provider.type === "oauth",
   );
   const getProvider = (id: string, allowExtraProviders: boolean = false) => {
     return (
@@ -903,7 +901,7 @@ export function Auth(config_: ConvexAuthConfig) {
        *
        * ```ts
        * import { httpRouter } from "convex/server";
-       * import { auth } from "./auth.js";
+       * import { auth } from "./auth";
        *
        * const http = httpRouter();
        *
@@ -980,14 +978,15 @@ export function Auth(config_: ConvexAuthConfig) {
               if (verifier === null) {
                 throwAuthError("OAUTH_MISSING_VERIFIER");
               }
-              const provider = getProviderOrThrow(
-                providerId,
-              ) as OAuthConfig<any>;
+              const provider = getProviderOrThrow(providerId);
+
+              const oauthConfig = provider as OAuthMaterializedConfig;
               const { redirect, cookies, signature } =
-                await getAuthorizationUrl({
-                  provider: await oAuthConfigToInternalProvider(provider),
-                  cookies: defaultCookiesOptions(providerId),
-                });
+                await createOAuthAuthorizationURL(
+                  providerId,
+                  oauthConfig.provider,
+                  oauthConfig,
+                );
 
               await callVerifierSignature(ctx, {
                 verifier,
@@ -995,7 +994,6 @@ export function Auth(config_: ConvexAuthConfig) {
               });
 
               const redirectTo = url.searchParams.get("redirectTo");
-
               if (redirectTo !== null) {
                 cookies.push(redirectToParamCookie(providerId, redirectTo));
               }
@@ -1004,7 +1002,7 @@ export function Auth(config_: ConvexAuthConfig) {
               for (const { name, value, options } of cookies) {
                 headers.append(
                   "Set-Cookie",
-                  serializeCookie(name, value, options),
+                  serializeCookie(name, value, options as any),
                 );
               }
 
@@ -1024,9 +1022,7 @@ export function Auth(config_: ConvexAuthConfig) {
               "Handling OAuth callback for provider:",
               providerId,
             );
-            const provider = getProviderOrThrow(
-              providerId,
-            ) as OAuth2Config<any>;
+            const provider = getProviderOrThrow(providerId);
 
             const cookies = getCookies(request);
 
@@ -1052,32 +1048,27 @@ export function Auth(config_: ConvexAuthConfig) {
             }
 
             try {
-              const { profile, tokens, signature } = await handleOAuth(
+              let profileId: string;
+              let profileData: Record<string, unknown>;
+              let signature: string;
+
+              const oauthConfig = provider as OAuthMaterializedConfig;
+              const result = await handleOAuthCallback(
+                providerId,
+                oauthConfig.provider,
+                oauthConfig,
                 Object.fromEntries(params.entries()),
                 cookies,
-                {
-                  provider: await oAuthConfigToInternalProvider(provider),
-                  cookies: defaultCookiesOptions(provider.id),
-                },
               );
-
-              const { id, ...profileFromCallback } = await provider.profile!(
-                profile,
-                tokens,
-              );
-
-              if (typeof id !== "string") {
-                throwAuthError(
-                  "OAUTH_INVALID_PROFILE",
-                  `The profile method of the ${providerId} config must return a string ID`,
-                  { provider: providerId },
-                );
-              }
+              const { id, ...rest } = result.profile;
+              profileId = id;
+              profileData = rest;
+              signature = result.signature;
 
               const verificationCode = await callUserOAuth(ctx, {
                 provider: providerId,
-                providerAccountId: id,
-                profile: profileFromCallback,
+                providerAccountId: profileId,
+                profile: profileData,
                 signature,
               });
 

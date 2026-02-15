@@ -1,9 +1,9 @@
 import { GenericId } from "convex/values";
-import { Doc, MutationCtx } from "./types.js";
-import { AuthProviderMaterializedConfig, ConvexAuthConfig } from "../types.js";
-import { LOG_LEVELS, logWithLevel } from "./utils.js";
-import { authDb } from "./db.js";
-import { throwAuthError } from "../errors.js";
+import { Doc, MutationCtx } from "./types";
+import { AuthProviderMaterializedConfig, ConvexAuthConfig } from "../types";
+import { LOG_LEVELS, logWithLevel } from "./utils";
+import { authDb } from "./db";
+import { throwAuthError } from "../errors";
 
 type CreateOrUpdateUserArgs = {
   type: "oauth" | "credentials" | "email" | "phone" | "verification";
@@ -76,7 +76,7 @@ async function defaultCreateOrUpdateUser(
   } = args;
   const emailVerified =
     profileEmailVerified ??
-    ((provider.type === "oauth" || provider.type === "oidc") &&
+    (provider.type === "oauth" &&
       provider.allowDangerousEmailAccountLinking !== false);
   const phoneVerified = profilePhoneVerified ?? false;
   const shouldLinkViaEmail =

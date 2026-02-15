@@ -19,7 +19,7 @@ import { encodeBase32LowerCaseNoPadding } from "@oslojs/encoding";
 import {
   TotpProviderConfig,
   GenericActionCtxWithAuthConfig,
-} from "../types.js";
+} from "../types";
 import {
   AuthDataModel,
   SessionInfo,
@@ -31,10 +31,10 @@ import {
   mutateTotpMarkVerified,
   mutateTotpUpdateLastUsed,
   mutateVerifierDelete,
-} from "./types.js";
-import { callSignIn, callVerifier } from "./mutations/index.js";
-import { callVerifierSignature } from "./mutations/signature.js";
-import { throwAuthError } from "../errors.js";
+} from "./types";
+import { callSignIn, callVerifier } from "./mutations/index";
+import { callVerifierSignature } from "./mutations/signature";
+import { throwAuthError } from "../errors";
 
 type EnrichedActionCtx = GenericActionCtxWithAuthConfig<AuthDataModel>;
 

@@ -6,11 +6,10 @@
  * ```ts
  * // convex/auth.ts
  * import { Auth, Portal } from "@robelest/convex-auth/component";
- * import google from "@auth/core/providers/google";
  * import { components } from "./_generated/api";
  *
  * export const auth = new Auth(components.auth, {
- *   providers: [google],
+ *   providers: [{ id: "google", type: "oauth" as const }],
  *   email: {
  *     from: "My App <noreply@example.com>",
  *     send: async (_ctx, { from, to, subject, html }) => {
@@ -41,16 +40,16 @@ import {
 import type { HttpRouter, UserIdentity } from "convex/server";
 import { v } from "convex/values";
 import type { GenericId } from "convex/values";
-import type { Doc } from "./implementation/types.js";
-import type { ComponentApi as AuthComponentApi } from "../component/_generated/component.js";
-import { Auth as AuthFactory } from "./implementation/index.js";
-import type { ConvexAuthConfig } from "./types.js";
+import type { Doc } from "./implementation/types";
+import type { ComponentApi as AuthComponentApi } from "../component/_generated/component";
+import { Auth as AuthFactory } from "./implementation/index";
+import type { ConvexAuthConfig } from "./types";
 import { registerStaticRoutes } from "@convex-dev/self-hosting";
-import { portalMagicLinkEmail } from "./templates.js";
-import { defaultMagicLinkEmail } from "./templates.js";
-import emailProvider from "../providers/email.js";
-import { AUTH_VERSION } from "./version.js";
-import { throwAuthError } from "./errors.js";
+import { portalMagicLinkEmail } from "./templates";
+import { defaultMagicLinkEmail } from "./templates";
+import emailProvider from "../providers/email";
+import { AUTH_VERSION } from "./version";
+import { throwAuthError } from "./errors";
 
 // ============================================================================
 // Types

@@ -3,16 +3,11 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
-    "moduleResolution": "bundler",
     "paths": {
       "@robelest/convex-auth/component": ["./src/component/index"],
       "@robelest/convex-auth/providers/*": ["./src/providers/*"],
       "@robelest/convex-auth/client": ["./src/client/index"],
-      "@robelest/convex-auth/server": ["./src/server/index"],
-      "@auth/core/providers/oauth.js": ["./node_modules/@auth/core/providers/oauth"],
-      "@auth/core/providers/index.js": ["./node_modules/@auth/core/providers/index"],
-      "@auth/core/lib/utils/cookie.js": ["./node_modules/@auth/core/lib/utils/cookie"],
-      "@auth/core/types.js": ["./node_modules/@auth/core/types"]
+      "@robelest/convex-auth/server": ["./src/server/index"]
     }
   },
   "include": ["src/component/**/*"]

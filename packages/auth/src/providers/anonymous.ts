@@ -1,22 +1,20 @@
 /**
- * Configure {@link anonymous} provider given an {@link AnonymousConfig}.
+ * Anonymous authentication provider.
  *
  * ```ts
- * import anonymous from "@robelest/convex-auth/providers/anonymous";
- * import { Auth } from "@robelest/convex-auth/component";
+ * import { Anonymous } from "@robelest/convex-auth/providers";
  *
- * export const { auth, signIn, signOut, store } = Auth({
- *   providers: [anonymous],
- * });
+ * new Anonymous()
  * ```
  *
  * @module
  */
 
-import credentials from "@robelest/convex-auth/providers/credentials";
-import {
+import { Credentials } from "./credentials";
+import type {
   GenericActionCtxWithAuthConfig,
-} from "@robelest/convex-auth/component";
+  ConvexCredentialsConfig,
+} from "../server/types";
 import {
   DocumentByName,
   GenericDataModel,
@@ -25,12 +23,12 @@ import {
 import { Value } from "convex/values";
 
 /**
- * The available options to an {@link anonymous} provider for Convex Auth.
+ * The available options to an {@link Anonymous} provider for Convex Auth.
  */
 export interface AnonymousConfig<DataModel extends GenericDataModel> {
   /**
    * Uniquely identifies the provider, allowing to use
-   * multiple different {@link anonymous} providers.
+   * multiple different {@link Anonymous} providers.
    */
   id?: string;
   /**
@@ -53,29 +51,59 @@ export interface AnonymousConfig<DataModel extends GenericDataModel> {
 }
 
 /**
- * An anonymous authentication provider.
+ * Anonymous authentication provider.
  *
- * This provider doesn't require any user-provided information.
+ * Creates a new anonymous user account without requiring any
+ * user-provided information. Useful for guest access or
+ * progressive profiling.
  *
- * @param config - Optional overrides (custom ID, profile, etc.).
- * @returns A `ConvexCredentialsConfig` to include in your `providers` array.
+ * @example
+ * ```ts
+ * import { Anonymous } from "@robelest/convex-auth/providers";
+ *
+ * new Anonymous()
+ * ```
+ */
+export class Anonymous<DataModel extends GenericDataModel = GenericDataModel> {
+  readonly id: string;
+  readonly type = "credentials" as const;
+  readonly config: AnonymousConfig<DataModel>;
+
+  constructor(config: AnonymousConfig<DataModel> = {} as AnonymousConfig<DataModel>) {
+    this.id = config.id ?? "anonymous";
+    this.config = config;
+  }
+
+  /** @internal Convert to the internal materialized config shape. */
+  _toMaterialized(): ConvexCredentialsConfig {
+    const config = this.config;
+    const provider = this.id;
+
+    return new Credentials<DataModel>({
+      id: "anonymous",
+      authorize: async (params, ctx) => {
+        const profile = config.profile?.(params, ctx) ?? { isAnonymous: true };
+        const { user } = await ctx.auth.account.create(ctx, {
+          provider,
+          account: { id: crypto.randomUUID() },
+          profile: profile as any,
+        });
+        return { userId: user._id };
+      },
+      ...config,
+    })._toMaterialized();
+  }
+}
+
+// ============================================================================
+// Backward-compatible default export
+// ============================================================================
+
+/**
+ * @deprecated Use `new Anonymous(config)` instead.
  */
 export default function anonymous<DataModel extends GenericDataModel>(
-  config: AnonymousConfig<DataModel> = {},
-) {
-  const provider = config.id ?? "anonymous";
-  return credentials<DataModel>({
-    id: "anonymous",
-    authorize: async (params, ctx) => {
-      const profile = config.profile?.(params, ctx) ?? { isAnonymous: true };
-      const { user } = await ctx.auth.account.create(ctx, {
-        provider,
-        account: { id: crypto.randomUUID() },
-        profile: profile as any,
-      });
-      // END
-      return { userId: user._id };
-    },
-    ...config,
-  });
+  config: AnonymousConfig<DataModel> = {} as AnonymousConfig<DataModel>,
+): ConvexCredentialsConfig {
+  return new Anonymous(config)._toMaterialized();
 }

@@ -5,13 +5,13 @@ import {
   EmailConfig,
   GenericActionCtxWithAuthConfig,
   PhoneConfig,
-} from "../types.js";
+} from "../types";
 import {
   AuthDataModel,
   SessionInfo,
   SessionInfoWithTokens,
   Tokens,
-} from "./types.js";
+} from "./types";
 import {
   callCreateVerificationCode,
   callRefreshSession,
@@ -19,14 +19,14 @@ import {
   callVerifier,
   callVerifierSignature,
   callVerifyCodeAndSignIn,
-} from "./mutations/index.js";
-import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects.js";
-import { requireEnv } from "../utils.js";
-import { OAuth2Config, OIDCConfig } from "@auth/core/providers/oauth.js";
-import { generateRandomString } from "./utils.js";
-import { handlePasskey } from "./passkey.js";
-import { handleTotp, checkTotpRequired } from "./totp.js";
-import { throwAuthError } from "../errors.js";
+} from "./mutations/index";
+import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects";
+import { requireEnv } from "../utils";
+import type { OAuthMaterializedConfig } from "../types";
+import { generateRandomString } from "./utils";
+import { handlePasskey } from "./passkey";
+import { handleTotp, checkTotpRequired } from "./totp";
+import { throwAuthError } from "../errors";
 
 const DEFAULT_EMAIL_VERIFICATION_CODE_DURATION_S = 60 * 60 * 24; // 24 hours
 
@@ -52,7 +52,7 @@ export async function signInImpl(
   | { kind: "refreshTokens"; signedIn: { tokens: Tokens } }
   // Multi-step flows like magic link + OTP
   | { kind: "started"; started: true }
-  // OAuth2 and OIDC flows
+  // OAuth flows
   | { kind: "redirect"; redirect: string; verifier: string }
   // Passkey options (challenge + credential options)
   | { kind: "passkeyOptions"; options: Record<string, any>; verifier: string }
@@ -92,7 +92,7 @@ export async function signInImpl(
   if (provider.type === "credentials") {
     return handleCredentials(ctx, provider, args, options);
   }
-  if (provider.type === "oauth" || provider.type === "oidc") {
+  if (provider.type === "oauth") {
     return handleOAuthProvider(ctx, provider, args, options);
   }
   if (provider.type === "passkey") {
@@ -173,7 +173,6 @@ async function handleEmailAndPhoneProvider(
         ...verificationArgs,
         provider,
         request: new Request("http://localhost"),
-        theme: ctx.auth.config.theme,
       },
       ctx,
     );
@@ -234,7 +233,7 @@ async function handleCredentials(
 
 async function handleOAuthProvider(
   ctx: EnrichedActionCtx,
-  provider: OAuth2Config<any> | OIDCConfig<any>,
+  provider: OAuthMaterializedConfig,
   args: {
     params?: Record<string, any>;
     verifier?: string;

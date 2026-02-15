@@ -1,12 +1,4 @@
 import {
-  Provider as AuthjsProviderConfig,
-  CredentialsConfig,
-  EmailConfig as AuthjsEmailConfig,
-  OAuth2Config,
-  OIDCConfig,
-} from "@auth/core/providers";
-import { Awaitable, Theme } from "@auth/core/types";
-import {
   AnyDataModel,
   DocumentByName,
   FunctionReference,
@@ -19,7 +11,14 @@ import {
   TableNamesInDataModel,
 } from "convex/server";
 import { GenericId, Value } from "convex/values";
-import { CredentialsUserConfig } from "../providers/credentials.js";
+import { CredentialsUserConfig } from "../providers/credentials";
+
+// ============================================================================
+// Utility types
+// ============================================================================
+
+/** A value that is either `T` or a `PromiseLike<T>`. */
+export type Awaitable<T> = T | PromiseLike<T>;
 
 /**
  * The config for the Convex Auth library, passed to `Auth`.
@@ -29,8 +28,7 @@ export type ConvexAuthConfig = {
    * A list of authentication provider configs.
    *
    * You can import existing configs from
-   * - `@auth/core/providers/<provider-name>`
-   * - `@robelest/convex-auth/providers/<provider-name>`
+   * `@robelest/convex-auth/providers/<provider-name>`
    */
   providers: AuthProviderConfig[];
   /**
@@ -40,11 +38,6 @@ export type ConvexAuthConfig = {
    * the component API boundary.
    */
   component: AuthComponentApi;
-  /**
-   * Theme used for emails.
-   * See [Auth.js theme docs](https://authjs.dev/reference/core/types#theme).
-   */
-  theme?: Theme;
   /**
    * Session configuration.
    */
@@ -152,21 +145,20 @@ export type ConvexAuthConfig = {
      * Control which URLs are allowed as a destination after OAuth sign-in
      * and for magic links:
      *
-     * ```ts
-     * import GitHub from "@auth/core/providers/github";
-     * import { Auth } from "@robelest/convex-auth/component";
-     *
-     * export const { auth, signIn, signOut, store } = Auth({
-     *   providers: [GitHub],
-     *   callbacks: {
-     *     async redirect({ redirectTo }) {
-     *       // Check that `redirectTo` is valid
-     *       // and return the relative or absolute URL
-     *       // to redirect to.
-     *     },
-     *   },
-     * });
-     * ```
+      * ```ts
+      * import { Auth } from "@robelest/convex-auth/component";
+      *
+      * export const { auth, signIn, signOut, store } = Auth({
+      *   providers: [google],
+      *   callbacks: {
+      *     async redirect({ redirectTo }) {
+      *       // Check that redirectTo is valid
+      *       // and return the relative or absolute URL
+      *       // to redirect to.
+      *     },
+      *   },
+      * });
+      * ```
      *
      * Convex Auth performs redirect only during OAuth sign-in. By default,
      * it redirects back to the URL specified via the `SITE_URL` environment
@@ -300,17 +292,18 @@ export type ConvexAuthConfig = {
 /**
  * Union of all supported auth provider config types.
  *
- * Includes Auth.js OAuth/OIDC providers, plus library-native providers:
- * credentials, email, phone, passkey (WebAuthn), and TOTP (2FA).
- * Each can be passed as a config object or a factory function.
+ * Includes Arctic-based OAuth providers (via the `OAuth()` factory),
+ * plus library-native providers: credentials, email, phone, passkey
+ * (WebAuthn), and TOTP (2FA). Each can be passed as a config object
+ * or a factory function.
  */
 export type AuthProviderConfig =
-  | Exclude<
-      AuthjsProviderConfig,
-      CredentialsConfig | ((...args: any) => CredentialsConfig)
-    >
+  | import("../providers/oauth").OAuthProviderInstance
+  | OAuthMaterializedConfig
   | ConvexCredentialsConfig
   | ((...args: any) => ConvexCredentialsConfig)
+  | EmailConfig
+  | ((...args: any) => EmailConfig)
   | PhoneConfig
   | ((...args: any) => PhoneConfig)
   | PasskeyProviderConfig
@@ -319,31 +312,49 @@ export type AuthProviderConfig =
   | ((...args: any) => TotpProviderConfig);
 
 /**
- * Extends the standard Auth.js email provider config
- * to allow additional checks during token verification.
+ * Email provider config for magic link / OTP sign-in.
  */
 export interface EmailConfig<
   DataModel extends GenericDataModel = GenericDataModel,
-> extends AuthjsEmailConfig {
+> {
+  /** Provider identifier (e.g. `"email"`, `"resend"`). */
+  id: string;
+  /** Discriminant for provider type routing. */
+  type: "email";
+  /** Display name for this provider. */
+  name?: string;
+  /** Sender address (e.g. `"My App <noreply@example.com>"`). */
+  from?: string;
+  /** Token expiration in seconds. Defaults to 86 400 (24 hours). */
+  maxAge?: number;
   /**
    * Send the verification token to the user.
    *
-   * Overrides the Auth.js 1-arg signature to accept an optional
-   * Convex action context as the second argument. Library-native
-   * email providers use `ctx` to call `email.send(ctx, params)`.
+   * Accepts an optional Convex action context as the second argument,
+   * enabling use with Convex components like `@convex-dev/resend`.
    */
   sendVerificationRequest: (
     params: {
       identifier: string;
       url: string;
       expires: Date;
-      provider: AuthjsEmailConfig;
+      provider: EmailConfig;
       token: string;
-      theme: Theme;
       request: Request;
     },
     ctx?: GenericActionCtx<AnyDataModel>,
   ) => Awaitable<void>;
+  /**
+   * Override to generate a custom verification token.
+   * Tokens shorter than 24 characters are treated as OTPs and
+   * require the original email to be re-submitted for verification.
+   */
+  generateVerificationToken?: () => Awaitable<string>;
+  /**
+   * Normalize the email address before storage / lookup.
+   * Defaults to lowercasing and trimming whitespace.
+   */
+  normalizeIdentifier?: (identifier: string) => string;
   /**
    * Before the token is verified, check other
    * provided parameters.
@@ -358,6 +369,8 @@ export interface EmailConfig<
     params: Record<string, Value | undefined>,
     account: GenericDoc<DataModel, "account">,
   ) => Promise<void>;
+  /** Raw user options before merging with defaults. */
+  options: EmailUserConfig<DataModel>;
 }
 
 /**
@@ -488,6 +501,37 @@ export interface TotpProviderConfig {
   };
 }
 
+// ============================================================================
+// OAuth types (Arctic-based)
+// ============================================================================
+
+/**
+ * Normalized user profile returned by an OAuth provider.
+ *
+ * `id` is the provider-specific account identifier (e.g. GitHub user ID).
+ */
+export interface OAuthProfile {
+  id: string;
+  name?: string;
+  email?: string;
+  image?: string;
+  /** Additional claims from the ID token or userinfo endpoint. */
+  [key: string]: unknown;
+}
+
+/**
+ * Internal config shape for an OAuth provider after normalization.
+ *
+ * This is what the OAuth flow code receives — it maps to the user-facing
+ * `OAuthConfig` from `@robelest/convex-auth/providers`.
+ */
+export interface OAuthProviderConfig {
+  /** OAuth scopes to request. */
+  scopes?: string[];
+  /** User-provided profile extraction callback. */
+  profile?: (tokens: import("arctic").OAuth2Tokens) => Promise<OAuthProfile>;
+}
+
 /** Credentials identifying a provider account (e.g. email + hashed password). */
 export type AuthAccountCredentials = {
   /** Provider-specific account identifier (e.g. email address). */
@@ -602,18 +646,38 @@ export type GenericActionCtxWithAuthConfig<DataModel extends GenericDataModel> =
  */
 export type ConvexAuthMaterializedConfig = {
   providers: AuthProviderMaterializedConfig[];
-  theme: Theme;
 } & Pick<
   ConvexAuthConfig,
   "component" | "session" | "jwt" | "signIn" | "callbacks"
 >;
 
 /**
- * Materialized Auth.js provider config.
+ * Materialized OAuth provider config (Arctic-based).
+ *
+ * Carries the Arctic provider instance along with scopes and profile config.
+ * Produced by materializing an `OAuthProviderInstance` during `configDefaults`.
+ */
+export interface OAuthMaterializedConfig {
+  readonly id: string;
+  readonly type: "oauth";
+  /** The Arctic provider instance. */
+  readonly provider: any;
+  /** OAuth scopes to request. */
+  readonly scopes: string[];
+  /** User-provided profile extraction callback. */
+  readonly profile?: (tokens: import("arctic").OAuth2Tokens) => Promise<OAuthProfile>;
+  /**
+   * Allow linking accounts by email even if the email is unverified.
+   * Use with caution — only enable for providers you trust.
+   */
+  readonly allowDangerousEmailAccountLinking?: boolean;
+}
+
+/**
+ * Materialized auth provider config — the fully resolved form stored at runtime.
  */
 export type AuthProviderMaterializedConfig =
-  | OIDCConfig<any>
-  | OAuth2Config<any>
+  | OAuthMaterializedConfig
   | EmailConfig
   | PhoneConfig
   | ConvexCredentialsConfig
