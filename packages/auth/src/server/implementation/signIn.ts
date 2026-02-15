@@ -4,9 +4,7 @@ import {
   ConvexCredentialsConfig,
   EmailConfig,
   GenericActionCtxWithAuthConfig,
-  PasskeyProviderConfig,
   PhoneConfig,
-  TotpProviderConfig,
 } from "../types.js";
 import {
   AuthDataModel,
@@ -64,9 +62,12 @@ export async function signInImpl(
   | { kind: "totpSetup"; uri: string; secret: string; verifier: string; totpId: string }
 > {
   if (provider === null && args.refreshToken) {
-    const tokens: Tokens = (await callRefreshSession(ctx, {
+    const tokens = await callRefreshSession(ctx, {
       refreshToken: args.refreshToken,
-    }))!;
+    });
+    if (tokens === null) {
+      return { kind: "signedIn", signedIn: null };
+    }
     return { kind: "refreshTokens", signedIn: { tokens } };
   }
   if (provider === null && args.params?.code !== undefined) {
@@ -206,7 +207,7 @@ async function handleCredentials(
   const hasTotpEnrolled = await checkTotpRequired(ctx, result.userId);
   if (hasTotpEnrolled) {
     // Create session but withhold tokens — TOTP verification needed
-    const idsWithoutTokens = await callSignIn(ctx, {
+    await callSignIn(ctx, {
       userId: result.userId,
       sessionId: result.sessionId,
       generateTokens: false,

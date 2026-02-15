@@ -8,14 +8,18 @@ import {
 import { Awaitable, Theme } from "@auth/core/types";
 import {
   AnyDataModel,
+  DocumentByName,
   FunctionReference,
   GenericActionCtx,
   GenericDataModel,
   GenericMutationCtx,
+  RegisteredAction,
+  RegisteredMutation,
+  RegisteredQuery,
+  TableNamesInDataModel,
 } from "convex/server";
 import { GenericId, Value } from "convex/values";
 import { CredentialsUserConfig } from "../providers/credentials.js";
-import { GenericDoc } from "./convex_types.js";
 
 /**
  * The config for the Convex Auth library, passed to `Auth`.
@@ -890,3 +894,52 @@ export type AuthComponentApi = {
     totpDelete: FunctionReference<"mutation", "internal", any, any>;
   };
 };
+
+// ============================================================================
+// Convex document types (merged from convex_types)
+// ============================================================================
+
+/**
+ * Convex document from a given table.
+ */
+export type GenericDoc<
+  DataModel extends GenericDataModel,
+  TableName extends TableNamesInDataModel<DataModel>,
+> = DocumentByName<DataModel, TableName> & {
+  _id: GenericId<TableName>;
+  _creationTime: number;
+};
+
+/**
+ * @internal
+ */
+export type FunctionReferenceFromExport<Export> =
+  Export extends RegisteredQuery<infer Visibility, infer Args, infer Output>
+    ? FunctionReference<"query", Visibility, Args, ConvertReturnType<Output>>
+    : Export extends RegisteredMutation<
+          infer Visibility,
+          infer Args,
+          infer Output
+        >
+      ? FunctionReference<
+          "mutation",
+          Visibility,
+          Args,
+          ConvertReturnType<Output>
+        >
+      : Export extends RegisteredAction<
+            infer Visibility,
+            infer Args,
+            infer Output
+          >
+        ? FunctionReference<
+            "action",
+            Visibility,
+            Args,
+            ConvertReturnType<Output>
+          >
+        : never;
+
+type ConvertReturnType<T> = UndefinedToNull<Awaited<T>>;
+
+type UndefinedToNull<T> = T extends void ? null : T;

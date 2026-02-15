@@ -11,7 +11,6 @@
  * `@oslojs/crypto` for signature verification.
  */
 
-import { GenericId } from "convex/values";
 import {
   parseAttestationObject,
   parseClientDataJSON,
@@ -22,9 +21,7 @@ import {
   coseAlgorithmRS256,
   COSEKeyType,
 } from "@oslojs/webauthn";
-import type { AuthenticatorData } from "@oslojs/webauthn";
 import {
-  ECDSAPublicKey,
   p256,
   verifyECDSASignature,
   decodeSEC1PublicKey,
@@ -44,9 +41,20 @@ import {
   PasskeyProviderConfig,
   GenericActionCtxWithAuthConfig,
 } from "../types.js";
-import { AuthDataModel, SessionInfo } from "./types.js";
+import {
+  AuthDataModel,
+  SessionInfo,
+  queryUserById,
+  queryUserByVerifiedEmail,
+  queryPasskeysByUserId,
+  queryPasskeyByCredentialId,
+  queryVerifierById,
+  mutatePasskeyInsert,
+  mutatePasskeyUpdateCounter,
+  mutateVerifierDelete,
+} from "./types.js";
 import { callSignIn, callVerifier } from "./mutations/index.js";
-import { callVerifierSignature } from "./mutations/verifierSignature.js";
+import { callVerifierSignature } from "./mutations/signature.js";
 import { authDb } from "./db.js";
 import { throwAuthError } from "../errors.js";
 
@@ -142,25 +150,16 @@ async function handleRegisterOptions(
   });
 
   // Get the user's profile for credential metadata
-  const user = await ctx.runQuery(
-    ctx.auth.config.component.public.userGetById,
-    { userId: userId! },
-  );
-  const userName = params.userName ?? (user as any)?.email ?? "user";
-  const userDisplayName = params.userDisplayName ?? (user as any)?.name ?? userName;
+  const user = await queryUserById(ctx, userId!);
+  const userName = params.userName ?? user?.email ?? "user";
+  const userDisplayName = params.userDisplayName ?? user?.name ?? userName;
 
   // Collect existing credentials to prevent re-registration
-  let excludeCredentials: Array<{ id: string; transports?: string[] }> = [];
-  const existing = await ctx.runQuery(
-    ctx.auth.config.component.public.passkeyListByUserId,
-    { userId: userId! },
-  );
-  if (existing) {
-    excludeCredentials = (existing as any[]).map((pk: any) => ({
-      id: pk.credentialId,
-      transports: pk.transports,
-    }));
-  }
+  const existing = await queryPasskeysByUserId(ctx, userId!);
+  const excludeCredentials = existing.map((pk) => ({
+    id: pk.credentialId,
+    transports: pk.transports,
+  }));
 
   // User handle is derived from the Convex userId
   const userHandle = encodeBase64urlNoPadding(
@@ -246,19 +245,13 @@ async function handleRegisterVerify(
   const challengeHash = encodeBase64urlNoPadding(
     new Uint8Array(sha256(clientData.challenge)),
   );
-  const verifierDoc = await ctx.runQuery(
-    ctx.auth.config.component.public.verifierGetById,
-    { verifierId: verifierValue },
-  );
-  if (!verifierDoc || (verifierDoc as any).signature !== challengeHash) {
+  const verifierDoc = await queryVerifierById(ctx, verifierValue);
+  if (!verifierDoc || verifierDoc.signature !== challengeHash) {
     throwAuthError("PASSKEY_INVALID_CHALLENGE");
   }
 
   // Clean up the verifier
-  await ctx.runMutation(
-    ctx.auth.config.component.public.verifierDelete,
-    { verifierId: verifierValue },
-  );
+  await mutateVerifierDelete(ctx, verifierValue);
 
   // Parse attestation object
   const attestationObjectBytes = decodeBase64urlIgnorePadding(params.attestationObject);
@@ -334,24 +327,21 @@ async function handleRegisterVerify(
   });
 
   // Store the passkey credential
-  await ctx.runMutation(
-    ctx.auth.config.component.public.passkeyInsert,
-    {
-      userId: userId!,
-      credentialId,
-      publicKey: publicKeyBytes.buffer.slice(
-        publicKeyBytes.byteOffset,
-        publicKeyBytes.byteOffset + publicKeyBytes.byteLength,
-      ),
-      algorithm,
-      counter: authenticatorData.signatureCounter,
-      transports: params.transports,
-      deviceType,
-      backedUp,
-      name: params.passkeyName,
-      createdAt: Date.now(),
-    },
-  );
+  await mutatePasskeyInsert(ctx, {
+    userId: userId!,
+    credentialId,
+    publicKey: publicKeyBytes.buffer.slice(
+      publicKeyBytes.byteOffset,
+      publicKeyBytes.byteOffset + publicKeyBytes.byteLength,
+    ),
+    algorithm,
+    counter: authenticatorData.signatureCounter,
+    transports: params.transports,
+    deviceType,
+    backedUp,
+    name: params.passkeyName,
+    createdAt: Date.now(),
+  });
 
   // Return tokens for the existing session
   const signInResult = await callSignIn(ctx, {
@@ -396,17 +386,11 @@ async function handleAuthOptions(
   let allowCredentials: Array<{ type: string; id: string; transports?: string[] }> | undefined;
   if (params.email) {
     // Look up user by email, then find their passkeys
-    const user = await ctx.runQuery(
-      ctx.auth.config.component.public.userFindByVerifiedEmail,
-      { email: params.email },
-    );
+    const user = await queryUserByVerifiedEmail(ctx, params.email);
     if (user) {
-      const passkeys = await ctx.runQuery(
-        ctx.auth.config.component.public.passkeyListByUserId,
-        { userId: (user as any)._id },
-      );
-      if (passkeys && (passkeys as any[]).length > 0) {
-        allowCredentials = (passkeys as any[]).map((pk: any) => ({
+      const passkeys = await queryPasskeysByUserId(ctx, user._id);
+      if (passkeys.length > 0) {
+        allowCredentials = passkeys.map((pk) => ({
           type: "public-key",
           id: pk.credentialId,
           transports: pk.transports,
@@ -469,19 +453,13 @@ async function handleAuthVerify(
   const challengeHash = encodeBase64urlNoPadding(
     new Uint8Array(sha256(clientData.challenge)),
   );
-  const verifierDoc = await ctx.runQuery(
-    ctx.auth.config.component.public.verifierGetById,
-    { verifierId: verifierValue },
-  );
-  if (!verifierDoc || (verifierDoc as any).signature !== challengeHash) {
+  const verifierDoc = await queryVerifierById(ctx, verifierValue);
+  if (!verifierDoc || verifierDoc.signature !== challengeHash) {
     throwAuthError("PASSKEY_INVALID_CHALLENGE");
   }
 
   // Clean up the verifier
-  await ctx.runMutation(
-    ctx.auth.config.component.public.verifierDelete,
-    { verifierId: verifierValue },
-  );
+  await mutateVerifierDelete(ctx, verifierValue);
 
   // Look up the credential
   const credentialId = params.credentialId;
@@ -489,14 +467,10 @@ async function handleAuthVerify(
     throwAuthError("PASSKEY_UNKNOWN_CREDENTIAL", "Missing credential ID");
   }
 
-  const passkeyDoc = await ctx.runQuery(
-    ctx.auth.config.component.public.passkeyGetByCredentialId,
-    { credentialId },
-  );
-  if (!passkeyDoc) {
+  const passkey = await queryPasskeyByCredentialId(ctx, credentialId);
+  if (!passkey) {
     throwAuthError("PASSKEY_UNKNOWN_CREDENTIAL", "Unknown credential");
   }
-  const passkey = passkeyDoc as any;
 
   // Parse authenticator data
   const authenticatorDataBytes = decodeBase64urlIgnorePadding(params.authenticatorData);
@@ -567,13 +541,11 @@ async function handleAuthVerify(
   }
 
   // Update counter and last used timestamp
-  await ctx.runMutation(
-    ctx.auth.config.component.public.passkeyUpdateCounter,
-    {
-      passkeyId: passkey._id,
-      counter: authenticatorData.signatureCounter,
-      lastUsedAt: Date.now(),
-    },
+  await mutatePasskeyUpdateCounter(
+    ctx,
+    passkey._id,
+    authenticatorData.signatureCounter,
+    Date.now(),
   );
 
   // Sign in the user
