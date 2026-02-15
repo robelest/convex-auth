@@ -1,83 +1,93 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
-@import "@fontsource-variable/geist-mono";
+@import "@fontsource-variable/inter";
 
 @custom-variant dark (&:is(.dark *));
 
+/* ---------------------------------------------------------------------------
+ * Convex Design System — Light Theme
+ *
+ * Warm cream backgrounds, blue accent, warm neutral text.
+ * Derived from convex-panel + convex-dashboard tokens.
+ * --------------------------------------------------------------------------- */
 :root {
-    --background: oklch(0.985 0.005 80);
-    --foreground: oklch(0.16 0.01 60);
-    --card: oklch(0.97 0.005 80);
-    --card-foreground: oklch(0.16 0.01 60);
-    --popover: oklch(0.97 0.005 80);
-    --popover-foreground: oklch(0.16 0.01 60);
-    --primary: oklch(0.55 0.17 45);
-    --primary-foreground: oklch(0.98 0.01 80);
-    --secondary: oklch(0.94 0.01 80);
-    --secondary-foreground: oklch(0.25 0.02 60);
-    --muted: oklch(0.94 0.008 80);
-    --muted-foreground: oklch(0.50 0.02 60);
-    --accent: oklch(0.92 0.03 70);
-    --accent-foreground: oklch(0.30 0.06 50);
+    --background: oklch(0.965 0.008 75);
+    --foreground: oklch(0.24 0.01 60);
+    --card: oklch(0.99 0.003 80);
+    --card-foreground: oklch(0.24 0.01 60);
+    --popover: oklch(0.99 0.003 80);
+    --popover-foreground: oklch(0.24 0.01 60);
+    --primary: oklch(0.50 0.14 255);
+    --primary-foreground: oklch(0.99 0.003 80);
+    --secondary: oklch(0.94 0.006 75);
+    --secondary-foreground: oklch(0.30 0.01 60);
+    --muted: oklch(0.94 0.006 75);
+    --muted-foreground: oklch(0.55 0.01 70);
+    --accent: oklch(0.94 0.006 75);
+    --accent-foreground: oklch(0.30 0.01 60);
     --destructive: oklch(0.55 0.22 27);
-    --border: oklch(0.88 0.015 75);
-    --input: oklch(0.90 0.01 75);
-    --ring: oklch(0.55 0.17 45);
-    --chart-1: oklch(0.88 0.15 92);
-    --chart-2: oklch(0.77 0.16 70);
-    --chart-3: oklch(0.67 0.16 58);
-    --chart-4: oklch(0.56 0.15 49);
-    --chart-5: oklch(0.47 0.12 46);
-    --radius: 0;
-    --sidebar: oklch(0.97 0.005 80);
-    --sidebar-foreground: oklch(0.16 0.01 60);
-    --sidebar-primary: oklch(0.55 0.17 45);
-    --sidebar-primary-foreground: oklch(0.98 0.01 80);
-    --sidebar-accent: oklch(0.92 0.03 70);
-    --sidebar-accent-foreground: oklch(0.30 0.06 50);
-    --sidebar-border: oklch(0.88 0.015 75);
-    --sidebar-ring: oklch(0.55 0.17 45);
+    --border: oklch(0.87 0.008 70);
+    --input: oklch(0.90 0.006 75);
+    --ring: oklch(0.50 0.14 255);
+    --chart-1: oklch(0.60 0.16 255);
+    --chart-2: oklch(0.55 0.12 200);
+    --chart-3: oklch(0.50 0.10 160);
+    --chart-4: oklch(0.65 0.14 80);
+    --chart-5: oklch(0.55 0.15 30);
+    --radius: 0.5rem;
+    --sidebar: oklch(0.97 0.006 75);
+    --sidebar-foreground: oklch(0.24 0.01 60);
+    --sidebar-primary: oklch(0.50 0.14 255);
+    --sidebar-primary-foreground: oklch(0.99 0.003 80);
+    --sidebar-accent: oklch(0.92 0.008 75);
+    --sidebar-accent-foreground: oklch(0.30 0.01 60);
+    --sidebar-border: oklch(0.87 0.008 70);
+    --sidebar-ring: oklch(0.50 0.14 255);
 }
 
+/* ---------------------------------------------------------------------------
+ * Convex Design System — Dark Theme
+ *
+ * Warm near-black (NOT pure black), blue accent, warm gray text.
+ * --------------------------------------------------------------------------- */
 .dark {
-    --background: oklch(0.13 0.01 60);
-    --foreground: oklch(0.93 0.01 80);
-    --card: oklch(0.17 0.012 60);
-    --card-foreground: oklch(0.93 0.01 80);
-    --popover: oklch(0.17 0.012 60);
-    --popover-foreground: oklch(0.93 0.01 80);
-    --primary: oklch(0.72 0.17 55);
-    --primary-foreground: oklch(0.14 0.04 45);
-    --secondary: oklch(0.22 0.015 60);
-    --secondary-foreground: oklch(0.90 0.01 80);
-    --muted: oklch(0.22 0.01 60);
-    --muted-foreground: oklch(0.60 0.02 70);
-    --accent: oklch(0.25 0.04 55);
-    --accent-foreground: oklch(0.90 0.01 80);
-    --destructive: oklch(0.65 0.22 25);
-    --border: oklch(0.26 0.015 60);
-    --input: oklch(0.24 0.015 60);
-    --ring: oklch(0.72 0.17 55);
-    --chart-1: oklch(0.88 0.15 92);
-    --chart-2: oklch(0.77 0.16 70);
-    --chart-3: oklch(0.67 0.16 58);
-    --chart-4: oklch(0.56 0.15 49);
-    --chart-5: oklch(0.47 0.12 46);
-    --sidebar: oklch(0.15 0.012 60);
-    --sidebar-foreground: oklch(0.93 0.01 80);
-    --sidebar-primary: oklch(0.72 0.17 55);
-    --sidebar-primary-foreground: oklch(0.14 0.04 45);
-    --sidebar-accent: oklch(0.25 0.04 55);
-    --sidebar-accent-foreground: oklch(0.90 0.01 80);
-    --sidebar-border: oklch(0.26 0.015 60);
-    --sidebar-ring: oklch(0.72 0.17 55);
+    --background: oklch(0.20 0.01 55);
+    --foreground: oklch(0.95 0.005 80);
+    --card: oklch(0.25 0.01 55);
+    --card-foreground: oklch(0.95 0.005 80);
+    --popover: oklch(0.25 0.01 55);
+    --popover-foreground: oklch(0.95 0.005 80);
+    --primary: oklch(0.70 0.14 245);
+    --primary-foreground: oklch(0.15 0.01 55);
+    --secondary: oklch(0.30 0.01 55);
+    --secondary-foreground: oklch(0.90 0.005 80);
+    --muted: oklch(0.30 0.01 55);
+    --muted-foreground: oklch(0.75 0.008 70);
+    --accent: oklch(0.30 0.01 55);
+    --accent-foreground: oklch(0.90 0.005 80);
+    --destructive: oklch(0.60 0.20 25);
+    --border: oklch(0.38 0.008 60);
+    --input: oklch(0.32 0.01 55);
+    --ring: oklch(0.70 0.14 245);
+    --chart-1: oklch(0.70 0.14 245);
+    --chart-2: oklch(0.65 0.12 200);
+    --chart-3: oklch(0.60 0.10 160);
+    --chart-4: oklch(0.70 0.14 80);
+    --chart-5: oklch(0.60 0.15 30);
+    --sidebar: oklch(0.22 0.01 55);
+    --sidebar-foreground: oklch(0.95 0.005 80);
+    --sidebar-primary: oklch(0.70 0.14 245);
+    --sidebar-primary-foreground: oklch(0.15 0.01 55);
+    --sidebar-accent: oklch(0.30 0.01 55);
+    --sidebar-accent-foreground: oklch(0.90 0.005 80);
+    --sidebar-border: oklch(0.38 0.008 60);
+    --sidebar-ring: oklch(0.70 0.14 245);
 }
 
 @theme inline {
-    --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
-    --font-mono: 'GeistMono Variable', 'Geist Mono Variable', ui-monospace, monospace;
+    --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', monospace;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -127,20 +137,5 @@
   }
   html {
     @apply font-sans;
-  }
-}
-
-/* Noise grain overlay — adds texture depth */
-@layer base {
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    pointer-events: none;
-    opacity: 0.025;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    background-repeat: repeat;
-    background-size: 256px 256px;
   }
 }

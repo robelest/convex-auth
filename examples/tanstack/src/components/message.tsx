@@ -22,15 +22,15 @@ export function Message({
         fromViewer ? 'items-end' : 'items-start',
       )}
     >
-      <p className="text-muted-foreground/70 px-0.5 font-mono text-[10px] font-medium tracking-wide uppercase">
+      <p className="text-muted-foreground/70 px-0.5 text-[11px] font-medium">
         {authorName}
       </p>
       <p
         className={cn(
-          'max-w-[min(32rem,80vw)] border px-3.5 py-2 text-sm leading-relaxed',
+          'max-w-[min(32rem,80vw)] rounded-lg px-3.5 py-2 text-sm leading-relaxed',
           fromViewer
-            ? 'bg-primary text-primary-foreground border-primary'
-            : 'bg-card border-border',
+            ? 'bg-primary text-primary-foreground'
+            : 'bg-muted',
         )}
       >
         {children}

@@ -9,8 +9,16 @@ import { MessageList } from '@/components/message-list'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
-export function Chat({ viewer }: { viewer: string }) {
-  const messages = useQuery(api.messages.list)
+export function Chat({
+  viewer,
+  groupId,
+  channelName,
+}: {
+  viewer: string
+  groupId: string | null
+  channelName: string
+}) {
+  const messages = useQuery(api.messages.list, groupId ? { groupId } : {})
   const sendMessage = useMutation(api.messages.send)
   const [newMessage, setNewMessage] = useState('')
   const [sending, setSending] = useState(false)
@@ -25,7 +33,7 @@ export function Chat({ viewer }: { viewer: string }) {
     setSending(true)
     setError(null)
     try {
-      await sendMessage({ body })
+      await sendMessage({ body, ...(groupId ? { groupId } : {}) })
       setNewMessage('')
     } catch {
       setError('Could not send your message. Please try again.')
@@ -35,16 +43,14 @@ export function Chat({ viewer }: { viewer: string }) {
   }
 
   return (
-    <div className="border-border bg-card flex h-[calc(100vh-11rem)] w-full flex-col border">
+    <div className="flex h-full w-full flex-col">
       {/* Header */}
-      <div className="border-border flex items-center justify-between border-b px-5 py-3">
-        <div className="flex items-center gap-3">
-          <div className="bg-primary size-2" />
-          <h2 className="font-mono text-xs font-bold tracking-wide uppercase">
-            Team Chat
-          </h2>
+      <div className="border-border flex h-12 items-center justify-between border-b px-5">
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground text-sm">#</span>
+          <h2 className="text-sm font-semibold">{channelName}</h2>
         </div>
-        <span className="text-muted-foreground font-mono text-[10px] tabular-nums">
+        <span className="text-muted-foreground text-xs tabular-nums">
           {messageCount} message{messageCount !== 1 ? 's' : ''}
         </span>
       </div>
@@ -66,10 +72,10 @@ export function Chat({ viewer }: { viewer: string }) {
       </div>
 
       {/* Input */}
-      <div className="border-border space-y-2 border-t p-4">
-        <form onSubmit={handleSubmit} className="flex gap-2">
+      <div className="border-border flex h-14 shrink-0 items-center gap-2 border-t px-4">
+        <form onSubmit={handleSubmit} className="flex flex-1 gap-2">
           <Input
-            placeholder="Type a message..."
+            placeholder={`Message #${channelName}`}
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             aria-label="Message"
@@ -85,7 +91,7 @@ export function Chat({ viewer }: { viewer: string }) {
           </Button>
         </form>
         {error && (
-          <p className="text-destructive font-mono text-[11px]">{error}</p>
+          <p className="text-destructive text-xs">{error}</p>
         )}
       </div>
     </div>
