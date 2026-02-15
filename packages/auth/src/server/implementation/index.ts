@@ -1048,10 +1048,6 @@ export function Auth(config_: ConvexAuthConfig) {
             }
 
             try {
-              let profileId: string;
-              let profileData: Record<string, unknown>;
-              let signature: string;
-
               const oauthConfig = provider as OAuthMaterializedConfig;
               const result = await handleOAuthCallback(
                 providerId,
@@ -1060,10 +1056,8 @@ export function Auth(config_: ConvexAuthConfig) {
                 Object.fromEntries(params.entries()),
                 cookies,
               );
-              const { id, ...rest } = result.profile;
-              profileId = id;
-              profileData = rest;
-              signature = result.signature;
+              const { id: profileId, ...profileData } = result.profile;
+              const { signature } = result;
 
               const verificationCode = await callUserOAuth(ctx, {
                 provider: providerId,
