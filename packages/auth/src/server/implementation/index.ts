@@ -200,6 +200,23 @@ export function Auth(config_: ConvexAuthConfig) {
         return await ctx.runQuery(config.component.public.userGetById, { userId });
       },
       /**
+       * Update a user document with partial data.
+       *
+       * @param ctx - Convex context with `runMutation`.
+       * @param userId - The user document ID.
+       * @param data - Partial data to merge into the user document.
+       */
+      patch: async (
+        ctx: ComponentCtx,
+        userId: string,
+        data: Record<string, unknown>,
+      ) => {
+        await ctx.runMutation(config.component.public.userPatch, {
+          userId,
+          data,
+        });
+      },
+      /**
        * Query a user's group memberships.
        */
       group: {

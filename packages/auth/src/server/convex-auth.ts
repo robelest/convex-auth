@@ -132,7 +132,7 @@ export class Auth {
   readonly portalUrl: string;
 
   // ---- Proxied auth helper sub-objects ----
-  /** User helpers: `.current(ctx)`, `.require(ctx)`, `.get(ctx, userId)`, `.viewer(ctx)`, `.group.list(ctx, ...)`, `.group.get(ctx, ...)` */
+  /** User helpers: `.current(ctx)`, `.require(ctx)`, `.get(ctx, userId)`, `.patch(ctx, userId, data)`, `.viewer(ctx)`, `.group.list(ctx, ...)`, `.group.get(ctx, ...)` */
   get user() { return this._auth.user; }
   /** Session helpers: `.current(ctx)`, `.invalidate(ctx, { userId, except? })` */
   get session() { return this._auth.session; }
@@ -627,4 +627,156 @@ export function Portal(auth: Auth) {
   });
 
   return { portalQuery, portalMutation, portalInternal };
+}
+
+// ============================================================================
+// AuthCtx — ctx enrichment for customQuery / customMutation
+// ============================================================================
+
+/**
+ * Configuration for auth context enrichment.
+ */
+export type AuthCtxConfig = {
+  /**
+   * When `true`, unauthenticated requests set `ctx.auth.userId` and
+   * `ctx.auth.user` to `null` instead of throwing.
+   *
+   * @default false
+   */
+  optional?: boolean;
+  /**
+   * Resolve additional context after authentication succeeds (e.g.
+   * group/role for multi-tenant apps). The returned object is spread
+   * into `ctx.auth`.
+   */
+  resolve?: (
+    ctx: any,
+    user: any,
+  ) => Promise<Record<string, unknown>> | Record<string, unknown>;
+};
+
+/**
+ * Create a `convex-helpers`–compatible customization object that
+ * enriches `ctx.auth` with the authenticated user's data.
+ *
+ * Standalone function (not a class method) because Convex's bundler
+ * can trace `export const x = fn(instance)` but not `instance.method()`.
+ *
+ * ### Basic usage (with `convex-helpers`)
+ *
+ * ```ts
+ * // convex/functions.ts
+ * import { customQuery, customMutation } from "convex-helpers/server/customFunctions";
+ * import { query as rawQuery, mutation as rawMutation } from "./_generated/server";
+ * import { AuthCtx } from "\@robelest/convex-auth/component";
+ * import { auth } from "./auth";
+ *
+ * const authCtx = AuthCtx(auth);
+ *
+ * export const query = customQuery(rawQuery, authCtx);
+ * export const mutation = customMutation(rawMutation, authCtx);
+ * ```
+ *
+ * Then in any function file:
+ *
+ * ```ts
+ * // convex/messages.ts
+ * import { query, mutation } from "./functions";
+ *
+ * export const list = query({
+ *   args: {},
+ *   handler: async (ctx) => {
+ *     // ctx.auth.userId and ctx.auth.user are already resolved
+ *     return ctx.db.query("messages").collect();
+ *   },
+ * });
+ * ```
+ *
+ * ### Optional auth (public routes)
+ *
+ * ```ts
+ * export const publicQuery = customQuery(rawQuery, AuthCtx(auth, { optional: true }));
+ * // ctx.auth.userId is null when unauthenticated
+ * ```
+ *
+ * ### Multi-tenant with group resolution
+ *
+ * ```ts
+ * const authCtx = AuthCtx(auth, {
+ *   resolve: async (ctx, user) => {
+ *     const groupId = user?.extend?.lastActiveGroup;
+ *     const membership = await auth.user.group.get(ctx, {
+ *       userId: user._id,
+ *       groupId,
+ *     });
+ *     return { groupId, role: membership?.role ?? "member" };
+ *   },
+ * });
+ * // ctx.auth.groupId and ctx.auth.role available in handlers
+ * ```
+ *
+ * @param auth - The `Auth` class instance from your `convex/auth.ts`.
+ * @param config - Optional configuration for optional auth and group resolution.
+ * @returns A `{ args, input }` customization object compatible with
+ *          `customQuery` / `customMutation` from `convex-helpers`.
+ */
+export function AuthCtx(auth: Auth, config?: AuthCtxConfig) {
+  const authHelper = (auth as any)._auth;
+
+  return {
+    args: {},
+    input: async (ctx: any, _args: any, _extra?: any) => {
+      const nativeAuth = ctx.auth;
+
+      if (config?.optional) {
+        const userId = await authHelper.user.current(ctx);
+        if (!userId) {
+          return {
+            ctx: {
+              auth: {
+                getUserIdentity: nativeAuth.getUserIdentity.bind(nativeAuth),
+                userId: null,
+                user: null,
+              },
+            },
+            args: {},
+          };
+        }
+        const user = await authHelper.user.get(ctx, userId);
+        const extra = config.resolve
+          ? await config.resolve(ctx, user)
+          : {};
+        return {
+          ctx: {
+            auth: {
+              getUserIdentity: nativeAuth.getUserIdentity.bind(nativeAuth),
+              userId,
+              user,
+              ...extra,
+            },
+          },
+          args: {},
+        };
+      }
+
+      // Required mode (default): throws NOT_SIGNED_IN
+      const userId = await authHelper.user.require(ctx);
+      const user = await authHelper.user.get(ctx, userId);
+      const extra = config?.resolve
+        ? await config.resolve(ctx, user)
+        : {};
+
+      return {
+        ctx: {
+          auth: {
+            getUserIdentity: nativeAuth.getUserIdentity.bind(nativeAuth),
+            userId,
+            user,
+            ...extra,
+          },
+        },
+        args: {},
+      };
+    },
+  };
 }

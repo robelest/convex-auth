@@ -20,7 +20,8 @@ export {
   SignInAction,
   SignOutAction,
 } from "../server/implementation/index.js";
-export { Auth, Portal } from "../server/convex-auth.js";
+export { Auth, Portal, AuthCtx } from "../server/convex-auth.js";
+export type { AuthCtxConfig } from "../server/convex-auth.js";
 export type {
   ConvexAuthConfig,
   AuthProviderConfig,
