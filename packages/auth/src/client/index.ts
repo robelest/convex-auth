@@ -44,11 +44,33 @@ type AuthSession = {
 };
 
 /**
+ * Device code response returned when signing in with the `"device"` provider.
+ *
+ * The device displays the `userCode` (or `verificationUriComplete`) and
+ * polls via `auth.device.poll()` until the user authorizes.
+ */
+export type DeviceCodeResult = {
+  /** High-entropy device code used for polling (keep secret). */
+  deviceCode: string;
+  /** Short human-readable code the user enters (e.g. "WDJB-MJHT"). */
+  userCode: string;
+  /** Base verification URL (e.g. "https://myapp.com/device"). */
+  verificationUri: string;
+  /** Verification URL with user code pre-filled as `?code=XXXX-XXXX`. */
+  verificationUriComplete: string;
+  /** Lifetime of the codes in seconds. */
+  expiresIn: number;
+  /** Minimum polling interval in seconds. */
+  interval: number;
+};
+
+/**
  * Result of a `signIn` call.
  *
  * - `signingIn: true` — credentials were accepted and the user is authenticated.
  * - `redirect` — OAuth flow initiated; redirect the user to `redirect.toString()`.
  * - `totpRequired` — credentials valid but 2FA is needed; call `auth.totp.verify()`.
+ * - `deviceCode` — device flow initiated; display the code and poll via `auth.device.poll()`.
  * - `verifier` — opaque string for multi-step flows (TOTP, passkey).
  */
 export type SignInResult = {
@@ -58,6 +80,8 @@ export type SignInResult = {
   redirect?: URL;
   /** `true` when the account has TOTP enabled and a code is required. */
   totpRequired?: boolean;
+  /** Device code response for the device authorization flow (RFC 8628). */
+  deviceCode?: DeviceCodeResult;
   /** Opaque verifier for multi-step flows (pass to `totp.verify` or passkey phase 2). */
   verifier?: string;
 };
@@ -421,6 +445,9 @@ export function client(options: ClientOptions) {
       if (result.totpRequired) {
         return { signingIn: false, totpRequired: true, verifier: result.verifier };
       }
+      if (result.deviceCode !== undefined) {
+        return { signingIn: false, deviceCode: result.deviceCode as DeviceCodeResult };
+      }
       if (result.tokens !== undefined) {
         // Proxy returns { token, refreshToken: "dummy" }.
         // Store JWT in memory only — real refresh token is in httpOnly cookie.
@@ -452,6 +479,9 @@ export function client(options: ClientOptions) {
     }
     if (result.totpRequired) {
       return { signingIn: false, totpRequired: true, verifier: result.verifier };
+    }
+    if (result.deviceCode !== undefined) {
+      return { signingIn: false, deviceCode: result.deviceCode as DeviceCodeResult };
     }
     if (result.tokens !== undefined) {
       await setToken({
@@ -1117,6 +1147,127 @@ export function client(options: ClientOptions) {
     },
   };
 
+  const device = {
+    /**
+     * Poll for device authorization status.
+     *
+     * The device calls this repeatedly (respecting `interval`) after
+     * initiating a device flow via `signIn("device")`. Returns when
+     * the user authorizes, or throws on timeout/denial.
+     *
+     * ```ts
+     * const result = await auth.signIn("device");
+     * const { deviceCode } = result;
+     * // Display deviceCode.userCode to the user, then poll:
+     * await auth.device.poll(deviceCode);
+     * // User is now signed in
+     * ```
+     *
+     * @param code - The {@link DeviceCodeResult} from `signIn("device")`.
+     * @returns Resolves when the device is authorized and tokens are stored.
+     * @throws When the code expires, is denied, or polling encounters an error.
+     */
+    poll: async (code: DeviceCodeResult): Promise<void> => {
+      const intervalMs = code.interval * 1000;
+      const expiresAt = Date.now() + code.expiresIn * 1000;
+
+      while (Date.now() < expiresAt) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+
+        try {
+          let result: any;
+          const params: Record<string, any> = {
+            flow: "poll",
+            deviceCode: code.deviceCode,
+          };
+
+          if (proxy) {
+            result = await proxyFetch({
+              action: "auth:signIn",
+              args: { provider: "device", params },
+            });
+          } else {
+            result = await convex.action("auth:signIn" as any, {
+              provider: "device",
+              params,
+            });
+          }
+
+          // Authorized — tokens received
+          if (result.tokens) {
+            if (proxy) {
+              await setToken({
+                shouldStore: false,
+                tokens:
+                  result.tokens === null
+                    ? null
+                    : { token: result.tokens.token },
+              });
+            } else {
+              await setToken({
+                shouldStore: true,
+                tokens: (result.tokens as AuthSession | null) ?? null,
+              });
+            }
+            return;
+          }
+        } catch (e: unknown) {
+          // Handle expected polling errors
+          if (e instanceof ConvexError) {
+            const data = e.data as Record<string, unknown>;
+            const code_ = data?.code as string | undefined;
+            if (code_ === "DEVICE_AUTHORIZATION_PENDING") {
+              continue; // Keep polling
+            }
+            if (code_ === "DEVICE_SLOW_DOWN") {
+              // Back off by adding one interval
+              await new Promise((resolve) =>
+                setTimeout(resolve, intervalMs),
+              );
+              continue;
+            }
+          }
+          // Non-recoverable error — rethrow
+          throw e;
+        }
+      }
+
+      throw new Error("Device authorization timed out.");
+    },
+
+    /**
+     * Authorize a device from the verification page.
+     *
+     * Called by an authenticated user on the verification page after
+     * they enter the user code displayed on the device.
+     *
+     * ```ts
+     * // On the /device verification page:
+     * await auth.device.verify(userCode);
+     * ```
+     *
+     * @param userCode - The user code entered by the user (e.g. "WDJB-MJHT").
+     */
+    verify: async (userCode: string): Promise<void> => {
+      const params: Record<string, any> = {
+        flow: "verify",
+        userCode,
+      };
+
+      if (proxy) {
+        await proxyFetch({
+          action: "auth:signIn",
+          args: { provider: "device", params },
+        });
+      } else {
+        await convex.action("auth:signIn" as any, {
+          provider: "device",
+          params,
+        });
+      }
+    },
+  };
+
   return {
     /** Current auth state snapshot. */
     get state(): AuthState {
@@ -1132,6 +1283,8 @@ export function client(options: ClientOptions) {
     passkey,
     /** TOTP two-factor authentication helpers. */
     totp,
+    /** Device authorization (RFC 8628) helpers. */
+    device,
   };
 }
 
