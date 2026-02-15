@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as DeviceRouteImport } from './routes/device'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiAuthRouteImport } from './routes/api/auth'
@@ -17,6 +18,11 @@ import { Route as ApiAuthRouteImport } from './routes/api/auth'
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeviceRoute = DeviceRouteImport.update({
+  id: '/device',
+  path: '/device',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatRoute = ChatRouteImport.update({
@@ -38,12 +44,14 @@ const ApiAuthRoute = ApiAuthRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
+  '/device': typeof DeviceRoute
   '/login': typeof LoginRoute
   '/api/auth': typeof ApiAuthRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
+  '/device': typeof DeviceRoute
   '/login': typeof LoginRoute
   '/api/auth': typeof ApiAuthRoute
 }
@@ -51,20 +59,22 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
+  '/device': typeof DeviceRoute
   '/login': typeof LoginRoute
   '/api/auth': typeof ApiAuthRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/chat' | '/login' | '/api/auth'
+  fullPaths: '/' | '/chat' | '/device' | '/login' | '/api/auth'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/chat' | '/login' | '/api/auth'
-  id: '__root__' | '/' | '/chat' | '/login' | '/api/auth'
+  to: '/' | '/chat' | '/device' | '/login' | '/api/auth'
+  id: '__root__' | '/' | '/chat' | '/device' | '/login' | '/api/auth'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ChatRoute: typeof ChatRoute
+  DeviceRoute: typeof DeviceRoute
   LoginRoute: typeof LoginRoute
   ApiAuthRoute: typeof ApiAuthRoute
 }
@@ -76,6 +86,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/device': {
+      id: '/device'
+      path: '/device'
+      fullPath: '/device'
+      preLoaderRoute: typeof DeviceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/chat': {
@@ -105,6 +122,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ChatRoute: ChatRoute,
+  DeviceRoute: DeviceRoute,
   LoginRoute: LoginRoute,
   ApiAuthRoute: ApiAuthRoute,
 }

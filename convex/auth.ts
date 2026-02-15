@@ -1,5 +1,5 @@
 import { Google } from "arctic";
-import { OAuth } from "@robelest/convex-auth/providers";
+import { Device, OAuth } from "@robelest/convex-auth/providers";
 import anonymous from "@robelest/convex-auth/providers/anonymous";
 import passkey from "@robelest/convex-auth/providers/passkey";
 import password from "@robelest/convex-auth/providers/password";
@@ -21,6 +21,11 @@ const auth = new Auth(components.auth, {
     passkey,
     totp({ issuer: "ConvexAuth Example" }),
     anonymous,
+    new Device({
+      verificationUri: process.env.APP_URL
+        ? `${process.env.APP_URL}/device`
+        : "http://localhost:3000/device",
+    }),
   ],
   email: {
     from: process.env.AUTH_EMAIL ?? "My App <onboarding@resend.dev>",
