@@ -948,3 +948,22 @@ export function AuthCtx(auth: Auth, config?: AuthCtxConfig<any>) {
     },
   };
 }
+
+/**
+ * Extract the `ctx.auth` shape from an {@link AuthCtx} result.
+ *
+ * Follows the same pattern as `Infer<typeof validator>` in Convex
+ * and `z.infer<typeof schema>` in Zod.
+ *
+ * @example
+ * ```ts
+ * const authCtx = AuthCtx(auth, {
+ *   resolve: async (ctx, user) => ({ groupId: "abc", role: "admin" }),
+ * });
+ * type MyAuth = InferAuth<typeof authCtx>;
+ * // { getUserIdentity, userId, user, groupId: string, role: string }
+ * ```
+ */
+export type InferAuth<
+  T extends { input: (...args: any[]) => Promise<{ ctx: { auth: any } }> },
+> = Awaited<ReturnType<T["input"]>>["ctx"]["auth"];
