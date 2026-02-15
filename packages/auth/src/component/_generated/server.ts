@@ -28,7 +28,7 @@ import {
   internalMutationGeneric,
   internalQueryGeneric,
 } from "convex/server";
-import type { DataModel } from "./dataModel";
+import type { DataModel } from "./dataModel.js";
 
 /**
  * Define a query in this Convex app's public API.

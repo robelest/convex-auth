@@ -1150,3 +1150,81 @@ export const keyDelete = mutation({
     await ctx.db.delete(keyId);
   },
 });
+
+// ============================================================================
+// Device Authorization (RFC 8628)
+// ============================================================================
+
+/** Insert a new device authorization record. */
+export const deviceInsert = mutation({
+  args: {
+    deviceCodeHash: v.string(),
+    userCode: v.string(),
+    expiresAt: v.number(),
+    interval: v.number(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("authorized"),
+      v.literal("denied"),
+    ),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("device", args);
+  },
+});
+
+/** Look up a device authorization by its hashed device code. */
+export const deviceGetByCodeHash = query({
+  args: { deviceCodeHash: v.string() },
+  handler: async (ctx, { deviceCodeHash }) => {
+    return await ctx.db
+      .query("device")
+      .withIndex("deviceCodeHash", (q) => q.eq("deviceCodeHash", deviceCodeHash))
+      .first();
+  },
+});
+
+/** Look up a pending device authorization by its user code. */
+export const deviceGetByUserCode = query({
+  args: { userCode: v.string() },
+  handler: async (ctx, { userCode }) => {
+    return await ctx.db
+      .query("device")
+      .withIndex("userCode", (q) =>
+        q.eq("userCode", userCode).eq("status", "pending"),
+      )
+      .first();
+  },
+});
+
+/** Authorize a device code — link it to a user and session. */
+export const deviceAuthorize = mutation({
+  args: {
+    deviceId: v.id("device"),
+    userId: v.id("user"),
+    sessionId: v.id("session"),
+  },
+  handler: async (ctx, { deviceId, userId, sessionId }) => {
+    await ctx.db.patch(deviceId, {
+      status: "authorized",
+      userId,
+      sessionId,
+    });
+  },
+});
+
+/** Update the last-polled timestamp on a device authorization record. */
+export const deviceUpdateLastPolled = mutation({
+  args: { deviceId: v.id("device"), lastPolledAt: v.number() },
+  handler: async (ctx, { deviceId, lastPolledAt }) => {
+    await ctx.db.patch(deviceId, { lastPolledAt });
+  },
+});
+
+/** Delete a device authorization record (cleanup after use or expiry). */
+export const deviceDelete = mutation({
+  args: { deviceId: v.id("device") },
+  handler: async (ctx, { deviceId }) => {
+    await ctx.db.delete(deviceId);
+  },
+});

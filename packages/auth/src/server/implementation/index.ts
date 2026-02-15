@@ -1337,6 +1337,14 @@ export function Auth(config_: ConvexAuthConfig) {
         options?: Record<string, any>;
         totpRequired?: boolean;
         totpSetup?: { uri: string; secret: string; totpId: string };
+        deviceCode?: {
+          deviceCode: string;
+          userCode: string;
+          verificationUri: string;
+          verificationUriComplete: string;
+          expiresIn: number;
+          interval: number;
+        };
       }> => {
         if (args.calledBy !== undefined) {
           logWithLevel("INFO", `\`auth:signIn\` called by ${args.calledBy}`);
@@ -1363,6 +1371,17 @@ export function Auth(config_: ConvexAuthConfig) {
             return { totpRequired: true, verifier: result.verifier };
           case "totpSetup":
             return { totpSetup: { uri: result.uri, secret: result.secret, totpId: result.totpId }, verifier: result.verifier };
+          case "deviceCode":
+            return {
+              deviceCode: {
+                deviceCode: result.deviceCode,
+                userCode: result.userCode,
+                verificationUri: result.verificationUri,
+                verificationUriComplete: result.verificationUriComplete,
+                expiresIn: result.expiresIn,
+                interval: result.interval,
+              },
+            };
           default: {
             const _typecheck: never = result;
             throwAuthError("INTERNAL_ERROR", `Unexpected result from signIn, ${String(result)}`);

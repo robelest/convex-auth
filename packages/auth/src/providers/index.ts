@@ -20,3 +20,5 @@ export { Anonymous } from "./anonymous";
 export type { AnonymousConfig } from "./anonymous";
 export { Credentials } from "./credentials";
 export type { CredentialsConfig } from "./credentials";
+export { Device } from "./device";
+export type { DeviceConfig } from "./device";

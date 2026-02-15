@@ -8,9 +8,9 @@
  * @module
  */
 
-import type * as index from "../index";
-import type * as bridge from "../bridge";
-import type * as public_ from "../public";
+import type * as bridge from "../bridge.js";
+import type * as index from "../index.js";
+import type * as public_ from "../public.js";
 
 import type {
   ApiFromModules,
@@ -20,8 +20,8 @@ import type {
 import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
-  index: typeof index;
   bridge: typeof bridge;
+  index: typeof index;
   public: typeof public_;
 }> = anyApi as any;
 

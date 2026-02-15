@@ -39,5 +39,6 @@ export type {
   KeyRecord,
   HttpKeyContext,
   CorsConfig,
+  DeviceProviderConfig,
 } from "../server/types";
 export type { GenericDoc } from "../server/types";

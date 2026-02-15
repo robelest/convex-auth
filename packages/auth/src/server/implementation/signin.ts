@@ -26,6 +26,7 @@ import type { OAuthMaterializedConfig } from "../types";
 import { generateRandomString } from "./utils";
 import { handlePasskey } from "./passkey";
 import { handleTotp, checkTotpRequired } from "./totp";
+import { handleDevice } from "./device";
 import { throwAuthError } from "../errors";
 
 const DEFAULT_EMAIL_VERIFICATION_CODE_DURATION_S = 60 * 60 * 24; // 24 hours
@@ -60,6 +61,16 @@ export async function signInImpl(
   | { kind: "totpRequired"; verifier: string }
   // TOTP setup response (enrollment)
   | { kind: "totpSetup"; uri: string; secret: string; verifier: string; totpId: string }
+  // Device authorization (RFC 8628) — codes for the device to display
+  | {
+      kind: "deviceCode";
+      deviceCode: string;
+      userCode: string;
+      verificationUri: string;
+      verificationUriComplete: string;
+      expiresIn: number;
+      interval: number;
+    }
 > {
   if (provider === null && args.refreshToken) {
     const tokens = await callRefreshSession(ctx, {
@@ -100,6 +111,9 @@ export async function signInImpl(
   }
   if (provider.type === "totp") {
     return handleTotp(ctx, provider, args);
+  }
+  if (provider.type === "device") {
+    return handleDevice(ctx, provider, args);
   }
   const _typecheck: never = provider;
   throwAuthError(
