@@ -27,7 +27,7 @@ The interactive setup wizard runs 6 steps:
 3. **Configure `tsconfig.json`** — sets `moduleResolution: "Bundler"` and `skipLibCheck: true`
 4. **Create `convex/convex.config.ts`** — registers the auth component with `app.use(auth)`
 5. **Create `convex/auth.ts`** — scaffolds `new Auth(components.auth, { providers })` with `Portal()` exports
-6. **Create `convex/http.ts`** — wires up `auth.addHttpRoutes(http)` for OAuth callbacks, JWKS, and portal serving
+6. **Create `convex/http.ts`** — wires up `auth.http.add(http)` for OAuth callbacks, JWKS, and portal serving
 
 Pass `--site-url` to skip the URL prompt:
 
@@ -79,12 +79,12 @@ import { httpRouter } from "convex/server";
 import { auth } from "./auth";
 
 const http = httpRouter();
-auth.addHttpRoutes(http);
+auth.http.add(http);
 
 export default http;
 ```
 
-`addHttpRoutes` registers OAuth callbacks, JWKS endpoints, and portal static file serving in one call.
+`auth.http.add` registers OAuth callbacks, JWKS endpoints, and portal static file serving in one call.
 
 ## Context Enrichment (`AuthCtx`)
 
@@ -317,6 +317,109 @@ const key = await auth.key.verify(ctx, bearerToken);
 
 Keys support wildcard scopes (`{ resource: "*", actions: ["*"] }`) and optional token-bucket rate limiting via `rateLimit: { maxTokens, refillRate }`.
 
+### Bearer Token Auth (`auth.http`)
+
+Expose HTTP endpoints authenticated via API key with zero boilerplate. `auth.http.route()` handles Bearer token extraction, key verification, CORS (including OPTIONS preflight), scope checking, and structured JSON error responses.
+
+#### Quick example
+
+```ts
+// convex/http.ts
+import { httpRouter } from "convex/server";
+import { internal } from "./_generated/api";
+import { auth } from "./auth";
+
+const http = httpRouter();
+auth.http.add(http);
+
+auth.http.route(http, {
+  path: "/api/messages",
+  method: "POST",
+  handler: async (ctx, request) => {
+    const { body } = await request.json();
+    await ctx.runMutation(internal.messages.sendAsUser, {
+      userId: ctx.key.userId,
+      body,
+    });
+    return { success: true };
+  },
+});
+
+export default http;
+```
+
+That replaces ~30 lines of manual Bearer parsing, try/catch, and CORS headers per endpoint.
+
+#### What's on `ctx.key`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `userId` | `string` | Owner of the verified API key |
+| `keyId` | `string` | The API key document ID |
+| `scopes` | `ScopeChecker` | `.can(resource, action)` for permission checks |
+
+#### Scope checking
+
+Add a `scope` option to auto-reject keys that lack permission (returns 403):
+
+```ts
+auth.http.route(http, {
+  path: "/api/users",
+  method: "GET",
+  scope: { resource: "users", action: "read" },
+  handler: async (ctx) => {
+    // Only reaches here if the key has users:read scope
+    return { users: await ctx.runQuery(internal.users.list) };
+  },
+});
+```
+
+#### Lower-level: `auth.http.action()`
+
+If you need to register routes manually (e.g. with `pathPrefix`), use `auth.http.action()` to get a wrapped `httpAction` handler:
+
+```ts
+const handler = auth.http.action(
+  async (ctx, request) => {
+    return { userId: ctx.key.userId };
+  },
+  { scope: { resource: "data", action: "read" } },
+);
+
+http.route({ path: "/api/data", method: "GET", handler });
+```
+
+#### CORS configuration
+
+CORS defaults to permissive (`origin: "*"`). Override per-route:
+
+```ts
+auth.http.route(http, {
+  path: "/api/data",
+  method: "GET",
+  cors: {
+    origin: "https://myapp.com",
+    methods: "GET,POST",
+    headers: "Content-Type,Authorization,X-Custom",
+  },
+  handler: async (ctx) => { /* ... */ },
+});
+```
+
+#### Error responses
+
+All errors are structured JSON with `{ error, code }`:
+
+| Status | Code | When |
+|--------|------|------|
+| 401 | `MISSING_BEARER_TOKEN` | No/malformed `Authorization: Bearer` header |
+| 403 | `INVALID_API_KEY` | Key not found |
+| 403 | `API_KEY_REVOKED` | Key has been revoked |
+| 403 | `API_KEY_EXPIRED` | Key past expiration |
+| 403 | `API_KEY_RATE_LIMITED` | Per-key rate limit exceeded |
+| 403 | `SCOPE_CHECK_FAILED` | Key lacks required scope |
+| 500 | `INTERNAL_ERROR` | Unexpected server error |
+
 ## Admin Portal
 
 A dark-themed SvelteKit admin dashboard for managing users, sessions, and API keys. Available in two modes: **hosted CDN** (zero setup) and **self-hosted** (served from your Convex deployment).
@@ -369,7 +472,7 @@ npx @robelest/convex-auth portal link
 ### How it works
 
 **Self-hosted mode:**
-- `addHttpRoutes` registers a `GET /auth/.well-known/portal-config` endpoint that returns the Convex URL, site URL, and version. The SPA fetches this on boot to discover its backend.
+- `auth.http.add` registers a `GET /auth/.well-known/portal-config` endpoint that returns the Convex URL, site URL, and version. The SPA fetches this on boot to discover its backend.
 - Static files (HTML, JS, CSS) are served from Convex storage with SPA fallback at `/auth/*`.
 - The SvelteKit build uses `base: "/auth"` so all routes nest under the `/auth` prefix.
 

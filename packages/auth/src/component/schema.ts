@@ -168,11 +168,14 @@ export default defineSchema({
   group: defineTable({
     name: v.string(),
     slug: v.optional(v.string()),
+    type: v.optional(v.string()),
     parentGroupId: v.optional(v.id("group")),
     extend: v.optional(v.any()),
   })
     .index("slug", ["slug"])
-    .index("parentGroupId", ["parentGroupId"]),
+    .index("parentGroupId", ["parentGroupId"])
+    .index("type", ["type"])
+    .index("typeAndParentGroupId", ["type", "parentGroupId"]),
 
   /**
    * Group membership. Links a user to a group with an application-defined

@@ -38,8 +38,10 @@ import {
   internalMutationGeneric,
   httpActionGeneric,
 } from "convex/server";
-import type { HttpRouter } from "convex/server";
+import type { HttpRouter, UserIdentity } from "convex/server";
 import { v } from "convex/values";
+import type { GenericId } from "convex/values";
+import type { Doc } from "./implementation/types.js";
 import type { ComponentApi as AuthComponentApi } from "../component/_generated/component.js";
 import { Auth as AuthFactory } from "./implementation/index.js";
 import type { ConvexAuthConfig, EmailTransport } from "./types.js";
@@ -256,8 +258,8 @@ export class Auth {
   }
 
   /**
-   * Register HTTP routes for OAuth, JWT well-known endpoints, and portal
-   * static file serving.
+   * HTTP namespace — route registration, Bearer-authenticated endpoints,
+   * and portal static file serving.
    *
    * ```ts
    * // convex/http.ts
@@ -265,70 +267,85 @@ export class Auth {
    * import { auth } from "./auth";
    *
    * const http = httpRouter();
-   * auth.addHttpRoutes(http);
+   * auth.http.add(http);
    * export default http;
    * ```
-   *
-   * @param http - The Convex HTTP router to register routes on.
-   * @param opts.pathPrefix - URL prefix for portal static files. Defaults to `"/auth"`.
-   * @param opts.spaFallback - Serve `index.html` for unmatched sub-paths. Defaults to `true`.
    */
-  addHttpRoutes(
-    http: HttpRouter,
-    opts?: { pathPrefix?: string; spaFallback?: boolean },
-  ): void {
-    // Core auth routes (OAuth, JWKS, etc.)
-    this._auth.addHttpRoutes(http);
+  get http() {
+    // Cache the object so repeated access returns the same reference
+    const inner = this._auth.http;
+    const component = this.component;
+    const portalUrl = this.portalUrl;
 
-    const prefix = opts?.pathPrefix ?? "/auth";
+    return {
+      ...inner,
 
-    // Portal configuration endpoint — serves Convex URLs + version info.
-    // The portal SPA fetches this at startup to discover its Convex backend,
-    // which is critical for custom domain deployments where the hostname
-    // alone doesn't reveal the Convex cloud URL.
-    // Registered as an exact path match before the static file prefix catch-all.
-    http.route({
-      path: `${prefix}/.well-known/portal-config`,
-      method: "GET",
-      handler: httpActionGeneric(async () => {
-        return new Response(
-          JSON.stringify({
-            convexUrl: process.env.CONVEX_CLOUD_URL,
-            siteUrl: process.env.CONVEX_SITE_URL,
-            version: AUTH_VERSION,
+      /**
+       * Register core HTTP routes (OAuth, JWKS) **and** portal static file
+       * serving in one call.
+       *
+       * @param http - The Convex HTTP router to register routes on.
+       * @param opts.pathPrefix - URL prefix for portal static files. Defaults to `"/auth"`.
+       * @param opts.spaFallback - Serve `index.html` for unmatched sub-paths. Defaults to `true`.
+       */
+      add(
+        http: HttpRouter,
+        opts?: { pathPrefix?: string; spaFallback?: boolean },
+      ): void {
+        // Core auth routes (OAuth, JWKS, etc.)
+        inner.add(http);
+
+        const prefix = opts?.pathPrefix ?? "/auth";
+
+        // Portal configuration endpoint — serves Convex URLs + version info.
+        // The portal SPA fetches this at startup to discover its Convex backend,
+        // which is critical for custom domain deployments where the hostname
+        // alone doesn't reveal the Convex cloud URL.
+        // Registered as an exact path match before the static file prefix catch-all.
+        http.route({
+          path: `${prefix}/.well-known/portal-config`,
+          method: "GET",
+          handler: httpActionGeneric(async () => {
+            return new Response(
+              JSON.stringify({
+                convexUrl: process.env.CONVEX_CLOUD_URL,
+                siteUrl: process.env.CONVEX_SITE_URL,
+                version: AUTH_VERSION,
+              }),
+              {
+                status: 200,
+                headers: {
+                  "Content-Type": "application/json",
+                  "Cache-Control":
+                    "public, max-age=60, stale-while-revalidate=60",
+                  "Access-Control-Allow-Origin": "*",
+                },
+              },
+            );
           }),
-          {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-              "Cache-Control":
-                "public, max-age=60, stale-while-revalidate=60",
-              "Access-Control-Allow-Origin": "*",
-            },
-          },
-        );
-      }),
-    });
+        });
 
-    // Create a shim that maps the self-hosting ComponentApi shape
-    // to the auth component's portalBridge functions
-    const selfHostingShim = {
-      lib: {
-        getByPath: this.component.portalBridge.getByPath,
-        getCurrentDeployment: this.component.portalBridge.getCurrentDeployment,
-        listAssets: this.component.portalBridge.listAssets,
-        recordAsset: this.component.portalBridge.recordAsset,
-        gcOldAssets: this.component.portalBridge.gcOldAssets,
-        setCurrentDeployment: this.component.portalBridge.setCurrentDeployment,
-        // generateUploadUrl is not needed — we use app storage directly
-        generateUploadUrl: undefined as any,
+        // Create a shim that maps the self-hosting ComponentApi shape
+        // to the auth component's portalBridge functions
+        const selfHostingShim = {
+          lib: {
+            getByPath: component.portalBridge.getByPath,
+            getCurrentDeployment: component.portalBridge.getCurrentDeployment,
+            listAssets: component.portalBridge.listAssets,
+            recordAsset: component.portalBridge.recordAsset,
+            gcOldAssets: component.portalBridge.gcOldAssets,
+            setCurrentDeployment: component.portalBridge.setCurrentDeployment,
+            // generateUploadUrl is not needed — we use app storage directly
+            generateUploadUrl: undefined as any,
+          },
+        };
+
+        registerStaticRoutes(http, selfHostingShim as any, {
+          pathPrefix: prefix,
+          spaFallback: opts?.spaFallback ?? true,
+        });
       },
     };
-
-    registerStaticRoutes(http, selfHostingShim as any, {
-      pathPrefix: prefix,
-      spaFallback: opts?.spaFallback ?? true,
-    });
   }
 }
 
@@ -358,11 +375,22 @@ export function Portal(auth: Auth) {
     args: {
       action: v.string(),
       userId: v.optional(v.string()),
+      // Group query params
+      groupId: v.optional(v.string()),
+      groupType: v.optional(v.string()),
+      groupParentId: v.optional(v.string()),
     },
     handler: async (
       ctx: any,
-      { action, userId }: { action: string; userId?: string },
+      args: {
+        action: string;
+        userId?: string;
+        groupId?: string;
+        groupType?: string;
+        groupParentId?: string;
+      },
     ) => {
+      const { action, userId } = args;
       const currentUserId = await authHelper.user.require(ctx);
 
       // Allow isAdmin check without admin requirement
@@ -378,16 +406,24 @@ export function Portal(auth: Auth) {
       await requirePortalAdmin(ctx, authComponent, currentUserId);
 
       switch (action) {
+        // ---- Admin-only bulk listing (no public API) ----
         case "listUsers":
           return await ctx.runQuery(authComponent.public.userList);
 
         case "listSessions":
           return await ctx.runQuery(authComponent.public.sessionList);
 
+        case "listKeys":
+          return await ctx.runQuery(authComponent.public.keyList);
+
+        case "getCurrentDeployment":
+          return await ctx.runQuery(
+            authComponent.portalBridge.getCurrentDeployment,
+          );
+
+        // ---- User queries (public auth API) ----
         case "getUser":
-          return await ctx.runQuery(authComponent.public.userGetById, {
-            userId: userId!,
-          });
+          return await authHelper.user.get(ctx, userId!);
 
         case "getUserSessions":
           return await ctx.runQuery(authComponent.public.sessionListByUser, {
@@ -403,15 +439,47 @@ export function Portal(auth: Auth) {
           return accounts.map(({ secret: _, ...rest }: any) => rest);
         }
 
-        // Invite validation (public within portal context)
+        case "getUserKeys":
+          return await authHelper.key.list(ctx, { userId: userId! });
+
+        case "getUserGroups": {
+          const memberships = await authHelper.user.group.list(ctx, { userId: userId! });
+          // Resolve group details for each membership
+          const groups = await Promise.all(
+            memberships.map(async (m: any) => {
+              const group = await authHelper.group.get(ctx, m.groupId);
+              return { ...m, group: group ?? null };
+            }),
+          );
+          return groups;
+        }
+
+        // ---- Key queries (public auth API) ----
+        case "getKey":
+          return await authHelper.key.get(ctx, userId!); // userId param repurposed as keyId
+
+        // ---- Group queries (public auth API) ----
+        case "listGroups":
+          return await authHelper.group.list(ctx, {
+            type: args.groupType,
+            parentGroupId: args.groupParentId,
+          });
+
+        case "getGroup":
+          return await authHelper.group.get(ctx, args.groupId!);
+
+        case "getGroupMembers":
+          return await authHelper.group.member.list(ctx, { groupId: args.groupId! });
+
+        case "getGroupInvites":
+          return await authHelper.invite.list(ctx, { groupId: args.groupId! });
+
+        // ---- Invite validation (portal context) ----
         case "validateInvite": {
           // userId param repurposed as tokenHash for this action
           const tokenHash = userId;
           if (!tokenHash) throwAuthError("INVITE_TOKEN_REQUIRED");
-          const invite = await ctx.runQuery(
-            authComponent.public.inviteGetByTokenHash,
-            { tokenHash },
-          );
+          const invite = await authHelper.invite.getByTokenHash(ctx, tokenHash);
           if (!invite || invite.status !== "pending") {
             return null;
           }
@@ -420,25 +488,6 @@ export function Portal(auth: Auth) {
           }
           return { _id: invite._id, role: invite.role };
         }
-
-        case "getCurrentDeployment":
-          return await ctx.runQuery(
-            authComponent.portalBridge.getCurrentDeployment,
-          );
-
-        // ---- API Keys (portal admin) ----
-        case "listKeys":
-          return await ctx.runQuery(authComponent.public.keyList);
-
-        case "getUserKeys":
-          return await ctx.runQuery(authComponent.public.keyListByUserId, {
-            userId: userId!,
-          });
-
-        case "getKey":
-          return await ctx.runQuery(authComponent.public.keyGetById, {
-            keyId: userId!, // userId param repurposed as keyId
-          });
 
         default:
           throwAuthError("PORTAL_UNKNOWN_ACTION", `Unknown portal query action: ${action}`);
@@ -470,6 +519,17 @@ export function Portal(auth: Auth) {
         }),
       ),
       keyExpiresAt: v.optional(v.number()),
+      // Group mutation fields
+      groupId: v.optional(v.string()),
+      groupName: v.optional(v.string()),
+      groupSlug: v.optional(v.string()),
+      groupType: v.optional(v.string()),
+      groupParentId: v.optional(v.string()),
+      groupExtend: v.optional(v.any()),
+      memberId: v.optional(v.string()),
+      memberUserId: v.optional(v.string()),
+      memberRole: v.optional(v.string()),
+      memberStatus: v.optional(v.string()),
     },
     handler: async (ctx: any, args: any) => {
       const currentUserId = await authHelper.user.require(ctx);
@@ -477,10 +537,7 @@ export function Portal(auth: Auth) {
       switch (args.action) {
         case "acceptInvite": {
           if (!args.tokenHash) throwAuthError("INVITE_TOKEN_REQUIRED");
-          const invite = await ctx.runQuery(
-            authComponent.public.inviteGetByTokenHash,
-            { tokenHash: args.tokenHash },
-          );
+          const invite = await authHelper.invite.getByTokenHash(ctx, args.tokenHash);
           if (!invite) throwAuthError("INVALID_INVITE");
           if (invite.status !== "pending") {
             throwAuthError("INVITE_ALREADY_USED", `Invite already ${invite.status}`);
@@ -488,13 +545,11 @@ export function Portal(auth: Auth) {
           if (invite.expiresTime && invite.expiresTime < Date.now()) {
             throwAuthError("INVITE_EXPIRED");
           }
-          await ctx.runMutation(authComponent.public.inviteAccept, {
-            inviteId: invite._id,
-            acceptedByUserId: currentUserId,
-          });
+          await authHelper.invite.accept(ctx, invite._id, currentUserId);
           return;
         }
 
+        // ---- Admin-only (no public API for session delete) ----
         case "revokeSession": {
           await requirePortalAdmin(ctx, authComponent, currentUserId);
           await ctx.runMutation(authComponent.public.sessionDelete, {
@@ -503,18 +558,16 @@ export function Portal(auth: Auth) {
           return;
         }
 
-        // ---- API Keys (portal admin) ----
+        // ---- API Keys (public auth API) ----
         case "createKey": {
           await requirePortalAdmin(ctx, authComponent, currentUserId);
-          const result = await authHelper.key.create(ctx, {
+          return await authHelper.key.create(ctx, {
             userId: args.keyUserId!,
             name: args.keyName!,
             scopes: args.keyScopes ?? [],
             rateLimit: args.keyRateLimit,
             expiresAt: args.keyExpiresAt,
           });
-          // Return the raw key — portal will show it once
-          return result;
         }
 
         case "revokeKey": {
@@ -536,6 +589,58 @@ export function Portal(auth: Auth) {
           if (args.keyScopes) data.scopes = args.keyScopes;
           if (args.keyRateLimit) data.rateLimit = args.keyRateLimit;
           await authHelper.key.update(ctx, args.keyId!, data);
+          return;
+        }
+
+        // ---- Groups (public auth API) ----
+        case "createGroup": {
+          await requirePortalAdmin(ctx, authComponent, currentUserId);
+          const groupData: Record<string, any> = { name: args.groupName! };
+          if (args.groupSlug) groupData.slug = args.groupSlug;
+          if (args.groupType) groupData.type = args.groupType;
+          if (args.groupParentId) groupData.parentGroupId = args.groupParentId;
+          if (args.groupExtend) groupData.extend = args.groupExtend;
+          return await authHelper.group.create(ctx, groupData);
+        }
+
+        case "updateGroup": {
+          await requirePortalAdmin(ctx, authComponent, currentUserId);
+          const updateData: Record<string, any> = {};
+          if (args.groupName) updateData.name = args.groupName;
+          if (args.groupSlug !== undefined) updateData.slug = args.groupSlug;
+          if (args.groupType !== undefined) updateData.type = args.groupType;
+          await authHelper.group.update(ctx, args.groupId!, updateData);
+          return;
+        }
+
+        case "deleteGroup": {
+          await requirePortalAdmin(ctx, authComponent, currentUserId);
+          await authHelper.group.delete(ctx, args.groupId!);
+          return;
+        }
+
+        case "addGroupMember": {
+          await requirePortalAdmin(ctx, authComponent, currentUserId);
+          return await authHelper.group.member.add(ctx, {
+            groupId: args.groupId!,
+            userId: args.memberUserId!,
+            role: args.memberRole,
+            status: args.memberStatus,
+          });
+        }
+
+        case "removeGroupMember": {
+          await requirePortalAdmin(ctx, authComponent, currentUserId);
+          await authHelper.group.member.remove(ctx, args.memberId!);
+          return;
+        }
+
+        case "updateGroupMember": {
+          await requirePortalAdmin(ctx, authComponent, currentUserId);
+          const memberData: Record<string, any> = {};
+          if (args.memberRole !== undefined) memberData.role = args.memberRole;
+          if (args.memberStatus !== undefined) memberData.status = args.memberStatus;
+          await authHelper.group.member.update(ctx, args.memberId!, memberData);
           return;
         }
 
@@ -634,9 +739,22 @@ export function Portal(auth: Auth) {
 // ============================================================================
 
 /**
- * Configuration for auth context enrichment.
+ * The shape of a user document from the auth component's `user` table.
+ *
+ * Includes system fields (`_id`, `_creationTime`) plus the schema fields
+ * (`name`, `email`, `image`, `extend`, etc.).
  */
-export type AuthCtxConfig = {
+export type UserDoc = Doc<"user">;
+
+/**
+ * Configuration for auth context enrichment.
+ *
+ * @typeParam TResolve - The shape returned by the `resolve` callback.
+ *   Inferred automatically — you usually don't need to supply this manually.
+ */
+export type AuthCtxConfig<
+  TResolve extends Record<string, unknown> = Record<string, never>,
+> = {
   /**
    * When `true`, unauthenticated requests set `ctx.auth.userId` and
    * `ctx.auth.user` to `null` instead of throwing.
@@ -651,8 +769,8 @@ export type AuthCtxConfig = {
    */
   resolve?: (
     ctx: any,
-    user: any,
-  ) => Promise<Record<string, unknown>> | Record<string, unknown>;
+    user: UserDoc,
+  ) => Promise<TResolve> | TResolve;
 };
 
 /**
@@ -720,7 +838,58 @@ export type AuthCtxConfig = {
  * @returns A `{ args, input }` customization object compatible with
  *          `customQuery` / `customMutation` from `convex-helpers`.
  */
-export function AuthCtx(auth: Auth, config?: AuthCtxConfig) {
+/**
+ * Overload: optional auth — `userId` and `user` may be `null`.
+ */
+export function AuthCtx<
+  TResolve extends Record<string, unknown> = Record<string, never>,
+>(
+  auth: Auth,
+  config: AuthCtxConfig<TResolve> & { optional: true },
+): {
+  args: {};
+  input: (
+    ctx: any,
+    _args: any,
+    _extra?: any,
+  ) => Promise<{
+    ctx: {
+      auth: {
+        getUserIdentity: () => Promise<UserIdentity | null>;
+        userId: GenericId<"user"> | null;
+        user: UserDoc | null;
+      } & TResolve;
+    };
+    args: {};
+  }>;
+};
+/**
+ * Overload: required auth (default) — `userId` and `user` are never `null`.
+ */
+export function AuthCtx<
+  TResolve extends Record<string, unknown> = Record<string, never>,
+>(
+  auth: Auth,
+  config?: AuthCtxConfig<TResolve>,
+): {
+  args: {};
+  input: (
+    ctx: any,
+    _args: any,
+    _extra?: any,
+  ) => Promise<{
+    ctx: {
+      auth: {
+        getUserIdentity: () => Promise<UserIdentity | null>;
+        userId: GenericId<"user">;
+        user: UserDoc;
+      } & TResolve;
+    };
+    args: {};
+  }>;
+};
+// Implementation
+export function AuthCtx(auth: Auth, config?: AuthCtxConfig<any>) {
   const authHelper = (auth as any)._auth;
 
   return {

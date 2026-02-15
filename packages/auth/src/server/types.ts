@@ -763,6 +763,50 @@ export interface KeyRecord {
   revoked: boolean;
 }
 
+// ============================================================================
+// HTTP Bearer Auth types
+// ============================================================================
+
+/**
+ * Context injected into `auth.http.action()` and `auth.http.route()` handlers.
+ *
+ * The handler's `ctx` receives these fields after Bearer token verification:
+ *
+ * ```ts
+ * auth.http.route(http, {
+ *   path: "/api/data",
+ *   method: "GET",
+ *   handler: async (ctx, request) => {
+ *     ctx.key.userId;               // owner of the API key
+ *     ctx.key.keyId;                // the key document ID
+ *     ctx.key.scopes.can("data", "read"); // scope check
+ *   },
+ * });
+ * ```
+ */
+export interface HttpKeyContext {
+  key: {
+    /** The user ID that owns the verified API key. */
+    userId: string;
+    /** The API key document ID. */
+    keyId: string;
+    /** Scope checker for the verified key's permissions. */
+    scopes: ScopeChecker;
+  };
+}
+
+/**
+ * CORS configuration for Bearer-authenticated HTTP endpoints.
+ */
+export interface CorsConfig {
+  /** Allowed origin(s). Defaults to `"*"`. */
+  origin?: string;
+  /** Allowed HTTP methods. Defaults to `"GET,POST,PUT,PATCH,DELETE,OPTIONS"`. */
+  methods?: string;
+  /** Allowed request headers. Defaults to `"Content-Type,Authorization"`. */
+  headers?: string;
+}
+
 /**
  * Component function references required by core auth runtime.
  *

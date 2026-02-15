@@ -588,6 +588,7 @@ export const groupCreate = mutation({
   args: {
     name: v.string(),
     slug: v.optional(v.string()),
+    type: v.optional(v.string()),
     parentGroupId: v.optional(v.id("group")),
     extend: v.optional(v.any()),
   },
@@ -605,12 +606,32 @@ export const groupGet = query({
 });
 
 /**
- * List groups. When `parentGroupId` is provided, returns children of that
- * group. When omitted, returns all root-level groups (groups with no parent).
+ * List groups. Supports filtering by `type`, `parentGroupId`, or both.
+ *
+ * - Both provided → compound index `typeAndParentGroupId`
+ * - Only `type` → `type` index
+ * - Only `parentGroupId` (or neither) → `parentGroupId` index (original behaviour)
  */
 export const groupList = query({
-  args: { parentGroupId: v.optional(v.id("group")) },
-  handler: async (ctx, { parentGroupId }) => {
+  args: {
+    type: v.optional(v.string()),
+    parentGroupId: v.optional(v.id("group")),
+  },
+  handler: async (ctx, { type, parentGroupId }) => {
+    if (type !== undefined && parentGroupId !== undefined) {
+      return await ctx.db
+        .query("group")
+        .withIndex("typeAndParentGroupId", (q) =>
+          q.eq("type", type).eq("parentGroupId", parentGroupId),
+        )
+        .collect();
+    }
+    if (type !== undefined) {
+      return await ctx.db
+        .query("group")
+        .withIndex("type", (q) => q.eq("type", type))
+        .collect();
+    }
     return await ctx.db
       .query("group")
       .withIndex("parentGroupId", (q) => q.eq("parentGroupId", parentGroupId))

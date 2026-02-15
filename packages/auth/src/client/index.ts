@@ -11,8 +11,12 @@ export {
 
 /**
  * Structural interface for any Convex client.
- * Satisfied by both `ConvexClient` (`convex/browser`) and
- * `ConvexReactClient` (`convex/react`).
+ * Satisfied by `ConvexClient` (`convex/browser`),
+ * `ConvexReactClient` (`convex/react`), and similar transports.
+ *
+ * `clearAuth` is present on `ConvexReactClient` and `BaseConvexClient`
+ * but not on the simplified `ConvexClient`. When available we call it
+ * during sign-out for a clean deauthentication.
  */
 interface ConvexTransport {
   action(action: any, args: any): Promise<any>;
@@ -22,7 +26,7 @@ interface ConvexTransport {
     }) => Promise<string | null | undefined>,
     onChange?: (isAuthenticated: boolean) => void,
   ): void;
-  clearAuth(): void;
+  clearAuth?(): void;
 }
 
 /** Pluggable key-value storage (defaults to `localStorage`). */
@@ -478,6 +482,7 @@ export function client(options: ClientOptions) {
         // Already signed out is fine.
       }
       await setToken({ shouldStore: false, tokens: null });
+      if (convex.clearAuth) convex.clearAuth();
       return;
     }
 
@@ -488,6 +493,7 @@ export function client(options: ClientOptions) {
       // Already signed out is fine.
     }
     await setToken({ shouldStore: true, tokens: null });
+    if (convex.clearAuth) convex.clearAuth();
   };
 
   // ---------------------------------------------------------------------------
