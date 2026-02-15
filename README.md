@@ -58,10 +58,13 @@ export default app;
 // convex/auth.ts
 import { Auth, Portal } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
-import github from "@auth/core/providers/github";
+import { GitHub } from "arctic";
+import { OAuth } from "@robelest/convex-auth/providers";
 
 const auth = new Auth(components.auth, {
-  providers: [github],
+  providers: [
+    OAuth(new GitHub(process.env.AUTH_GITHUB_ID!, process.env.AUTH_GITHUB_SECRET!)),
+  ],
 });
 
 export { auth };
@@ -488,18 +491,52 @@ npx @robelest/convex-auth portal link
 
 ## Providers
 
-### OAuth
+### OAuth (Arctic)
 
-Any `@auth/core` provider works:
+OAuth is powered by [Arctic](https://arcticjs.dev) — a lightweight, zero-dependency OAuth 2.0 library with 50+ provider implementations. Wrap any Arctic provider instance with the `OAuth()` helper:
 
 ```ts
-import github from "@auth/core/providers/github";
-import google from "@auth/core/providers/google";
+import { Google, GitHub } from "arctic";
+import { OAuth } from "@robelest/convex-auth/providers";
 
-new Auth(components.auth, {
-  providers: [github, google],
+const auth = new Auth(components.auth, {
+  providers: [
+    OAuth(new GitHub(process.env.AUTH_GITHUB_ID!, process.env.AUTH_GITHUB_SECRET!), {
+      scopes: ["user:email"],
+    }),
+    OAuth(new Google(clientId, clientSecret, redirectUri), {
+      scopes: ["openid", "profile", "email"],
+    }),
+  ],
 });
 ```
+
+The provider ID is derived automatically from the class name (`"github"`, `"google"`, etc.). Override it with the `id` option if needed.
+
+#### Non-OIDC providers (e.g. GitHub)
+
+Providers that don't return an ID token need a `profile` callback to fetch the user profile from the provider's API:
+
+```ts
+OAuth(new GitHub(clientId, clientSecret), {
+  scopes: ["user:email"],
+  profile: async (tokens) => {
+    const res = await fetch("https://api.github.com/user", {
+      headers: { Authorization: `Bearer ${tokens.accessToken()}` },
+    });
+    const user = await res.json();
+    return {
+      id: String(user.id),
+      email: user.email,
+      name: user.name,
+    };
+  },
+})
+```
+
+#### OIDC providers (e.g. Google)
+
+For OIDC-compliant providers, the library decodes the ID token automatically — no `profile` callback needed.
 
 Set `AUTH_<PROVIDER>_ID` and `AUTH_<PROVIDER>_SECRET` on your deployment.
 
@@ -511,7 +548,7 @@ Configure `email` on the `Auth` constructor to enable magic link sign-in. The li
 import { Resend } from "resend";
 
 const auth = new Auth(components.auth, {
-  providers: [github],
+  providers: [/* your providers */],
   email: {
     from: "My App <noreply@example.com>",
     send: async (ctx, { from, to, subject, html }) => {
@@ -576,6 +613,177 @@ new Auth(components.auth, {
   providers: [anonymous],
 });
 ```
+
+### Device Authorization (RFC 8628)
+
+Enable input-constrained devices (CLIs, smart TVs, IoT) to authenticate by displaying a short code that the user enters on a secondary device (phone, laptop).
+
+```ts
+import { Device } from "@robelest/convex-auth/providers";
+
+const auth = new Auth(components.auth, {
+  providers: [
+    new Device({
+      verificationUri: "https://myapp.com/device",
+    }),
+  ],
+});
+```
+
+The `verificationUri` is the URL of your app's verification page where users enter the code. This is **not** the Convex deployment URL — it's your web app's URL.
+
+#### How it works
+
+```mermaid
+sequenceDiagram
+    participant Device as Device (CLI/TV)
+    participant Convex as Convex Backend
+    participant Browser as User's Browser
+
+    Device->>Convex: 1. signIn("device")
+    Convex-->>Device: { userCode, deviceCode, verificationUri }
+
+    Note over Device: Display: "Go to myapp.com/device<br/>Enter code: WDJB-MJHT"
+
+    loop Poll every 5s
+        Device->>Convex: 2. poll(deviceCode)
+        Convex-->>Device: "authorization_pending"
+    end
+
+    Browser->>Convex: 3. User visits /device, signs in
+    Browser->>Convex: 4. auth.device.verify(userCode)
+    Convex-->>Browser: Code linked to session
+
+    Device->>Convex: 2. poll(deviceCode)
+    Convex-->>Device: { tokens }
+
+    Note over Device: Device is now authenticated
+```
+
+#### Device side (CLI / IoT app)
+
+Use the client SDK or call the `signIn` action directly:
+
+```ts
+import { client } from "@robelest/convex-auth/client";
+
+const auth = client({ convex });
+
+// 1. Start the device flow
+const result = await auth.signIn("device");
+const { deviceCode } = result;
+
+// 2. Show the user what to do
+console.log(`Go to: ${deviceCode.verificationUri}`);
+console.log(`Enter code: ${deviceCode.userCode}`);
+
+// 3. Poll until authorized (handles interval, slow_down, expiry)
+await auth.device.poll(deviceCode);
+
+// 4. User is now signed in — auth.state.isAuthenticated === true
+```
+
+Or with `ConvexHttpClient` for headless/non-reactive environments:
+
+```ts
+import { ConvexHttpClient } from "convex/browser";
+
+const http = new ConvexHttpClient(CONVEX_URL);
+
+// Start flow
+const result = await http.action("auth:signIn", { provider: "device" });
+const { deviceCode } = result;
+
+// Poll manually
+while (true) {
+  await new Promise((r) => setTimeout(r, deviceCode.interval * 1000));
+  try {
+    const poll = await http.action("auth:signIn", {
+      provider: "device",
+      params: { flow: "poll", deviceCode: deviceCode.deviceCode },
+    });
+    if (poll.tokens) {
+      http.setAuth(poll.tokens.token);
+      break;
+    }
+  } catch (e) {
+    // "DEVICE_AUTHORIZATION_PENDING" — keep polling
+    // "DEVICE_SLOW_DOWN" — increase interval
+    // "DEVICE_CODE_EXPIRED" — restart flow
+  }
+}
+```
+
+#### Verification page (your web app)
+
+Build a page at your `verificationUri` (e.g. `/device`) where authenticated users enter the code:
+
+```tsx
+// React example — /device route
+import { useAuth } from "./your-auth-hook";
+
+function DeviceVerification() {
+  const auth = useAuth();
+  const [userCode, setUserCode] = useState("");
+  const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
+
+  const handleVerify = async () => {
+    try {
+      await auth.device.verify(userCode);
+      setStatus("success");
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  return (
+    <div>
+      <h1>Authorize Device</h1>
+      <input
+        value={userCode}
+        onChange={(e) => setUserCode(e.target.value)}
+        placeholder="Enter device code"
+      />
+      <button onClick={handleVerify}>Authorize</button>
+      {status === "success" && <p>Device authorized. You can close this page.</p>}
+      {status === "error" && <p>Invalid or expired code. Try again.</p>}
+    </div>
+  );
+}
+```
+
+The verification page can pre-fill the code from the URL via `?user_code=XXXX-XXXX` (the `verificationUriComplete` includes this).
+
+#### Configuration options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `verificationUri` | `SITE_URL + "/device"` | URL of your verification page |
+| `charset` | `"BCDFGHJKLMNPQRSTVWXZ"` | User code characters (no vowels, per RFC 8628 §6.1) |
+| `userCodeLength` | `8` | Code length before formatting (displayed as `XXXX-XXXX`) |
+| `expiresIn` | `900` (15 min) | Code lifetime in seconds |
+| `interval` | `5` | Minimum polling interval in seconds |
+
+#### Client SDK reference
+
+| Method | Description |
+|--------|-------------|
+| `auth.signIn("device")` | Start flow, returns `{ deviceCode: DeviceCodeResult }` |
+| `auth.device.poll(deviceCode)` | Poll until authorized (auto-handles interval + backoff) |
+| `auth.device.verify(userCode)` | Authorize a device from the verification page |
+
+#### Error codes
+
+| Code | Meaning |
+|------|---------|
+| `DEVICE_AUTHORIZATION_PENDING` | User hasn't entered the code yet (keep polling) |
+| `DEVICE_SLOW_DOWN` | Polling too fast (client should increase interval) |
+| `DEVICE_CODE_EXPIRED` | Code expired, restart the flow |
+| `DEVICE_CODE_INVALID` | Code not found or already used |
+| `DEVICE_CODE_DENIED` | Authorization was explicitly denied |
+| `DEVICE_CODE_ALREADY_AUTHORIZED` | Code was already authorized |
+| `DEVICE_INVALID_USER_CODE` | User code format is invalid |
+| `DEVICE_VERIFICATION_FAILED` | Verification page request failed |
 
 ## Environment Variables
 
@@ -704,28 +912,32 @@ if (redirectUrl) redirect(redirectUrl)
 
 ## Architecture
 
-```
-Your App (convex/)
-  └── components.auth             ← one component install
-        ├── auth tables            ← users, accounts, sessions, groups, members, invites, keys
-        ├── public functions       ← component API (internal to your app)
-        ├── portalBridge           ← delegates to self-hosting sub-component
-        └── selfHosting            ← @convex-dev/self-hosting (portal static files)
-              └── assets table     ← uploaded files, deployments
+```mermaid
+graph TD
+    App["Your App (convex/)"]
+    App --> Auth["components.auth"]
+    Auth --> Tables["auth tables<br/><i>users, accounts, sessions,<br/>groups, members, invites, keys</i>"]
+    Auth --> Public["public functions<br/><i>component API (internal to your app)</i>"]
+    Auth --> Bridge["portalBridge<br/><i>delegates to self-hosting</i>"]
+    Auth --> SH["selfHosting<br/><i>@convex-dev/self-hosting</i>"]
+    SH --> Assets["assets table<br/><i>uploaded files, deployments</i>"]
 ```
 
 ### Portal serving
 
-```
-Self-hosted:
-  Browser → {deployment}.convex.site/auth/*
-    ├── /auth/.well-known/portal-config  → returns { convexUrl, siteUrl }
-    └── /auth/**                          → static files from Convex storage
+```mermaid
+flowchart LR
+    subgraph Self-hosted
+        B1[Browser] -->|GET| Site["{deployment}.convex.site/auth/*"]
+        Site --> Config["/auth/.well-known/portal-config<br/>→ { convexUrl, siteUrl }"]
+        Site --> Static["/auth/**<br/>→ static files from Convex storage"]
+    end
 
-CDN (auth.robelest.com):
-  Browser → auth.robelest.com/{slug}/*
-    ├── SvelteKit reroute hook strips slug for route matching
-    └── discoverConvexUrl() derives https://{slug}.convex.cloud from the path
+    subgraph CDN
+        B2[Browser] -->|GET| CDN_["auth.robelest.com/{slug}/*"]
+        CDN_ --> Reroute["SvelteKit reroute hook<br/>strips slug for route matching"]
+        CDN_ --> Discover["discoverConvexUrl()<br/>derives https://{slug}.convex.cloud"]
+    end
 ```
 
 Key design constraints of the Convex component system:
@@ -790,14 +1002,14 @@ npx @robelest/convex-auth portal upload [options]
 - Class-based `Auth` API with library-native email transport
 - Self-hosting as embedded sub-component
 - API keys with scoped permissions, SHA-256 hashing, rate limiting
+- Bearer Token Auth — `Authorization: Bearer` header with scoped API keys
 - Framework-agnostic SSR cookie API (SvelteKit, TanStack Start, Next.js)
 - Hosted CDN portal at `auth.robelest.com` with path-based deployment routing
 - Context enrichment (`AuthCtx`) — zero-boilerplate `ctx.auth.userId` / `ctx.auth.user` via `convex-helpers`
+- Arctic migration — replaced `@auth/core` with [Arctic](https://arcticjs.dev) for OAuth 2.0 (lighter, zero-dependency)
+- Device Authorization (RFC 8628) — OAuth device flow for CLIs, smart TVs, and IoT devices
 
 ### Planned
-- **Bearer Token Auth** — `Authorization: Bearer` header for API-first apps
-- **Device Authorization (RFC 8628)** — OAuth device flow for CLIs/IoT
-- **Arctic migration** — replace `@auth/core` with a lighter OAuth 2.0 layer
 - **SSO (SAML 2.0 + OIDC)** — enterprise identity provider integration
 - **SCIM 2.0 Directory Sync** — user provisioning from Okta, Azure AD, Google Workspace
 - **OAuth 2.1 / OIDC Provider** — become the identity provider
