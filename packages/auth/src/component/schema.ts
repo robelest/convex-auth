@@ -152,6 +152,36 @@ export default defineSchema({
     .index("userId", ["userId"]),
 
   /**
+   * Device authorization codes (RFC 8628). Each record tracks a pending
+   * device auth session — the device polls with `deviceCode` while the
+   * user authorizes via `userCode` on a secondary device.
+   */
+  device: defineTable({
+    /** High-entropy code used by the device for polling. Stored as SHA-256 hash. */
+    deviceCodeHash: v.string(),
+    /** Short human-readable code the user enters (e.g. "WDJB-MJHT"). */
+    userCode: v.string(),
+    /** Expiration timestamp (ms since epoch). */
+    expiresAt: v.number(),
+    /** Minimum polling interval in seconds. */
+    interval: v.number(),
+    /** Current status of this device authorization session. */
+    status: v.union(
+      v.literal("pending"),
+      v.literal("authorized"),
+      v.literal("denied"),
+    ),
+    /** Set when the user authorizes — links to the authorizing user. */
+    userId: v.optional(v.id("user")),
+    /** Set when the user authorizes — the session created for the device. */
+    sessionId: v.optional(v.id("session")),
+    /** Timestamp of the last poll request (for slow_down enforcement). */
+    lastPolledAt: v.optional(v.number()),
+  })
+    .index("deviceCodeHash", ["deviceCodeHash"])
+    .index("userCode", ["userCode", "status"]),
+
+  /**
    * Rate limit tracking for OTP and password sign-in attempts.
    */
   limit: defineTable({

@@ -358,3 +358,87 @@ export async function mutateKeyDelete(
     { keyId },
   );
 }
+
+// -- Device authorization queries / mutations --
+
+export interface DeviceDoc {
+  _id: string;
+  _creationTime: number;
+  deviceCodeHash: string;
+  userCode: string;
+  expiresAt: number;
+  interval: number;
+  status: "pending" | "authorized" | "denied";
+  userId?: string;
+  sessionId?: string;
+  lastPolledAt?: number;
+}
+
+export async function mutateDeviceInsert(
+  ctx: ComponentCallCtx,
+  args: {
+    deviceCodeHash: string;
+    userCode: string;
+    expiresAt: number;
+    interval: number;
+    status: "pending" | "authorized" | "denied";
+  },
+): Promise<string> {
+  return (await ctx.runMutation(
+    ctx.auth.config.component.public.deviceInsert,
+    args,
+  )) as string;
+}
+
+export async function queryDeviceByCodeHash(
+  ctx: ComponentCallCtx,
+  deviceCodeHash: string,
+): Promise<DeviceDoc | null> {
+  return (await ctx.runQuery(
+    ctx.auth.config.component.public.deviceGetByCodeHash,
+    { deviceCodeHash },
+  )) as DeviceDoc | null;
+}
+
+export async function queryDeviceByUserCode(
+  ctx: ComponentCallCtx,
+  userCode: string,
+): Promise<DeviceDoc | null> {
+  return (await ctx.runQuery(
+    ctx.auth.config.component.public.deviceGetByUserCode,
+    { userCode },
+  )) as DeviceDoc | null;
+}
+
+export async function mutateDeviceAuthorize(
+  ctx: ComponentCallCtx,
+  deviceId: string,
+  userId: string,
+  sessionId: string,
+): Promise<void> {
+  await ctx.runMutation(
+    ctx.auth.config.component.public.deviceAuthorize,
+    { deviceId, userId, sessionId },
+  );
+}
+
+export async function mutateDeviceUpdateLastPolled(
+  ctx: ComponentCallCtx,
+  deviceId: string,
+  lastPolledAt: number,
+): Promise<void> {
+  await ctx.runMutation(
+    ctx.auth.config.component.public.deviceUpdateLastPolled,
+    { deviceId, lastPolledAt },
+  );
+}
+
+export async function mutateDeviceDelete(
+  ctx: ComponentCallCtx,
+  deviceId: string,
+): Promise<void> {
+  await ctx.runMutation(
+    ctx.auth.config.component.public.deviceDelete,
+    { deviceId },
+  );
+}

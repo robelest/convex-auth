@@ -179,6 +179,24 @@ export const AUTH_ERRORS = {
   TOTP_UNKNOWN_FLOW:
     "Unknown TOTP flow.",
 
+  // ---- Device Authorization (RFC 8628) ----
+  DEVICE_CODE_EXPIRED:
+    "The device code has expired. Please start a new authorization request.",
+  DEVICE_CODE_DENIED:
+    "The authorization request was denied.",
+  DEVICE_AUTHORIZATION_PENDING:
+    "The user has not yet authorized this device.",
+  DEVICE_SLOW_DOWN:
+    "Polling too frequently. Increase the interval between requests.",
+  DEVICE_INVALID_USER_CODE:
+    "Invalid or expired user code.",
+  DEVICE_ALREADY_AUTHORIZED:
+    "This device code has already been authorized.",
+  DEVICE_MISSING_FLOW:
+    "Missing device flow parameter.",
+  DEVICE_UNKNOWN_FLOW:
+    "Unknown device flow.",
+
   // ---- Internal (should never reach user) ----
   INTERNAL_ERROR:
     "An unexpected error occurred.",

@@ -121,10 +121,64 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      deviceAuthorize: FunctionReference<
+        "mutation",
+        "internal",
+        { deviceId: string; sessionId: string; userId: string },
+        any,
+        Name
+      >;
+      deviceDelete: FunctionReference<
+        "mutation",
+        "internal",
+        { deviceId: string },
+        any,
+        Name
+      >;
+      deviceGetByCodeHash: FunctionReference<
+        "query",
+        "internal",
+        { deviceCodeHash: string },
+        any,
+        Name
+      >;
+      deviceGetByUserCode: FunctionReference<
+        "query",
+        "internal",
+        { userCode: string },
+        any,
+        Name
+      >;
+      deviceInsert: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          deviceCodeHash: string;
+          expiresAt: number;
+          interval: number;
+          status: "pending" | "authorized" | "denied";
+          userCode: string;
+        },
+        any,
+        Name
+      >;
+      deviceUpdateLastPolled: FunctionReference<
+        "mutation",
+        "internal",
+        { deviceId: string; lastPolledAt: number },
+        any,
+        Name
+      >;
       groupCreate: FunctionReference<
         "mutation",
         "internal",
-        { extend?: any; name: string; parentGroupId?: string; slug?: string },
+        {
+          extend?: any;
+          name: string;
+          parentGroupId?: string;
+          slug?: string;
+          type?: string;
+        },
         any,
         Name
       >;
@@ -145,7 +199,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       groupList: FunctionReference<
         "query",
         "internal",
-        { parentGroupId?: string },
+        { parentGroupId?: string; type?: string },
         any,
         Name
       >;
@@ -240,7 +294,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           name: string;
           prefix: string;
           rateLimit?: { maxRequests: number; windowMs: number };
-          scopes: Array<{ resource: string; actions: Array<string> }>;
+          scopes: Array<{ actions: Array<string>; resource: string }>;
           userId: string;
         },
         any,
@@ -264,7 +318,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             rateLimit?: { maxRequests: number; windowMs: number };
             rateLimitState?: { attemptsLeft: number; lastAttemptTime: number };
             revoked?: boolean;
-            scopes?: Array<{ resource: string; actions: Array<string> }>;
+            scopes?: Array<{ actions: Array<string>; resource: string }>;
           };
           keyId: string;
         },

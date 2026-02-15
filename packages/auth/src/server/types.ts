@@ -316,7 +316,9 @@ export type AuthProviderConfig =
   | PasskeyProviderConfig
   | ((...args: any) => PasskeyProviderConfig)
   | TotpProviderConfig
-  | ((...args: any) => TotpProviderConfig);
+  | ((...args: any) => TotpProviderConfig)
+  | DeviceProviderConfig
+  | ((...args: any) => DeviceProviderConfig);
 
 /**
  * Extends the standard Auth.js email provider config
@@ -609,16 +611,64 @@ export type ConvexAuthMaterializedConfig = {
 >;
 
 /**
- * Materialized Auth.js provider config.
+ * Materialized OAuth provider config (Arctic-based).
+ *
+ * Carries the Arctic provider instance along with scopes and profile config.
+ * Produced by materializing an `OAuthProviderInstance` during `configDefaults`.
+ */
+export interface OAuthMaterializedConfig {
+  readonly id: string;
+  readonly type: "oauth";
+  /** The Arctic provider instance. */
+  readonly provider: any;
+  /** OAuth scopes to request. */
+  readonly scopes: string[];
+  /** User-provided profile extraction callback. */
+  readonly profile?: (tokens: import("arctic").OAuth2Tokens) => Promise<OAuthProfile>;
+  /**
+   * Allow linking accounts by email even if the email is unverified.
+   * Use with caution — only enable for providers you trust.
+   */
+  readonly allowDangerousEmailAccountLinking?: boolean;
+}
+
+/**
+ * Device authorization provider config (RFC 8628).
+ *
+ * Enables input-constrained devices (CLIs, TVs, IoT) to authenticate
+ * by displaying a short code that the user enters on a secondary device.
+ */
+export interface DeviceProviderConfig {
+  id: string;
+  type: "device";
+  /** User code character set. Default: `"BCDFGHJKLMNPQRSTVWXZ"` (base-20, no vowels). */
+  charset: string;
+  /** User code length. Default: 8. */
+  userCodeLength: number;
+  /** Device code + user code lifetime in seconds. Default: 900 (15 min). */
+  expiresIn: number;
+  /** Minimum polling interval in seconds. Default: 5. */
+  interval: number;
+  /**
+   * Base URL for the verification page (e.g. `"http://localhost:3000/device"`).
+   *
+   * This is where users go to enter the device code. If not provided,
+   * falls back to `SITE_URL + "/device"`.
+   */
+  verificationUri?: string;
+}
+
+/**
+ * Materialized auth provider config — the fully resolved form stored at runtime.
  */
 export type AuthProviderMaterializedConfig =
-  | OIDCConfig<any>
-  | OAuth2Config<any>
+  | OAuthMaterializedConfig
   | EmailConfig
   | PhoneConfig
   | ConvexCredentialsConfig
   | PasskeyProviderConfig
-  | TotpProviderConfig;
+  | TotpProviderConfig
+  | DeviceProviderConfig;
 
 // ============================================================================
 // Email transport types
@@ -892,6 +942,12 @@ export type AuthComponentApi = {
     totpMarkVerified: FunctionReference<"mutation", "internal", any, any>;
     totpUpdateLastUsed: FunctionReference<"mutation", "internal", any, any>;
     totpDelete: FunctionReference<"mutation", "internal", any, any>;
+    deviceInsert: FunctionReference<"mutation", "internal", any, any>;
+    deviceGetByCodeHash: FunctionReference<"query", "internal", any, any>;
+    deviceGetByUserCode: FunctionReference<"query", "internal", any, any>;
+    deviceAuthorize: FunctionReference<"mutation", "internal", any, any>;
+    deviceUpdateLastPolled: FunctionReference<"mutation", "internal", any, any>;
+    deviceDelete: FunctionReference<"mutation", "internal", any, any>;
   };
 };
 
