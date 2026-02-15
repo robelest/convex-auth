@@ -5,6 +5,7 @@
   "scripts": {
     "dev:convex": "bunx convex dev",
     "dev:tanstack": "bun run --cwd examples/tanstack dev",
+    "dev:tui": "bun run --cwd examples/cli start",
     "dev:portal": "bun run --cwd packages/portal dev",
     "build": "bun run --cwd packages/auth build",
     "build:portal": "bun run --cwd packages/portal build",
