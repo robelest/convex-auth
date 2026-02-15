@@ -11,9 +11,7 @@
  * `@oslojs/encoding` for base-32 secret encoding.
  */
 
-import { GenericId } from "convex/values";
 import {
-  generateTOTP,
   verifyTOTPWithGracePeriod,
   createTOTPKeyURI,
 } from "@oslojs/otp";
@@ -22,9 +20,20 @@ import {
   TotpProviderConfig,
   GenericActionCtxWithAuthConfig,
 } from "../types.js";
-import { AuthDataModel, SessionInfo } from "./types.js";
+import {
+  AuthDataModel,
+  SessionInfo,
+  queryUserById,
+  queryTotpById,
+  queryTotpVerifiedByUserId,
+  queryVerifierById,
+  mutateTotpInsert,
+  mutateTotpMarkVerified,
+  mutateTotpUpdateLastUsed,
+  mutateVerifierDelete,
+} from "./types.js";
 import { callSignIn, callVerifier } from "./mutations/index.js";
-import { callVerifierSignature } from "./mutations/verifierSignature.js";
+import { callVerifierSignature } from "./mutations/signature.js";
 import { throwAuthError } from "../errors.js";
 
 type EnrichedActionCtx = GenericActionCtxWithAuthConfig<AuthDataModel>;
@@ -65,11 +74,8 @@ async function handleSetup(
   // Resolve the account name for the otpauth:// URI
   let accountName: string = params.accountName as string;
   if (!accountName) {
-    const user = await ctx.runQuery(
-      ctx.auth.config.component.public.userGetById,
-      { userId: userId! },
-    );
-    accountName = (user as any)?.email ?? "user";
+    const user = await queryUserById(ctx, userId!);
+    accountName = user?.email ?? "user";
   }
 
   // Build the otpauth:// URI for QR code scanning
@@ -97,28 +103,25 @@ async function handleSetup(
   });
 
   // Insert an UNVERIFIED TOTP record in the DB
-  const totpId = await ctx.runMutation(
-    ctx.auth.config.component.public.totpInsert,
-    {
-      userId: userId as any,
-      secret: secret.buffer.slice(
-        secret.byteOffset,
-        secret.byteOffset + secret.byteLength,
-      ),
-      digits: provider.options.digits,
-      period: provider.options.period,
-      verified: false,
-      name: params.name,
-      createdAt: Date.now(),
-    },
-  );
+  const totpId = await mutateTotpInsert(ctx, {
+    userId: userId!,
+    secret: secret.buffer.slice(
+      secret.byteOffset,
+      secret.byteOffset + secret.byteLength,
+    ),
+    digits: provider.options.digits,
+    period: provider.options.period,
+    verified: false,
+    name: params.name,
+    createdAt: Date.now(),
+  });
 
   return {
     kind: "totpSetup" as const,
     uri,
     secret: base32Secret,
     verifier,
-    totpId: totpId as string,
+    totpId,
   };
 }
 
@@ -156,19 +159,16 @@ async function handleConfirm(
   }
 
   // Look up the TOTP record
-  const totpDoc = await ctx.runQuery(
-    ctx.auth.config.component.public.totpGetById,
-    { totpId: params.totpId },
-  );
+  const totpDoc = await queryTotpById(ctx, params.totpId);
   if (!totpDoc) {
     throwAuthError("TOTP_NOT_FOUND");
   }
-  if ((totpDoc as any).verified) {
+  if (totpDoc.verified) {
     throwAuthError("TOTP_ALREADY_VERIFIED");
   }
 
   // Extract the secret from the TOTP record
-  const secret = new Uint8Array((totpDoc as any).secret);
+  const secret = new Uint8Array(totpDoc.secret);
 
   // Verify the code with a 30-second grace period
   const valid = verifyTOTPWithGracePeriod(
@@ -183,16 +183,10 @@ async function handleConfirm(
   }
 
   // Mark the enrollment as verified
-  await ctx.runMutation(
-    ctx.auth.config.component.public.totpMarkVerified,
-    { totpId: params.totpId as any, lastUsedAt: Date.now() },
-  );
+  await mutateTotpMarkVerified(ctx, params.totpId, Date.now());
 
   // Clean up the verifier
-  await ctx.runMutation(
-    ctx.auth.config.component.public.verifierDelete,
-    { verifierId: verifierValue },
-  );
+  await mutateVerifierDelete(ctx, verifierValue);
 
   // Return tokens for the existing session
   const signInResult = await callSignIn(ctx, {
@@ -227,35 +221,29 @@ async function handleVerify(
   }
 
   // Look up the verifier to retrieve the stored userId
-  const verifierDoc = await ctx.runQuery(
-    ctx.auth.config.component.public.verifierGetById,
-    { verifierId: verifierValue },
-  );
+  const verifierDoc = await queryVerifierById(ctx, verifierValue);
   if (!verifierDoc) {
     throwAuthError("TOTP_INVALID_VERIFIER");
   }
 
   // Parse the signature to extract userId
-  const signatureData = JSON.parse((verifierDoc as any).signature);
+  const signatureData = JSON.parse(verifierDoc.signature!);
   const userId = signatureData.userId as string;
 
   // Look up the user's verified TOTP enrollment
-  const totpDoc = await ctx.runQuery(
-    ctx.auth.config.component.public.totpGetVerifiedByUserId,
-    { userId: userId as any },
-  );
+  const totpDoc = await queryTotpVerifiedByUserId(ctx, userId);
   if (!totpDoc) {
     throwAuthError("TOTP_NO_ENROLLMENT");
   }
 
   // Extract the secret from the TOTP record
-  const secret = new Uint8Array((totpDoc as any).secret);
+  const secret = new Uint8Array(totpDoc.secret);
 
   // Verify the code with a 30-second grace period
   const valid = verifyTOTPWithGracePeriod(
     secret,
-    (totpDoc as any).period,
-    (totpDoc as any).digits,
+    totpDoc.period,
+    totpDoc.digits,
     params.code,
     30,
   );
@@ -264,16 +252,10 @@ async function handleVerify(
   }
 
   // Update last used timestamp
-  await ctx.runMutation(
-    ctx.auth.config.component.public.totpUpdateLastUsed,
-    { totpId: (totpDoc as any)._id, lastUsedAt: Date.now() },
-  );
+  await mutateTotpUpdateLastUsed(ctx, totpDoc._id, Date.now());
 
   // Clean up the verifier
-  await ctx.runMutation(
-    ctx.auth.config.component.public.verifierDelete,
-    { verifierId: verifierValue },
-  );
+  await mutateVerifierDelete(ctx, verifierValue);
 
   // Sign in the user with tokens
   const signInResult = await callSignIn(ctx, {
@@ -355,9 +337,6 @@ export async function checkTotpRequired(
   ctx: EnrichedActionCtx,
   userId: string,
 ): Promise<boolean> {
-  const totpDoc = await ctx.runQuery(
-    ctx.auth.config.component.public.totpGetVerifiedByUserId,
-    { userId: userId as any },
-  );
+  const totpDoc = await queryTotpVerifiedByUserId(ctx, userId);
   return totpDoc !== null;
 }
