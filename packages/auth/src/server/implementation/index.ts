@@ -11,7 +11,7 @@ import { ConvexError, GenericId, v } from "convex/values";
 import { throwAuthError, isAuthError } from "../errors";
 import { parse as parseCookies, serialize as serializeCookie } from "cookie";
 import { redirectToParamCookie, useRedirectToParam } from "../cookies";
-import { FunctionReferenceFromExport } from "../types";
+import type { FunctionReferenceFromExport } from "../types";
 import {
   configDefaults,
   listAvailableProviders,
@@ -27,10 +27,10 @@ import { requireEnv } from "../utils";
 import {
   ActionCtx,
   MutationCtx,
-  Tokens,
   KeyDoc,
 } from "./types";
-export { Doc, Tokens } from "./types";
+import type { Tokens } from "./types";
+export type { Doc, Tokens } from "./types";
 import {
   LOG_LEVELS,
   TOKEN_SUB_CLAIM_DIVIDER,

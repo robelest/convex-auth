@@ -15,6 +15,8 @@ export {
    * `Auth` class (the recommended public API). Prefer `new Auth(...)`.
    */
   Auth as AuthFactory,
+} from "../server/implementation/index";
+export type {
   Tokens,
   Doc,
   SignInAction,

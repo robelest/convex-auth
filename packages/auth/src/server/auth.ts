@@ -70,6 +70,21 @@ import { throwAuthError } from "./errors";
  */
 export type AuthClassConfig = Omit<ConvexAuthConfig, "component">;
 
+type AuthInternalState = {
+  component: AuthComponentApi;
+  portalUrl: string;
+};
+
+const authInternalState = new WeakMap<Auth, AuthInternalState>();
+
+function getAuthInternalState(auth: Auth): AuthInternalState {
+  const state = authInternalState.get(auth);
+  if (!state) {
+    throw new Error("Auth internal state is not initialized");
+  }
+  return state;
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -127,11 +142,6 @@ export class Auth {
   /** The store internal mutation — export this from your convex/auth.ts */
   public readonly store: ReturnType<typeof AuthFactory>["store"];
 
-  /** @internal */
-  readonly component: AuthComponentApi;
-  /** @internal */
-  readonly portalUrl: string;
-
   // ---- Proxied auth helper sub-objects ----
   /** User helpers: `.current(ctx)`, `.require(ctx)`, `.get(ctx, userId)`, `.patch(ctx, userId, data)`, `.viewer(ctx)`, `.group.list(ctx, ...)`, `.group.get(ctx, ...)` */
   get user() { return this._auth.user; }
@@ -157,12 +167,11 @@ export class Auth {
    * @param config - Auth configuration (providers, email transport, session, JWT, callbacks).
    */
   constructor(component: AuthComponentApi, config: AuthClassConfig) {
-    this.component = component;
-
     // Derive portal URL from CONVEX_SITE_URL
-    this.portalUrl = process.env.CONVEX_SITE_URL
+    const portalUrl = process.env.CONVEX_SITE_URL
       ? `${process.env.CONVEX_SITE_URL.replace(/\/$/, "")}/auth`
       : "/auth";
+    authInternalState.set(this, { component, portalUrl });
 
     const emailTransport = config.email;
     const providers = [...config.providers];
@@ -273,7 +282,7 @@ export class Auth {
   get http() {
     // Cache the object so repeated access returns the same reference
     const inner = this._auth.http;
-    const component = this.component;
+    const { component } = getAuthInternalState(this);
 
     return {
       ...inner,
@@ -365,9 +374,8 @@ export class Auth {
  * @returns `{ portalQuery, portalMutation, portalInternal }` — export all three.
  */
 export function Portal(auth: Auth) {
-  const authComponent = auth.component;
+  const { component: authComponent, portalUrl } = getAuthInternalState(auth);
   const authHelper = (auth as any)._auth;
-  const portalUrl = auth.portalUrl;
 
   const portalQuery = queryGeneric({
     args: {
