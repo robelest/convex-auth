@@ -13,9 +13,15 @@
  */
 
 import { tryRestoreSession, deviceAuthFlow, clearSavedTokens } from "./auth";
-import { startChat, cleanup } from "./chat";
+import {
+  initTUI,
+  enterChat,
+  cleanup,
+  updateAuthStatus,
+  showAuthCode,
+} from "./chat";
 
-// Handle --logout flag
+// Handle --logout flag (runs before TUI)
 if (Bun.argv.includes("--logout")) {
   await clearSavedTokens();
   console.log("Logged out. Saved tokens cleared.");
@@ -23,30 +29,49 @@ if (Bun.argv.includes("--logout")) {
 }
 
 // ---------------------------------------------------------------------------
-// Auth
+// Boot TUI first, then authenticate inside it
 // ---------------------------------------------------------------------------
 
-console.log("Convex Auth CLI Chat\n");
+try {
+  await initTUI();
+} catch (e) {
+  console.error(
+    `\nFailed to start TUI: ${e instanceof Error ? e.message : String(e)}`,
+  );
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// Auth (displayed inside TUI)
+// ---------------------------------------------------------------------------
+
+updateAuthStatus("Checking for saved session...");
 
 const restored = await tryRestoreSession();
 
 if (restored) {
-  console.log("Session restored from keychain.\n");
+  updateAuthStatus("Session restored! Loading chat...");
 } else {
-  console.log("No saved session. Starting device authorization...\n");
+  updateAuthStatus("No saved session. Starting device authorization...");
 
   try {
-    await deviceAuthFlow((message) => {
-      console.log(message);
+    await deviceAuthFlow((message, data) => {
+      if (data?.userCode && data?.verificationUrl) {
+        showAuthCode(data.userCode, data.verificationUrl);
+      }
+      updateAuthStatus(message);
     });
   } catch (e) {
-    console.error(
-      `\nAuth failed: ${e instanceof Error ? e.message : String(e)}`,
+    updateAuthStatus(
+      `Auth failed: ${e instanceof Error ? e.message : String(e)}`,
     );
+    // Give user a moment to read the error before exiting
+    await Bun.sleep(3000);
+    cleanup();
     process.exit(1);
   }
 
-  console.log("\nAuthenticated! Loading chat...\n");
+  updateAuthStatus("Authenticated! Loading chat...");
 }
 
 // ---------------------------------------------------------------------------
@@ -54,7 +79,7 @@ if (restored) {
 // ---------------------------------------------------------------------------
 
 try {
-  await startChat();
+  await enterChat();
 } catch (e) {
   cleanup();
   console.error(

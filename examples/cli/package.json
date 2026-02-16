@@ -7,7 +7,12 @@
     "start": "bun run src/index.ts"
   },
   "dependencies": {
+    "@opentui-ui/dialog": "^0.1.2",
+    "@opentui-ui/toast": "^0.0.5",
     "@opentui/core": "0.1.79",
     "convex": "catalog:"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.9"
   }
 }

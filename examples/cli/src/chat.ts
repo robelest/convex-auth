@@ -1,47 +1,64 @@
 /**
- * OpenTUI chat interface.
+ * @module chat
  *
- * Full-screen terminal layout:
+ * Main chat orchestrator for the terminal UI.
+ *
+ * Two-phase startup:
+ *   1. `initTUI()` — creates the renderer and shows an auth screen
+ *   2. `enterChat()` — replaces the auth screen with the full chat layout
+ *
+ * ```
  * ┌──────────┬─────────────────────────┐
- * │ Channels │ #general                │
+ * │ Channels │ # general          (12) │
  * │          ├─────────────────────────┤
- * │ [+] New  │ Messages...             │
- * │          │                         │
+ * │ > general│ Messages...             │
+ * │   random │                         │
  * │          ├─────────────────────────┤
- * │          │ > Type a message...     │
+ * │ user@... │ 12 messages in #general │
+ * │ C:new    │ > Type a message...     │
  * └──────────┴─────────────────────────┘
+ * ```
  */
 
 import {
   createCliRenderer,
   BoxRenderable,
   TextRenderable,
-  InputRenderable,
-  InputRenderableEvents,
-  ScrollBoxRenderable,
-  SelectRenderable,
-  SelectRenderableEvents,
-  TextAttributes,
+  t,
+  bold,
+  fg,
+  dim,
   type CliRenderer,
 } from "@opentui/core";
-import { realtimeClient, httpClient } from "./convex";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type Message = {
-  _id: string;
-  body: string;
-  author: string;
-  _creationTime: number;
-};
-
-type Group = {
-  _id: string;
-  name: string;
-  role?: string;
-};
+import { httpClient, realtimeClient, authReady } from "./convex";
+import { colors, borders } from "./theme";
+import {
+  createSidebar,
+  renderChannels,
+  setUserInfo,
+  type Group,
+} from "./sidebar";
+import {
+  createMessagePanel,
+  renderMessages,
+  setChannelHeader,
+  type Message,
+} from "./messages";
+import {
+  createInputBar,
+  setStatus,
+  focusInput,
+  type InputHandlers,
+} from "./input";
+import {
+  initDialogs,
+  showCreateChannelDialog,
+  showJoinChannelDialog,
+  showHelpDialog,
+  showSuccess,
+  showError,
+  showInfo,
+} from "./dialogs";
 
 // ---------------------------------------------------------------------------
 // State
@@ -50,309 +67,287 @@ type Group = {
 let renderer: CliRenderer;
 let currentGroupId: string | undefined;
 let currentGroupName = "general";
+let currentUserId: string | undefined;
 let groups: Group[] = [];
 let messages: Message[] = [];
-
-// UI elements
-let channelList: BoxRenderable;
-let header: TextRenderable;
-let messageArea: ScrollBoxRenderable;
-let inputBox: InputRenderable;
-let statusText: TextRenderable;
-
-// Subscription cleanup
 let unsubMessages: (() => void) | null = null;
 let unsubGroups: (() => void) | null = null;
 
-// Mode: "chat" | "create" | "join"
-let mode: "chat" | "create" | "join" = "chat";
+/** Reference to the InputRenderable for focus-checking in keyboard handler. */
+let inputBox: import("@opentui/core").InputRenderable;
+
+/** Auth screen elements. */
+let authScreen: BoxRenderable | null = null;
+let authTitleText: TextRenderable | null = null;
+let authStatusText: TextRenderable | null = null;
+let authCodeText: TextRenderable | null = null;
+let authUrlText: TextRenderable | null = null;
+let authHintText: TextRenderable | null = null;
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Phase 1: Init TUI + Auth screen
 // ---------------------------------------------------------------------------
 
-/** Remove all children from a renderable. */
-function removeAllChildren(parent: BoxRenderable | ScrollBoxRenderable): void {
-  const children = parent.getChildren();
-  for (const child of children) {
-    child.destroy();
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Layout
-// ---------------------------------------------------------------------------
-
-export async function startChat(): Promise<void> {
+/**
+ * Create the renderer and show a centered auth screen.
+ *
+ * Call this before starting the auth flow so the user sees
+ * status updates in the TUI instead of raw console output.
+ */
+export async function initTUI(): Promise<void> {
   renderer = await createCliRenderer({
     targetFps: 30,
     exitOnCtrlC: false,
   });
 
-  // Main container — horizontal flex
-  const main = new BoxRenderable(renderer, {
-    id: "main",
-    width: "100%",
-    height: "100%",
-    flexDirection: "row",
-  });
-
-  // ----- Sidebar -----
-  const sidebar = new BoxRenderable(renderer, {
-    id: "sidebar",
-    width: 24,
-    height: "100%",
-    flexDirection: "column",
-    border: true,
-  });
-
-  const sidebarTitle = new TextRenderable(renderer, {
-    id: "sidebar-title",
-    content: " Channels",
-    attributes: TextAttributes.BOLD,
-    height: 1,
-    fg: "#7aa2f7",
-  });
-
-  const sidebarDivider = new TextRenderable(renderer, {
-    id: "sidebar-divider",
-    content: "─".repeat(22),
-    height: 1,
-    fg: "#444444",
-  });
-
-  channelList = new BoxRenderable(renderer, {
-    id: "channel-list",
-    flexDirection: "column",
-    flexGrow: 1,
-  });
-
-  const sidebarFooter = new BoxRenderable(renderer, {
-    id: "sidebar-footer",
-    height: 3,
-    flexDirection: "column",
-    paddingLeft: 1,
-  });
-
-  const footerDivider = new TextRenderable(renderer, {
-    id: "footer-divider",
-    content: "─".repeat(22),
-    height: 1,
-    fg: "#444444",
-  });
-
-  const footerHelp = new TextRenderable(renderer, {
-    id: "footer-help",
-    content: " Tab:switch  /help",
-    height: 1,
-    fg: "#666666",
-  });
-
-  const footerQuit = new TextRenderable(renderer, {
-    id: "footer-quit",
-    content: " Ctrl+C: quit",
-    height: 1,
-    fg: "#666666",
-  });
-
-  sidebarFooter.add(footerDivider);
-  sidebarFooter.add(footerHelp);
-  sidebarFooter.add(footerQuit);
-
-  sidebar.add(sidebarTitle);
-  sidebar.add(sidebarDivider);
-  sidebar.add(channelList);
-  sidebar.add(sidebarFooter);
-
-  // ----- Chat area -----
-  const chatArea = new BoxRenderable(renderer, {
-    id: "chat-area",
-    flexGrow: 1,
-    height: "100%",
-    flexDirection: "column",
-  });
-
-  // Header
-  header = new TextRenderable(renderer, {
-    id: "header",
-    content: ` # ${currentGroupName}`,
-    height: 1,
-    attributes: TextAttributes.BOLD,
-    fg: "#c0caf5",
-    backgroundColor: "#1a1b26",
-  });
-
-  // Messages
-  messageArea = new ScrollBoxRenderable(renderer, {
-    id: "messages",
-    flexGrow: 1,
-  });
-
-  // Status line
-  statusText = new TextRenderable(renderer, {
-    id: "status",
-    content: " Connecting...",
-    height: 1,
-    fg: "#565f89",
-  });
-
-  // Input
-  const inputContainer = new BoxRenderable(renderer, {
-    id: "input-container",
-    height: 3,
-    border: true,
-  });
-
-  inputBox = new InputRenderable(renderer, {
-    id: "input",
-    placeholder: "Type a message... (Enter to send)",
-  });
-
-  inputContainer.add(inputBox);
-
-  chatArea.add(header);
-  chatArea.add(messageArea);
-  chatArea.add(statusText);
-  chatArea.add(inputContainer);
-
-  main.add(sidebar);
-  main.add(chatArea);
-  renderer.root.add(main);
-
-  // Focus input
-  inputBox.focus();
-
-  // ----- Event handlers -----
-  setupKeyboard();
-  setupInput();
-
-  // ----- Subscriptions -----
-  subscribeToGroups();
-  subscribeToMessages();
-}
-
-// ---------------------------------------------------------------------------
-// Keyboard
-// ---------------------------------------------------------------------------
-
-function setupKeyboard(): void {
+  // Ctrl+C always quits
   renderer.keyInput.on("keypress", (key: any) => {
-    // Ctrl+C: quit
     if (key.ctrl && key.name === "c") {
       cleanup();
       renderer.destroy();
       process.exit(0);
     }
-
-    // Tab: cycle channels (only in chat mode)
-    if (key.name === "tab" && mode === "chat") {
-      cycleChannel(key.shift ? -1 : 1);
-    }
-
-    // Escape: back to chat mode
-    if (key.name === "escape" && mode !== "chat") {
-      mode = "chat";
-      inputBox.placeholder = "Type a message... (Enter to send)";
-      inputBox.focus();
-      renderChannelList();
-    }
   });
+
+  // Full-screen dark background
+  authScreen = new BoxRenderable(renderer, {
+    id: "auth-screen",
+    width: "100%",
+    height: "100%",
+    backgroundColor: colors.bg,
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+  });
+
+  // Auth card
+  const card = new BoxRenderable(renderer, {
+    id: "auth-card",
+    width: 52,
+    height: 14,
+    flexDirection: "column",
+    backgroundColor: colors.bg1,
+    ...borders.dialog,
+    padding: 1,
+    gap: 1,
+  });
+
+  authTitleText = new TextRenderable(renderer, {
+    id: "auth-title",
+    content: t`  ${bold(fg(colors.orange)("Convex Auth CLI Chat"))}`,
+    height: 1,
+  });
+
+  authStatusText = new TextRenderable(renderer, {
+    id: "auth-status",
+    content: t`  ${fg(colors.fg3)("Checking for saved session...")}`,
+    height: 1,
+  });
+
+  authCodeText = new TextRenderable(renderer, {
+    id: "auth-code",
+    content: "",
+    height: 2,
+  });
+
+  authUrlText = new TextRenderable(renderer, {
+    id: "auth-url",
+    content: "",
+    height: 2,
+  });
+
+  authHintText = new TextRenderable(renderer, {
+    id: "auth-hint",
+    content: t`  ${dim(fg(colors.gray)("Ctrl+C to quit"))}`,
+    height: 1,
+  });
+
+  card.add(authTitleText);
+  card.add(authStatusText);
+  card.add(authCodeText);
+  card.add(authUrlText);
+  card.add(authHintText);
+  authScreen.add(card);
+  renderer.root.add(authScreen);
 }
 
-// ---------------------------------------------------------------------------
-// Input handling
-// ---------------------------------------------------------------------------
-
-function clearInput(): void {
-  try {
-    inputBox.value = "";
-  } catch {
-    // Fallback if setter doesn't work
-    try {
-      inputBox.deleteLine();
-    } catch {
-      /* best effort */
-    }
+/**
+ * Update the auth screen with a status message.
+ */
+export function updateAuthStatus(status: string): void {
+  if (authStatusText) {
+    authStatusText.content = t`  ${fg(colors.fg3)(status)}`;
   }
 }
 
-function setupInput(): void {
-  inputBox.on(InputRenderableEvents.ENTER, async (text: string) => {
-    if (!text.trim()) return;
+/**
+ * Show the device code and verification URL on the auth screen.
+ */
+export function showAuthCode(userCode: string, verificationUrl: string): void {
+  if (authCodeText) {
+    authCodeText.content = t`  ${fg(colors.gray)("Your code:")} ${bold(fg(colors.yellow)(userCode))}`;
+  }
+  if (authUrlText) {
+    authUrlText.content = t`  ${fg(colors.gray)("Open:")} ${fg(colors.aqua)(verificationUrl)}`;
+  }
+  if (authHintText) {
+    authHintText.content = t`  ${dim(fg(colors.gray)("Waiting for authorization...  Ctrl+C to quit"))}`;
+  }
+}
 
-    // Clear the input immediately
-    clearInput();
+// ---------------------------------------------------------------------------
+// Phase 2: Enter chat
+// ---------------------------------------------------------------------------
 
-    // Slash commands
-    if (text.startsWith("/")) {
-      await handleCommand(text.trim());
+/**
+ * Replace the auth screen with the full chat layout.
+ *
+ * Waits for the realtime client to confirm authentication,
+ * fetches the current user, and starts subscriptions.
+ */
+export async function enterChat(): Promise<void> {
+  // Remove auth screen
+  if (authScreen) {
+    authScreen.destroy();
+    authScreen = null;
+    authTitleText = null;
+    authStatusText = null;
+    authCodeText = null;
+    authUrlText = null;
+    authHintText = null;
+  }
+
+  // Root layout — horizontal flex
+  const main = new BoxRenderable(renderer, {
+    id: "main",
+    width: "100%",
+    height: "100%",
+    flexDirection: "row",
+    backgroundColor: colors.bg,
+  });
+
+  // Sidebar
+  const sidebar = createSidebar(renderer);
+  main.add(sidebar);
+
+  // Right panel — vertical flex (messages + input)
+  const rightPanel = new BoxRenderable(renderer, {
+    id: "right-panel",
+    flexGrow: 1,
+    height: "100%",
+    flexDirection: "column",
+  });
+
+  const { panel: messagePanel } = createMessagePanel(renderer);
+  rightPanel.add(messagePanel);
+
+  const handlers: InputHandlers = {
+    onSend: handleSend,
+    onCommand: handleCommand,
+  };
+
+  const { bar: inputBar, input } = createInputBar(renderer, handlers);
+  inputBox = input;
+  rightPanel.add(inputBar);
+
+  main.add(rightPanel);
+  renderer.root.add(main);
+
+  // Dialogs + toaster (overlay layer)
+  const { dialogContainer, toaster } = initDialogs(renderer);
+  renderer.root.add(dialogContainer);
+  renderer.root.add(toaster);
+
+  // Keyboard shortcuts for chat mode
+  setupChatKeyboard();
+
+  // Wait for auth confirmation from realtime client
+  setStatus("Connecting...");
+  await authReady;
+
+  // Loading state
+  setStatus("Loading...");
+
+  // Fetch current user identity
+  try {
+    const identity: any = await httpClient.query(
+      "users:viewer" as any,
+      {},
+    );
+    if (identity) {
+      const displayName =
+        identity.name || identity.email || identity.phone || "You";
+      currentUserId = identity._id;
+      setUserInfo(displayName);
+    } else {
+      setUserInfo("You");
+    }
+  } catch {
+    setUserInfo("You");
+  }
+
+  // Start subscriptions
+  subscribeToGroups();
+  subscribeToMessages();
+
+  // Focus the input
+  focusInput();
+}
+
+// ---------------------------------------------------------------------------
+// Keyboard (chat mode)
+// ---------------------------------------------------------------------------
+
+function setupChatKeyboard(): void {
+  renderer.keyInput.on("keypress", (key: any) => {
+    // Tab / Shift+Tab — cycle channels
+    if (key.name === "tab" && !inputBox.focused) {
+      cycleChannel(key.shift ? -1 : 1);
       return;
     }
 
-    // Send message
-    try {
-      await httpClient.mutation("messages:send" as any, {
-        body: text.trim(),
-        ...(currentGroupId ? { groupId: currentGroupId } : {}),
-      });
-    } catch (e) {
-      setStatus(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    // Shortcut keys — only when input is NOT focused
+    if (inputBox.focused) return;
+
+    switch (key.name) {
+      case "c":
+        void showCreateChannelDialog().then((name) => {
+          if (name) void createChannel(name);
+        });
+        break;
+      case "j":
+        void promptJoinChannel();
+        break;
+      case "?":
+        void showHelpDialog();
+        break;
     }
   });
 }
 
-async function handleCommand(input: string): Promise<void> {
-  const [cmd, ...rest] = input.split(" ");
-  const arg = rest.join(" ").trim();
-
-  switch (cmd) {
-    case "/create":
-    case "/new":
-      if (!arg) {
-        setStatus("Usage: /create <channel-name>");
-        return;
-      }
-      await createChannel(arg);
-      break;
-
-    case "/join":
-      void promptJoinChannel();
-      break;
-
-    case "/help":
-      setStatus(
-        " /create <name>  /join  /quit  Tab: switch channel",
-      );
-      break;
-
-    case "/quit":
-    case "/exit":
-      cleanup();
-      renderer.destroy();
-      process.exit(0);
-      break;
-
-    default:
-      setStatus(`Unknown command: ${cmd}. Type /help for commands.`);
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Channel management
+// Channel navigation
 // ---------------------------------------------------------------------------
 
+/**
+ * Cycle to the next or previous channel.
+ *
+ * @param direction - `1` for next, `-1` for previous.
+ */
 function cycleChannel(direction: number): void {
-  const allChannels = [
-    { _id: undefined as string | undefined, name: "general" },
-    ...groups,
+  const allChannels: { id: string | undefined; name: string }[] = [
+    { id: undefined, name: "general" },
+    ...groups.map((g) => ({ id: g._id, name: g.name })),
   ];
+
   const currentIdx = allChannels.findIndex((c) =>
-    currentGroupId ? c._id === currentGroupId : c._id === undefined,
+    currentGroupId ? c.id === currentGroupId : c.id === undefined,
   );
   const next =
     (currentIdx + direction + allChannels.length) % allChannels.length;
   const channel = allChannels[next]!;
-  switchToChannel(channel._id, channel.name);
+
+  switchToChannel(channel.id, channel.name);
 }
 
 function switchToChannel(
@@ -361,79 +356,10 @@ function switchToChannel(
 ): void {
   currentGroupId = groupId;
   currentGroupName = name;
-  header.content = ` # ${currentGroupName}`;
-  renderChannelList();
+  setChannelHeader(currentGroupName, messages.length);
+  renderChannels(groups, currentGroupId);
   subscribeToMessages();
-  inputBox.focus();
-}
-
-async function createChannel(name: string): Promise<void> {
-  try {
-    setStatus(`Creating #${name}...`);
-    const groupId: any = await httpClient.mutation("groups:create" as any, {
-      name,
-    });
-    switchToChannel(groupId as string, name);
-    setStatus(`Created #${name}`);
-  } catch (e) {
-    setStatus(`Error: ${e instanceof Error ? e.message : String(e)}`);
-  }
-}
-
-async function promptJoinChannel(): Promise<void> {
-  try {
-    const allGroups: Group[] = await httpClient.query(
-      "groups:listAll" as any,
-      {},
-    );
-    const joinable = allGroups.filter(
-      (g) => !groups.some((mg) => mg._id === g._id),
-    );
-
-    if (joinable.length === 0) {
-      setStatus("No channels to join.");
-      return;
-    }
-
-    mode = "join";
-    const select = new SelectRenderable(renderer, {
-      id: "join-select",
-      width: 30,
-      height: Math.min(joinable.length + 2, 12),
-      options: joinable.map((g) => ({
-        name: `# ${g.name}`,
-        description: g._id,
-      })),
-      position: "absolute",
-      left: 26,
-      top: 3,
-    });
-
-    renderer.root.add(select);
-    select.focus();
-
-    select.on(
-      SelectRenderableEvents.ITEM_SELECTED,
-      async (_index: number, option: { name: string; description: string }) => {
-        const group = joinable.find((g) => g._id === option.description);
-        if (!group) return;
-        try {
-          await httpClient.mutation("groups:join" as any, {
-            groupId: group._id,
-          });
-          setStatus(`Joined #${group.name}`);
-          switchToChannel(group._id, group.name);
-        } catch (e) {
-          setStatus(`Error: ${e instanceof Error ? e.message : String(e)}`);
-        }
-        select.destroy();
-        mode = "chat";
-        inputBox.focus();
-      },
-    );
-  } catch (e) {
-    setStatus(`Error: ${e instanceof Error ? e.message : String(e)}`);
-  }
+  focusInput();
 }
 
 // ---------------------------------------------------------------------------
@@ -447,7 +373,7 @@ function subscribeToGroups(): void {
     {},
     (result: any) => {
       groups = (result as Group[]) ?? [];
-      renderChannelList();
+      renderChannels(groups, currentGroupId);
     },
   );
 }
@@ -460,118 +386,132 @@ function subscribeToMessages(): void {
     args,
     (result: any) => {
       messages = (result as Message[]) ?? [];
-      renderMessages();
+      renderMessages(messages, currentUserId);
+      setChannelHeader(currentGroupName, messages.length);
+      const count = messages.length;
       setStatus(
-        ` ${messages.length} message${messages.length !== 1 ? "s" : ""} in #${currentGroupName}`,
+        ` ${count} message${count !== 1 ? "s" : ""} in #${currentGroupName}`,
       );
     },
   );
 }
 
 // ---------------------------------------------------------------------------
-// Rendering
+// Input handlers
 // ---------------------------------------------------------------------------
 
-function renderChannelList(): void {
-  removeAllChildren(channelList);
-
-  const allChannels = [
-    { _id: undefined as string | undefined, name: "general" },
-    ...groups,
-  ];
-
-  for (const channel of allChannels) {
-    const isActive = currentGroupId
-      ? channel._id === currentGroupId
-      : channel._id === undefined;
-
-    const item = new TextRenderable(renderer, {
-      id: `ch-${channel._id ?? "general"}`,
-      content: ` ${isActive ? ">" : " "} # ${channel.name}`,
-      height: 1,
-      fg: isActive ? "#7aa2f7" : "#a9b1d6",
-      attributes: isActive ? TextAttributes.BOLD : 0,
-      backgroundColor: isActive ? "#1a1b26" : undefined,
-    });
-
-    channelList.add(item);
-  }
-}
-
-function renderMessages(): void {
-  removeAllChildren(messageArea);
-
-  if (messages.length === 0) {
-    messageArea.add(
-      new TextRenderable(renderer, {
-        id: "empty",
-        content: "  No messages yet. Start the conversation!",
-        fg: "#565f89",
-      }),
-    );
-    return;
-  }
-
-  for (const msg of messages) {
-    const time = new Date(msg._creationTime).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-
-    const line = new BoxRenderable(renderer, {
-      id: `msg-${msg._id}`,
-      flexDirection: "row",
-      paddingLeft: 1,
-      gap: 1,
-    });
-
-    line.add(
-      new TextRenderable(renderer, {
-        id: `msg-time-${msg._id}`,
-        content: time,
-        fg: "#565f89",
-      }),
-    );
-
-    line.add(
-      new TextRenderable(renderer, {
-        id: `msg-author-${msg._id}`,
-        content: msg.author,
-        fg: "#7aa2f7",
-        attributes: TextAttributes.BOLD,
-      }),
-    );
-
-    line.add(
-      new TextRenderable(renderer, {
-        id: `msg-body-${msg._id}`,
-        content: msg.body,
-        fg: "#c0caf5",
-      }),
-    );
-
-    messageArea.add(line);
-  }
-
-  // Scroll to bottom
+async function handleSend(body: string): Promise<void> {
   try {
-    messageArea.scrollTo(0, messageArea.scrollHeight);
-  } catch {
-    /* scrollHeight may not be ready yet */
+    await httpClient.mutation("messages:send" as any, {
+      body,
+      ...(currentGroupId ? { groupId: currentGroupId } : {}),
+    });
+  } catch (e) {
+    showError(
+      `Send failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
 }
 
-function setStatus(text: string): void {
-  statusText.content = text;
+async function handleCommand(cmd: string, arg: string): Promise<void> {
+  switch (cmd) {
+    case "/create":
+    case "/new": {
+      if (!arg) {
+        showError("Usage: /create <name>");
+        return;
+      }
+      await createChannel(arg);
+      break;
+    }
+
+    case "/join": {
+      await promptJoinChannel();
+      break;
+    }
+
+    case "/leave": {
+      if (!currentGroupId) {
+        showError("Can't leave #general");
+        return;
+      }
+      showInfo("Leave is not implemented yet.");
+      break;
+    }
+
+    case "/help": {
+      void showHelpDialog();
+      break;
+    }
+
+    case "/quit":
+    case "/exit": {
+      cleanup();
+      renderer.destroy();
+      process.exit(0);
+      break;
+    }
+
+    default: {
+      showError(`Unknown: ${cmd}. Type /help`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Channel actions
+// ---------------------------------------------------------------------------
+
+async function createChannel(name: string): Promise<void> {
+  try {
+    const groupId: any = await httpClient.mutation(
+      "groups:create" as any,
+      { name },
+    );
+    switchToChannel(groupId as string, name);
+    showSuccess(`Created #${name}`);
+  } catch (e) {
+    showError(
+      `Create failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
+async function promptJoinChannel(): Promise<void> {
+  try {
+    const allGroups: Group[] = await httpClient.query(
+      "groups:listAll" as any,
+      {},
+    );
+    const joinable = allGroups.filter(
+      (g) => !groups.some((mg) => mg._id === g._id),
+    );
+
+    const result = await showJoinChannelDialog(joinable);
+    if (!result) return;
+
+    await httpClient.mutation("groups:join" as any, {
+      groupId: result._id,
+    });
+    switchToChannel(result._id, result.name);
+    showSuccess(`Joined #${result.name}`);
+  } catch (e) {
+    showError(
+      `Join failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Cleanup
 // ---------------------------------------------------------------------------
 
-function cleanup(): void {
+/**
+ * Tear down subscriptions. Safe to call multiple times.
+ */
+export function cleanup(): void {
   unsubMessages?.();
+  unsubMessages = null;
   unsubGroups?.();
+  unsubGroups = null;
 }
-
-export { cleanup };

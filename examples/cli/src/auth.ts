@@ -29,9 +29,15 @@ export async function tryRestoreSession(): Promise<boolean> {
   }
 }
 
+/** Structured data passed alongside status messages. */
+export type AuthStatusData = {
+  userCode?: string;
+  verificationUrl?: string;
+};
+
 /** Run the full device authorization flow. */
 export async function deviceAuthFlow(
-  onStatus: (message: string) => void,
+  onStatus: (message: string, data?: AuthStatusData) => void,
 ): Promise<void> {
   onStatus("Requesting device code...");
 
@@ -62,7 +68,10 @@ export async function deviceAuthFlow(
   };
 
   // Step 2: Display code and open browser
-  onStatus(`\nYour code: ${userCode}\n\nOpen: ${verificationUriComplete}\n`);
+  onStatus("Enter the code below to sign in", {
+    userCode,
+    verificationUrl: verificationUriComplete,
+  });
 
   // Auto-open in default browser using Bun.spawn
   const openCmd =

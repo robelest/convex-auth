@@ -36,7 +36,10 @@ if (!Bun.env.VITE_CONVEX_URL && !Bun.env.CONVEX_URL) {
       const key = trimmed.slice(0, eq).trim();
       let val = trimmed.slice(eq + 1).trim();
       // Strip surrounding quotes
-      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      ) {
         val = val.slice(1, -1);
       }
       if (!Bun.env[key]) {
@@ -62,15 +65,36 @@ export const httpClient = new ConvexHttpClient(CONVEX_URL);
 /** Real-time client for subscriptions (messages, groups). */
 export const realtimeClient = new ConvexClient(CONVEX_URL);
 
+// ---------------------------------------------------------------------------
+// Auth-ready gate
+// ---------------------------------------------------------------------------
+
+let _authResolve: () => void;
+
+/**
+ * Resolves once the realtime client has confirmed authentication.
+ * Await this before starting subscriptions to avoid NOT_SIGNED_IN errors.
+ */
+export const authReady = new Promise<void>((r) => {
+  _authResolve = r;
+});
+
 /**
  * Set the auth token on both clients.
  *
  * ConvexHttpClient.setAuth takes a raw token string.
- * ConvexClient.setAuth takes a fetchToken callback that returns the token.
+ * ConvexClient.setAuth takes a fetchToken callback + onChange listener.
+ * The onChange callback fires with `true` once the client is authenticated,
+ * which resolves the `authReady` promise.
  */
 export function setAuth(token: string) {
   httpClient.setAuth(token);
-  realtimeClient.setAuth(() => Promise.resolve(token));
+  realtimeClient.setAuth(
+    () => Promise.resolve(token),
+    (isAuthenticated: boolean) => {
+      if (isAuthenticated) _authResolve();
+    },
+  );
 }
 
 /**
@@ -78,7 +102,8 @@ export function setAuth(token: string) {
  */
 export function clearAuth() {
   httpClient.clearAuth();
-  realtimeClient.clearAuth();
+  // ConvexClient doesn't expose clearAuth — set a no-op token fetcher instead
+  realtimeClient.setAuth(() => Promise.resolve(null as any));
 }
 
 export { CONVEX_URL };
