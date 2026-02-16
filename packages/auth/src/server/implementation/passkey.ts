@@ -29,6 +29,7 @@ import {
 } from "@oslojs/crypto/ecdsa";
 import {
   RSAPublicKey,
+  decodePKCS1RSAPublicKey,
   sha256ObjectIdentifier,
   verifyRSASSAPKCS1v15Signature,
 } from "@oslojs/crypto/rsa";
@@ -515,7 +516,6 @@ async function handleAuthVerify(
   } else if (passkey.algorithm === coseAlgorithmRS256) {
     // RSA PKCS#1 v1.5 with SHA-256 verification
     // Decode the stored PKCS#1 public key
-    const { decodePKCS1RSAPublicKey } = await import("@oslojs/crypto/rsa");
     const rsaPublicKey = decodePKCS1RSAPublicKey(storedPublicKeyBytes);
     const valid = verifyRSASSAPKCS1v15Signature(
       rsaPublicKey,

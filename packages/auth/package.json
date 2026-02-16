@@ -25,8 +25,9 @@
   "scripts": {
     "build:version": "node ../../scripts/generate-version.js",
     "build:lib": "tsdown",
+    "build:component:dts": "node ../../scripts/fix-component-entrypoint-dts.js",
     "build:bin": "esbuild src/cli/index.ts --bundle --platform=node --format=cjs --outfile=dist/bin.cjs",
-    "build": "rm -rf dist && bun run build:version && bun run build:lib && bun run build:bin",
+    "build": "rm -rf dist && bun run build:version && bun run build:lib && bun run build:component:dts && bun run build:bin",
     "docs": "bun run --cwd ../../docs dev",
     "lint": "tsc --project tsconfig.server.json --noEmit && tsc --project tsconfig.client.json --noEmit && tsc --project tsconfig.component.json --noEmit && bun run --cwd ../.. lint",
     "spellcheck": "cspell \"docs/pages/**/*.md*\"",
@@ -68,6 +69,10 @@
     "./errors": {
       "types": "./dist/server/errors.d.ts",
       "import": "./dist/server/errors.js"
+    },
+    "./providers": {
+      "types": "./dist/providers/index.d.ts",
+      "import": "./dist/providers/index.js"
     },
     "./providers/*": {
       "types": "./dist/providers/*.d.ts",
