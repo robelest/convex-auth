@@ -54,8 +54,8 @@ export const borders = {
   },
   dialog: {
     border: true,
-    borderStyle: "rounded" as const,
-    borderColor: colors.bg3,
+    borderStyle: "double" as const,
+    borderColor: colors.yellow,
   },
   panel: {
     border: true,

@@ -3,6 +3,10 @@
  *
  * Uses @opentui-ui/dialog for modal dialogs and @opentui-ui/toast
  * for transient status notifications.
+ *
+ * The DialogContainerRenderable owns the border/bg styling via
+ * `dialogOptions.style`. Individual dialog content fills the
+ * container without adding its own border or width.
  */
 
 import {
@@ -45,9 +49,18 @@ export function initDialogs(r: CliRenderer): {
 
   const dialogContainer = new DialogContainerRenderable(renderer, {
     manager,
-    unstyled: true,
+    size: "medium",
     backdropOpacity: 0.4,
     closeOnEscape: true,
+    dialogOptions: {
+      style: {
+        backgroundColor: colors.bg1,
+        borderStyle: "double",
+        borderColor: colors.yellow,
+        border: true,
+        padding: 1,
+      },
+    },
   });
 
   const toaster = new ToasterRenderable(renderer, {
@@ -94,16 +107,12 @@ export async function showCreateChannelDialog(): Promise<string | undefined> {
       const box = new BoxRenderable(ctx, {
         flexDirection: "column",
         gap: 1,
-        padding: 1,
-        width: 40,
-        backgroundColor: colors.bg1,
-        ...borders.dialog,
       });
 
       box.add(
         new TextRenderable(ctx, {
           id: "create-title",
-          content: t` ${bold(fg(colors.orange)("Create Channel"))}`,
+          content: t`${bold(fg(colors.orange)("Create Channel"))}`,
           height: 1,
         }),
       );
@@ -111,7 +120,7 @@ export async function showCreateChannelDialog(): Promise<string | undefined> {
       box.add(
         new TextRenderable(ctx, {
           id: "create-hint",
-          content: t` ${fg(colors.gray)("Enter a name for the new channel:")}`,
+          content: t`${fg(colors.gray)("Enter a name for the new channel:")}`,
           height: 1,
         }),
       );
@@ -138,7 +147,7 @@ export async function showCreateChannelDialog(): Promise<string | undefined> {
       box.add(
         new TextRenderable(ctx, {
           id: "create-footer",
-          content: t` ${fg(colors.gray)("Enter: create  Esc: cancel")}`,
+          content: t`${fg(colors.gray)("Enter: create  Esc: cancel")}`,
           height: 1,
         }),
       );
@@ -168,16 +177,12 @@ export async function showJoinChannelDialog(
       const box = new BoxRenderable(ctx, {
         flexDirection: "column",
         gap: 1,
-        padding: 1,
-        width: 40,
-        backgroundColor: colors.bg1,
-        ...borders.dialog,
       });
 
       box.add(
         new TextRenderable(ctx, {
           id: "join-title",
-          content: t` ${bold(fg(colors.orange)("Join Channel"))}`,
+          content: t`${bold(fg(colors.orange)("Join Channel"))}`,
           height: 1,
         }),
       );
@@ -206,7 +211,7 @@ export async function showJoinChannelDialog(
       box.add(
         new TextRenderable(ctx, {
           id: "join-footer",
-          content: t` ${fg(colors.gray)("Enter: join  Esc: cancel")}`,
+          content: t`${fg(colors.gray)("Enter: join  Esc: cancel")}`,
           height: 1,
         }),
       );
@@ -229,10 +234,6 @@ export async function showHelpDialog(): Promise<void> {
       const box = new BoxRenderable(ctx, {
         flexDirection: "column",
         gap: 0,
-        padding: 1,
-        width: 44,
-        backgroundColor: colors.bg1,
-        ...borders.dialog,
       });
 
       const lines = [
