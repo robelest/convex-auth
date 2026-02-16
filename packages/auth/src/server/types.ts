@@ -861,6 +861,120 @@ export interface KeyRecord {
 }
 
 // ============================================================================
+// Unified List API types
+// ============================================================================
+
+/**
+ * Options for paginated list queries. Every entity list method uses this
+ * same shape with entity-specific `TWhere` and `TOrderBy` type parameters.
+ *
+ * ```ts
+ * const result = await auth.group.list(ctx, {
+ *   where: { type: "team" },
+ *   limit: 20,
+ *   orderBy: "name",
+ *   order: "asc",
+ * });
+ * ```
+ */
+export type ListOptions<
+  TWhere extends Record<string, unknown>,
+  TOrderBy extends string,
+> = {
+  /** Serializable filter — only known fields for the entity. */
+  where?: TWhere;
+  /** Maximum number of items to return. Defaults to 50, max 100. */
+  limit?: number;
+  /** Opaque cursor from a previous `ListResult.nextCursor`. */
+  cursor?: string | null;
+  /** Field to sort by. Defaults to `"_creationTime"`. */
+  orderBy?: TOrderBy;
+  /** Sort direction. Defaults to `"desc"`. */
+  order?: "asc" | "desc";
+};
+
+/**
+ * Paginated list result returned by every entity list method.
+ */
+export type ListResult<T> = {
+  /** The page of items. */
+  items: T[];
+  /** Opaque cursor for the next page, or `null` when exhausted. */
+  nextCursor: string | null;
+};
+
+// -- Per-entity Where / OrderBy types --
+
+/** Filter fields for `auth.group.list()`. All optional. */
+export type GroupWhere = {
+  slug?: string;
+  type?: string;
+  parentGroupId?: string;
+  name?: string;
+  /** When `true`, return only root groups (no parent). When `false`, only non-root. */
+  isRoot?: boolean;
+};
+
+/** Sortable fields for `auth.group.list()`. */
+export type GroupOrderBy = "_creationTime" | "name" | "slug" | "type";
+
+/** Filter fields for `auth.group.member.list()`. All optional. */
+export type MemberWhere = {
+  groupId?: string;
+  userId?: string;
+  role?: string;
+  status?: string;
+};
+
+/** Sortable fields for `auth.group.member.list()`. */
+export type MemberOrderBy = "_creationTime" | "role" | "status";
+
+/** Filter fields for `auth.invite.list()`. All optional. */
+export type InviteWhere = {
+  groupId?: string;
+  status?: "pending" | "accepted" | "revoked" | "expired";
+  email?: string;
+  invitedByUserId?: string;
+  role?: string;
+  acceptedByUserId?: string;
+};
+
+/** Sortable fields for `auth.invite.list()`. */
+export type InviteOrderBy =
+  | "_creationTime"
+  | "status"
+  | "email"
+  | "expiresTime"
+  | "acceptedTime";
+
+/** Filter fields for `auth.key.list()`. All optional. */
+export type KeyWhere = {
+  userId?: string;
+  revoked?: boolean;
+  name?: string;
+  prefix?: string;
+};
+
+/** Sortable fields for `auth.key.list()`. */
+export type KeyOrderBy =
+  | "_creationTime"
+  | "name"
+  | "lastUsedAt"
+  | "expiresAt"
+  | "revoked";
+
+/** Filter fields for `auth.user.list()`. All optional. */
+export type UserWhere = {
+  email?: string;
+  phone?: string;
+  isAnonymous?: boolean;
+  name?: string;
+};
+
+/** Sortable fields for `auth.user.list()`. */
+export type UserOrderBy = "_creationTime" | "name" | "email" | "phone";
+
+// ============================================================================
 // HTTP Bearer Auth types
 // ============================================================================
 

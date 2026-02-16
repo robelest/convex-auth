@@ -241,15 +241,17 @@ await auth.group.member.add(ctx, {
 |-----|-------------|
 | `auth.group.create(ctx, data)` | Create a group |
 | `auth.group.get(ctx, groupId)` | Get a group |
-| `auth.group.list(ctx, { parentGroupId? })` | List root or child groups |
+| `auth.group.list(ctx, { where?, limit?, cursor?, orderBy?, order? })` | List groups (all by default) |
 | `auth.group.update(ctx, groupId, data)` | Update a group |
 | `auth.group.delete(ctx, groupId)` | Delete group + cascade members/invites |
 | `auth.group.member.add(ctx, data)` | Add membership |
-| `auth.group.member.list(ctx, { groupId })` | List members |
+| `auth.group.member.list(ctx, { where?, limit?, cursor?, orderBy?, order? })` | List members |
 | `auth.group.member.update(ctx, memberId, data)` | Update role/status |
 | `auth.group.member.remove(ctx, memberId)` | Remove membership |
-| `auth.user.group.list(ctx, { userId })` | List user's memberships |
+| `auth.user.group.list(ctx, { userId, limit?, cursor? })` | List user's memberships |
 | `auth.user.group.get(ctx, { userId, groupId })` | Get user's membership in a group |
+
+All list methods return `{ items, nextCursor }`. Pass `nextCursor` back as `cursor` for the next page.
 
 ### Invites
 
@@ -284,7 +286,7 @@ if (invite.groupId) {
 |-----|-------------|
 | `auth.invite.create(ctx, data)` | Create an invite |
 | `auth.invite.get(ctx, inviteId)` | Get an invite |
-| `auth.invite.list(ctx, { groupId?, status? })` | List invites |
+| `auth.invite.list(ctx, { where?, limit?, cursor?, orderBy?, order? })` | List invites |
 | `auth.invite.accept(ctx, inviteId)` | Accept (pending only) |
 | `auth.invite.revoke(ctx, inviteId)` | Revoke (pending only) |
 
@@ -312,7 +314,7 @@ const key = await auth.key.verify(ctx, bearerToken);
 |-----|-------------|
 | `auth.key.create(ctx, data)` | Create a key (returns raw key + ID) |
 | `auth.key.verify(ctx, rawKey)` | Verify and return key record (or null) |
-| `auth.key.list(ctx)` | List all keys |
+| `auth.key.list(ctx, { where?, limit?, cursor?, orderBy?, order? })` | List keys |
 | `auth.key.get(ctx, keyId)` | Get a key by ID |
 | `auth.key.update(ctx, keyId, data)` | Update name, scopes, rate limit |
 | `auth.key.revoke(ctx, keyId)` | Revoke a key (soft delete) |

@@ -228,9 +228,25 @@ export function Auth(config_: ConvexAuthConfig) {
         /**
          * List all groups a user belongs to. Returns member records which
          * include the `groupId`, `role`, `status`, and `extend` for each.
+         *
+         * This is a convenience wrapper around `auth.group.member.list`
+         * with `where: { userId }`.
          */
-        list: async (ctx: ComponentReadCtx, opts: { userId: string }) => {
-          return await ctx.runQuery(config.component.public.memberListByUser, opts);
+        list: async (
+          ctx: ComponentReadCtx,
+          opts: {
+            userId: string;
+            limit?: number;
+            cursor?: string | null;
+            order?: "asc" | "desc";
+          },
+        ) => {
+          return await ctx.runQuery(config.component.public.memberList, {
+            where: { userId: opts.userId },
+            limit: opts.limit,
+            cursor: opts.cursor,
+            order: opts.order,
+          });
         },
         /**
          * Look up a user's membership in a specific group. Returns the member
@@ -405,16 +421,41 @@ export function Auth(config_: ConvexAuthConfig) {
         return await ctx.runQuery(config.component.public.groupGet, { groupId });
       },
       /**
-       * List groups. When `parentGroupId` is provided, returns children of
-       * that group. When omitted, returns root-level groups (no parent).
+       * List groups with optional filtering, sorting, and pagination.
+       *
+       * Empty `where` returns **all** groups.
+       *
+       * ```ts
+       * // All groups of type "team"
+       * await auth.group.list(ctx, { where: { type: "team" } });
+       *
+       * // Paginated
+       * const page1 = await auth.group.list(ctx, { limit: 10 });
+       * const page2 = await auth.group.list(ctx, { limit: 10, cursor: page1.nextCursor });
+       * ```
        */
       list: async (
         ctx: ComponentReadCtx,
-        opts?: { type?: string; parentGroupId?: string },
+        opts?: {
+          where?: {
+            slug?: string;
+            type?: string;
+            parentGroupId?: string;
+            name?: string;
+            isRoot?: boolean;
+          };
+          limit?: number;
+          cursor?: string | null;
+          orderBy?: string;
+          order?: "asc" | "desc";
+        },
       ) => {
         return await ctx.runQuery(config.component.public.groupList, {
-          type: opts?.type,
-          parentGroupId: opts?.parentGroupId,
+          where: opts?.where,
+          limit: opts?.limit,
+          cursor: opts?.cursor,
+          orderBy: opts?.orderBy,
+          order: opts?.order,
         });
       },
       /**
@@ -478,10 +519,38 @@ export function Auth(config_: ConvexAuthConfig) {
           return await ctx.runQuery(config.component.public.memberGet, { memberId });
         },
         /**
-         * List all members of a group.
+         * List members with optional filtering, sorting, and pagination.
+         *
+         * ```ts
+         * // All members of a group
+         * await auth.group.member.list(ctx, { where: { groupId } });
+         *
+         * // Admins only
+         * await auth.group.member.list(ctx, { where: { groupId, role: "admin" } });
+         * ```
          */
-        list: async (ctx: ComponentReadCtx, opts: { groupId: string }) => {
-          return await ctx.runQuery(config.component.public.memberList, opts);
+        list: async (
+          ctx: ComponentReadCtx,
+          opts?: {
+            where?: {
+              groupId?: string;
+              userId?: string;
+              role?: string;
+              status?: string;
+            };
+            limit?: number;
+            cursor?: string | null;
+            orderBy?: string;
+            order?: "asc" | "desc";
+          },
+        ) => {
+          return await ctx.runQuery(config.component.public.memberList, {
+            where: opts?.where,
+            limit: opts?.limit,
+            cursor: opts?.cursor,
+            orderBy: opts?.orderBy,
+            order: opts?.order,
+          });
         },
         /**
          * Remove a member from a group by deleting the member record.
@@ -562,18 +631,36 @@ export function Auth(config_: ConvexAuthConfig) {
         return await ctx.runQuery(config.component.public.inviteGetByTokenHash, { tokenHash });
       },
       /**
-       * List invites, optionally filtered by group and/or status.
+       * List invites with optional filtering, sorting, and pagination.
+       *
+       * ```ts
+       * // Pending invites for a group
+       * await auth.invite.list(ctx, { where: { groupId, status: "pending" } });
+       * ```
        */
       list: async (
         ctx: ComponentReadCtx,
         opts?: {
-          groupId?: string;
-          status?: "pending" | "accepted" | "revoked" | "expired";
+          where?: {
+            groupId?: string;
+            status?: "pending" | "accepted" | "revoked" | "expired";
+            email?: string;
+            invitedByUserId?: string;
+            role?: string;
+            acceptedByUserId?: string;
+          };
+          limit?: number;
+          cursor?: string | null;
+          orderBy?: string;
+          order?: "asc" | "desc";
         },
       ) => {
         return await ctx.runQuery(config.component.public.inviteList, {
-          groupId: opts?.groupId,
-          status: opts?.status,
+          where: opts?.where,
+          limit: opts?.limit,
+          cursor: opts?.cursor,
+          orderBy: opts?.orderBy,
+          order: opts?.order,
         });
       },
       /**
@@ -830,14 +917,39 @@ export function Auth(config_: ConvexAuthConfig) {
       },
 
       /**
-       * List all API keys for a user.
+       * List API keys with optional filtering, sorting, and pagination.
        * Never includes the raw key — only the display prefix.
+       *
+       * ```ts
+       * // All keys for a user
+       * await auth.key.list(ctx, { where: { userId } });
+       *
+       * // Only active (non-revoked)
+       * await auth.key.list(ctx, { where: { userId, revoked: false } });
+       * ```
        */
-      list: async (ctx: ComponentReadCtx, opts: { userId: string }): Promise<KeyDoc[]> => {
-        return (await ctx.runQuery(
-          config.component.public.keyListByUserId,
-          { userId: opts.userId },
-        )) as KeyDoc[];
+      list: async (
+        ctx: ComponentReadCtx,
+        opts?: {
+          where?: {
+            userId?: string;
+            revoked?: boolean;
+            name?: string;
+            prefix?: string;
+          };
+          limit?: number;
+          cursor?: string | null;
+          orderBy?: string;
+          order?: "asc" | "desc";
+        },
+      ) => {
+        return await ctx.runQuery(config.component.public.keyList, {
+          where: opts?.where,
+          limit: opts?.limit,
+          cursor: opts?.cursor,
+          orderBy: opts?.orderBy,
+          order: opts?.order,
+        });
       },
 
       /**

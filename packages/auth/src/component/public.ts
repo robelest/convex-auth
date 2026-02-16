@@ -5,11 +5,74 @@ import { mutation, query } from "./_generated/server";
 // Users
 // ============================================================================
 
-/** List all users. */
+/**
+ * List users with optional filtering, sorting, and pagination.
+ *
+ * Returns `{ items, nextCursor }` — pass `nextCursor` back as `cursor`
+ * for the next page, or `null` when exhausted.
+ */
 export const userList = query({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db.query("user").collect();
+  args: {
+    where: v.optional(
+      v.object({
+        email: v.optional(v.string()),
+        phone: v.optional(v.string()),
+        isAnonymous: v.optional(v.boolean()),
+        name: v.optional(v.string()),
+      }),
+    ),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    orderBy: v.optional(v.string()),
+    order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
+  },
+  handler: async (ctx, args) => {
+    const where = args.where ?? {};
+    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
+    const order = args.order ?? "desc";
+
+    // Pick index based on where fields
+    let q;
+    if (where.email !== undefined) {
+      q = ctx.db
+        .query("user")
+        .withIndex("email", (idx) => idx.eq("email", where.email!));
+    } else if (where.phone !== undefined) {
+      q = ctx.db
+        .query("user")
+        .withIndex("phone", (idx) => idx.eq("phone", where.phone!));
+    } else {
+      q = ctx.db.query("user");
+    }
+
+    // Apply remaining filters
+    if (where.isAnonymous !== undefined) {
+      q = q.filter((f) => f.eq(f.field("isAnonymous"), where.isAnonymous!));
+    }
+    if (where.name !== undefined) {
+      q = q.filter((f) => f.eq(f.field("name"), where.name!));
+    }
+    // email/phone filters when not used as index
+    if (where.email !== undefined && where.phone !== undefined) {
+      q = q.filter((f) => f.eq(f.field("phone"), where.phone!));
+    }
+
+    q = q.order(order);
+
+    // Cursor-based pagination: skip past the cursor ID
+    const all = await q.collect();
+    let startIdx = 0;
+    if (args.cursor) {
+      const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
+      if (cursorIdx !== -1) {
+        startIdx = cursorIdx + 1;
+      }
+    }
+    const page = all.slice(startIdx, startIdx + limit + 1);
+    const hasMore = page.length > limit;
+    const items = hasMore ? page.slice(0, limit) : page;
+    const nextCursor = hasMore ? items[items.length - 1]._id : null;
+    return { items, nextCursor };
   },
 });
 
@@ -152,11 +215,51 @@ export const accountDelete = mutation({
 // Sessions
 // ============================================================================
 
-/** List all sessions. */
+/**
+ * List sessions with optional filtering and pagination.
+ *
+ * Returns `{ items, nextCursor }`.
+ */
 export const sessionList = query({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db.query("session").collect();
+  args: {
+    where: v.optional(
+      v.object({
+        userId: v.optional(v.id("user")),
+      }),
+    ),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
+  },
+  handler: async (ctx, args) => {
+    const where = args.where ?? {};
+    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
+    const order = args.order ?? "desc";
+
+    let q;
+    if (where.userId !== undefined) {
+      q = ctx.db
+        .query("session")
+        .withIndex("userId", (idx) => idx.eq("userId", where.userId!));
+    } else {
+      q = ctx.db.query("session");
+    }
+
+    q = q.order(order);
+
+    const all = await q.collect();
+    let startIdx = 0;
+    if (args.cursor) {
+      const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
+      if (cursorIdx !== -1) {
+        startIdx = cursorIdx + 1;
+      }
+    }
+    const page = all.slice(startIdx, startIdx + limit + 1);
+    const hasMore = page.length > limit;
+    const items = hasMore ? page.slice(0, limit) : page;
+    const nextCursor = hasMore ? items[items.length - 1]._id : null;
+    return { items, nextCursor };
   },
 });
 
@@ -606,36 +709,92 @@ export const groupGet = query({
 });
 
 /**
- * List groups. Supports filtering by `type`, `parentGroupId`, or both.
+ * List groups with optional filtering, sorting, and pagination.
  *
- * - Both provided → compound index `typeAndParentGroupId`
- * - Only `type` → `type` index
- * - Only `parentGroupId` (or neither) → `parentGroupId` index (original behaviour)
+ * Returns `{ items, nextCursor }`. Empty `where` returns **all** groups.
  */
 export const groupList = query({
   args: {
-    type: v.optional(v.string()),
-    parentGroupId: v.optional(v.id("group")),
+    where: v.optional(
+      v.object({
+        slug: v.optional(v.string()),
+        type: v.optional(v.string()),
+        parentGroupId: v.optional(v.id("group")),
+        name: v.optional(v.string()),
+        isRoot: v.optional(v.boolean()),
+      }),
+    ),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    orderBy: v.optional(v.string()),
+    order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
-  handler: async (ctx, { type, parentGroupId }) => {
-    if (type !== undefined && parentGroupId !== undefined) {
-      return await ctx.db
+  handler: async (ctx, args) => {
+    const where = args.where ?? {};
+    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
+    const order = args.order ?? "desc";
+
+    // Pick best index based on where fields
+    let q;
+    if (where.type !== undefined && where.parentGroupId !== undefined) {
+      q = ctx.db
         .query("group")
-        .withIndex("typeAndParentGroupId", (q) =>
-          q.eq("type", type).eq("parentGroupId", parentGroupId),
-        )
-        .collect();
-    }
-    if (type !== undefined) {
-      return await ctx.db
+        .withIndex("typeAndParentGroupId", (idx) =>
+          idx.eq("type", where.type!).eq("parentGroupId", where.parentGroupId!),
+        );
+    } else if (where.slug !== undefined) {
+      q = ctx.db
         .query("group")
-        .withIndex("type", (q) => q.eq("type", type))
-        .collect();
+        .withIndex("slug", (idx) => idx.eq("slug", where.slug!));
+    } else if (where.type !== undefined) {
+      q = ctx.db
+        .query("group")
+        .withIndex("type", (idx) => idx.eq("type", where.type!));
+    } else if (where.parentGroupId !== undefined) {
+      q = ctx.db
+        .query("group")
+        .withIndex("parentGroupId", (idx) =>
+          idx.eq("parentGroupId", where.parentGroupId!),
+        );
+    } else {
+      q = ctx.db.query("group");
     }
-    return await ctx.db
-      .query("group")
-      .withIndex("parentGroupId", (q) => q.eq("parentGroupId", parentGroupId))
-      .collect();
+
+    // Apply remaining filters not covered by index
+    if (where.name !== undefined) {
+      q = q.filter((f) => f.eq(f.field("name"), where.name!));
+    }
+    if (where.isRoot === true) {
+      q = q.filter((f) => f.eq(f.field("parentGroupId"), undefined));
+    } else if (where.isRoot === false) {
+      q = q.filter((f) => f.neq(f.field("parentGroupId"), undefined));
+    }
+    // slug filter when not used as index
+    if (where.slug !== undefined && where.type !== undefined) {
+      q = q.filter((f) => f.eq(f.field("slug"), where.slug!));
+    }
+    // type filter when slug was primary index
+    if (where.slug !== undefined && where.type === undefined && where.parentGroupId === undefined) {
+      // slug was index, no extra type filter needed
+    }
+    // parentGroupId filter when type was primary and parentGroupId not set
+    // (already handled by compound index above)
+
+    q = q.order(order);
+
+    const all = await q.collect();
+    let startIdx = 0;
+    if (args.cursor) {
+      const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
+      if (cursorIdx !== -1) {
+        startIdx = cursorIdx + 1;
+      }
+    }
+    const page = all.slice(startIdx, startIdx + limit + 1);
+    const hasMore = page.length > limit;
+    const items = hasMore ? page.slice(0, limit) : page;
+    const nextCursor = hasMore ? items[items.length - 1]._id : null;
+    return { items, nextCursor };
   },
 });
 
@@ -740,21 +899,79 @@ export const memberGet = query({
   },
 });
 
-/** List all members of a specific group. */
+/**
+ * List members with optional filtering, sorting, and pagination.
+ *
+ * Returns `{ items, nextCursor }`. Supports filtering by `groupId`,
+ * `userId`, `role`, and `status`.
+ */
 export const memberList = query({
-  args: { groupId: v.id("group") },
-  handler: async (ctx, { groupId }) => {
-    return await ctx.db
-      .query("member")
-      .withIndex("groupId", (q) => q.eq("groupId", groupId))
-      .collect();
+  args: {
+    where: v.optional(
+      v.object({
+        groupId: v.optional(v.id("group")),
+        userId: v.optional(v.id("user")),
+        role: v.optional(v.string()),
+        status: v.optional(v.string()),
+      }),
+    ),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    orderBy: v.optional(v.string()),
+    order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
+  },
+  handler: async (ctx, args) => {
+    const where = args.where ?? {};
+    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
+    const order = args.order ?? "desc";
+
+    let q;
+    if (where.groupId !== undefined && where.userId !== undefined) {
+      q = ctx.db
+        .query("member")
+        .withIndex("groupIdAndUserId", (idx) =>
+          idx.eq("groupId", where.groupId!).eq("userId", where.userId!),
+        );
+    } else if (where.groupId !== undefined) {
+      q = ctx.db
+        .query("member")
+        .withIndex("groupId", (idx) => idx.eq("groupId", where.groupId!));
+    } else if (where.userId !== undefined) {
+      q = ctx.db
+        .query("member")
+        .withIndex("userId", (idx) => idx.eq("userId", where.userId!));
+    } else {
+      q = ctx.db.query("member");
+    }
+
+    if (where.role !== undefined) {
+      q = q.filter((f) => f.eq(f.field("role"), where.role!));
+    }
+    if (where.status !== undefined) {
+      q = q.filter((f) => f.eq(f.field("status"), where.status!));
+    }
+
+    q = q.order(order);
+
+    const all = await q.collect();
+    let startIdx = 0;
+    if (args.cursor) {
+      const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
+      if (cursorIdx !== -1) {
+        startIdx = cursorIdx + 1;
+      }
+    }
+    const page = all.slice(startIdx, startIdx + limit + 1);
+    const hasMore = page.length > limit;
+    const items = hasMore ? page.slice(0, limit) : page;
+    const nextCursor = hasMore ? items[items.length - 1]._id : null;
+    return { items, nextCursor };
   },
 });
 
 /**
- * List all group memberships for a specific user. Returns member records
- * which include the `groupId`, `role`, `status`, and `extend` for each
- * group the user belongs to.
+ * @deprecated Use `memberList` with `where: { userId }` instead.
+ * Kept for backward compatibility with generated component types.
  */
 export const memberListByUser = query({
   args: { userId: v.id("user") },
@@ -899,43 +1116,110 @@ export const inviteGetByTokenHash = query({
 });
 
 /**
- * List invites, optionally filtered by group and/or status.
- * Both `groupId` and `status` are optional filters.
+ * List invites with optional filtering, sorting, and pagination.
+ *
+ * Returns `{ items, nextCursor }`. Supports filtering by `groupId`,
+ * `status`, `email`, `invitedByUserId`, `role`, and `acceptedByUserId`.
  */
 export const inviteList = query({
   args: {
-    groupId: v.optional(v.id("group")),
-    status: v.optional(
-      v.union(
-        v.literal("pending"),
-        v.literal("accepted"),
-        v.literal("revoked"),
-        v.literal("expired"),
-      ),
+    where: v.optional(
+      v.object({
+        groupId: v.optional(v.id("group")),
+        status: v.optional(
+          v.union(
+            v.literal("pending"),
+            v.literal("accepted"),
+            v.literal("revoked"),
+            v.literal("expired"),
+          ),
+        ),
+        email: v.optional(v.string()),
+        invitedByUserId: v.optional(v.id("user")),
+        role: v.optional(v.string()),
+        acceptedByUserId: v.optional(v.id("user")),
+      }),
     ),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    orderBy: v.optional(v.string()),
+    order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
-  handler: async (ctx, { groupId, status }) => {
-    if (groupId !== undefined && status !== undefined) {
-      return await ctx.db
+  handler: async (ctx, args) => {
+    const where = args.where ?? {};
+    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
+    const order = args.order ?? "desc";
+
+    // Pick best index
+    let q;
+    if (where.groupId !== undefined && where.status !== undefined) {
+      q = ctx.db
         .query("invite")
-        .withIndex("groupIdAndStatus", (q) =>
-          q.eq("groupId", groupId).eq("status", status),
-        )
-        .collect();
-    }
-    if (groupId !== undefined) {
-      return await ctx.db
+        .withIndex("groupIdAndStatus", (idx) =>
+          idx.eq("groupId", where.groupId!).eq("status", where.status!),
+        );
+    } else if (where.email !== undefined && where.status !== undefined) {
+      q = ctx.db
         .query("invite")
-        .withIndex("groupId", (q) => q.eq("groupId", groupId))
-        .collect();
-    }
-    if (status !== undefined) {
-      return await ctx.db
+        .withIndex("emailAndStatus", (idx) =>
+          idx.eq("email", where.email!).eq("status", where.status!),
+        );
+    } else if (where.invitedByUserId !== undefined && where.status !== undefined) {
+      q = ctx.db
         .query("invite")
-        .withIndex("status", (q) => q.eq("status", status))
-        .collect();
+        .withIndex("invitedByUserIdAndStatus", (idx) =>
+          idx
+            .eq("invitedByUserId", where.invitedByUserId!)
+            .eq("status", where.status!),
+        );
+    } else if (where.groupId !== undefined) {
+      q = ctx.db
+        .query("invite")
+        .withIndex("groupId", (idx) => idx.eq("groupId", where.groupId!));
+    } else if (where.status !== undefined) {
+      q = ctx.db
+        .query("invite")
+        .withIndex("status", (idx) => idx.eq("status", where.status!));
+    } else {
+      q = ctx.db.query("invite");
     }
-    return await ctx.db.query("invite").collect();
+
+    // Apply remaining filters
+    if (where.email !== undefined && !(where.email !== undefined && where.status !== undefined)) {
+      q = q.filter((f) => f.eq(f.field("email"), where.email!));
+    }
+    if (where.role !== undefined) {
+      q = q.filter((f) => f.eq(f.field("role"), where.role!));
+    }
+    if (where.acceptedByUserId !== undefined) {
+      q = q.filter((f) =>
+        f.eq(f.field("acceptedByUserId"), where.acceptedByUserId!),
+      );
+    }
+    if (
+      where.invitedByUserId !== undefined &&
+      !(where.invitedByUserId !== undefined && where.status !== undefined)
+    ) {
+      q = q.filter((f) =>
+        f.eq(f.field("invitedByUserId"), where.invitedByUserId!),
+      );
+    }
+
+    q = q.order(order);
+
+    const all = await q.collect();
+    let startIdx = 0;
+    if (args.cursor) {
+      const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
+      if (cursorIdx !== -1) {
+        startIdx = cursorIdx + 1;
+      }
+    }
+    const page = all.slice(startIdx, startIdx + limit + 1);
+    const hasMore = page.length > limit;
+    const items = hasMore ? page.slice(0, limit) : page;
+    const nextCursor = hasMore ? items[items.length - 1]._id : null;
+    return { items, nextCursor };
   },
 });
 
@@ -1062,7 +1346,10 @@ export const keyGetByHashedKey = query({
   },
 });
 
-/** List all API keys for a user. */
+/**
+ * @deprecated Use `keyList` with `where: { userId }` instead.
+ * Kept for backward compatibility with generated component types.
+ */
 export const keyListByUserId = query({
   args: { userId: v.id("user") },
   handler: async (ctx, { userId }) => {
@@ -1073,11 +1360,66 @@ export const keyListByUserId = query({
   },
 });
 
-/** List all API keys across all users (for portal admin). */
+/**
+ * List API keys with optional filtering, sorting, and pagination.
+ *
+ * Returns `{ items, nextCursor }`. Supports filtering by `userId`,
+ * `revoked`, `name`, and `prefix`.
+ */
 export const keyList = query({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db.query("key").collect();
+  args: {
+    where: v.optional(
+      v.object({
+        userId: v.optional(v.id("user")),
+        revoked: v.optional(v.boolean()),
+        name: v.optional(v.string()),
+        prefix: v.optional(v.string()),
+      }),
+    ),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    orderBy: v.optional(v.string()),
+    order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
+  },
+  handler: async (ctx, args) => {
+    const where = args.where ?? {};
+    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
+    const order = args.order ?? "desc";
+
+    let q;
+    if (where.userId !== undefined) {
+      q = ctx.db
+        .query("key")
+        .withIndex("userId", (idx) => idx.eq("userId", where.userId!));
+    } else {
+      q = ctx.db.query("key");
+    }
+
+    if (where.revoked !== undefined) {
+      q = q.filter((f) => f.eq(f.field("revoked"), where.revoked!));
+    }
+    if (where.name !== undefined) {
+      q = q.filter((f) => f.eq(f.field("name"), where.name!));
+    }
+    if (where.prefix !== undefined) {
+      q = q.filter((f) => f.eq(f.field("prefix"), where.prefix!));
+    }
+
+    q = q.order(order);
+
+    const all = await q.collect();
+    let startIdx = 0;
+    if (args.cursor) {
+      const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
+      if (cursorIdx !== -1) {
+        startIdx = cursorIdx + 1;
+      }
+    }
+    const page = all.slice(startIdx, startIdx + limit + 1);
+    const hasMore = page.length > limit;
+    const items = hasMore ? page.slice(0, limit) : page;
+    const nextCursor = hasMore ? items[items.length - 1]._id : null;
+    return { items, nextCursor };
   },
 });
 

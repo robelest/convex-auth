@@ -405,14 +405,20 @@ export function Portal(auth: Auth) {
 
       switch (action) {
         // ---- Admin-only bulk listing (no public API) ----
-        case "listUsers":
-          return await ctx.runQuery(authComponent.public.userList);
+        case "listUsers": {
+          const userResult = await ctx.runQuery(authComponent.public.userList, {});
+          return (userResult as any).items ?? userResult;
+        }
 
-        case "listSessions":
-          return await ctx.runQuery(authComponent.public.sessionList);
+        case "listSessions": {
+          const sessionResult = await ctx.runQuery(authComponent.public.sessionList, {});
+          return (sessionResult as any).items ?? sessionResult;
+        }
 
-        case "listKeys":
-          return await ctx.runQuery(authComponent.public.keyList);
+        case "listKeys": {
+          const keyResult = await ctx.runQuery(authComponent.public.keyList, {});
+          return (keyResult as any).items ?? keyResult;
+        }
 
         case "getCurrentDeployment":
           return await ctx.runQuery(
@@ -427,6 +433,7 @@ export function Portal(auth: Auth) {
           return await ctx.runQuery(authComponent.public.sessionListByUser, {
             userId: userId!,
           });
+          // sessionListByUser is a legacy query that returns a raw array
 
         case "getUserAccounts": {
           const accounts = await ctx.runQuery(
@@ -437,11 +444,14 @@ export function Portal(auth: Auth) {
           return accounts.map(({ secret: _, ...rest }: any) => rest);
         }
 
-        case "getUserKeys":
-          return await authHelper.key.list(ctx, { userId: userId! });
+        case "getUserKeys": {
+          const keyResult = await authHelper.key.list(ctx, { where: { userId: userId! } });
+          return (keyResult as any).items ?? keyResult;
+        }
 
         case "getUserGroups": {
-          const memberships = await authHelper.user.group.list(ctx, { userId: userId! });
+          const membershipResult = await authHelper.user.group.list(ctx, { userId: userId! });
+          const memberships = (membershipResult as any).items ?? membershipResult;
           // Resolve group details for each membership
           const groups = await Promise.all(
             memberships.map(async (m: any) => {
@@ -457,20 +467,32 @@ export function Portal(auth: Auth) {
           return await authHelper.key.get(ctx, userId!); // userId param repurposed as keyId
 
         // ---- Group queries (public auth API) ----
-        case "listGroups":
-          return await authHelper.group.list(ctx, {
-            type: args.groupType,
-            parentGroupId: args.groupParentId,
+        case "listGroups": {
+          const groupResult = await authHelper.group.list(ctx, {
+            where: {
+              type: args.groupType,
+              parentGroupId: args.groupParentId,
+            },
           });
+          return (groupResult as any).items ?? groupResult;
+        }
 
         case "getGroup":
           return await authHelper.group.get(ctx, args.groupId!);
 
-        case "getGroupMembers":
-          return await authHelper.group.member.list(ctx, { groupId: args.groupId! });
+        case "getGroupMembers": {
+          const memberResult = await authHelper.group.member.list(ctx, {
+            where: { groupId: args.groupId! },
+          });
+          return (memberResult as any).items ?? memberResult;
+        }
 
-        case "getGroupInvites":
-          return await authHelper.invite.list(ctx, { groupId: args.groupId! });
+        case "getGroupInvites": {
+          const inviteResult = await authHelper.invite.list(ctx, {
+            where: { groupId: args.groupId! },
+          });
+          return (inviteResult as any).items ?? inviteResult;
+        }
 
         // ---- Invite validation (portal context) ----
         case "validateInvite": {

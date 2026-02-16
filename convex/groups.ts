@@ -8,9 +8,10 @@ import { auth } from "./auth";
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const memberships = await auth.user.group.list(ctx, {
+    const result = await auth.user.group.list(ctx, {
       userId: ctx.auth.userId,
     });
+    const memberships = (result as any).items ?? result;
     const groups = await Promise.all(
       memberships.map(async (m: { groupId: string; role?: string }) => {
         const group = await auth.group.get(ctx, m.groupId);
@@ -58,7 +59,8 @@ export const create = mutation({
 export const members = query({
   args: { groupId: v.string() },
   handler: async (ctx, { groupId }) => {
-    const membersList = await auth.group.member.list(ctx, { groupId });
+    const result = await auth.group.member.list(ctx, { where: { groupId } });
+    const membersList = (result as any).items ?? result;
     return Promise.all(
       membersList.map(async (m: { userId: string; role?: string }) => {
         const user = await auth.user.get(ctx, m.userId);
@@ -91,6 +93,7 @@ export const join = mutation({
 export const listAll = query({
   args: {},
   handler: async (ctx) => {
-    return auth.group.list(ctx, { type: "channel" });
+    const result = await auth.group.list(ctx, { where: { type: "channel" } });
+    return (result as any).items ?? result;
   },
 });
