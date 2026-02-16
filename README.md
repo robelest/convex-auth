@@ -223,9 +223,15 @@ export const updateProfile = mutation({
 
 Hierarchical groups with application-defined roles. Groups, memberships, and invites each have an optional `extend` JSON field for app-specific data.
 
+Groups support first-class **tags** for faceted classification/filtering. Tags are `{ key, value }` pairs normalized at write time (trimmed + lowercased). Use `slug` for canonical identity/URLs and tags for classification (location, service, department, etc.).
+
 ```ts
 const groupId = await auth.group.create(ctx, {
   name: "Acme Corp",
+  tags: [
+    { key: "location", value: "NYC" },
+    { key: "tier", value: "enterprise" },
+  ],
   extend: { billingPlan: "pro" },
 });
 
@@ -235,15 +241,29 @@ await auth.group.member.add(ctx, {
   role: "owner",
   status: "active",
 });
+
+// Filter by tags — strict exact match on normalized (key, value)
+const { items } = await auth.group.list(ctx, {
+  where: {
+    tagsAll: [{ key: "location", value: "nyc" }],       // must have ALL
+    tagsAny: [{ key: "tier", value: "enterprise" },
+              { key: "tier", value: "pro" }],            // must have at least ONE
+  },
+});
+
+// Update tags (replace semantics — omit to leave unchanged, [] to clear)
+await auth.group.update(ctx, groupId, {
+  tags: [{ key: "location", value: "SF" }],
+});
 ```
 
 | API | Description |
 |-----|-------------|
-| `auth.group.create(ctx, data)` | Create a group |
+| `auth.group.create(ctx, data)` | Create a group (accepts optional `tags`) |
 | `auth.group.get(ctx, groupId)` | Get a group |
-| `auth.group.list(ctx, { where?, limit?, cursor?, orderBy?, order? })` | List groups (all by default) |
-| `auth.group.update(ctx, groupId, data)` | Update a group |
-| `auth.group.delete(ctx, groupId)` | Delete group + cascade members/invites |
+| `auth.group.list(ctx, { where?, limit?, cursor?, orderBy?, order? })` | List groups (supports `tagsAll`/`tagsAny` in `where`) |
+| `auth.group.update(ctx, groupId, data)` | Update a group (include `tags` to replace tag set) |
+| `auth.group.delete(ctx, groupId)` | Delete group + cascade members/invites/tags |
 | `auth.group.member.add(ctx, data)` | Add membership |
 | `auth.group.member.list(ctx, { where?, limit?, cursor?, orderBy?, order? })` | List members |
 | `auth.group.member.update(ctx, memberId, data)` | Update role/status |

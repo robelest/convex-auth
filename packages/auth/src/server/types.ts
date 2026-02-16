@@ -905,6 +905,17 @@ export type ListResult<T> = {
 
 // -- Per-entity Where / OrderBy types --
 
+/**
+ * A single key/value tag for group classification.
+ *
+ * Tags are normalized at write time: both `key` and `value` are
+ * trimmed and lowercased. Filtering is strict exact-match only.
+ */
+export type GroupTag = {
+  key: string;
+  value: string;
+};
+
 /** Filter fields for `auth.group.list()`. All optional. */
 export type GroupWhere = {
   slug?: string;
@@ -913,6 +924,16 @@ export type GroupWhere = {
   name?: string;
   /** When `true`, return only root groups (no parent). When `false`, only non-root. */
   isRoot?: boolean;
+  /**
+   * Return only groups that have **all** of the specified tags.
+   * Each tag is matched exactly on normalized `(key, value)`.
+   */
+  tagsAll?: GroupTag[];
+  /**
+   * Return only groups that have **at least one** of the specified tags.
+   * Each tag is matched exactly on normalized `(key, value)`.
+   */
+  tagsAny?: GroupTag[];
 };
 
 /** Sortable fields for `auth.group.list()`. */

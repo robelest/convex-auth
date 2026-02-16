@@ -406,6 +406,7 @@ export function Auth(config_: ConvexAuthConfig) {
           slug?: string;
           type?: string;
           parentGroupId?: string;
+          tags?: Array<{ key: string; value: string }>;
           extend?: Record<string, unknown>;
         },
       ): Promise<string> => {
@@ -443,10 +444,12 @@ export function Auth(config_: ConvexAuthConfig) {
             parentGroupId?: string;
             name?: string;
             isRoot?: boolean;
+            tagsAll?: Array<{ key: string; value: string }>;
+            tagsAny?: Array<{ key: string; value: string }>;
           };
           limit?: number;
           cursor?: string | null;
-          orderBy?: string;
+          orderBy?: "_creationTime" | "name" | "slug" | "type";
           order?: "asc" | "desc";
         },
       ) => {
@@ -459,7 +462,7 @@ export function Auth(config_: ConvexAuthConfig) {
         });
       },
       /**
-       * Update a group's fields (name, slug, extend, parentGroupId).
+       * Update a group's fields (name, slug, tags, extend, parentGroupId).
        */
       update: async (
         ctx: ComponentCtx,
@@ -540,7 +543,7 @@ export function Auth(config_: ConvexAuthConfig) {
             };
             limit?: number;
             cursor?: string | null;
-            orderBy?: string;
+            orderBy?: "_creationTime" | "role" | "status";
             order?: "asc" | "desc";
           },
         ) => {
@@ -651,7 +654,7 @@ export function Auth(config_: ConvexAuthConfig) {
           };
           limit?: number;
           cursor?: string | null;
-          orderBy?: string;
+          orderBy?: "_creationTime" | "status" | "email" | "expiresTime" | "acceptedTime";
           order?: "asc" | "desc";
         },
       ) => {
@@ -939,7 +942,7 @@ export function Auth(config_: ConvexAuthConfig) {
           };
           limit?: number;
           cursor?: string | null;
-          orderBy?: string;
+          orderBy?: "_creationTime" | "name" | "lastUsedAt" | "expiresAt" | "revoked";
           order?: "asc" | "desc";
         },
       ) => {

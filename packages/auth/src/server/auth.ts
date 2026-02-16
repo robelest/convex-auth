@@ -406,18 +406,18 @@ export function Portal(auth: Auth) {
       switch (action) {
         // ---- Admin-only bulk listing (no public API) ----
         case "listUsers": {
-          const userResult = await ctx.runQuery(authComponent.public.userList, {});
-          return (userResult as any).items ?? userResult;
+          const { items } = await ctx.runQuery(authComponent.public.userList, {});
+          return items;
         }
 
         case "listSessions": {
-          const sessionResult = await ctx.runQuery(authComponent.public.sessionList, {});
-          return (sessionResult as any).items ?? sessionResult;
+          const { items } = await ctx.runQuery(authComponent.public.sessionList, {});
+          return items;
         }
 
         case "listKeys": {
-          const keyResult = await ctx.runQuery(authComponent.public.keyList, {});
-          return (keyResult as any).items ?? keyResult;
+          const { items } = await ctx.runQuery(authComponent.public.keyList, {});
+          return items;
         }
 
         case "getCurrentDeployment":
@@ -445,13 +445,12 @@ export function Portal(auth: Auth) {
         }
 
         case "getUserKeys": {
-          const keyResult = await authHelper.key.list(ctx, { where: { userId: userId! } });
-          return (keyResult as any).items ?? keyResult;
+          const { items: keys } = await authHelper.key.list(ctx, { where: { userId: userId! } });
+          return keys;
         }
 
         case "getUserGroups": {
-          const membershipResult = await authHelper.user.group.list(ctx, { userId: userId! });
-          const memberships = (membershipResult as any).items ?? membershipResult;
+          const { items: memberships } = await authHelper.user.group.list(ctx, { userId: userId! });
           // Resolve group details for each membership
           const groups = await Promise.all(
             memberships.map(async (m: any) => {
@@ -468,30 +467,30 @@ export function Portal(auth: Auth) {
 
         // ---- Group queries (public auth API) ----
         case "listGroups": {
-          const groupResult = await authHelper.group.list(ctx, {
+          const { items: groups } = await authHelper.group.list(ctx, {
             where: {
               type: args.groupType,
               parentGroupId: args.groupParentId,
             },
           });
-          return (groupResult as any).items ?? groupResult;
+          return groups;
         }
 
         case "getGroup":
           return await authHelper.group.get(ctx, args.groupId!);
 
         case "getGroupMembers": {
-          const memberResult = await authHelper.group.member.list(ctx, {
+          const { items: members } = await authHelper.group.member.list(ctx, {
             where: { groupId: args.groupId! },
           });
-          return (memberResult as any).items ?? memberResult;
+          return members;
         }
 
         case "getGroupInvites": {
-          const inviteResult = await authHelper.invite.list(ctx, {
+          const { items: invites } = await authHelper.invite.list(ctx, {
             where: { groupId: args.groupId! },
           });
-          return (inviteResult as any).items ?? inviteResult;
+          return invites;
         }
 
         // ---- Invite validation (portal context) ----

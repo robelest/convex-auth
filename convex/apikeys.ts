@@ -19,8 +19,8 @@ export const createMyKey = mutation({
 export const listMyKeys = query({
   args: {},
   handler: async (ctx) => {
-    const result = await auth.key.list(ctx, { where: { userId: ctx.auth.userId } });
-    return (result as any).items ?? result;
+    const { items } = await auth.key.list(ctx, { where: { userId: ctx.auth.userId } });
+    return items;
   },
 });
 

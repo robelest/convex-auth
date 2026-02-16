@@ -200,12 +200,30 @@ export default defineSchema({
     slug: v.optional(v.string()),
     type: v.optional(v.string()),
     parentGroupId: v.optional(v.id("group")),
+    /** Faceted classification tags. Normalized at write time (trimmed, lowercased). */
+    tags: v.optional(
+      v.array(v.object({ key: v.string(), value: v.string() })),
+    ),
     extend: v.optional(v.any()),
   })
     .index("slug", ["slug"])
     .index("parentGroupId", ["parentGroupId"])
     .index("type", ["type"])
     .index("typeAndParentGroupId", ["type", "parentGroupId"]),
+
+  /**
+   * Denormalized group-tag index table for efficient tag-based filtering.
+   * Each row maps one `(key, value)` pair to a group. Kept in sync by
+   * `groupCreate`, `groupUpdate`, and `groupDelete`.
+   */
+  groupTag: defineTable({
+    groupId: v.id("group"),
+    key: v.string(),
+    value: v.string(),
+  })
+    .index("by_group", ["groupId"])
+    .index("by_key_value", ["key", "value"])
+    .index("by_key", ["key"]),
 
   /**
    * Group membership. Links a user to a group with an application-defined

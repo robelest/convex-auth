@@ -2,6 +2,41 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
 // ============================================================================
+// Tag normalization helpers
+// ============================================================================
+
+/** Validator for a single `{ key, value }` tag pair. */
+const vTag = v.object({ key: v.string(), value: v.string() });
+
+type TagPair = { key: string; value: string };
+
+/** Normalize a single tag: trim + lowercase key and value. */
+function normalizeTag(tag: TagPair): TagPair {
+  return {
+    key: tag.key.trim().toLowerCase(),
+    value: tag.value.trim().toLowerCase(),
+  };
+}
+
+/**
+ * Normalize and deduplicate an array of tags.
+ * Deduplication is based on the normalized `key\0value` composite.
+ */
+function normalizeTags(tags: TagPair[]): TagPair[] {
+  const seen = new Set<string>();
+  const result: TagPair[] = [];
+  for (const raw of tags) {
+    const t = normalizeTag(raw);
+    const composite = `${t.key}\0${t.value}`;
+    if (!seen.has(composite)) {
+      seen.add(composite);
+      result.push(t);
+    }
+  }
+  return result;
+}
+
+// ============================================================================
 // Users
 // ============================================================================
 
@@ -23,7 +58,14 @@ export const userList = query({
     ),
     limit: v.optional(v.number()),
     cursor: v.optional(v.union(v.string(), v.null())),
-    orderBy: v.optional(v.string()),
+    orderBy: v.optional(
+      v.union(
+        v.literal("_creationTime"),
+        v.literal("name"),
+        v.literal("email"),
+        v.literal("phone"),
+      ),
+    ),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
   handler: async (ctx, args) => {
@@ -693,10 +735,27 @@ export const groupCreate = mutation({
     slug: v.optional(v.string()),
     type: v.optional(v.string()),
     parentGroupId: v.optional(v.id("group")),
+    tags: v.optional(v.array(vTag)),
     extend: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("group", args);
+    const { tags: rawTags, ...rest } = args;
+    const normalizedTags = rawTags ? normalizeTags(rawTags) : undefined;
+    const groupId = await ctx.db.insert("group", {
+      ...rest,
+      tags: normalizedTags,
+    });
+    // Sync companion groupTag rows
+    if (normalizedTags) {
+      for (const tag of normalizedTags) {
+        await ctx.db.insert("groupTag", {
+          groupId,
+          key: tag.key,
+          value: tag.value,
+        });
+      }
+    }
+    return groupId;
   },
 });
 
@@ -722,11 +781,20 @@ export const groupList = query({
         parentGroupId: v.optional(v.id("group")),
         name: v.optional(v.string()),
         isRoot: v.optional(v.boolean()),
+        tagsAll: v.optional(v.array(vTag)),
+        tagsAny: v.optional(v.array(vTag)),
       }),
     ),
     limit: v.optional(v.number()),
     cursor: v.optional(v.union(v.string(), v.null())),
-    orderBy: v.optional(v.string()),
+    orderBy: v.optional(
+      v.union(
+        v.literal("_creationTime"),
+        v.literal("name"),
+        v.literal("slug"),
+        v.literal("type"),
+      ),
+    ),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
   handler: async (ctx, args) => {
@@ -734,7 +802,61 @@ export const groupList = query({
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
     const order = args.order ?? "desc";
 
-    // Pick best index based on where fields
+    // ---- Resolve tag filters into a Set<Id<"group">> ----
+    let tagFilteredIds: Set<string> | null = null;
+
+    if (where.tagsAll && where.tagsAll.length > 0) {
+      // Intersect: group must have ALL specified tags
+      let allSet: Set<string> | null = null;
+      for (const rawTag of where.tagsAll) {
+        const t = normalizeTag(rawTag);
+        const rows = await ctx.db
+          .query("groupTag")
+          .withIndex("by_key_value", (idx) =>
+            idx.eq("key", t.key).eq("value", t.value),
+          )
+          .collect();
+        const ids = new Set(rows.map((r) => r.groupId as string));
+        if (allSet === null) {
+          allSet = ids;
+        } else {
+          // Intersect
+          for (const id of allSet) {
+            if (!ids.has(id)) allSet.delete(id);
+          }
+        }
+        // Short-circuit: empty intersection
+        if (allSet.size === 0) break;
+      }
+      tagFilteredIds = allSet ?? new Set();
+    }
+
+    if (where.tagsAny && where.tagsAny.length > 0) {
+      // Union: group must have at least one of the specified tags
+      const anySet = new Set<string>();
+      for (const rawTag of where.tagsAny) {
+        const t = normalizeTag(rawTag);
+        const rows = await ctx.db
+          .query("groupTag")
+          .withIndex("by_key_value", (idx) =>
+            idx.eq("key", t.key).eq("value", t.value),
+          )
+          .collect();
+        for (const r of rows) {
+          anySet.add(r.groupId as string);
+        }
+      }
+      if (tagFilteredIds !== null) {
+        // AND with tagsAll result
+        for (const id of tagFilteredIds) {
+          if (!anySet.has(id)) tagFilteredIds.delete(id);
+        }
+      } else {
+        tagFilteredIds = anySet;
+      }
+    }
+
+    // ---- Pick best index based on non-tag where fields ----
     let q;
     if (where.type !== undefined && where.parentGroupId !== undefined) {
       q = ctx.db
@@ -760,7 +882,7 @@ export const groupList = query({
       q = ctx.db.query("group");
     }
 
-    // Apply remaining filters not covered by index
+    // Apply remaining non-tag filters not covered by index
     if (where.name !== undefined) {
       q = q.filter((f) => f.eq(f.field("name"), where.name!));
     }
@@ -773,16 +895,17 @@ export const groupList = query({
     if (where.slug !== undefined && where.type !== undefined) {
       q = q.filter((f) => f.eq(f.field("slug"), where.slug!));
     }
-    // type filter when slug was primary index
-    if (where.slug !== undefined && where.type === undefined && where.parentGroupId === undefined) {
-      // slug was index, no extra type filter needed
-    }
-    // parentGroupId filter when type was primary and parentGroupId not set
-    // (already handled by compound index above)
 
     q = q.order(order);
 
-    const all = await q.collect();
+    let all = await q.collect();
+
+    // Apply tag filter (intersect with resolved groupIds)
+    if (tagFilteredIds !== null) {
+      all = all.filter((doc) => tagFilteredIds!.has(doc._id as string));
+    }
+
+    // Cursor-based pagination
     let startIdx = 0;
     if (args.cursor) {
       const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
@@ -798,11 +921,39 @@ export const groupList = query({
   },
 });
 
-/** Update a group's fields (name, slug, extend, parentGroupId). */
+/** Update a group's fields (name, slug, tags, extend, parentGroupId). */
 export const groupUpdate = mutation({
   args: { groupId: v.id("group"), data: v.any() },
   handler: async (ctx, { groupId, data }) => {
-    await ctx.db.patch(groupId, data);
+    // If tags are being updated, normalize and replace the full tag set
+    if (data.tags !== undefined) {
+      const normalizedTags: TagPair[] = Array.isArray(data.tags)
+        ? normalizeTags(data.tags as TagPair[])
+        : [];
+      // Delete existing groupTag rows for this group
+      const existingTags = await ctx.db
+        .query("groupTag")
+        .withIndex("by_group", (idx) => idx.eq("groupId", groupId))
+        .collect();
+      for (const existing of existingTags) {
+        await ctx.db.delete(existing._id);
+      }
+      // Insert new normalized groupTag rows
+      for (const tag of normalizedTags) {
+        await ctx.db.insert("groupTag", {
+          groupId,
+          key: tag.key,
+          value: tag.value,
+        });
+      }
+      // Patch group with normalized tags (empty array = clear all)
+      await ctx.db.patch(groupId, {
+        ...data,
+        tags: normalizedTags.length > 0 ? normalizedTags : undefined,
+      });
+    } else {
+      await ctx.db.patch(groupId, data);
+    }
   },
 });
 
@@ -838,6 +989,15 @@ export const groupDelete = mutation({
         .collect();
       for (const invite of invites) {
         await ctx.db.delete(invite._id);
+      }
+
+      // Delete companion groupTag rows
+      const tags = await ctx.db
+        .query("groupTag")
+        .withIndex("by_group", (q) => q.eq("groupId", id))
+        .collect();
+      for (const tag of tags) {
+        await ctx.db.delete(tag._id);
       }
 
       await ctx.db.delete(id);
@@ -917,7 +1077,13 @@ export const memberList = query({
     ),
     limit: v.optional(v.number()),
     cursor: v.optional(v.union(v.string(), v.null())),
-    orderBy: v.optional(v.string()),
+    orderBy: v.optional(
+      v.union(
+        v.literal("_creationTime"),
+        v.literal("role"),
+        v.literal("status"),
+      ),
+    ),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
   handler: async (ctx, args) => {
@@ -1142,7 +1308,15 @@ export const inviteList = query({
     ),
     limit: v.optional(v.number()),
     cursor: v.optional(v.union(v.string(), v.null())),
-    orderBy: v.optional(v.string()),
+    orderBy: v.optional(
+      v.union(
+        v.literal("_creationTime"),
+        v.literal("status"),
+        v.literal("email"),
+        v.literal("expiresTime"),
+        v.literal("acceptedTime"),
+      ),
+    ),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
   handler: async (ctx, args) => {
@@ -1378,7 +1552,15 @@ export const keyList = query({
     ),
     limit: v.optional(v.number()),
     cursor: v.optional(v.union(v.string(), v.null())),
-    orderBy: v.optional(v.string()),
+    orderBy: v.optional(
+      v.union(
+        v.literal("_creationTime"),
+        v.literal("name"),
+        v.literal("lastUsedAt"),
+        v.literal("expiresAt"),
+        v.literal("revoked"),
+      ),
+    ),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
   handler: async (ctx, args) => {
