@@ -45,7 +45,7 @@ export function initDialogs(r: CliRenderer): {
 
   const dialogContainer = new DialogContainerRenderable(renderer, {
     manager,
-    size: "medium",
+    unstyled: true,
     backdropOpacity: 0.4,
     closeOnEscape: true,
   });
