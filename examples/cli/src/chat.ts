@@ -7,17 +7,8 @@
  *   1. `initTUI()` — creates the renderer and shows an auth screen
  *   2. `enterChat()` — replaces the auth screen with the full chat layout
  *
- * ```
- * ┌──────────┬─────────────────────────┐
- * │ Channels │ # general          (12) │
- * │          ├─────────────────────────┤
- * │ > general│ Messages...             │
- * │   random │                         │
- * │          ├─────────────────────────┤
- * │ user@... │ 12 messages in #general │
- * │ C:new    │ > Type a message...     │
- * └──────────┴─────────────────────────┘
- * ```
+ * Re-auth from within chat via `/auth` command reuses the auth screen
+ * as an overlay.
  */
 
 import {
@@ -30,7 +21,7 @@ import {
   dim,
   type CliRenderer,
 } from "@opentui/core";
-import { httpClient, realtimeClient, authReady } from "./convex";
+import { httpClient, realtimeClient, waitForAuth } from "./convex";
 import { colors, borders } from "./theme";
 import {
   createSidebar,
@@ -59,6 +50,7 @@ import {
   showError,
   showInfo,
 } from "./dialogs";
+import { deviceAuthFlow, clearSavedTokens } from "./auth";
 
 // ---------------------------------------------------------------------------
 // State
@@ -76,23 +68,17 @@ let unsubGroups: (() => void) | null = null;
 /** Reference to the InputRenderable for focus-checking in keyboard handler. */
 let inputBox: import("@opentui/core").InputRenderable;
 
-/** Auth screen elements. */
-let authScreen: BoxRenderable | null = null;
-let authTitleText: TextRenderable | null = null;
-let authStatusText: TextRenderable | null = null;
-let authCodeText: TextRenderable | null = null;
-let authUrlText: TextRenderable | null = null;
-let authHintText: TextRenderable | null = null;
+/** Auth overlay (used during initial auth and /auth re-auth). */
+let authOverlay: BoxRenderable | null = null;
+let authStatusLine: TextRenderable | null = null;
+let authDetailLines: TextRenderable | null = null;
 
 // ---------------------------------------------------------------------------
 // Phase 1: Init TUI + Auth screen
 // ---------------------------------------------------------------------------
 
 /**
- * Create the renderer and show a centered auth screen.
- *
- * Call this before starting the auth flow so the user sees
- * status updates in the TUI instead of raw console output.
+ * Create the renderer and show the auth screen.
  */
 export async function initTUI(): Promise<void> {
   renderer = await createCliRenderer({
@@ -109,9 +95,18 @@ export async function initTUI(): Promise<void> {
     }
   });
 
-  // Full-screen dark background
-  authScreen = new BoxRenderable(renderer, {
-    id: "auth-screen",
+  showAuthOverlay("Checking for saved session...");
+}
+
+// ---------------------------------------------------------------------------
+// Auth overlay (shared by initial auth + /auth re-auth)
+// ---------------------------------------------------------------------------
+
+function showAuthOverlay(status: string): void {
+  if (authOverlay) return;
+
+  authOverlay = new BoxRenderable(renderer, {
+    id: "auth-overlay",
     width: "100%",
     height: "100%",
     backgroundColor: colors.bg,
@@ -120,79 +115,108 @@ export async function initTUI(): Promise<void> {
     alignItems: "center",
   });
 
-  // Auth card
   const card = new BoxRenderable(renderer, {
     id: "auth-card",
-    width: 52,
-    height: 14,
+    width: 54,
     flexDirection: "column",
     backgroundColor: colors.bg1,
-    ...borders.dialog,
-    padding: 1,
-    gap: 1,
+    ...borders.sidebar,
+    paddingTop: 1,
+    paddingBottom: 1,
+    paddingLeft: 2,
+    paddingRight: 2,
   });
 
-  authTitleText = new TextRenderable(renderer, {
+  const title = new TextRenderable(renderer, {
     id: "auth-title",
-    content: t`  ${bold(fg(colors.orange)("Convex Auth CLI Chat"))}`,
+    content: t`${bold(fg(colors.orange)("Convex Auth CLI Chat"))}`,
     height: 1,
   });
 
-  authStatusText = new TextRenderable(renderer, {
+  const spacer = new TextRenderable(renderer, {
+    id: "auth-spacer",
+    content: "",
+    height: 1,
+  });
+
+  authStatusLine = new TextRenderable(renderer, {
     id: "auth-status",
-    content: t`  ${fg(colors.fg3)("Checking for saved session...")}`,
+    content: t`${fg(colors.fg3)(status)}`,
     height: 1,
   });
 
-  authCodeText = new TextRenderable(renderer, {
-    id: "auth-code",
+  authDetailLines = new TextRenderable(renderer, {
+    id: "auth-details",
     content: "",
-    height: 2,
+    height: 3,
   });
 
-  authUrlText = new TextRenderable(renderer, {
-    id: "auth-url",
-    content: "",
-    height: 2,
-  });
-
-  authHintText = new TextRenderable(renderer, {
+  const hint = new TextRenderable(renderer, {
     id: "auth-hint",
-    content: t`  ${dim(fg(colors.gray)("Ctrl+C to quit"))}`,
+    content: t`${dim(fg(colors.gray)("Ctrl+C to quit"))}`,
     height: 1,
   });
 
-  card.add(authTitleText);
-  card.add(authStatusText);
-  card.add(authCodeText);
-  card.add(authUrlText);
-  card.add(authHintText);
-  authScreen.add(card);
-  renderer.root.add(authScreen);
+  card.add(title);
+  card.add(spacer);
+  card.add(authStatusLine);
+  card.add(authDetailLines);
+  card.add(hint);
+  authOverlay.add(card);
+  renderer.root.add(authOverlay);
+}
+
+function hideAuthOverlay(): void {
+  if (authOverlay) {
+    authOverlay.destroy();
+    authOverlay = null;
+    authStatusLine = null;
+    authDetailLines = null;
+  }
 }
 
 /**
- * Update the auth screen with a status message.
+ * Update the auth overlay status text.
  */
 export function updateAuthStatus(status: string): void {
-  if (authStatusText) {
-    authStatusText.content = t`  ${fg(colors.fg3)(status)}`;
+  if (authStatusLine) {
+    authStatusLine.content = t`${fg(colors.fg3)(status)}`;
   }
 }
 
 /**
- * Show the device code and verification URL on the auth screen.
+ * Show device code + URL on the auth overlay.
  */
 export function showAuthCode(userCode: string, verificationUrl: string): void {
-  if (authCodeText) {
-    authCodeText.content = t`  ${fg(colors.gray)("Your code:")} ${bold(fg(colors.yellow)(userCode))}`;
+  if (authDetailLines) {
+    authDetailLines.content = t`\n${fg(colors.gray)("Code:")}  ${bold(fg(colors.yellow)(userCode))}\n${fg(colors.gray)("Open:")}  ${fg(colors.aqua)(verificationUrl)}`;
   }
-  if (authUrlText) {
-    authUrlText.content = t`  ${fg(colors.gray)("Open:")} ${fg(colors.aqua)(verificationUrl)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Auth flow (callable from init + /auth command)
+// ---------------------------------------------------------------------------
+
+/**
+ * Run the full device auth flow inside the TUI.
+ * Shows the auth overlay, runs device flow, hides overlay on success.
+ */
+export async function runAuthFlow(): Promise<void> {
+  // Show overlay if not already visible (re-auth from /auth)
+  if (!authOverlay) {
+    showAuthOverlay("Starting device authorization...");
   }
-  if (authHintText) {
-    authHintText.content = t`  ${dim(fg(colors.gray)("Waiting for authorization...  Ctrl+C to quit"))}`;
-  }
+
+  updateAuthStatus("Starting device authorization...");
+
+  await deviceAuthFlow((message, data) => {
+    if (data?.userCode && data?.verificationUrl) {
+      showAuthCode(data.userCode, data.verificationUrl);
+    }
+    updateAuthStatus(message);
+  });
+
+  updateAuthStatus("Authenticated!");
 }
 
 // ---------------------------------------------------------------------------
@@ -202,20 +226,11 @@ export function showAuthCode(userCode: string, verificationUrl: string): void {
 /**
  * Replace the auth screen with the full chat layout.
  *
- * Waits for the realtime client to confirm authentication,
+ * Waits for the realtime client to confirm authentication (with timeout),
  * fetches the current user, and starts subscriptions.
  */
 export async function enterChat(): Promise<void> {
-  // Remove auth screen
-  if (authScreen) {
-    authScreen.destroy();
-    authScreen = null;
-    authTitleText = null;
-    authStatusText = null;
-    authCodeText = null;
-    authUrlText = null;
-    authHintText = null;
-  }
+  hideAuthOverlay();
 
   // Root layout — horizontal flex
   const main = new BoxRenderable(renderer, {
@@ -261,14 +276,25 @@ export async function enterChat(): Promise<void> {
   // Keyboard shortcuts for chat mode
   setupChatKeyboard();
 
-  // Wait for auth confirmation from realtime client
+  // Wait for auth confirmation with timeout
   setStatus("Connecting...");
-  await authReady;
+  try {
+    await waitForAuth(8000);
+  } catch {
+    // Auth timed out — token likely expired, trigger re-auth
+    setStatus("Session expired. Run /auth to sign in again.");
+    showError("Session expired. Type /auth to re-authenticate.");
+    focusInput();
+    return;
+  }
 
-  // Loading state
+  await loadUserAndSubscribe();
+}
+
+/** Fetch user identity and start realtime subscriptions. */
+async function loadUserAndSubscribe(): Promise<void> {
   setStatus("Loading...");
 
-  // Fetch current user identity
   try {
     const identity: any = await httpClient.query(
       "users:viewer" as any,
@@ -286,11 +312,8 @@ export async function enterChat(): Promise<void> {
     setUserInfo("You");
   }
 
-  // Start subscriptions
   subscribeToGroups();
   subscribeToMessages();
-
-  // Focus the input
   focusInput();
 }
 
@@ -329,11 +352,6 @@ function setupChatKeyboard(): void {
 // Channel navigation
 // ---------------------------------------------------------------------------
 
-/**
- * Cycle to the next or previous channel.
- *
- * @param direction - `1` for next, `-1` for previous.
- */
 function cycleChannel(direction: number): void {
   const allChannels: { id: string | undefined; name: string }[] = [
     { id: undefined, name: "general" },
@@ -439,6 +457,17 @@ async function handleCommand(cmd: string, arg: string): Promise<void> {
       break;
     }
 
+    case "/auth": {
+      await handleReAuth();
+      break;
+    }
+
+    case "/logout": {
+      await clearSavedTokens();
+      showInfo("Tokens cleared. Use /auth to sign in again.");
+      break;
+    }
+
     case "/help": {
       void showHelpDialog();
       break;
@@ -455,6 +484,34 @@ async function handleCommand(cmd: string, arg: string): Promise<void> {
     default: {
       showError(`Unknown: ${cmd}. Type /help`);
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Re-auth from within chat
+// ---------------------------------------------------------------------------
+
+async function handleReAuth(): Promise<void> {
+  setStatus("Re-authenticating...");
+
+  // Tear down current subscriptions while we re-auth
+  cleanup();
+
+  try {
+    await runAuthFlow();
+    hideAuthOverlay();
+
+    // Wait for the realtime client to pick up the new token
+    await waitForAuth(8000);
+
+    showSuccess("Signed in!");
+    await loadUserAndSubscribe();
+  } catch (e) {
+    hideAuthOverlay();
+    showError(
+      `Auth failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    setStatus("Not authenticated. Use /auth to try again.");
   }
 }
 

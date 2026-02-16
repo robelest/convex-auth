@@ -66,18 +66,34 @@ export const httpClient = new ConvexHttpClient(CONVEX_URL);
 export const realtimeClient = new ConvexClient(CONVEX_URL);
 
 // ---------------------------------------------------------------------------
-// Auth-ready gate
+// Auth-ready gate (resettable)
 // ---------------------------------------------------------------------------
 
 let _authResolve: () => void;
+let _authReady: Promise<void>;
+
+/** Create a fresh auth-ready promise. */
+function makeAuthReady(): Promise<void> {
+  _authReady = new Promise<void>((r) => {
+    _authResolve = r;
+  });
+  return _authReady;
+}
+
+makeAuthReady();
 
 /**
- * Resolves once the realtime client has confirmed authentication.
- * Await this before starting subscriptions to avoid NOT_SIGNED_IN errors.
+ * Wait for the realtime client to confirm authentication.
+ * Rejects after `timeoutMs` if auth isn't confirmed.
  */
-export const authReady = new Promise<void>((r) => {
-  _authResolve = r;
-});
+export function waitForAuth(timeoutMs = 8000): Promise<void> {
+  return Promise.race([
+    _authReady,
+    new Promise<void>((_, reject) =>
+      setTimeout(() => reject(new Error("AUTH_TIMEOUT")), timeoutMs),
+    ),
+  ]);
+}
 
 /**
  * Set the auth token on both clients.
@@ -85,9 +101,11 @@ export const authReady = new Promise<void>((r) => {
  * ConvexHttpClient.setAuth takes a raw token string.
  * ConvexClient.setAuth takes a fetchToken callback + onChange listener.
  * The onChange callback fires with `true` once the client is authenticated,
- * which resolves the `authReady` promise.
+ * which resolves the auth-ready promise.
  */
 export function setAuth(token: string) {
+  // Reset the gate so we can await fresh confirmation
+  makeAuthReady();
   httpClient.setAuth(token);
   realtimeClient.setAuth(
     () => Promise.resolve(token),
@@ -102,8 +120,10 @@ export function setAuth(token: string) {
  */
 export function clearAuth() {
   httpClient.clearAuth();
-  // ConvexClient doesn't expose clearAuth — set a no-op token fetcher instead
+  // ConvexClient doesn't expose clearAuth — set a no-op token fetcher
   realtimeClient.setAuth(() => Promise.resolve(null as any));
+  // Reset the gate for next auth
+  makeAuthReady();
 }
 
 export { CONVEX_URL };

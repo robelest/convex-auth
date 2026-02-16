@@ -12,13 +12,13 @@
  *   cd examples/cli && bun start
  */
 
-import { tryRestoreSession, deviceAuthFlow, clearSavedTokens } from "./auth";
+import { tryRestoreSession, clearSavedTokens } from "./auth";
 import {
   initTUI,
   enterChat,
   cleanup,
   updateAuthStatus,
-  showAuthCode,
+  runAuthFlow,
 } from "./chat";
 
 // Handle --logout flag (runs before TUI)
@@ -45,33 +45,21 @@ try {
 // Auth (displayed inside TUI)
 // ---------------------------------------------------------------------------
 
-updateAuthStatus("Checking for saved session...");
-
 const restored = await tryRestoreSession();
 
 if (restored) {
-  updateAuthStatus("Session restored! Loading chat...");
+  updateAuthStatus("Session restored!");
 } else {
-  updateAuthStatus("No saved session. Starting device authorization...");
-
   try {
-    await deviceAuthFlow((message, data) => {
-      if (data?.userCode && data?.verificationUrl) {
-        showAuthCode(data.userCode, data.verificationUrl);
-      }
-      updateAuthStatus(message);
-    });
+    await runAuthFlow();
   } catch (e) {
     updateAuthStatus(
       `Auth failed: ${e instanceof Error ? e.message : String(e)}`,
     );
-    // Give user a moment to read the error before exiting
     await Bun.sleep(3000);
     cleanup();
     process.exit(1);
   }
-
-  updateAuthStatus("Authenticated! Loading chat...");
 }
 
 // ---------------------------------------------------------------------------

@@ -20,8 +20,10 @@ export async function tryRestoreSession(): Promise<boolean> {
   if (!token) return false;
 
   try {
-    // Validate the token by setting it — if it's expired, calls will fail
+    // Set the token, then validate it with an actual API call.
+    // If the token is expired the query will throw.
     setAuth(token);
+    await httpClient.query("users:viewer" as any, {});
     return true;
   } catch {
     await clearSavedTokens();

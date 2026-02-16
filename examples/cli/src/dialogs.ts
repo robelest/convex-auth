@@ -251,6 +251,8 @@ export async function showHelpDialog(): Promise<void> {
         [t`  ${fg(colors.aqua)("/create <name>")}`, t` ${fg(colors.fg)("Create channel")}`],
         [t`  ${fg(colors.aqua)("/join")}`, t`          ${fg(colors.fg)("Browse channels")}`],
         [t`  ${fg(colors.aqua)("/leave")}`, t`         ${fg(colors.fg)("Leave channel")}`],
+        [t`  ${fg(colors.aqua)("/auth")}`, t`          ${fg(colors.fg)("Re-authenticate")}`],
+        [t`  ${fg(colors.aqua)("/logout")}`, t`        ${fg(colors.fg)("Clear saved tokens")}`],
         [t`  ${fg(colors.aqua)("/help")}`, t`          ${fg(colors.fg)("Show this help")}`],
         [t`  ${fg(colors.aqua)("/quit")}`, t`          ${fg(colors.fg)("Quit")}`],
         ["", ""],
