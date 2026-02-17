@@ -28,7 +28,9 @@ test("sign in with email", async () => {
 
         // Find the code after ${process.env.SITE_URL}?code=
         code = init.body.match(/\?code=([^\s\\]+)/)?.[1];
-        return new Response(null, { status: 200 });
+        return new Response(JSON.stringify({ id: "email_123" }), {
+          status: 200,
+        });
       }
       throw new Error("Unexpected fetch");
     }),
@@ -68,7 +70,9 @@ test("redirectTo with email", async () => {
           /http:\/\/localhost:5173\/dashboard\?code=([^\s\\]+)/,
         )?.[1];
         expect(code).toBeTypeOf("string");
-        return new Response(null, { status: 200 });
+        return new Response(JSON.stringify({ id: "email_123" }), {
+          status: 200,
+        });
       }
       throw new Error("Unexpected fetch");
     }),

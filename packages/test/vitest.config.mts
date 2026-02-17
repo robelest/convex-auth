@@ -17,6 +17,7 @@ export default defineConfig({
     include: ["convex/**/*.test.ts"],
     environment: "edge-runtime",
     server: { deps: { inline: ["convex-test"] } },
+    fileParallelism: false,
     testTimeout: 10000,
   },
 });

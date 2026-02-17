@@ -88,7 +88,7 @@
     },
     "packages/auth": {
       "name": "@robelest/convex-auth",
-      "version": "0.0.3-preview.10",
+      "version": "0.0.3-preview.11",
       "bin": "./dist/bin.cjs",
       "dependencies": {
         "@convex-dev/self-hosting": "^0.1.0",
@@ -183,6 +183,7 @@
     "packages/test": {
       "name": "auth-test-suite",
       "devDependencies": {
+        "@convex-dev/resend": "^0.2.3",
         "@edge-runtime/vm": "^3.2.0",
         "@robelest/convex-auth": "workspace:*",
         "cheerio": "^1.0.0-rc.12",

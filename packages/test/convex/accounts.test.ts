@@ -7,6 +7,7 @@ import {
   CONVEX_SITE_URL,
   JWKS,
   JWT_PRIVATE_KEY,
+  RESEND_API_KEY,
   signInViaMagicLink,
 } from "./test.helpers";
 
@@ -57,5 +58,6 @@ function setupEnv() {
   process.env.CONVEX_SITE_URL = CONVEX_SITE_URL;
   process.env.JWT_PRIVATE_KEY = JWT_PRIVATE_KEY;
   process.env.JWKS = JWKS;
+  process.env.RESEND_API_KEY = RESEND_API_KEY;
   process.env.AUTH_LOG_LEVEL = "ERROR";
 }

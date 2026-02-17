@@ -27,7 +27,9 @@ export async function signInViaMagicLink(
         const body = String(init.body ?? "");
         code = body.match(/\?code=([^\s\\]+)/)?.[1] ?? "";
         expect(code).not.toEqual("");
-        return new Response(null, { status: 200 });
+        return new Response(JSON.stringify({ id: "email_123" }), {
+          status: 200,
+        });
       }
       throw new Error("Unexpected fetch");
     }),

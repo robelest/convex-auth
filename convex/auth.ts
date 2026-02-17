@@ -34,7 +34,37 @@ const auth = new Auth(components.auth, {
   ],
   email: {
     from: process.env.AUTH_EMAIL ?? "My App <onboarding@resend.dev>",
-    send: (ctx, params) => resend.sendEmail(ctx, params),
+    send: async (ctx, params) => {
+      await resend.sendEmailManually(
+        ctx,
+        {
+          from: params.from,
+          to: params.to,
+          subject: params.subject,
+        },
+        async () => {
+          const res = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: params.from,
+              to: params.to,
+              subject: params.subject,
+              html: params.html,
+              text: params.text,
+            }),
+          });
+          if (!res.ok) {
+            throw new Error(`Email send failed: ${res.status}`);
+          }
+          const payload = (await res.json()) as { id?: string };
+          return payload.id ?? "sent";
+        },
+      );
+    },
   },
 });
 
