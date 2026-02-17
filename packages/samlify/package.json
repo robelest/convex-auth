@@ -1,0 +1,32 @@
+{
+  "name": "@robelest/samlify",
+  "version": "0.0.1-preview.0",
+  "private": true,
+  "description": "Edge-compatible SAML 2.0 runtime used by convex-auth",
+  "license": "MIT",
+  "type": "module",
+  "main": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "test": "vitest",
+    "test:once": "vitest run",
+    "check:runtime-imports": "node ./scripts/check-forbidden-runtime-imports.mjs",
+    "report:edge-gaps": "node ./scripts/report-edge-runtime-gaps.mjs"
+  },
+  "dependencies": {
+    "@xmldom/xmldom": "^0.8.11",
+    "camelcase": "^6.3.0",
+    "fflate": "^0.8.2",
+    "fontoxpath": "^3.33.0",
+    "jsrsasign": "^11.1.0",
+    "uuid": "^8.3.2",
+    "xml-escape": "^1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.2",
+    "timekeeper": "^2.3.1",
+    "vitest": "^4.0.18"
+  }
+}

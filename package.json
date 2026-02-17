@@ -20,6 +20,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "bun run --cwd packages/test test:once",
+    "test:samlify": "bun run --cwd packages/samlify test:once",
+    "check:samlify-runtime": "bun run --cwd packages/samlify check:runtime-imports && bun run --cwd packages/samlify report:edge-gaps",
     "codegen:convex": "bunx convex codegen && bunx convex codegen --component-dir ./packages/auth/src/component",
     "dashboard:convex": "bunx convex dashboard",
     "run:convex": "bunx convex run"
