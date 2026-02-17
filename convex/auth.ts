@@ -1,4 +1,5 @@
 import { Google } from "arctic";
+import { Resend } from "@convex-dev/resend";
 import { Device, OAuth } from "@robelest/convex-auth/providers";
 import anonymous from "@robelest/convex-auth/providers/anonymous";
 import passkey from "@robelest/convex-auth/providers/passkey";
@@ -6,6 +7,10 @@ import password from "@robelest/convex-auth/providers/password";
 import totp from "@robelest/convex-auth/providers/totp";
 import { Auth, Portal } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
+
+const resend = new Resend(components.resend, {
+  testMode: false,
+});
 
 const auth = new Auth(components.auth, {
   providers: [
@@ -29,19 +34,7 @@ const auth = new Auth(components.auth, {
   ],
   email: {
     from: process.env.AUTH_EMAIL ?? "My App <onboarding@resend.dev>",
-    send: async (_ctx, { from, to, subject, html }) => {
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ from, to, subject, html }),
-      });
-      if (!res.ok) {
-        throw new Error(`Email send failed: ${res.status}`);
-      }
-    },
+    send: (ctx, params) => resend.sendEmail(ctx, params),
   },
 });
 
