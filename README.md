@@ -216,6 +216,7 @@ export const updateProfile = mutation({
 | `auth.user.current(ctx)` | User ID or `null` |
 | `auth.user.require(ctx)` | User ID (throws if not signed in) |
 | `auth.user.get(ctx, userId)` | User document |
+| `auth.user.list(ctx, { where?, limit?, cursor?, orderBy?, order? })` | List users (`{ items, nextCursor }`) |
 | `auth.user.patch(ctx, userId, data)` | Update user with partial data |
 | `auth.user.viewer(ctx)` | Current user's document |
 
@@ -444,6 +445,106 @@ All errors are structured JSON with `{ error, code }`:
 | 403 | `API_KEY_RATE_LIMITED` | Per-key rate limit exceeded |
 | 403 | `SCOPE_CHECK_FAILED` | Key lacks required scope |
 | 500 | `INTERNAL_ERROR` | Unexpected server error |
+
+## Authorization Patterns (Identity + Profile)
+
+If you're checking privileged access in your app, use this model:
+
+- Use `userId` for authorization checks (stable identity)
+- Use email only for lookup/bootstrap UX (human input)
+- Persist admin grants by `userId` in your app table
+
+### Why email is not on `getUserIdentity()`
+
+`ctx.auth.getUserIdentity()` returns Convex identity claims from the JWT.
+With this library the token subject is `userId|sessionId`, and email is stored on the user document.
+
+This is intentional:
+
+- email can change
+- some providers don't guarantee email
+- sessions should remain valid even if profile fields change
+
+So, read identity from `auth.user.*`, then read profile fields from the user document.
+
+### Recommended access check pattern
+
+```ts
+// convex/access.ts
+import { query } from "./_generated/server";
+import { auth } from "./auth";
+
+export const canAccessAdminTools = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await auth.user.require(ctx);
+
+    const grant = await ctx.db
+      .query("accessGrants")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .unique();
+
+    return grant !== null;
+  },
+});
+```
+
+### Grant by userId (recommended)
+
+```ts
+// convex/accessAdmin.ts
+import { mutation } from "./_generated/server";
+import { v } from "convex/values";
+
+export const grantAccess = mutation({
+  args: { userId: v.string() },
+  handler: async (ctx, { userId }) => {
+    await ctx.db.insert("accessGrants", {
+      userId,
+      createdAt: Date.now(),
+    });
+  },
+});
+```
+
+If your tooling starts from email input, resolve email to `userId` first, then
+call a `userId`-based grant mutation.
+
+```ts
+const normalizedEmail = email.trim().toLowerCase();
+const { items } = await auth.user.list(ctx, {
+  where: { email: normalizedEmail },
+  limit: 2,
+});
+const verified = items.filter((u) => u.emailVerificationTime !== undefined);
+if (verified.length !== 1) {
+  throw new Error("Expected exactly one verified user for this email");
+}
+const userId = verified[0]._id;
+```
+
+### Common auth patterns and gotchas
+
+- **Need current user ID?** Use `await auth.user.require(ctx)`.
+- **Need current user email/profile?** Use `await auth.user.viewer(ctx)`.
+- **Public route with optional auth?** Use `await auth.user.current(ctx)` and
+  branch on `null`.
+- **Client integration:** Keep one auth client instance per Convex client,
+  subscribe to `onChange`, and wait for `isLoading === false` before protected
+  UI checks.
+- **Sign out:** Call `authClient.signOut()` on the same client instance that
+  manages auth state.
+
+### Account/user relationship
+
+Accounts are many-to-one with users:
+
+- one `user` can have many linked `account` records (GitHub + Google + password)
+- each `account` belongs to exactly one `user`
+
+This is why authorization should be keyed on `userId`, not provider account IDs.
+
+For migrating existing email-based admin checks, see `docs/admin-auth-migration.md`.
 
 ## Admin Portal
 
