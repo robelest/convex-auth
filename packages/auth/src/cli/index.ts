@@ -8,6 +8,7 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import inquirer from "inquirer";
 import path from "path";
 import * as v from "valibot";
+import { CDN_PORTAL_BASE } from "../server/constants";
 import { actionDescription } from "./command";
 import { generateKeys } from "./keys";
 
@@ -24,16 +25,27 @@ const portalCmd = program
   .description("Manage the auth admin portal");
 
 portalCmd
-  .command("upload")
-  .description("Upload portal static files to Convex storage")
-  .allowUnknownOption(true)
-  .allowExcessArguments(true)
-  .action(async () => {
-    // Pass remaining args after "portal upload" to the upload handler
-    const idx = process.argv.indexOf("upload");
-    const uploadArgs = idx >= 0 ? process.argv.slice(idx + 1) : [];
-    const { portalUploadMain } = await import("./upload.js");
-    await portalUploadMain(uploadArgs);
+  .command("deploy")
+  .description("Deploy pre-built portal static files from CDN to Convex storage")
+  .option("--prod", "Use production deployment")
+  .option(
+    "--component <name>",
+    "Convex module with portal functions",
+    "auth",
+  )
+  .option("--concurrency <n>", "Parallel import count (default: auto max 32)")
+  .option("--version <version>", "Portal version to deploy")
+  .action(async (opts) => {
+    const { portalDeployMain } = await import("./deploy.js");
+    await portalDeployMain({
+      prod: opts.prod ?? false,
+      component: opts.component,
+      concurrency:
+        opts.concurrency !== undefined
+          ? Number(opts.concurrency)
+          : undefined,
+      version: opts.version,
+    });
   });
 
 portalCmd
@@ -45,11 +57,13 @@ portalCmd
     "Convex module with portal functions",
     "auth",
   )
+  .option("--self-hosted", "Generate a self-hosted invite URL")
   .action(async (opts) => {
     const { portalLinkMain } = await import("./link.js");
     await portalLinkMain({
       prod: opts.prod ?? false,
       component: opts.component,
+      selfHosted: opts.selfHosted ?? false,
     });
   });
 
@@ -850,13 +864,27 @@ async function promptForInput(
 function printFinalSuccessMessage(config: ProjectConfig) {
   const isProd = config.deployment.type === "prod";
   const deploymentName = config.deployment.name ?? "your deployment";
-  
+  const portalUrl =
+    config.deployment.name !== null
+      ? `${CDN_PORTAL_BASE}/${config.deployment.name}`
+      : CDN_PORTAL_BASE;
+
   if (isProd) {
     logSuccess(`Production setup complete for ${deploymentName}.`);
+    print("");
+    print(`  Admin portal: ${chalk.cyan(portalUrl)}`);
+    print(
+      `  Create invite: ${chalk.cyan("npx @robelest/convex-auth portal link --prod")}`,
+    );
     print("");
     print(`  Full docs: ${chalk.cyan("https://deepwiki.com/robelest/convex-auth")}`);
   } else {
     logSuccess(`Setup complete for ${deploymentName}.`);
+    print("");
+    print(`  Admin portal: ${chalk.cyan(portalUrl)}`);
+    print(
+      `  Create invite: ${chalk.cyan("npx @robelest/convex-auth portal link")}`,
+    );
     print("");
     print(`  ${chalk.bold("To set up production")}, run this command with your production URL:`);
     print(`    ${chalk.cyan("npx @robelest/convex-auth --prod --site-url \"https://myapp.com\"")}`);

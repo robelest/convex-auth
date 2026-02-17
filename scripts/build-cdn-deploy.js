@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Stages the CDN deployment directory for auth.robelest.com.
+ * Stages the CDN deployment directory for convex-auth.pages.dev.
  *
  * Output structure (cdn-stage/):
  *
@@ -101,4 +101,4 @@ console.log(`\nStaging complete → cdn-stage/`);
 console.log(`  CDN portal:       cdn-stage/index.html`);
 console.log(`  Self-hosted:      cdn-stage/v/${VERSION}/auth/`);
 console.log(`  Manifest:         cdn-stage/v/${VERSION}/manifest.json`);
-console.log(`\nRun: bunx wrangler pages deploy cdn-stage --project-name convex-auth-portal`);
+console.log(`\nRun: bunx wrangler pages deploy cdn-stage --project-name convex-auth`);

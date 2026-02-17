@@ -128,7 +128,7 @@ export async function discoverConvexUrl(): Promise<DiscoveryResult | null> {
 		return null;
 	}
 
-	// CDN build: portal lives at root of auth.robelest.com (or similar)
+	// CDN build: portal lives at root of convex-auth.pages.dev (or similar)
 	// First path segment is the deployment slug (e.g. /rapid-cat-62/users).
 	const segments = window.location.pathname.split("/").filter(Boolean);
 	const slug = segments[0] ?? null;

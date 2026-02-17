@@ -458,7 +458,7 @@ The portal lets you:
 
 ### Option A: Hosted CDN (recommended)
 
-The portal is hosted at `auth.robelest.com` and connects to any Convex deployment via the deployment slug in the URL. No upload, no build, no hosting.
+The portal is hosted at `convex-auth.pages.dev` and connects to any Convex deployment via the deployment slug in the URL. No upload, no build, no hosting.
 
 **1. Generate an admin invite link:**
 
@@ -471,19 +471,19 @@ npx @robelest/convex-auth portal link
 The portal is immediately available at:
 
 ```
-https://auth.robelest.com/<your-deployment-slug>
+https://convex-auth.pages.dev/<your-deployment-slug>
 ```
 
-For example, if your Convex URL is `https://rapid-cat-62.convex.cloud`, the portal lives at `https://auth.robelest.com/rapid-cat-62`. Sub-pages use clean paths: `/rapid-cat-62/users`, `/rapid-cat-62/sessions`, `/rapid-cat-62/keys`.
+For example, if your Convex URL is `https://rapid-cat-62.convex.cloud`, the portal lives at `https://convex-auth.pages.dev/rapid-cat-62`. Sub-pages use clean paths: `/rapid-cat-62/users`, `/rapid-cat-62/sessions`, `/rapid-cat-62/keys`.
 
 ### Option B: Self-Hosted
 
 Portal static files are stored in Convex via the `@convex-dev/self-hosting` sub-component and served from your own deployment at `https://<deployment>.convex.site/auth`.
 
-**1. Upload the portal:**
+**1. Deploy the portal assets to your instance:**
 
 ```bash
-npx @robelest/convex-auth portal upload
+npx @robelest/convex-auth portal deploy
 ```
 
 **2. Generate an admin invite link:**
@@ -502,7 +502,7 @@ npx @robelest/convex-auth portal link
 - The SvelteKit build uses `base: "/auth"` so all routes nest under the `/auth` prefix.
 
 **CDN mode:**
-- The same SvelteKit app is built with `base: ""` (root) and deployed to Cloudflare Pages at `auth.robelest.com`.
+- The same SvelteKit app is built with `base: ""` (root) and deployed to Cloudflare Pages at `convex-auth.pages.dev`.
 - The first path segment is the deployment slug (e.g. `/rapid-cat-62`). A SvelteKit `reroute` hook strips the slug before route matching, so `/rapid-cat-62/users` renders the `/users` route while keeping the full path in the address bar.
 - No config endpoint is needed — the slug directly encodes the Convex cloud URL (`https://{slug}.convex.cloud`).
 
@@ -855,7 +855,7 @@ npx convex deploy --cmd 'npm run build'
 npx @robelest/convex-auth portal link --prod
 
 # Or self-host the portal on your deployment
-npx @robelest/convex-auth portal upload --prod
+npx @robelest/convex-auth portal deploy --prod
 npx @robelest/convex-auth portal link --prod
 ```
 
@@ -956,7 +956,7 @@ flowchart LR
     end
 
     subgraph CDN
-        B2[Browser] -->|GET| CDN_["auth.robelest.com/{slug}/*"]
+        B2[Browser] -->|GET| CDN_["convex-auth.pages.dev/{slug}/*"]
         CDN_ --> Reroute["SvelteKit reroute hook<br/>strips slug for route matching"]
         CDN_ --> Discover["discoverConvexUrl()<br/>derives https://{slug}.convex.cloud"]
     end
@@ -991,8 +991,8 @@ npx @robelest/convex-auth [options]
 # Generate an admin invite link
 npx @robelest/convex-auth portal link [options]
 
-# Upload portal to your Convex deployment (self-hosted mode)
-npx @robelest/convex-auth portal upload [options]
+# Deploy portal to your Convex deployment (self-hosted mode)
+npx @robelest/convex-auth portal deploy [options]
 ```
 
 **`portal link`** generates a single-use invite URL. The first person to click it becomes a portal admin.
@@ -1002,15 +1002,14 @@ npx @robelest/convex-auth portal upload [options]
 | `--prod` | Target production deployment | — |
 | `--component <name>` | Convex module name with portal exports | `auth` |
 
-**`portal upload`** uploads the SvelteKit portal build to Convex storage for self-hosted serving.
+**`portal deploy`** downloads pre-built portal assets from the hosted CDN and stores them in Convex for self-hosted serving.
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--prod` | Target production deployment | — |
-| `-d, --dist <path>` | Path to portal build directory | `./dist` |
-| `-c, --component <name>` | Convex module name | `auth` |
-| `-b, --build` | Run build before uploading | `false` |
-| `-j, --concurrency <n>` | Parallel upload count | `5` |
+| `--component <name>` | Convex module name | `auth` |
+| `--version <version>` | Portal version to deploy | current package version |
+| `--concurrency <n>` | Parallel import count | auto (max `32`) |
 
 ## Roadmap
 
@@ -1020,13 +1019,13 @@ npx @robelest/convex-auth portal upload [options]
 - TOTP (authenticator apps)
 - Groups, memberships, invites with cascade operations
 - Admin portal (SvelteKit, dark theme) — self-hosted and hosted CDN
-- Portal CLI (`portal upload`, `portal link`)
+- Portal CLI (`portal deploy`, `portal link`)
 - Class-based `Auth` API with library-native email transport
 - Self-hosting as embedded sub-component
 - API keys with scoped permissions, SHA-256 hashing, rate limiting
 - Bearer Token Auth — `Authorization: Bearer` header with scoped API keys
 - Framework-agnostic SSR cookie API (SvelteKit, TanStack Start, Next.js)
-- Hosted CDN portal at `auth.robelest.com` with path-based deployment routing
+- Hosted CDN portal at `convex-auth.pages.dev` with path-based deployment routing
 - Context enrichment (`AuthCtx`) — zero-boilerplate `ctx.auth.userId` / `ctx.auth.user` via `convex-helpers`
 - Arctic migration — replaced `@auth/core` with [Arctic](https://arcticjs.dev) for OAuth 2.0 (lighter, zero-dependency)
 - Device Authorization (RFC 8628) — OAuth device flow for CLIs, smart TVs, and IoT devices

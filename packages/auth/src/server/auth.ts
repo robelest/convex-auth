@@ -34,7 +34,7 @@
 import {
   queryGeneric,
   mutationGeneric,
-  internalMutationGeneric,
+  internalActionGeneric,
   httpActionGeneric,
 } from "convex/server";
 import type { HttpRouter, UserIdentity } from "convex/server";
@@ -50,6 +50,7 @@ import { defaultMagicLinkEmail } from "./templates";
 import emailProvider from "../providers/email";
 import { AUTH_VERSION } from "./version";
 import { throwAuthError } from "./errors";
+import { buildCdnPortalUrl, extractSlug, CDN_PORTAL_BASE } from "./constants";
 
 // ============================================================================
 // Types
@@ -66,13 +67,15 @@ import { throwAuthError } from "./errors";
  * Portal functionality is always available — no configuration flag
  * needed. The portal UI works when you export `portalQuery`,
  * `portalMutation`, `portalInternal` from your `convex/auth.ts`
- * and upload the portal static files via CLI.
+ * and deploy the portal static files via CLI.
  */
 export type AuthClassConfig = Omit<ConvexAuthConfig, "component">;
 
 type AuthInternalState = {
   component: AuthComponentApi;
   portalUrl: string;
+  cdnPortalUrl: string | null;
+  deploymentSlug: string | null;
 };
 
 const authInternalState = new WeakMap<Auth, AuthInternalState>();
@@ -171,7 +174,15 @@ export class Auth {
     const portalUrl = process.env.CONVEX_SITE_URL
       ? `${process.env.CONVEX_SITE_URL.replace(/\/$/, "")}/auth`
       : "/auth";
-    authInternalState.set(this, { component, portalUrl });
+    const cloudUrl = process.env.CONVEX_CLOUD_URL;
+    const cdnPortalUrl = buildCdnPortalUrl(cloudUrl);
+    const deploymentSlug = cloudUrl ? extractSlug(cloudUrl) : null;
+    authInternalState.set(this, {
+      component,
+      portalUrl,
+      cdnPortalUrl,
+      deploymentSlug,
+    });
 
     const emailTransport = config.email;
     const providers = [...config.providers];
@@ -282,7 +293,7 @@ export class Auth {
   get http() {
     // Cache the object so repeated access returns the same reference
     const inner = this._auth.http;
-    const { component } = getAuthInternalState(this);
+    const { component, cdnPortalUrl } = getAuthInternalState(this);
 
     return {
       ...inner,
@@ -314,11 +325,12 @@ export class Auth {
           method: "GET",
           handler: httpActionGeneric(async () => {
             return new Response(
-              JSON.stringify({
-                convexUrl: process.env.CONVEX_CLOUD_URL,
-                siteUrl: process.env.CONVEX_SITE_URL,
-                version: AUTH_VERSION,
-              }),
+                JSON.stringify({
+                  convexUrl: process.env.CONVEX_CLOUD_URL,
+                  siteUrl: process.env.CONVEX_SITE_URL,
+                  cdnPortalUrl,
+                  version: AUTH_VERSION,
+                }),
               {
                 status: 200,
                 headers: {
@@ -374,7 +386,12 @@ export class Auth {
  * @returns `{ portalQuery, portalMutation, portalInternal }` — export all three.
  */
 export function Portal(auth: Auth) {
-  const { component: authComponent, portalUrl } = getAuthInternalState(auth);
+  const {
+    component: authComponent,
+    portalUrl,
+    cdnPortalUrl,
+    deploymentSlug,
+  } = getAuthInternalState(auth);
   const authHelper = (auth as any)._auth;
 
   const portalQuery = queryGeneric({
@@ -677,11 +694,13 @@ export function Portal(auth: Auth) {
     },
   });
 
-  const portalInternal = internalMutationGeneric({
+  const portalInternal = internalActionGeneric({
     args: {
       action: v.string(),
       tokenHash: v.optional(v.string()),
       path: v.optional(v.string()),
+      version: v.optional(v.string()),
+      sha256: v.optional(v.string()),
       storageId: v.optional(v.string()),
       blobId: v.optional(v.string()),
       contentType: v.optional(v.string()),
@@ -698,10 +717,10 @@ export function Portal(auth: Auth) {
             role: "portalAdmin",
             status: "pending" as const,
           });
-          return { portalUrl };
+          return { portalUrl, cdnPortalUrl, deploymentSlug };
         }
 
-        // ---- Static hosting (CLI upload) ----
+        // ---- Static hosting (CLI deploy) ----
         case "generateUploadUrl": {
           return await ctx.storage.generateUploadUrl();
         }
@@ -725,6 +744,73 @@ export function Portal(auth: Auth) {
             }
           }
           return oldBlobId ?? null;
+        }
+
+        case "recordAssetFromCdn": {
+          const version = args.version;
+          const targetPath = args.path;
+          if (!version || !targetPath) {
+            throw new Error("Missing required args: version and path");
+          }
+
+          const normalizedPath = targetPath.startsWith("/")
+            ? targetPath
+            : `/${targetPath}`;
+          const cdnPath = normalizedPath.replace(/^\/+/, "");
+          const encodedPath = cdnPath
+            .split("/")
+            .map(encodeURIComponent)
+            .join("/");
+          const assetUrl = `${CDN_PORTAL_BASE}/v/${version}/auth/${encodedPath}`;
+
+          const response = await fetch(assetUrl);
+          if (!response.ok) {
+            throw new Error(
+              `Failed to fetch portal asset (${response.status}): ${assetUrl}`,
+            );
+          }
+
+          const contentType =
+            args.contentType ??
+            response.headers.get("content-type") ??
+            "application/octet-stream";
+          const bytes = new Uint8Array(await response.arrayBuffer());
+
+          if (args.sha256) {
+            const digest = await crypto.subtle.digest("SHA-256", bytes);
+            const digestHex = Array.from(new Uint8Array(digest))
+              .map((byte) => byte.toString(16).padStart(2, "0"))
+              .join("");
+            if (digestHex !== String(args.sha256).toLowerCase()) {
+              throw new Error(
+                `Checksum mismatch for ${normalizedPath}: expected ${args.sha256}, got ${digestHex}`,
+              );
+            }
+          }
+
+          const storageId = await ctx.storage.store(
+            new Blob([bytes], { type: contentType }),
+          );
+
+          const { oldStorageId, oldBlobId } = await ctx.runMutation(
+            authComponent.bridge.recordAsset,
+            {
+              path: normalizedPath,
+              storageId,
+              contentType,
+              deploymentId: args.deploymentId,
+            },
+          );
+
+          if (oldStorageId) {
+            try {
+              await ctx.storage.delete(oldStorageId);
+            } catch {
+              // Ignore — old file may have been in different storage
+            }
+          }
+
+          return { path: normalizedPath, oldBlobId: oldBlobId ?? null };
         }
 
         case "gcOldAssets": {

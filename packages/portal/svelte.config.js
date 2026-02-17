@@ -16,7 +16,7 @@ const config = {
 			precompress: !isDev,
 		}),
 		paths: {
-			// CDN build serves from root (auth.robelest.com/)
+			// CDN build serves from root (convex-auth.pages.dev/)
 			// Self-hosted build nests under /auth to avoid route conflicts
 			base: isDev ? '' : (isCDN ? '' : '/auth'),
 		},
