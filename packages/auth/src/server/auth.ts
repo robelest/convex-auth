@@ -79,6 +79,8 @@ type AuthInternalState = {
 };
 
 const authInternalState = new WeakMap<Auth, AuthInternalState>();
+const PORTAL_ADMIN_ROLE = "portalAdmin";
+const PORTAL_INVITE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function getAuthInternalState(auth: Auth): AuthInternalState {
   const state = authInternalState.get(auth);
@@ -86,6 +88,106 @@ function getAuthInternalState(auth: Auth): AuthInternalState {
     throw new Error("Auth internal state is not initialized");
   }
   return state;
+}
+
+function normalizeInviteItems(inviteResult: any): Array<any> {
+  if (Array.isArray(inviteResult)) {
+    return inviteResult;
+  }
+  if (Array.isArray(inviteResult?.items)) {
+    return inviteResult.items;
+  }
+  return [];
+}
+
+function normalizedEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const bytes = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function listInvites(
+  ctx: any,
+  authComponent: AuthComponentApi,
+  where: Record<string, unknown>,
+): Promise<Array<any>> {
+  const inviteResult = await ctx.runQuery(authComponent.public.inviteList, {
+    where,
+  });
+  return normalizeInviteItems(inviteResult);
+}
+
+async function findInviteByTokenHash(
+  ctx: any,
+  authComponent: AuthComponentApi,
+  tokenHash: string,
+): Promise<any | null> {
+  const invites = await listInvites(ctx, authComponent, { tokenHash });
+  return invites[0] ?? null;
+}
+
+async function isPortalAdminUser(
+  ctx: any,
+  authComponent: AuthComponentApi,
+  userId: string,
+): Promise<boolean> {
+  const invites = await listInvites(ctx, authComponent, {
+    role: PORTAL_ADMIN_ROLE,
+    status: "accepted",
+    acceptedByUserId: userId,
+  });
+  return invites.length > 0;
+}
+
+async function canSendPortalMagicLink(
+  ctx: any,
+  authComponent: AuthComponentApi,
+  identifier: string,
+  url: string,
+): Promise<boolean> {
+  const normalizedIdentifier = normalizedEmail(identifier);
+
+  let inviteToken: string | null = null;
+  try {
+    inviteToken = new URL(url).searchParams.get("invite");
+  } catch {
+    inviteToken = null;
+  }
+
+  if (inviteToken) {
+    const tokenHash = await sha256Hex(inviteToken);
+    const invite = await findInviteByTokenHash(ctx, authComponent, tokenHash);
+    if (
+      invite &&
+      invite.role === PORTAL_ADMIN_ROLE &&
+      invite.status === "pending" &&
+      (!invite.expiresTime || invite.expiresTime >= Date.now()) &&
+      (invite.email === undefined ||
+        normalizedEmail(String(invite.email)) === normalizedIdentifier)
+    ) {
+      return true;
+    }
+  }
+
+  const candidateEmails = new Set<string>([identifier]);
+  candidateEmails.add(normalizedIdentifier);
+
+  for (const email of candidateEmails) {
+    const user = await ctx.runQuery(authComponent.public.userFindByVerifiedEmail, {
+      email,
+    });
+    if (user && (await isPortalAdminUser(ctx, authComponent, user._id))) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // ============================================================================
@@ -101,15 +203,7 @@ async function requirePortalAdmin(
   authComponent: AuthComponentApi,
   userId: string,
 ): Promise<void> {
-  // Use inviteList with status filter, then check role + userId in-memory.
-  // The new index makes the status filter efficient.
-  const invites = await ctx.runQuery(authComponent.public.inviteList, {
-    status: "accepted",
-  });
-  const isAdmin = invites.some(
-    (invite: any) =>
-      invite.role === "portalAdmin" && invite.acceptedByUserId === userId,
-  );
+  const isAdmin = await isPortalAdminUser(ctx, authComponent, userId);
   if (!isAdmin) {
     throwAuthError("PORTAL_NOT_AUTHORIZED");
   }
@@ -152,11 +246,11 @@ export class Auth {
   get session() { return this._auth.session; }
   /** Provider helpers: `.signIn(ctx, provider, args)` */
   get provider() { return this._auth.provider; }
-  /** Account helpers: `.create(ctx, args)`, `.get(ctx, args)`, `.updateCredentials(ctx, args)` */
+  /** Account helpers: `.create(ctx, args)`, `.get(ctx, args)`, `.update(ctx, args)` */
   get account() { return this._auth.account; }
   /** Group helpers: `.create(ctx, ...)`, `.get(ctx, id)`, `.list(ctx, ...)`, `.update(ctx, ...)`, `.delete(ctx, id)`, `.member.*` */
   get group() { return this._auth.group; }
-  /** Invite helpers: `.create(ctx, ...)`, `.get(ctx, id)`, `.getByTokenHash(ctx, hash)`, `.list(ctx, ...)`, `.accept(ctx, ...)`, `.revoke(ctx, id)` */
+  /** Invite helpers: `.create(ctx, ...)`, `.get(ctx, id)`, `.list(ctx, ...)`, `.accept(ctx, ...)`, `.revoke(ctx, id)` */
   get invite() { return this._auth.invite; }
   /** Passkey helpers: `.list(ctx, { userId })`, `.rename(ctx, id, name)`, `.remove(ctx, id)` */
   get passkey() { return this._auth.passkey; }
@@ -229,12 +323,11 @@ export class Auth {
             throwAuthError("MISSING_ACTION_CONTEXT");
           }
 
-          // Check authorization BEFORE sending — only portal-authorized emails
-          const invites = await ctx.runQuery(component.public.inviteList, {
-            status: "accepted",
-          });
-          const hasAccess = invites.some(
-            (invite: any) => invite.role === "portalAdmin" && invite.email === identifier,
+          const hasAccess = await canSendPortalMagicLink(
+            ctx,
+            component,
+            identifier,
+            url,
           );
           if (!hasAccess) {
             throwAuthError("PORTAL_NOT_AUTHORIZED");
@@ -414,6 +507,21 @@ export function Portal(auth: Auth) {
       },
     ) => {
       const { action, userId } = args;
+
+      // Allow invite validation before authentication.
+      if (action === "validateInvite") {
+        const tokenHash = userId;
+        if (!tokenHash) throwAuthError("INVITE_TOKEN_REQUIRED");
+        const invite = await findInviteByTokenHash(ctx, authComponent, tokenHash);
+        if (!invite || invite.status !== "pending") {
+          return null;
+        }
+        if (invite.expiresTime && invite.expiresTime < Date.now()) {
+          return null;
+        }
+        return { _id: invite._id, role: invite.role };
+      }
+
       const currentUserId = await authHelper.user.require(ctx);
 
       // Allow isAdmin check without admin requirement
@@ -518,21 +626,6 @@ export function Portal(auth: Auth) {
           return invites;
         }
 
-        // ---- Invite validation (portal context) ----
-        case "validateInvite": {
-          // userId param repurposed as tokenHash for this action
-          const tokenHash = userId;
-          if (!tokenHash) throwAuthError("INVITE_TOKEN_REQUIRED");
-          const invite = await authHelper.invite.getByTokenHash(ctx, tokenHash);
-          if (!invite || invite.status !== "pending") {
-            return null;
-          }
-          if (invite.expiresTime && invite.expiresTime < Date.now()) {
-            return null;
-          }
-          return { _id: invite._id, role: invite.role };
-        }
-
         default:
           throwAuthError("PORTAL_UNKNOWN_ACTION", `Unknown portal query action: ${action}`);
       }
@@ -581,7 +674,7 @@ export function Portal(auth: Auth) {
       switch (args.action) {
         case "acceptInvite": {
           if (!args.tokenHash) throwAuthError("INVITE_TOKEN_REQUIRED");
-          const invite = await authHelper.invite.getByTokenHash(ctx, args.tokenHash);
+          const invite = await findInviteByTokenHash(ctx, authComponent, args.tokenHash);
           if (!invite) throwAuthError("INVALID_INVITE");
           if (invite.status !== "pending") {
             throwAuthError("INVITE_ALREADY_USED", `Invite already ${invite.status}`);
@@ -714,8 +807,9 @@ export function Portal(auth: Auth) {
         case "createPortalInvite": {
           await ctx.runMutation(authComponent.public.inviteCreate, {
             tokenHash: args.tokenHash,
-            role: "portalAdmin",
+            role: PORTAL_ADMIN_ROLE,
             status: "pending" as const,
+            expiresTime: Date.now() + PORTAL_INVITE_MAX_AGE_MS,
           });
           return { portalUrl, cdnPortalUrl, deploymentSlug };
         }

@@ -1270,27 +1270,17 @@ export const inviteGet = query({
   },
 });
 
-/** Retrieve an invite by its token hash. Returns `null` if not found. */
-export const inviteGetByTokenHash = query({
-  args: { tokenHash: v.string() },
-  handler: async (ctx, { tokenHash }) => {
-    return await ctx.db
-      .query("invite")
-      .withIndex("tokenHash", (q) => q.eq("tokenHash", tokenHash))
-      .unique();
-  },
-});
-
 /**
  * List invites with optional filtering, sorting, and pagination.
  *
  * Returns `{ items, nextCursor }`. Supports filtering by `groupId`,
- * `status`, `email`, `invitedByUserId`, `role`, and `acceptedByUserId`.
+ * `status`, `email`, `invitedByUserId`, `role`, `acceptedByUserId`, and `tokenHash`.
  */
 export const inviteList = query({
   args: {
     where: v.optional(
       v.object({
+        tokenHash: v.optional(v.string()),
         groupId: v.optional(v.id("group")),
         status: v.optional(
           v.union(
@@ -1326,7 +1316,24 @@ export const inviteList = query({
 
     // Pick best index
     let q;
-    if (where.groupId !== undefined && where.status !== undefined) {
+    if (where.tokenHash !== undefined) {
+      q = ctx.db
+        .query("invite")
+        .withIndex("tokenHash", (idx) => idx.eq("tokenHash", where.tokenHash!));
+    } else if (
+      where.role !== undefined &&
+      where.status !== undefined &&
+      where.acceptedByUserId !== undefined
+    ) {
+      q = ctx.db
+        .query("invite")
+        .withIndex("roleAndStatusAndAcceptedByUserId", (idx) =>
+          idx
+            .eq("role", where.role!)
+            .eq("status", where.status!)
+            .eq("acceptedByUserId", where.acceptedByUserId!),
+        );
+    } else if (where.groupId !== undefined && where.status !== undefined) {
       q = ctx.db
         .query("invite")
         .withIndex("groupIdAndStatus", (idx) =>
@@ -1359,8 +1366,19 @@ export const inviteList = query({
     }
 
     // Apply remaining filters
-    if (where.email !== undefined && !(where.email !== undefined && where.status !== undefined)) {
+    if (where.groupId !== undefined) {
+      q = q.filter((f) => f.eq(f.field("groupId"), where.groupId!));
+    }
+    if (where.status !== undefined) {
+      q = q.filter((f) => f.eq(f.field("status"), where.status!));
+    }
+    if (where.email !== undefined) {
       q = q.filter((f) => f.eq(f.field("email"), where.email!));
+    }
+    if (where.invitedByUserId !== undefined) {
+      q = q.filter((f) =>
+        f.eq(f.field("invitedByUserId"), where.invitedByUserId!),
+      );
     }
     if (where.role !== undefined) {
       q = q.filter((f) => f.eq(f.field("role"), where.role!));
@@ -1370,13 +1388,8 @@ export const inviteList = query({
         f.eq(f.field("acceptedByUserId"), where.acceptedByUserId!),
       );
     }
-    if (
-      where.invitedByUserId !== undefined &&
-      !(where.invitedByUserId !== undefined && where.status !== undefined)
-    ) {
-      q = q.filter((f) =>
-        f.eq(f.field("invitedByUserId"), where.invitedByUserId!),
-      );
+    if (where.tokenHash !== undefined) {
+      q = q.filter((f) => f.eq(f.field("tokenHash"), where.tokenHash!));
     }
 
     q = q.order(order);

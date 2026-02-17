@@ -177,6 +177,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           name: string;
           parentGroupId?: string;
           slug?: string;
+          tags?: Array<{ key: string; value: string }>;
           type?: string;
         },
         any,
@@ -199,7 +200,21 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       groupList: FunctionReference<
         "query",
         "internal",
-        { parentGroupId?: string; type?: string },
+        {
+          cursor?: string | null;
+          limit?: number;
+          order?: "asc" | "desc";
+          orderBy?: "_creationTime" | "name" | "slug" | "type";
+          where?: {
+            isRoot?: boolean;
+            name?: string;
+            parentGroupId?: string;
+            slug?: string;
+            tagsAll?: Array<{ key: string; value: string }>;
+            tagsAny?: Array<{ key: string; value: string }>;
+            type?: string;
+          };
+        },
         any,
         Name
       >;
@@ -240,19 +255,28 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
-      inviteGetByTokenHash: FunctionReference<
-        "query",
-        "internal",
-        { tokenHash: string },
-        any,
-        Name
-      >;
       inviteList: FunctionReference<
         "query",
         "internal",
         {
-          groupId?: string;
-          status?: "pending" | "accepted" | "revoked" | "expired";
+          cursor?: string | null;
+          limit?: number;
+          order?: "asc" | "desc";
+          orderBy?:
+            | "_creationTime"
+            | "status"
+            | "email"
+            | "expiresTime"
+            | "acceptedTime";
+          where?: {
+            acceptedByUserId?: string;
+            email?: string;
+            groupId?: string;
+            invitedByUserId?: string;
+            role?: string;
+            status?: "pending" | "accepted" | "revoked" | "expired";
+            tokenHash?: string;
+          };
         },
         any,
         Name
@@ -300,7 +324,29 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
-      keyList: FunctionReference<"query", "internal", {}, any, Name>;
+      keyList: FunctionReference<
+        "query",
+        "internal",
+        {
+          cursor?: string | null;
+          limit?: number;
+          order?: "asc" | "desc";
+          orderBy?:
+            | "_creationTime"
+            | "name"
+            | "lastUsedAt"
+            | "expiresAt"
+            | "revoked";
+          where?: {
+            name?: string;
+            prefix?: string;
+            revoked?: boolean;
+            userId?: string;
+          };
+        },
+        any,
+        Name
+      >;
       keyListByUserId: FunctionReference<
         "query",
         "internal",
@@ -355,7 +401,18 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       memberList: FunctionReference<
         "query",
         "internal",
-        { groupId: string },
+        {
+          cursor?: string | null;
+          limit?: number;
+          order?: "asc" | "desc";
+          orderBy?: "_creationTime" | "role" | "status";
+          where?: {
+            groupId?: string;
+            role?: string;
+            status?: string;
+            userId?: string;
+          };
+        },
         any,
         Name
       >;
@@ -535,7 +592,18 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
-      sessionList: FunctionReference<"query", "internal", {}, any, Name>;
+      sessionList: FunctionReference<
+        "query",
+        "internal",
+        {
+          cursor?: string | null;
+          limit?: number;
+          order?: "asc" | "desc";
+          where?: { userId?: string };
+        },
+        any,
+        Name
+      >;
       sessionListByUser: FunctionReference<
         "query",
         "internal",
@@ -628,7 +696,24 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
-      userList: FunctionReference<"query", "internal", {}, any, Name>;
+      userList: FunctionReference<
+        "query",
+        "internal",
+        {
+          cursor?: string | null;
+          limit?: number;
+          order?: "asc" | "desc";
+          orderBy?: "_creationTime" | "name" | "email" | "phone";
+          where?: {
+            email?: string;
+            isAnonymous?: boolean;
+            name?: string;
+            phone?: string;
+          };
+        },
+        any,
+        Name
+      >;
       userPatch: FunctionReference<
         "mutation",
         "internal",

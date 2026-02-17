@@ -70,6 +70,12 @@
 		}
 	});
 
+	$effect(() => {
+		if (auth.inviteState === 'accepted' && adminCheckDone && isAdmin) {
+			auth.inviteState = 'none';
+		}
+	});
+
 	// ---- Screen discriminant (state machine) ----
 
 	type Screen =
@@ -87,7 +93,8 @@
 
 		// Authenticated — handle invite flow
 		const inv = auth.inviteState;
-		if (inv === 'accepting' || inv === 'accepted' || inv === 'error') return 'invite';
+		if (inv === 'accepting' || inv === 'error') return 'invite';
+		if (inv === 'accepted') return adminCheckDone && isAdmin ? 'dashboard' : 'checking-admin';
 		if (inv === 'pending') return 'invite'; // waiting for $effect to trigger
 
 		// No invite — check admin status

@@ -22,6 +22,8 @@ import {
   ConvexAuthConfig,
   CorsConfig,
   HttpKeyContext,
+  UserOrderBy,
+  UserWhere,
 } from "../types";
 import { requireEnv } from "../utils";
 import {
@@ -191,6 +193,28 @@ export function Auth(config_: ConvexAuthConfig) {
         return await ctx.runQuery(config.component.public.userGetById, { userId });
       },
       /**
+       * List users with optional filters, sorting, and pagination.
+       *
+       * @param opts.where - Optional filters (email, phone, name, anonymous).
+       * @param opts.limit - Max users to return (default 50).
+       * @param opts.cursor - Pagination cursor from a previous page.
+       * @param opts.orderBy - Sort field.
+       * @param opts.order - Sort direction.
+       * @returns `{ items, nextCursor }`.
+       */
+      list: async (
+        ctx: ComponentReadCtx,
+        opts: {
+          where?: UserWhere;
+          limit?: number;
+          cursor?: string | null;
+          orderBy?: UserOrderBy;
+          order?: "asc" | "desc";
+        } = {},
+      ) => {
+        return await ctx.runQuery(config.component.public.userList, opts);
+      },
+      /**
        * Get the currently signed-in user's document, or `null` if not
        * signed in. Convenience combining `current()` + `get()`.
        *
@@ -333,12 +357,12 @@ export function Auth(config_: ConvexAuthConfig) {
         return result;
       },
       /**
-       * Update credentials (secret) for an existing account.
+       * Update account credentials (secret) for an existing account.
        *
        * @param ctx - Convex action context.
        * @param args - Provider ID and new account credentials (id + secret).
        */
-      updateCredentials: async <DataModel extends GenericDataModel>(
+      update: async <DataModel extends GenericDataModel>(
         ctx: GenericActionCtx<DataModel>,
         args: UpdateAccountCredentialsArgs,
       ): Promise<void> => {
@@ -628,12 +652,6 @@ export function Auth(config_: ConvexAuthConfig) {
         return await ctx.runQuery(config.component.public.inviteGet, { inviteId });
       },
       /**
-       * Retrieve an invite by its token hash. Returns `null` if not found.
-       */
-      getByTokenHash: async (ctx: ComponentReadCtx, tokenHash: string) => {
-        return await ctx.runQuery(config.component.public.inviteGetByTokenHash, { tokenHash });
-      },
-      /**
        * List invites with optional filtering, sorting, and pagination.
        *
        * ```ts
@@ -645,6 +663,7 @@ export function Auth(config_: ConvexAuthConfig) {
         ctx: ComponentReadCtx,
         opts?: {
           where?: {
+            tokenHash?: string;
             groupId?: string;
             status?: "pending" | "accepted" | "revoked" | "expired";
             email?: string;

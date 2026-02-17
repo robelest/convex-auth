@@ -191,13 +191,21 @@ export function initAuth(convex: ConvexClient): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Build the redirect URL for magic link, preserving `?d=` for CDN mode.
+ * Build the redirect URL for magic link.
+ *
+ * When an invite token exists, keep it in the redirect URL so the backend can
+ * authorize bootstrap sign-ins before the invite is accepted.
  */
-function getPortalRedirectUrl(): string {
+function getPortalRedirectUrl(inviteToken?: string | null): string {
 	if (typeof window === "undefined") return "";
-	return auth.slug
+	const redirectTo = auth.slug
 		? `${window.location.origin}/${auth.slug}`
 		: `${window.location.origin}${base}`;
+	if (!inviteToken) return redirectTo;
+
+	const redirectUrl = new URL(redirectTo);
+	redirectUrl.searchParams.set("invite", inviteToken);
+	return redirectUrl.toString();
 }
 
 /**
@@ -223,7 +231,10 @@ export async function sendMagicLink(
 	auth.errorMessage = null;
 
 	try {
-		await _client.signIn(provider, { email, redirectTo: getPortalRedirectUrl() });
+		await _client.signIn(provider, {
+			email,
+			redirectTo: getPortalRedirectUrl(auth.inviteToken),
+		});
 		auth.flowState = "sent";
 	} catch (e: unknown) {
 		auth.flowState = "error";

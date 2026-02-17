@@ -203,7 +203,7 @@ export class Password<DataModel extends GenericDataModel = GenericDataModel> {
           }
           const { userId, sessionId } = result;
           const secret = params.newPassword as string;
-          await ctx.auth.account.updateCredentials(ctx, {
+          await ctx.auth.account.update(ctx, {
             provider,
             account: { id: email, secret },
           });

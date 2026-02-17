@@ -562,8 +562,8 @@ export type AuthRetrieveAccountArgs = {
   account: AuthAccountCredentials;
 };
 
-/** Arguments for `auth.account.updateCredentials()`. */
-export type AuthUpdateAccountCredentialsArgs = {
+/** Arguments for `auth.account.update()`. */
+export type AuthUpdateAccountArgs = {
   provider: string;
   account: {
     id: string;
@@ -606,9 +606,9 @@ export type AuthServerHelpers = {
       account: GenericDoc<GenericDataModel, "account">;
       user: GenericDoc<GenericDataModel, "user">;
     }>;
-    updateCredentials: (
+    update: (
       ctx: GenericActionCtx<any>,
-      args: AuthUpdateAccountCredentialsArgs,
+      args: AuthUpdateAccountArgs,
     ) => Promise<void>;
   };
   session: {
@@ -952,6 +952,7 @@ export type MemberOrderBy = "_creationTime" | "role" | "status";
 
 /** Filter fields for `auth.invite.list()`. All optional. */
 export type InviteWhere = {
+  tokenHash?: string;
   groupId?: string;
   status?: "pending" | "accepted" | "revoked" | "expired";
   email?: string;
@@ -1048,6 +1049,7 @@ export interface CorsConfig {
 export type AuthComponentApi = {
   public: {
     userGetById: FunctionReference<"query", "internal">;
+    userList: FunctionReference<"query", "internal">;
     userFindByVerifiedEmail: FunctionReference<"query", "internal">;
     userFindByVerifiedPhone: FunctionReference<"query", "internal">;
     userInsert: FunctionReference<"mutation", "internal">;
@@ -1096,7 +1098,6 @@ export type AuthComponentApi = {
     memberUpdate: FunctionReference<"mutation", "internal">;
     inviteCreate: FunctionReference<"mutation", "internal">;
     inviteGet: FunctionReference<"query", "internal">;
-    inviteGetByTokenHash: FunctionReference<"query", "internal">;
     inviteList: FunctionReference<"query", "internal">;
     inviteAccept: FunctionReference<"mutation", "internal">;
     inviteRevoke: FunctionReference<"mutation", "internal">;
