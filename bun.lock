@@ -87,7 +87,7 @@
     },
     "packages/auth": {
       "name": "@robelest/convex-auth",
-      "version": "0.0.3-preview.9",
+      "version": "0.0.3-preview.10",
       "bin": "./dist/bin.cjs",
       "dependencies": {
         "@convex-dev/self-hosting": "^0.1.0",
