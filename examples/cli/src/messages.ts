@@ -9,11 +9,9 @@ import {
   BoxRenderable,
   TextRenderable,
   ScrollBoxRenderable,
-  TextAttributes,
   t,
   bold,
   fg,
-  dim,
   type CliRenderer,
 } from "@opentui/core";
 import { colors, styled } from "./theme";

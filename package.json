@@ -10,6 +10,7 @@
     "build": "bun run --cwd packages/auth build",
     "build:portal": "bun run --cwd packages/portal build",
     "build:portal:cdn": "PORTAL_BUILD_TARGET=cdn bun run --cwd packages/portal build",
+    "check:auth-package": "bun run --cwd packages/auth build && bun run --cwd packages/auth typecheck:consumer && bun run --cwd packages/auth check:packaging",
     "deploy:portal": "bunx @robelest/convex-auth portal deploy --component portal",
     "deploy:portal:prod": "bunx @robelest/convex-auth portal deploy --component portal --prod",
     "deploy:cdn": "bun run build:portal && bun run build:portal:cdn && node scripts/build-cdn-deploy.js && bunx wrangler pages deploy cdn-stage --project-name convex-auth --branch main",
@@ -20,7 +21,8 @@
     "test": "bun run --cwd packages/test test:once",
     "test:samlify": "bun run --cwd packages/samlify test:once",
     "check:samlify-runtime": "bun run --cwd packages/samlify check:runtime-imports && bun run --cwd packages/samlify report:edge-gaps",
-    "codegen:convex": "bunx convex codegen && bunx convex codegen --component-dir ./packages/auth/src/component",
+    "codegen:convex": "bunx convex codegen && bun run codegen:convex:component",
+    "codegen:convex:component": "bunx convex codegen --component-dir ./packages/auth/src/component",
     "dashboard:convex": "bunx convex dashboard",
     "run:convex": "bunx convex run"
   },
@@ -33,6 +35,7 @@
     }
   },
   "dependencies": {
+    "@convex-dev/resend": "^0.2.3",
     "@auth/core": "^0.37.0",
     "@convex-dev/self-hosting": "^0.1.0",
     "@oslojs/crypto": "^1.0.1",

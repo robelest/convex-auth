@@ -16,7 +16,6 @@ import {
   InputRenderableEvents,
   SelectRenderable,
   SelectRenderableEvents,
-  TextAttributes,
   t,
   bold,
   fg,
@@ -30,7 +29,7 @@ import {
   toast,
   ToasterRenderable,
 } from "@opentui-ui/toast";
-import { colors, borders, styled } from "./theme";
+import { colors, borders } from "./theme";
 import type { Group } from "./sidebar";
 
 // ---------------------------------------------------------------------------
@@ -103,7 +102,7 @@ export function showInfo(msg: string): void {
 
 export async function showCreateChannelDialog(): Promise<string | undefined> {
   return manager.prompt<string>({
-    content: (ctx, { resolve, dismiss }) => {
+    content: (ctx, { resolve }) => {
       const box = new BoxRenderable(ctx, {
         flexDirection: "column",
         gap: 1,
@@ -173,7 +172,7 @@ export async function showJoinChannelDialog(
   }
 
   return manager.prompt<Group>({
-    content: (ctx, { resolve, dismiss }) => {
+    content: (ctx, { resolve }) => {
       const box = new BoxRenderable(ctx, {
         flexDirection: "column",
         gap: 1,
@@ -230,7 +229,7 @@ export async function showJoinChannelDialog(
 
 export async function showHelpDialog(): Promise<void> {
   await manager.alert({
-    content: (ctx, { dismiss }) => {
+    content: (ctx) => {
       const box = new BoxRenderable(ctx, {
         flexDirection: "column",
         gap: 0,

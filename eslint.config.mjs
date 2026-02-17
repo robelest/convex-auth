@@ -19,6 +19,7 @@ export default tseslint.config(
       "packages/portal/build/**",
       "packages/portal/build-cdn/**",
       "cdn-stage/**",
+      "packages/samlify/**",
       "examples/**/.output/**",
       "examples/**/src/routeTree.gen.ts",
       "**/*.d.ts",

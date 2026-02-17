@@ -15,7 +15,6 @@
 import {
   BoxRenderable,
   TextRenderable,
-  TextAttributes,
   t,
   bold,
   fg,

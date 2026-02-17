@@ -12,7 +12,10 @@
   ],
   "homepage": "https://labs.convex.dev/auth",
   "bugs": "https://github.com/robelest/convex-auth/issues",
-  "repository": "https://github.com/robelest/convex-auth",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/robelest/convex-auth.git"
+  },
   "license": "Apache-2.0",
   "author": "xixixao",
   "files": [
@@ -28,16 +31,20 @@
     "build:component:dts": "node ../../scripts/fix-component-entrypoint-dts.js",
     "build:bin": "esbuild src/cli/index.ts --bundle --platform=node --format=cjs --outfile=dist/bin.cjs",
     "build": "rm -rf dist && bun run build:version && bun run build:lib && bun run build:component:dts && bun run build:bin",
+    "typecheck:consumer": "tsc --project tsconfig.consumer.json --noEmit",
+    "check:attw": "attw --pack . --profile esm-only --exclude-entrypoints ./test ./_generated/component.js",
+    "check:publint": "publint --strict",
+    "check:packaging": "bun run check:attw && bun run check:publint",
     "docs": "bun run --cwd ../../docs dev",
     "lint": "tsc --project tsconfig.server.json --noEmit && tsc --project tsconfig.client.json --noEmit && tsc --project tsconfig.component.json --noEmit && bun run --cwd ../.. lint",
     "spellcheck": "cspell \"docs/pages/**/*.md*\"",
     "prepare": "bun run build",
-    "prepublishOnly": "bun run lint && bun run build && bun run test:once",
+    "prepublishOnly": "bun run lint && bun run build && bun run typecheck:consumer && bun run check:packaging && bun run test:once",
     "test": "bun run --cwd ../../packages/test test",
     "test:once": "bun run --cwd ../../packages/test test:once",
-    "convex:dev": "bunx convex dev",
-    "convex:codegen": "bunx convex codegen && bun run convex:codegen:component",
-    "convex:codegen:component": "bunx convex codegen --component-dir ./src/component",
+    "convex:dev": "bun run --cwd ../.. dev:convex",
+    "convex:codegen": "bun run --cwd ../.. codegen:convex",
+    "convex:codegen:component": "bun run --cwd ../.. codegen:convex:component",
     "convex:dashboard": "bunx convex dashboard",
     "convex:run": "bunx convex run"
   },
@@ -100,6 +107,7 @@
     "a bundle."
   ],
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.2",
     "@commander-js/extra-typings": "^14.0.0",
     "@convex-dev/resend": "^0.2.3",
     "@edge-runtime/vm": "^5.0.0",
@@ -117,6 +125,7 @@
     "inquirer": "^13.2.2",
     "next": "^16.1.6",
     "npm-run-all": "^4.1.5",
+    "publint": "^0.3.17",
     "react-dom": "^19.2.4",
     "shelljs": "^0.10.0",
     "tsdown": "0.20.0-beta.3",
