@@ -13,29 +13,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: extractions/setup-just@v2
-
-      # TODO this doesn't pass on Node.js 20 but it should, something with Next.js
-      - name: Use Node.js 18.x
-        uses: actions/setup-node@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 18.x
-          cache: "npm"
+          bun-version: latest
 
       - name: Install dependencies
-        run: |
-          npm ci
-          cd test; npm ci
-          cd ../test-nextjs; npm ci
-          cd ../test-router; npm ci
+        run: bun install --frozen-lockfile
 
-      - name: test
-        run: npm run test:once
+      - name: Run tests
+        run: bun run test
 
-      - name: Install Playwright Browsers
-        working-directory: test-nextjs
-        run: npx playwright install --with-deps
+      - name: Run consumer typecheck
+        run: bun run --cwd packages/auth typecheck:consumer
 
-      - name: e2e test
-        working-directory: test-nextjs
-        run: npm run test
+      - name: Run packaging checks
+        run: bun run --cwd packages/auth check:packaging
