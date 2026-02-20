@@ -93,6 +93,7 @@
     "@oslojs/webauthn": "^1.0.0",
     "arctic": "^3.7.0",
     "cookie": "^1.1.1",
+    "fluent-convex": "^0.12.3",
     "jose": "^6.1.3",
     "jwt-decode": "^4.0.0",
     "lucia": "^3.2.2"

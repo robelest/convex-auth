@@ -6,6 +6,7 @@
     "dev:convex": "bunx convex dev",
     "dev:tanstack": "bun run --cwd examples/tanstack dev",
     "dev:tui": "bun run --cwd examples/cli start",
+    "postinstall": "node scripts/patch-fluent-convex.mjs",
     "build": "bun run --cwd packages/auth build",
     "publish": "bun run --cwd packages/auth build && bun publish --cwd packages/auth",
     "lint": "eslint .",
@@ -27,7 +28,9 @@
     "@robelest/convex-auth": "workspace:*",
     "arctic": "^3.7.0",
     "convex": "^1.31.7",
-    "convex-helpers": "^0.1.111"
+    "convex-helpers": "^0.1.111",
+    "fluent-convex": "^0.12.3",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@convex-dev/eslint-plugin": "^1.1.1",
