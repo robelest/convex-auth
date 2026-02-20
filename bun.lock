@@ -83,7 +83,7 @@
     },
     "packages/auth": {
       "name": "@robelest/convex-auth",
-      "version": "0.0.4-preview.2",
+      "version": "0.0.4-preview.3",
       "bin": "./dist/bin.cjs",
       "dependencies": {
         "@oslojs/crypto": "^1.0.1",
