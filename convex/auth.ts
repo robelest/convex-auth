@@ -9,6 +9,14 @@ import totp from "@robelest/convex-auth/providers/totp";
 import { Auth } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
 
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
 const resend = new Resend(components.resend, {
   testMode: false,
 });
@@ -17,9 +25,9 @@ const auth = new Auth(components.auth, {
   providers: [
     OAuth(
       new Google(
-        process.env.GOOGLE_CLIENT_ID!,
-        process.env.GOOGLE_CLIENT_SECRET!,
-        process.env.CONVEX_SITE_URL + "/api/auth/callback/google",
+        requireEnv("GOOGLE_CLIENT_ID"),
+        requireEnv("GOOGLE_CLIENT_SECRET"),
+        `${requireEnv("CONVEX_SITE_URL")}/api/auth/callback/google`,
       ),
       { scopes: ["openid", "profile", "email"] },
     ),
