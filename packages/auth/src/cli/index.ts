@@ -195,9 +195,9 @@ async function configureEnvVar(
 async function configureKeys(config: ProjectConfig) {
   logStep(config, "Configure private and public key");
   const { JWT_PRIVATE_KEY, JWKS } = await generateKeys();
-  // TODO: We should just list all the 3 env vars in one command
-  // to speed things up, but the convex CLI doesn't quote the
-  // values correctly right now, so we can't.
+  // Keep these reads separate because `convex env get` output quoting
+  // for multiline values (private keys) is not stable enough to parse
+  // reliably in a single batched command.
   const existingPrivateKey = await backendEnvVar(config, "JWT_PRIVATE_KEY");
   const existingJwks = await backendEnvVar(config, "JWKS");
   if (existingPrivateKey !== "" || existingJwks !== "") {
@@ -210,8 +210,8 @@ async function configureKeys(config: ProjectConfig) {
       return;
     }
   }
-  // TODO: We should set both env vars in one command, but the convex CLI doesn't
-  // support setting multiple env vars.
+  // `convex env set` currently supports one variable per invocation,
+  // so we intentionally issue two commands here.
   await setEnvVar(config, "JWT_PRIVATE_KEY", JWT_PRIVATE_KEY, {
     hideValue: true,
   });

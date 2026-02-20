@@ -10,7 +10,7 @@ Component-first authentication for [Convex](https://convex.dev). One component, 
 ## Install
 
 ```bash
-npm install @robelest/convex-auth
+bun add @robelest/convex-auth
 ```
 
 > Renamed package: if you are migrating from earlier previews, replace
@@ -19,7 +19,7 @@ npm install @robelest/convex-auth
 ## Quick Setup (CLI)
 
 ```bash
-npx @robelest/convex-auth
+bunx @robelest/convex-auth
 ```
 
 The interactive setup wizard runs 6 steps:
@@ -34,7 +34,7 @@ The interactive setup wizard runs 6 steps:
 Pass `--site-url` to skip the URL prompt:
 
 ```bash
-npx @robelest/convex-auth --site-url "http://localhost:5173"
+bunx @robelest/convex-auth --site-url "http://localhost:5173"
 ```
 
 ## Manual Setup
@@ -946,14 +946,14 @@ The verification page can pre-fill the code from the URL via `?user_code=XXXX-XX
 
 ```bash
 # Set up production keys + site URL
-npx @robelest/convex-auth --prod --site-url "https://myapp.com"
+bunx @robelest/convex-auth --prod --site-url "https://myapp.com"
 
 # Set provider secrets
-npx convex env set --prod AUTH_GITHUB_ID "..."
-npx convex env set --prod AUTH_GITHUB_SECRET "..."
+bunx convex env set --prod AUTH_GITHUB_ID "..."
+bunx convex env set --prod AUTH_GITHUB_SECRET "..."
 
 # Deploy
-npx convex deploy --cmd 'npm run build'
+bunx convex deploy --cmd 'bun run build'
 ```
 
 ## SSR Integration
@@ -1048,7 +1048,7 @@ Key design constraints of the Convex component system:
 ### Setup wizard
 
 ```bash
-npx @robelest/convex-auth [options]
+bunx @robelest/convex-auth [options]
 ```
 
 | Option | Description |

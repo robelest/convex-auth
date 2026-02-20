@@ -95,7 +95,7 @@ export type ConvexAuthConfig = {
    * or any other provider.
    *
    * When configured, a magic link email provider (`id: "email"`) is
-   * auto-registered — no need to add a separate Auth.js email provider
+   * auto-registered — no need to add another provider with the same `id`
    * to `providers`.
    *
    * Works seamlessly with the `@convex-dev/resend` Convex component:
@@ -145,20 +145,21 @@ export type ConvexAuthConfig = {
      * Control which URLs are allowed as a destination after OAuth sign-in
      * and for magic links:
      *
-      * ```ts
-      * import { Auth } from "@robelest/convex-auth/component";
-      *
-      * export const { auth, signIn, signOut, store } = Auth({
-      *   providers: [google],
-      *   callbacks: {
-      *     async redirect({ redirectTo }) {
-      *       // Check that redirectTo is valid
-      *       // and return the relative or absolute URL
-      *       // to redirect to.
-      *     },
-      *   },
-      * });
-      * ```
+     * ```ts
+     * import { Auth } from "@robelest/convex-auth/component";
+     * import { components } from "./_generated/api";
+     *
+     * const auth = new Auth(components.auth, {
+     *   providers: [google],
+     *   callbacks: {
+     *     async redirect({ redirectTo }) {
+     *       // Check that redirectTo is valid
+     *       // and return the relative or absolute URL
+     *       // to redirect to.
+     *     },
+     *   },
+     * });
+     * ```
      *
      * Convex Auth performs redirect only during OAuth sign-in. By default,
      * it redirects back to the URL specified via the `SITE_URL` environment
@@ -452,7 +453,7 @@ export type PhoneUserConfig<
 > = Omit<Partial<PhoneConfig<DataModel>>, "options" | "type">;
 
 /**
- * Similar to Auth.js Credentials config.
+ * Credentials provider config used by Convex Auth.
  */
 export type ConvexCredentialsConfig = CredentialsUserConfig<any> & {
   type: "credentials";

@@ -17,7 +17,7 @@ Component-first authentication for [Convex](https://convex.dev). One component, 
 ## Install
 
 ```bash
-npm install @robelest/convex-auth
+bun add @robelest/convex-auth
 ```
 
 > Renamed package: if you are migrating from earlier previews, replace
@@ -26,7 +26,7 @@ npm install @robelest/convex-auth
 ## Quick Start
 
 ```bash
-npx @robelest/convex-auth
+bunx @robelest/convex-auth
 ```
 
 The interactive CLI sets up your Convex component, auth config, and HTTP routes in under a minute.

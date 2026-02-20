@@ -83,12 +83,12 @@ export interface PasswordConfig<DataModel extends GenericDataModel> {
    */
   crypto?: CredentialsConfig["crypto"];
   /**
-   * An Auth.js email provider used to require verification
+   * An email provider used to require verification
    * before password reset.
    */
   reset?: EmailConfig | ((...args: any) => EmailConfig);
   /**
-   * An Auth.js email provider used to require verification
+   * An email provider used to require verification
    * before sign up / sign in.
    */
   verify?: EmailConfig | ((...args: any) => EmailConfig);

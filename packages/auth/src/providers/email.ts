@@ -25,8 +25,9 @@ type EmailProviderUserConfig<DataModel extends GenericDataModel> =
  * ```ts
  * import email from "@robelest/convex-auth/providers/email";
  * import { Auth } from "@robelest/convex-auth/component";
+ * import { components } from "./_generated/api";
  *
- * export const { auth, signIn, signOut, store } = Auth({
+ * const auth = new Auth(components.auth, {
  *   providers: [
  *     email({
  *       from: "My App <noreply@example.com>",
@@ -37,6 +38,8 @@ type EmailProviderUserConfig<DataModel extends GenericDataModel> =
  *     }),
  *   ],
  * });
+ *
+ * export const { signIn, signOut, store } = auth;
  * ```
  *
  * Make sure the token has high enough entropy to be secure.
