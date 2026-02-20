@@ -63,8 +63,27 @@ test("sign up with password", async () => {
   expect(refreshedAfterSecondSignOut).toBeNull();
 });
 
-// TODO: Re-add once password-code provider is configured in convex/auth.ts
-test.todo("sign up with password and verify email");
+test("sign up with password keeps email unverified by default", async () => {
+  setupEnv();
+  const t = convexTest(schema);
+  const { tokens } = await t.action(api.auth.signIn, {
+    provider: "password",
+    params: {
+      email: "unverified@gmail.com",
+      password: "44448888",
+      flow: "signUp",
+    },
+  });
+
+  const claims = decodeJwt(tokens!.token);
+  const viewer = await t.withIdentity({ subject: claims.sub }).query(
+    api.users.viewer,
+    {},
+  );
+
+  expect(viewer?.email).toBe("unverified@gmail.com");
+  expect(viewer?.emailVerificationTime).toBeUndefined();
+});
 
 function setupEnv() {
   process.env.SITE_URL = "http://localhost:5173";

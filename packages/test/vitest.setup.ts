@@ -8,6 +8,7 @@ process.env.GOOGLE_CLIENT_SECRET ??= "test-google-client-secret";
 const DIRECT_CALL_WARNING =
   "Convex functions should not directly call other Convex functions.";
 const EXPECTED_ERROR_SUBSTRINGS = [
+  "Invalid refresh token",
   "Invalid verification code",
   "Too many failed attempts to verify code for this email",
   "Expired refresh token",

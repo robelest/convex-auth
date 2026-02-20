@@ -43,11 +43,53 @@ test("sign in with email signs out existing user with different email", async ()
   expect(refreshedOldSession).toBeNull();
 });
 
-// TODO: Re-add OAuth account linking tests once we implement a proper
-// Google OIDC mock (discovery + token exchange + id_token).
-test.todo("automatic linking for signin via email");
-test.todo("automatic linking for signin via verified OAuth");
-test.todo("no linking to untrusted accounts");
+test("unverified password accounts are not auto-linked to email sign-in", async () => {
+  setupEnv();
+  const t = convexTest(schema);
+
+  const { tokens } = await t.action(api.auth.signIn, {
+    provider: "password",
+    params: { email: "linkme@gmail.com", password: "44448888", flow: "signUp" },
+  });
+
+  const claims = decodeJwt(tokens!.token);
+  const asUser = t.withIdentity({ subject: claims.sub });
+
+  const newTokens = await signInViaMagicLink(asUser, "email", "linkme@gmail.com");
+  expect(newTokens).not.toBeNull();
+  expect(getUserIdFromToken(newTokens!.token)).not.toEqual(
+    getUserIdFromToken(tokens!.token),
+  );
+});
+
+test("automatic linking persists across repeated verified email sign-ins", async () => {
+  setupEnv();
+  const t = convexTest(schema);
+
+  const firstTokens = await signInViaMagicLink(t, "email", "repeat@gmail.com");
+  expect(firstTokens).not.toBeNull();
+
+  const secondTokens = await signInViaMagicLink(t, "email", "repeat@gmail.com");
+  expect(secondTokens).not.toBeNull();
+
+  expect(getUserIdFromToken(secondTokens!.token)).toEqual(
+    getUserIdFromToken(firstTokens!.token),
+  );
+});
+
+test("no linking to untrusted accounts", async () => {
+  setupEnv();
+  const t = convexTest(schema);
+
+  const firstTokens = await signInViaMagicLink(t, "email", "first@gmail.com");
+  const secondTokens = await signInViaMagicLink(t, "email", "second@gmail.com");
+
+  expect(firstTokens).not.toBeNull();
+  expect(secondTokens).not.toBeNull();
+  expect(getUserIdFromToken(secondTokens!.token)).not.toEqual(
+    getUserIdFromToken(firstTokens!.token),
+  );
+});
 
 function getUserIdFromToken(token: string) {
   return decodeJwt(token).sub!.split("|")[0];

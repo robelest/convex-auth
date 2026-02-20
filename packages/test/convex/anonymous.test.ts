@@ -18,7 +18,7 @@ test("sign in anonymously", async () => {
   expect(tokens).not.toBeNull();
 });
 
-test.todo("convert anonymous user to permanent", async () => {
+test("anonymous sign-in is not auto-converted during email sign-in", async () => {
   setupEnv();
   const t = convexTest(schema);
   const { tokens } = await t.action(api.auth.signIn, { provider: "anonymous" });
@@ -32,14 +32,20 @@ test.todo("convert anonymous user to permanent", async () => {
   expect(newTokens).not.toBeNull();
 
   const newClaims = decodeJwt(newTokens!.token);
-  expect(newClaims.sub).toEqual(claims.sub);
+  expect(newClaims.sub).not.toEqual(claims.sub);
+
+  const oldViewer = await t.withIdentity({ subject: claims.sub }).query(
+    api.users.viewer,
+    {},
+  );
+  expect(oldViewer?.isAnonymous).toEqual(true);
 
   const viewer = await t.withIdentity({ subject: newClaims.sub }).query(
     api.users.viewer,
     {},
   );
   expect(viewer).toMatchObject({ email: "mike@gmail.com" });
-  expect(viewer).not.toHaveProperty("isAnonymous");
+  expect(viewer?.isAnonymous).not.toEqual(true);
 });
 
 function setupEnv() {
