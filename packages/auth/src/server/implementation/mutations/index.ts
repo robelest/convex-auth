@@ -34,7 +34,10 @@ import { verifierImpl } from "./verifier";
 import { LOG_LEVELS, logWithLevel } from "../utils";
 export { callInvalidateSessions } from "./invalidate";
 export { callModifyAccount } from "./account";
-export { callRetreiveAccountWithCredentials } from "./retrieve";
+export {
+  callRetrieveAccountWithCredentials,
+  callRetreiveAccountWithCredentials,
+} from "./retrieve";
 export { callCreateAccountFromCredentials } from "./register";
 export { callCreateVerificationCode } from "./code";
 export { callUserOAuth } from "./oauth";

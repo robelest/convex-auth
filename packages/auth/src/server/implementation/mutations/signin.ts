@@ -1,5 +1,6 @@
 import { GenericId, Infer, v } from "convex/values";
-import { ActionCtx, MutationCtx, SessionInfo } from "../types";
+import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import { MutationCtx, SessionInfo } from "../types";
 import * as Provider from "../provider";
 import {
   createNewAndDeleteExistingSession,
@@ -39,8 +40,8 @@ export async function signInImpl(
   );
 }
 
-export const callSignIn = async (
-  ctx: ActionCtx,
+export const callSignIn = async <DataModel extends GenericDataModel>(
+  ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof signInArgs>,
 ): Promise<ReturnType> => {
   return ctx.runMutation(AUTH_STORE_REF, {

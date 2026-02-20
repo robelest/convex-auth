@@ -1,6 +1,7 @@
 import { GenericId, Infer, v } from "convex/values";
+import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { deleteSession } from "../sessions";
-import { ActionCtx, MutationCtx } from "../types";
+import { MutationCtx } from "../types";
 import { LOG_LEVELS, logWithLevel } from "../utils";
 import * as Provider from "../provider";
 import { authDb } from "../db";
@@ -11,8 +12,8 @@ export const invalidateSessionsArgs = v.object({
   except: v.optional(v.array(v.string())),
 });
 
-export const callInvalidateSessions = async (
-  ctx: ActionCtx,
+export const callInvalidateSessions = async <DataModel extends GenericDataModel>(
+  ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof invalidateSessionsArgs>,
 ): Promise<void> => {
   return ctx.runMutation(AUTH_STORE_REF, {

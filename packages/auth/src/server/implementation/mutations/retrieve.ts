@@ -1,5 +1,6 @@
 import { Infer, v } from "convex/values";
-import { ActionCtx, Doc, MutationCtx } from "../types";
+import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import { Doc, MutationCtx } from "../types";
 import {
   isSignInRateLimited,
   recordFailedSignIn,
@@ -59,15 +60,27 @@ export async function retrieveAccountWithCredentialsImpl(
     }
     await resetSignInRateLimit(ctx, existingAccount._id, config);
   }
+  const existingUser = (await db.users.getById(
+    existingAccount.userId,
+  )) as Doc<"user"> | null;
+  if (existingUser === null) {
+    logWithLevel(
+      LOG_LEVELS.ERROR,
+      `Account ${existingAccount._id} is linked to missing user ${existingAccount.userId}`,
+    );
+    return "InvalidAccountId";
+  }
+
   return {
     account: existingAccount,
-    // TODO: Ian removed this
-    user: (await db.users.getById(existingAccount.userId)) as unknown as Doc<"user">,
+    user: existingUser,
   };
 }
 
-export const callRetreiveAccountWithCredentials = async (
-  ctx: ActionCtx,
+export const callRetrieveAccountWithCredentials = async <
+  DataModel extends GenericDataModel,
+>(
+  ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof retrieveAccountWithCredentialsArgs>,
 ): Promise<ReturnType> => {
   return ctx.runMutation(AUTH_STORE_REF, {
@@ -77,3 +90,7 @@ export const callRetreiveAccountWithCredentials = async (
     },
   });
 };
+
+/** @deprecated Typo kept for backward compatibility. */
+export const callRetreiveAccountWithCredentials =
+  callRetrieveAccountWithCredentials;

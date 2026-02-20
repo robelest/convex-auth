@@ -1,5 +1,6 @@
 import { GenericId } from "convex/values";
-import { ActionCtx, MutationCtx } from "../types";
+import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import { MutationCtx } from "../types";
 import { deleteSession, getAuthSessionId } from "../sessions";
 import * as Provider from "../provider";
 import { authDb } from "../db";
@@ -26,7 +27,9 @@ export async function signOutImpl(
   return null;
 }
 
-export const callSignOut = async (ctx: ActionCtx): Promise<void> => {
+export const callSignOut = async <DataModel extends GenericDataModel>(
+  ctx: GenericActionCtx<DataModel>,
+): Promise<void> => {
   return ctx.runMutation(AUTH_STORE_REF, {
     args: {
       type: "signOut",

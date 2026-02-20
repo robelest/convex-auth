@@ -1,5 +1,6 @@
 import { GenericId, Infer, v } from "convex/values";
-import { ActionCtx, MutationCtx } from "../types";
+import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import { MutationCtx } from "../types";
 import * as Provider from "../provider";
 import { EmailConfig, PhoneConfig } from "../../types";
 import { getAccountOrThrow, upsertUserAndAccount } from "../users";
@@ -71,8 +72,10 @@ export async function createVerificationCodeImpl(
   return email ?? phone!;
 }
 
-export const callCreateVerificationCode = async (
-  ctx: ActionCtx,
+export const callCreateVerificationCode = async <
+  DataModel extends GenericDataModel,
+>(
+  ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof createVerificationCodeArgs>,
 ): Promise<ReturnType> => {
   return ctx.runMutation(AUTH_STORE_REF, {

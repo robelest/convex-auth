@@ -1,5 +1,6 @@
 import { Infer, v } from "convex/values";
-import { ActionCtx, MutationCtx } from "../types";
+import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import { MutationCtx } from "../types";
 import * as Provider from "../provider";
 import type { AuthProviderMaterializedConfig } from "../../types";
 import { upsertUserAndAccount } from "../users";
@@ -60,8 +61,8 @@ export async function userOAuthImpl(
   return code;
 }
 
-export const callUserOAuth = async (
-  ctx: ActionCtx,
+export const callUserOAuth = async <DataModel extends GenericDataModel>(
+  ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof userOAuthArgs>,
 ): Promise<ReturnType> => {
   return ctx.runMutation(AUTH_STORE_REF, {

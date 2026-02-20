@@ -1,4 +1,5 @@
 import { ConvexHttpClient } from "convex/browser";
+import { makeFunctionReference } from "convex/server";
 import { ConvexError } from "convex/values";
 import { jwtDecode } from "jwt-decode";
 import { parse, serialize } from "cookie";
@@ -7,6 +8,9 @@ import type {
   SignOutAction,
 } from "./implementation/index";
 import { isLocalHost } from "./utils";
+
+const signInActionRef: SignInAction = makeFunctionReference("auth:signIn");
+const signOutActionRef: SignOutAction = makeFunctionReference("auth:signOut");
 
 /** Cookie lifetime configuration for auth tokens. */
 export type AuthCookieConfig = {
@@ -359,7 +363,7 @@ export function server(options: ServerOptions) {
 
     try {
       const result = await convexClient().action(
-        "auth:signIn" as unknown as SignInAction,
+        signInActionRef,
         {
           refreshToken,
         },
@@ -457,7 +461,7 @@ export function server(options: ServerOptions) {
 
         try {
           const result = await client.action(
-            "auth:signIn" as unknown as SignInAction,
+            signInActionRef,
             args,
           );
           if (result.redirect !== undefined) {
@@ -522,7 +526,7 @@ export function server(options: ServerOptions) {
 
       try {
         await convexClient(currentCookies.token).action(
-          "auth:signOut" as unknown as SignOutAction,
+          signOutActionRef,
         );
       } catch (error) {
         console.error(error);
@@ -591,7 +595,7 @@ export function server(options: ServerOptions) {
         redirectUrl.searchParams.delete("code");
         try {
           const result = await convexClient().action(
-            "auth:signIn" as unknown as SignInAction,
+            signInActionRef,
             {
               params: { code },
               verifier: requestCookies.verifier ?? undefined,

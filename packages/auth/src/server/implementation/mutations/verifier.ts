@@ -1,5 +1,6 @@
 import { GenericId } from "convex/values";
-import { ActionCtx, MutationCtx } from "../types";
+import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import { MutationCtx } from "../types";
 import { getAuthSessionId } from "../sessions";
 import * as Provider from "../provider";
 import { authDb } from "../db";
@@ -15,7 +16,9 @@ export async function verifierImpl(
   return (await authDb(ctx, config).verifiers.create(sessionId)) as ReturnType;
 }
 
-export const callVerifier = async (ctx: ActionCtx): Promise<ReturnType> => {
+export const callVerifier = async <DataModel extends GenericDataModel>(
+  ctx: GenericActionCtx<DataModel>,
+): Promise<ReturnType> => {
   return ctx.runMutation(AUTH_STORE_REF, {
     args: {
       type: "verifier",

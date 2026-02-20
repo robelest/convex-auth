@@ -1,5 +1,6 @@
 import { Infer, v } from "convex/values";
-import { ActionCtx, Doc, MutationCtx } from "../types";
+import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import { Doc, MutationCtx } from "../types";
 import * as Provider from "../provider";
 import { logWithLevel, maybeRedact } from "../utils";
 import {
@@ -162,8 +163,8 @@ export async function refreshSessionImpl(
   }
 }
 
-export const callRefreshSession = async (
-  ctx: ActionCtx,
+export const callRefreshSession = async <DataModel extends GenericDataModel>(
+  ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof refreshSessionArgs>,
 ): Promise<ReturnType> => {
   return ctx.runMutation(AUTH_STORE_REF, {

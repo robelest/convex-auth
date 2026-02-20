@@ -1,5 +1,6 @@
 import { GenericId, Infer, v } from "convex/values";
-import { ActionCtx, MutationCtx, SessionInfo } from "../types";
+import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import { MutationCtx, SessionInfo } from "../types";
 import {
   isSignInRateLimited,
   recordFailedSignIn,
@@ -84,8 +85,10 @@ export async function verifyCodeAndSignInImpl(
   );
 }
 
-export const callVerifyCodeAndSignIn = async (
-  ctx: ActionCtx,
+export const callVerifyCodeAndSignIn = async <
+  DataModel extends GenericDataModel,
+>(
+  ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof verifyCodeAndSignInArgs>,
 ): Promise<ReturnType> => {
   return ctx.runMutation(AUTH_STORE_REF, {

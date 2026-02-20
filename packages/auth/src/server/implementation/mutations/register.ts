@@ -1,5 +1,6 @@
 import { Infer, v } from "convex/values";
-import { ActionCtx, Doc, MutationCtx } from "../types";
+import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import { Doc, MutationCtx } from "../types";
 import * as Provider from "../provider";
 import { ConvexCredentialsConfig } from "../../types";
 import { upsertUserAndAccount } from "../users";
@@ -56,10 +57,19 @@ export async function createAccountFromCredentialsImpl(
     ) {
       throwAuthError("ACCOUNT_ALREADY_EXISTS", `Account ${account.id} already exists`);
     }
+    const existingUser = (await db.users.getById(
+      existingAccount.userId,
+    )) as Doc<"user"> | null;
+    if (existingUser === null) {
+      throwAuthError(
+        "ACCOUNT_NOT_FOUND",
+        `Linked user for account ${account.id} was not found.`,
+      );
+    }
+
     return {
       account: existingAccount,
-      // TODO: Ian removed this,
-      user: (await db.users.getById(existingAccount.userId)) as unknown as Doc<"user">,
+      user: existingUser,
     };
   }
 
@@ -81,14 +91,28 @@ export async function createAccountFromCredentialsImpl(
     config,
   );
 
+  const createdAccount = (await db.accounts.getById(accountId)) as
+    | Doc<"account">
+    | null;
+  if (createdAccount === null) {
+    throwAuthError("ACCOUNT_NOT_FOUND", `Created account ${accountId} was not found.`);
+  }
+
+  const createdUser = (await db.users.getById(userId)) as Doc<"user"> | null;
+  if (createdUser === null) {
+    throwAuthError("USER_UPDATE_FAILED", `Created user ${userId} was not found.`);
+  }
+
   return {
-    account: (await db.accounts.getById(accountId)) as Doc<"account">,
-    user: (await db.users.getById(userId)) as unknown as Doc<"user">,
+    account: createdAccount,
+    user: createdUser,
   };
 }
 
-export const callCreateAccountFromCredentials = async (
-  ctx: ActionCtx,
+export const callCreateAccountFromCredentials = async <
+  DataModel extends GenericDataModel,
+>(
+  ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof createAccountFromCredentialsArgs>,
 ): Promise<ReturnType> => {
   return ctx.runMutation(AUTH_STORE_REF, {

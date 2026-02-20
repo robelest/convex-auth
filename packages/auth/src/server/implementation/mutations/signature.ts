@@ -1,5 +1,6 @@
 import { GenericId, Infer, v } from "convex/values";
-import { ActionCtx, MutationCtx } from "../types";
+import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import { MutationCtx } from "../types";
 import * as Provider from "../provider";
 import { authDb } from "../db";
 import { AUTH_STORE_REF } from "./store";
@@ -26,8 +27,8 @@ export async function verifierSignatureImpl(
   return await db.verifiers.patch(verifierDoc._id, { signature });
 }
 
-export const callVerifierSignature = async (
-  ctx: ActionCtx,
+export const callVerifierSignature = async <DataModel extends GenericDataModel>(
+  ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof verifierSignatureArgs>,
 ): Promise<void> => {
   return ctx.runMutation(AUTH_STORE_REF, {

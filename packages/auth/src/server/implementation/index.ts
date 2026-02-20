@@ -27,7 +27,6 @@ import {
 } from "../types";
 import { requireEnv } from "../utils";
 import {
-  ActionCtx,
   MutationCtx,
   KeyDoc,
 } from "./types";
@@ -44,7 +43,7 @@ import {
   callCreateAccountFromCredentials,
   callInvalidateSessions,
   callModifyAccount,
-  callRetreiveAccountWithCredentials,
+  callRetrieveAccountWithCredentials,
   callSignOut,
   callUserOAuth,
   callVerifierSignature,
@@ -90,10 +89,10 @@ export type SignOutAction = FunctionReferenceFromExport<
  * from `convex/auth.ts` to make them callable:
  *
  * ```ts filename="convex/auth.ts"
- * import { Auth } from "@robelest/convex-auth/component";
+ * import { AuthFactory } from "@robelest/convex-auth/component";
  * import { components } from "./_generated/api";
  *
- * export const { auth, signIn, signOut, store } = Auth({
+ * export const { auth, signIn, signOut, store } = AuthFactory({
  *   component: components.auth,
  *   providers: [],
  * });
@@ -318,8 +317,7 @@ export function Auth(config_: ConvexAuthConfig) {
           except?: GenericId<"session">[];
         },
       ): Promise<void> => {
-        const actionCtx = ctx as unknown as ActionCtx;
-        return await callInvalidateSessions(actionCtx, args);
+        return await callInvalidateSessions(ctx, args);
       },
     },
     account: {
@@ -334,8 +332,7 @@ export function Auth(config_: ConvexAuthConfig) {
         ctx: GenericActionCtx<DataModel>,
         args: CreateAccountArgs,
       ) => {
-        const actionCtx = ctx as unknown as ActionCtx;
-        return await callCreateAccountFromCredentials(actionCtx, args);
+        return await callCreateAccountFromCredentials(ctx, args);
       },
       /**
        * Retrieve an account and user for a credentials provider.
@@ -349,8 +346,7 @@ export function Auth(config_: ConvexAuthConfig) {
         ctx: GenericActionCtx<DataModel>,
         args: RetrieveAccountArgs,
       ) => {
-        const actionCtx = ctx as unknown as ActionCtx;
-        const result = await callRetreiveAccountWithCredentials(actionCtx, args);
+        const result = await callRetrieveAccountWithCredentials(ctx, args);
         if (typeof result === "string") {
           throwAuthError("ACCOUNT_NOT_FOUND", result);
         }
@@ -366,8 +362,7 @@ export function Auth(config_: ConvexAuthConfig) {
         ctx: GenericActionCtx<DataModel>,
         args: UpdateAccountCredentialsArgs,
       ): Promise<void> => {
-        const actionCtx = ctx as unknown as ActionCtx;
-        return await callModifyAccount(actionCtx, args);
+        return await callModifyAccount(ctx, args);
       },
     },
     provider: {
@@ -1146,8 +1141,7 @@ export function Auth(config_: ConvexAuthConfig) {
         });
 
         const callbackAction = httpActionGeneric(
-          async (genericCtx, request) => {
-            const ctx = genericCtx as unknown as ActionCtx;
+          async (ctx, request) => {
             const url = new URL(request.url);
             const pathParts = url.pathname.split("/");
             const providerId = pathParts.at(-1)!;
@@ -1286,8 +1280,6 @@ export function Auth(config_: ConvexAuthConfig) {
           });
 
         return httpActionGeneric(async (genericCtx, request) => {
-          const ctx = genericCtx as unknown as GenericActionCtx<GenericDataModel>;
-
           try {
             // 1. Extract Bearer token
             const authHeader = request.headers.get("Authorization");
@@ -1303,7 +1295,7 @@ export function Auth(config_: ConvexAuthConfig) {
             // 2. Verify API key
             let keyResult: { userId: string; keyId: string; scopes: import("../types.js").ScopeChecker };
             try {
-              keyResult = await auth.key.verify(ctx, rawKey);
+              keyResult = await auth.key.verify(genericCtx, rawKey);
             } catch (error: unknown) {
               if (isAuthError(error)) {
                 const { code, message } = error.data as { code: string; message: string };
@@ -1324,7 +1316,7 @@ export function Auth(config_: ConvexAuthConfig) {
             }
 
             // 4. Enrich context with key info
-            const enrichedCtx = Object.assign(ctx, {
+            const enrichedCtx = Object.assign(genericCtx, {
               key: {
                 userId: keyResult.userId,
                 keyId: keyResult.keyId,

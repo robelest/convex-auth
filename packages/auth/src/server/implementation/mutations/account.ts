@@ -1,5 +1,6 @@
 import { Infer, v } from "convex/values";
-import { ActionCtx, MutationCtx } from "../types";
+import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import { MutationCtx } from "../types";
 import { GetProviderOrThrowFunc, hash } from "../provider";
 import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils";
 import * as Provider from "../provider";
@@ -37,8 +38,8 @@ export async function modifyAccountImpl(
   return;
 }
 
-export const callModifyAccount = async (
-  ctx: ActionCtx,
+export const callModifyAccount = async <DataModel extends GenericDataModel>(
+  ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof modifyAccountArgs>,
 ): Promise<void> => {
   return ctx.runMutation(AUTH_STORE_REF, {
