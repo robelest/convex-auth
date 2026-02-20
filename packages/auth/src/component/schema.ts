@@ -247,7 +247,7 @@ export default defineSchema({
    * platform-level when `groupId` is omitted.
    *
    * `email` and `invitedByUserId` are optional to support CLI-generated
-   * invite links where neither is known upfront (e.g. portal admin invites).
+   * invite links where neither is known upfront.
    */
   invite: defineTable({
     groupId: v.optional(v.id("group")),
@@ -283,7 +283,7 @@ export default defineSchema({
    * scoped permissions and optional per-key rate limiting.
    *
    * The raw key is never stored — only a SHA-256 hash. A short prefix
-   * (e.g. "sk_live_abc1...") is kept for display in the portal.
+   * (e.g. "sk_live_abc1...") is kept for display in admin interfaces.
    *
    * Keys support:
    * - **Scoped permissions**: resource:action pairs (e.g. users:read)

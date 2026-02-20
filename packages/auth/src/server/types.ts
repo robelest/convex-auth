@@ -89,7 +89,7 @@ export type ConvexAuthConfig = {
   /**
    * Email transport configuration.
    *
-   * Required for magic link authentication and the admin portal.
+   * Required for magic link authentication.
    * The library generates email content (subject, styled HTML); you
    * provide the delivery mechanism — Resend, SendGrid, SES, Postmark,
    * or any other provider.
@@ -734,15 +734,14 @@ export interface EmailMessage {
 /**
  * Email transport configuration for the Auth library.
  *
- * Provides a delivery mechanism for library-generated emails
- * (magic links, portal admin sign-in). The library owns the
- * email content; you provide the transport.
+ * Provides a delivery mechanism for library-generated emails.
+ * The library owns the email content; you provide the transport.
  */
 export interface EmailTransport {
   /** Sender address shown in the From field (e.g. "My App \<noreply@example.com\>"). */
   from: string;
   /**
-   * Deliver an email. Called by the library for magic links and portal emails.
+   * Deliver an email. Called by the library for magic links.
    *
    * Receives the Convex action context as the first argument, enabling
    * use with Convex components like `@convex-dev/resend`:

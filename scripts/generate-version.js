@@ -4,7 +4,7 @@
  * Generates src/server/version.ts from package.json version.
  *
  * This file is imported by the Convex server code so the auth component
- * version is available at runtime (e.g. for the portal config endpoint).
+ * version is available at runtime.
  * The Convex bundler traces static imports, so this works in production.
  *
  * Usage: node scripts/generate-version.js

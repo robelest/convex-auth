@@ -214,7 +214,7 @@ export const indentBlock = (s: string): string =>
   s.replace(/^/gm, "  ").slice(2);
 
 // ---------------------------------------------------------------------------
-// Crypto helpers (for portal invite links)
+// Crypto helpers
 // ---------------------------------------------------------------------------
 
 export { randomBytes, createHash } from "crypto";

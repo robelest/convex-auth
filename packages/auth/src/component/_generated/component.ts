@@ -23,56 +23,6 @@ import type { FunctionReference } from "convex/server";
  */
 export type ComponentApi<Name extends string | undefined = string | undefined> =
   {
-    bridge: {
-      gcOldAssets: FunctionReference<
-        "mutation",
-        "internal",
-        { currentDeploymentId: string },
-        any,
-        Name
-      >;
-      getByPath: FunctionReference<
-        "query",
-        "internal",
-        { path: string },
-        any,
-        Name
-      >;
-      getCurrentDeployment: FunctionReference<
-        "query",
-        "internal",
-        {},
-        any,
-        Name
-      >;
-      listAssets: FunctionReference<
-        "query",
-        "internal",
-        { limit?: number },
-        any,
-        Name
-      >;
-      recordAsset: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          blobId?: string;
-          contentType: string;
-          deploymentId: string;
-          path: string;
-          storageId?: string;
-        },
-        any,
-        Name
-      >;
-      setCurrentDeployment: FunctionReference<
-        "mutation",
-        "internal",
-        { deploymentId: string },
-        null,
-        Name
-      >;
-    };
     public: {
       accountDelete: FunctionReference<
         "mutation",

@@ -55,20 +55,6 @@ export const AUTH_ERRORS = {
   EMAIL_SEND_FAILED:
     "Failed to send verification email. Please try again.",
 
-  // ---- Portal ----
-  PORTAL_NOT_AUTHORIZED:
-    "This email does not have portal admin access. Ask an admin for an invite link.",
-  PORTAL_UNKNOWN_ACTION:
-    "Unknown portal action.",
-  INVITE_TOKEN_REQUIRED:
-    "Invite token is required.",
-  INVALID_INVITE:
-    "Invalid or expired invite token.",
-  INVITE_ALREADY_USED:
-    "This invite has already been used.",
-  INVITE_EXPIRED:
-    "This invite has expired.",
-
   // ---- API Keys ----
   INVALID_API_KEY:
     "Invalid API key.",

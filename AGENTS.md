@@ -9,7 +9,6 @@ Uses **Bun** workspaces with ESM (`"type": "module"`) throughout.
 |---|---|
 | `packages/auth` | Core library (server, client, providers, CLI, Convex component) |
 | `packages/test` | Vitest test suite (edge-runtime environment) |
-| `packages/portal` | Admin portal SPA (SvelteKit + Tailwind v4) |
 | `examples/tanstack` | Example app (TanStack Start + React) |
 | `convex/` | App-level Convex backend functions |
 

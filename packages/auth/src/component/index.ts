@@ -2,8 +2,7 @@
  * Configuration and helpers for using Convex Auth on your Convex
  * backend.
  *
- * Use `new Auth(components.auth, config)` to configure authentication
- * and `Portal(auth)` to create portal admin exports.
+ * Use `new Auth(components.auth, config)` to configure authentication.
  *
  * @module
  */
@@ -22,7 +21,7 @@ export type {
   SignInAction,
   SignOutAction,
 } from "../server/implementation/index";
-export { Auth, Portal, AuthCtx } from "../server/auth";
+export { Auth, AuthCtx } from "../server/auth";
 export type { AuthCtxConfig, InferAuth, UserDoc } from "../server/auth";
 export type {
   ConvexAuthConfig,

@@ -1,11 +1,12 @@
 import { Google } from "arctic";
 import { Resend } from "@convex-dev/resend";
-import { Device, OAuth } from "@robelest/convex-auth/providers";
+import { OAuth } from "@robelest/convex-auth/providers";
 import anonymous from "@robelest/convex-auth/providers/anonymous";
+import device from "@robelest/convex-auth/providers/device";
 import passkey from "@robelest/convex-auth/providers/passkey";
 import password from "@robelest/convex-auth/providers/password";
 import totp from "@robelest/convex-auth/providers/totp";
-import { Auth, Portal } from "@robelest/convex-auth/component";
+import { Auth } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
 
 const resend = new Resend(components.resend, {
@@ -26,7 +27,7 @@ const auth = new Auth(components.auth, {
     passkey,
     totp({ issuer: "ConvexAuth Example" }),
     anonymous,
-    new Device({
+    device({
       verificationUri: process.env.APP_URL
         ? `${process.env.APP_URL}/device`
         : "http://localhost:3000/device",
@@ -54,7 +55,6 @@ const auth = new Auth(components.auth, {
               to: params.to,
               subject: params.subject,
               html: params.html,
-              text: params.text,
             }),
           });
           if (!res.ok) {
@@ -70,4 +70,3 @@ const auth = new Auth(components.auth, {
 
 export { auth };
 export const { signIn, signOut, store } = auth;
-export const { portalQuery, portalMutation, portalInternal } = Portal(auth);

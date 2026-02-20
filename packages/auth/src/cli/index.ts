@@ -8,7 +8,6 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import inquirer from "inquirer";
 import path from "path";
 import * as v from "valibot";
-import { CDN_PORTAL_BASE } from "../server/constants";
 import { actionDescription } from "./command";
 import { generateKeys } from "./keys";
 
@@ -18,54 +17,6 @@ const program = new Command()
     "Add code and set environment variables for @robelest/convex-auth.\n\n" +
       "Full docs: https://deepwiki.com/robelest/convex-auth",
   );
-
-// ---- Portal subcommand ----
-const portalCmd = program
-  .command("portal")
-  .description("Manage the auth admin portal");
-
-portalCmd
-  .command("deploy")
-  .description("Deploy pre-built portal static files from CDN to Convex storage")
-  .option("--prod", "Use production deployment")
-  .option(
-    "--component <name>",
-    "Convex module with portal functions",
-    "auth",
-  )
-  .option("--concurrency <n>", "Parallel import count (default: auto max 32)")
-  .option("--version <version>", "Portal version to deploy")
-  .action(async (opts) => {
-    const { portalDeployMain } = await import("./deploy.js");
-    await portalDeployMain({
-      prod: opts.prod ?? false,
-      component: opts.component,
-      concurrency:
-        opts.concurrency !== undefined
-          ? Number(opts.concurrency)
-          : undefined,
-      version: opts.version,
-    });
-  });
-
-portalCmd
-  .command("link")
-  .description("Generate an admin invite link for the portal")
-  .option("--prod", "Use production deployment")
-  .option(
-    "--component <name>",
-    "Convex module with portal functions",
-    "auth",
-  )
-  .option("--self-hosted", "Generate a self-hosted invite URL")
-  .action(async (opts) => {
-    const { portalLinkMain } = await import("./link.js");
-    await portalLinkMain({
-      prod: opts.prod ?? false,
-      component: opts.component,
-      selfHosted: opts.selfHosted ?? false,
-    });
-  });
 
 // ---- Default setup command ----
 program
@@ -485,7 +436,7 @@ export default app;
 async function initializeAuth(config: ProjectConfig) {
   logStep(config, "Initialize auth file");
   const sourceTemplate = `\
-import { Auth, Portal } from "@robelest/convex-auth/component";
+import { Auth } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
 
 const auth = new Auth(components.auth, {$$
@@ -494,7 +445,6 @@ const auth = new Auth(components.auth, {$$
 
 export { auth };
 export const { signIn, signOut, store } = auth;
-export const { portalQuery, portalMutation, portalInternal } = Portal(auth);
 `;
   const source = templateToSource(sourceTemplate);
   const authPath = path.join(config.convexFolderPath, "auth");
@@ -864,27 +814,13 @@ async function promptForInput(
 function printFinalSuccessMessage(config: ProjectConfig) {
   const isProd = config.deployment.type === "prod";
   const deploymentName = config.deployment.name ?? "your deployment";
-  const portalUrl =
-    config.deployment.name !== null
-      ? `${CDN_PORTAL_BASE}/${config.deployment.name}`
-      : CDN_PORTAL_BASE;
 
   if (isProd) {
     logSuccess(`Production setup complete for ${deploymentName}.`);
     print("");
-    print(`  Admin portal: ${chalk.cyan(portalUrl)}`);
-    print(
-      `  Create invite: ${chalk.cyan("npx @robelest/convex-auth portal link --prod")}`,
-    );
-    print("");
     print(`  Full docs: ${chalk.cyan("https://deepwiki.com/robelest/convex-auth")}`);
   } else {
     logSuccess(`Setup complete for ${deploymentName}.`);
-    print("");
-    print(`  Admin portal: ${chalk.cyan(portalUrl)}`);
-    print(
-      `  Create invite: ${chalk.cyan("npx @robelest/convex-auth portal link")}`,
-    );
     print("");
     print(`  ${chalk.bold("To set up production")}, run this command with your production URL:`);
     print(`    ${chalk.cyan("npx @robelest/convex-auth --prod --site-url \"https://myapp.com\"")}`);

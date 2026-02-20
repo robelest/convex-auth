@@ -8,7 +8,6 @@
  * @module
  */
 
-import type * as bridge from "../bridge.js";
 import type * as index from "../index.js";
 import type * as public_ from "../public.js";
 
@@ -20,7 +19,6 @@ import type {
 import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
-  bridge: typeof bridge;
   index: typeof index;
   public: typeof public_;
 }> = anyApi as any;
@@ -51,73 +49,4 @@ export const internal: FilterApi<
   FunctionReference<any, "internal">
 > = anyApi as any;
 
-export const components = componentsGeneric() as unknown as {
-  selfHosting: {
-    lib: {
-      gcOldAssets: FunctionReference<
-        "mutation",
-        "internal",
-        { currentDeploymentId: string },
-        { blobIds: Array<string>; storageIds: Array<string> }
-      >;
-      generateUploadUrl: FunctionReference<"mutation", "internal", {}, string>;
-      getByPath: FunctionReference<
-        "query",
-        "internal",
-        { path: string },
-        {
-          _creationTime: number;
-          _id: string;
-          blobId?: string;
-          contentType: string;
-          deploymentId: string;
-          path: string;
-          storageId?: string;
-        } | null
-      >;
-      getCurrentDeployment: FunctionReference<
-        "query",
-        "internal",
-        {},
-        {
-          _creationTime: number;
-          _id: string;
-          currentDeploymentId: string;
-          deployedAt: number;
-        } | null
-      >;
-      listAssets: FunctionReference<
-        "query",
-        "internal",
-        { limit?: number },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          blobId?: string;
-          contentType: string;
-          deploymentId: string;
-          path: string;
-          storageId?: string;
-        }>
-      >;
-      recordAsset: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          blobId?: string;
-          contentType: string;
-          deploymentId: string;
-          path: string;
-          storageId?: string;
-        },
-        { oldBlobId: string | null; oldStorageId: string | null }
-      >;
-      setCurrentDeployment: FunctionReference<
-        "mutation",
-        "internal",
-        { deploymentId: string },
-        null
-      >;
-    };
-  };
-};
+export const components = componentsGeneric() as unknown as {};
