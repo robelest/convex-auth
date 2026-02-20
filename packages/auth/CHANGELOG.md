@@ -97,7 +97,7 @@
   in middleware, it might not match some patterns that were previously available
   in the 0.7.x series. See the docs for supported patterns:
   https://www.npmjs.com/package/path-to-regexp/v/6.3.0.
-- Upgraded to `@auth/core` 0.37.3. You may need upgrade @auth/core to "~0.37.3".
+- Upgraded legacy OAuth internals to 0.37.3.
 - Updated OAuth integration docs for supported providers (available at
   https://labs.convex.dev/auth/config/oauth).
 
@@ -125,7 +125,7 @@
 
 ## 0.0.72
 
-- Upgrade + pin `@auth/core` to 0.36.0 to avoid issues with mismatched types
+- Upgrade + pin legacy OAuth internals to 0.36.0 to avoid issues with mismatched types
 
 ## 0.0.71
 

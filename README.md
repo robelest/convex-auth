@@ -1005,7 +1005,7 @@ npx @robelest/convex-auth [options]
 - Bearer Token Auth — `Authorization: Bearer` header with scoped API keys
 - Framework-agnostic SSR cookie API (SvelteKit, TanStack Start, Next.js)
 - Context enrichment (`AuthCtx`) — zero-boilerplate `ctx.auth.userId` / `ctx.auth.user` via `convex-helpers`
-- Arctic migration — replaced `@auth/core` with [Arctic](https://arcticjs.dev) for OAuth 2.0 (lighter, zero-dependency)
+- Arctic-based OAuth 2.0 integration via [Arctic](https://arcticjs.dev) (lighter, zero-dependency)
 - Device Authorization (RFC 8628) — OAuth device flow for CLIs, smart TVs, and IoT devices
 
 ### Planned
