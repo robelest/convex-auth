@@ -18,7 +18,7 @@
   "workspaces": {
     "packages": ["packages/*", "examples/*"],
     "catalog": {
-      "convex": "1.31.7",
+      "convex": "1.32.0",
       "convex-test": "^0.0.41",
       "vite": "7.3.1"
     }
@@ -27,7 +27,7 @@
     "@convex-dev/resend": "^0.2.3",
     "@robelest/convex-auth": "workspace:*",
     "arctic": "^3.7.0",
-    "convex": "^1.31.7",
+    "convex": "^1.32.0",
     "convex-helpers": "^0.1.111",
     "fluent-convex": "^0.12.3",
     "zod": "^4.1.12"
