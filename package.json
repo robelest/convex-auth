@@ -7,19 +7,12 @@
     "dev:tanstack": "bun run --cwd examples/tanstack dev",
     "dev:tui": "bun run --cwd examples/cli start",
     "build": "bun run --cwd packages/auth build",
-    "check:auth-package": "bun run --cwd packages/auth build && bun run --cwd packages/auth typecheck:consumer && bun run --cwd packages/auth check:packaging",
-    "deploy:cdn": "bunx wrangler pages deploy cdn-redirect --project-name convex-auth --branch main",
     "publish": "bun run --cwd packages/auth build && bun publish --cwd packages/auth",
-    "publish:full": "bun run deploy:cdn && bun run --cwd packages/auth build && bun publish --cwd packages/auth",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "test": "bun run --cwd packages/test test:once",
-    "test:samlify": "bun run --cwd packages/samlify test:once",
-    "check:samlify-runtime": "bun run --cwd packages/samlify check:runtime-imports && bun run --cwd packages/samlify report:edge-gaps",
+    "test": "bun run --cwd packages/test test:once && bun run --cwd packages/samlify test:once && bun run --cwd packages/samlify check:runtime-imports && bun run --cwd packages/samlify report:edge-gaps",
     "codegen:convex": "bunx convex codegen && bun run codegen:convex:component",
-    "codegen:convex:component": "bunx convex codegen --component-dir ./packages/auth/src/component",
-    "dashboard:convex": "bunx convex dashboard",
-    "run:convex": "bunx convex run"
+    "codegen:convex:component": "bunx convex codegen --component-dir ./packages/auth/src/component"
   },
   "workspaces": {
     "packages": ["packages/*", "examples/*"],

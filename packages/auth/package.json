@@ -1,6 +1,6 @@
 {
   "name": "@robelest/convex-auth",
-  "version": "0.0.3-preview.11",
+  "version": "0.0.4-preview.0",
   "description": "Authentication for Convex",
   "keywords": [
     "authentication",
