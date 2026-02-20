@@ -10,7 +10,6 @@ Component-first authentication for [Convex](https://convex.dev). One component, 
 - **Device Authorization (RFC 8628)** — authenticate CLIs, smart TVs, and IoT devices.
 - **API keys** — scoped permissions, SHA-256 hashed storage, optional rate limiting.
 - **Groups, memberships, invites** — hierarchical multi-tenancy with roles.
-- **Admin portal** — dark-themed SvelteKit dashboard, self-hosted or CDN.
 - **SSR support** — framework-agnostic httpOnly cookie API (SvelteKit, TanStack Start, Next.js).
 - **Context enrichment** — zero-boilerplate `ctx.auth.userId` via `AuthCtx`.
 
@@ -42,7 +41,7 @@ export default app;
 
 ```ts
 // convex/auth.ts
-import { Auth, Portal } from "@robelest/convex-auth/component";
+import { Auth } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
 import { GitHub } from "arctic";
 import { OAuth } from "@robelest/convex-auth/providers";
@@ -55,7 +54,6 @@ const auth = new Auth(components.auth, {
 
 export { auth };
 export const { signIn, signOut, store } = auth;
-export const { portalQuery, portalMutation, portalInternal } = Portal(auth);
 ```
 
 ```ts
@@ -82,4 +80,4 @@ export default http;
 
 ## Documentation
 
-See the full [README](https://github.com/robelest/convex-auth#readme) for detailed usage, API reference, SSR integration, admin portal setup, and more.
+See the full [README](https://github.com/robelest/convex-auth#readme) for detailed usage, API reference, SSR integration, and more.
