@@ -3,6 +3,7 @@
 Component-first authentication for [Convex](https://convex.dev). One component, one class, full TypeScript support.
 
 - **Class-based API** — `new Auth(components.auth, { providers })` gives you auth, helpers, and HTTP integration in one place.
+- **Fluent Convex builders (recommended)** — `fluent-convex` keeps auth-aware API handling clean with middleware and `.public()` / `.internal()` exports.
 - **Groups, memberships, invites** — Hierarchical groups with roles, atomic invite acceptance, and cascade deletes.
 - **Passkeys, TOTP, password, OAuth, magic links, OTP, phone, anonymous** — All built in.
 
@@ -11,6 +12,9 @@ Component-first authentication for [Convex](https://convex.dev). One component, 
 ```bash
 npm install @robelest/convex-auth
 ```
+
+> Renamed package: if you are migrating from earlier previews, replace
+> `@convex-dev/auth` with `@robelest/convex-auth` in imports and CLI commands.
 
 ## Quick Setup (CLI)
 
@@ -85,6 +89,70 @@ export default http;
 ```
 
 `auth.http.add` registers OAuth callbacks and JWKS endpoints in one call.
+
+## Recommended Convex API Handling (`fluent-convex`)
+
+For new projects, we recommend [`fluent-convex`](https://www.npmjs.com/package/fluent-convex) because auth middleware and public/internal API exports stay concise and explicit.
+
+Install helpers:
+
+```bash
+bun add fluent-convex zod
+```
+
+### Setup
+
+```ts
+// convex/functions.ts
+import { ConvexError } from "convex/values";
+import { createBuilder } from "fluent-convex";
+import { WithZod } from "fluent-convex/zod";
+import type { DataModel } from "./_generated/dataModel";
+import { auth } from "./auth";
+
+const convex = createBuilder<DataModel>();
+
+const withRequiredAuth = convex.createMiddleware<any, { auth: any }>(
+  async (ctx, next) => {
+    const userId = await auth.user.require(ctx);
+    const user = await auth.user.get(ctx, userId);
+    if (user === null) {
+      throw new ConvexError({
+        code: "USER_NOT_FOUND",
+        message: "Authenticated user not found",
+      });
+    }
+
+    return next({ ...ctx, auth: { ...ctx.auth, userId, user } });
+  },
+);
+
+export const query = convex.query().use(withRequiredAuth).extend(WithZod);
+export const mutation = convex.mutation().use(withRequiredAuth).extend(WithZod);
+export const internalMutation = convex.mutation().extend(WithZod);
+```
+
+### Usage
+
+```ts
+// convex/messages.ts
+import { z } from "zod/v4";
+import { mutation } from "./functions";
+
+export const send = mutation
+  .input(
+    z.object({
+      body: z.string().trim().min(1),
+    }),
+  )
+  .handler(async (ctx, { body }) => {
+    await ctx.db.insert("messages", { body, userId: ctx.auth.userId });
+    return null;
+  })
+  .public();
+```
+
+If you are already using `convex-helpers`, the `AuthCtx` pattern below remains fully supported.
 
 ## Context Enrichment (`AuthCtx`)
 
