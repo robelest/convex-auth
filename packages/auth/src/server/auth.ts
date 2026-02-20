@@ -119,6 +119,7 @@ export class Auth {
       providers.push(
         emailProvider({
           id: "email",
+          from: emailTransport.from,
           maxAge: 60 * 60 * 24, // 24 hours
           authorize: undefined, // Magic link — no OTP email check needed
           async sendVerificationRequest({ identifier, url }, ctx) {

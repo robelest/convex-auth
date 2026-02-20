@@ -7,6 +7,10 @@
 import { GenericDataModel } from "convex/server";
 import { EmailConfig, EmailUserConfig } from "../server/types";
 
+type EmailProviderUserConfig<DataModel extends GenericDataModel> =
+  Omit<EmailUserConfig<DataModel>, "from" | "sendVerificationRequest"> &
+    Required<Pick<EmailConfig<DataModel>, "from" | "sendVerificationRequest">>;
+
 /**
  * Email providers send a token to the user's email address
  * for sign-in.
@@ -24,25 +28,37 @@ import { EmailConfig, EmailUserConfig } from "../server/types";
  *
  * export const { auth, signIn, signOut, store } = Auth({
  *   providers: [
- *     email({ authorize: undefined }),
+ *     email({
+ *       from: "My App <noreply@example.com>",
+ *       authorize: undefined,
+ *       async sendVerificationRequest({ identifier, token }) {
+ *         // send email with your provider
+ *       },
+ *     }),
  *   ],
  * });
  * ```
  *
  * Make sure the token has high enough entropy to be secure.
  *
- * @param config - Email provider options including `sendVerificationRequest`.
+ * @param config - Email provider options including required `from` and `sendVerificationRequest`.
  * @returns An `EmailConfig` to include in your `providers` array.
  */
 export default function email<DataModel extends GenericDataModel>(
-  config: EmailUserConfig<DataModel> &
-    Pick<EmailConfig, "sendVerificationRequest">,
+  config: EmailProviderUserConfig<DataModel>,
 ): EmailConfig<DataModel> {
+  const from = config.from.trim();
+  if (from.length === 0) {
+    throw new Error(
+      "Email provider requires a non-empty `from` address (for example, `My App <noreply@example.com>`).",
+    );
+  }
+
   return {
     id: "email",
     type: "email",
     name: "Email",
-    from: "Auth.js <no-reply@authjs.dev>",
+    from,
     maxAge: 60 * 60, // 1 hour
     authorize: async (params, account) => {
       if (typeof params.email !== "string") {
@@ -58,6 +74,6 @@ export default function email<DataModel extends GenericDataModel>(
       }
     },
     sendVerificationRequest: config.sendVerificationRequest,
-    options: config,
+    options: { ...config, from },
   };
 }
