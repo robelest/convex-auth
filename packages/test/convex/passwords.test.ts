@@ -85,6 +85,21 @@ test("sign up with password keeps email unverified by default", async () => {
   expect(viewer?.emailVerificationTime).toBeUndefined();
 });
 
+test("password sign up requires email", async () => {
+  setupEnv();
+  const t = convexTest(schema);
+
+  await expect(async () => {
+    await t.action(api.auth.signIn, {
+      provider: "password",
+      params: {
+        password: "44448888",
+        flow: "signUp",
+      },
+    });
+  }).rejects.toThrow("Missing `email` param");
+});
+
 function setupEnv() {
   process.env.SITE_URL = "http://localhost:5173";
   process.env.CONVEX_SITE_URL = CONVEX_SITE_URL;
