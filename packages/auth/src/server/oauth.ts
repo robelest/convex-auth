@@ -249,6 +249,12 @@ export async function handleOAuthCallback(
   if (isPKCEProvider(arcticProvider)) {
     const pkceCookieName = oauthCookieName("pkce", providerId);
     codeVerifier = cookies[pkceCookieName];
+    if (codeVerifier === undefined) {
+      throwAuthError(
+        "OAUTH_MISSING_VERIFIER",
+        "Missing PKCE verifier cookie for OAuth callback",
+      );
+    }
     resCookies.push(clearCookie("pkce", providerId));
   }
 
@@ -256,10 +262,7 @@ export async function handleOAuthCallback(
   let tokens: arctic.OAuth2Tokens;
   try {
     if (isPKCEProvider(arcticProvider)) {
-      tokens = await arcticProvider.validateAuthorizationCode(
-        code,
-        codeVerifier!,
-      );
+      tokens = await arcticProvider.validateAuthorizationCode(code, codeVerifier);
     } else {
       tokens = await arcticProvider.validateAuthorizationCode(code);
     }

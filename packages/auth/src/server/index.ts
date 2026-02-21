@@ -435,9 +435,22 @@ export function server(options: ServerOptions) {
         return new Response("Invalid origin", { status: 403 });
       }
 
-      const body = await request.json();
+      let body: Record<string, unknown>;
+      try {
+        const parsed = await request.json();
+        if (typeof parsed !== "object" || parsed === null) {
+          return new Response("Invalid request body", { status: 400 });
+        }
+        body = parsed as Record<string, unknown>;
+      } catch {
+        return new Response("Invalid JSON body", { status: 400 });
+      }
+
       const action = body.action as string;
-      const args = (body.args ?? {}) as Record<string, any>;
+      const args =
+        typeof body.args === "object" && body.args !== null
+          ? (body.args as Record<string, any>)
+          : {};
 
       if (action !== "auth:signIn" && action !== "auth:signOut") {
         return new Response("Invalid action", { status: 400 });
@@ -509,12 +522,15 @@ export function server(options: ServerOptions) {
               ? { error: (error.data as { message?: string }).message ?? String(error), authError: error.data }
               : { error: error instanceof Error ? error.message : String(error) };
           const response = jsonResponse(errorBody, 400);
+          const clearSession = args.refreshToken !== undefined;
           return attachCookies(
             response,
             serializeAuthCookies(
               {
-                token: null,
-                refreshToken: null,
+                token: clearSession ? null : currentCookies.token,
+                refreshToken: clearSession
+                  ? null
+                  : currentCookies.refreshToken,
                 verifier: null,
               },
               host,
@@ -560,16 +576,13 @@ export function server(options: ServerOptions) {
      */
     async refresh(request: Request): Promise<RefreshResult> {
       const host = cookieHost(request);
-      const currentToken = parseRequestCookies(request).token;
+      const currentCookies = parseRequestCookies(request);
+      const currentToken = currentCookies.token;
 
-      // CORS request — clear all auth cookies.
+      // CORS request — do not mutate auth cookies from cross-origin requests.
       if (isCorsRequest(request)) {
         return {
-          cookies: structuredAuthCookies(
-            { token: null, refreshToken: null, verifier: null },
-            host,
-            cookieConfig,
-          ),
+          cookies: [],
           token: null,
         };
       }
@@ -590,7 +603,6 @@ export function server(options: ServerOptions) {
         request.headers.get("accept")?.includes("text/html") &&
         shouldHandleCode
       ) {
-        const requestCookies = parseRequestCookies(request);
         const redirectUrl = new URL(requestUrl);
         redirectUrl.searchParams.delete("code");
         try {
@@ -598,7 +610,7 @@ export function server(options: ServerOptions) {
             signInActionRef,
             {
               params: { code },
-              verifier: requestCookies.verifier ?? undefined,
+              verifier: currentCookies.verifier ?? undefined,
             },
           );
           if (result.tokens === undefined) {
@@ -621,12 +633,16 @@ export function server(options: ServerOptions) {
           console.error(error);
           return {
             cookies: structuredAuthCookies(
-              { token: null, refreshToken: null, verifier: null },
+              {
+                token: currentCookies.token,
+                refreshToken: currentCookies.refreshToken,
+                verifier: null,
+              },
               host,
               cookieConfig,
             ),
             redirect: redirectUrl.toString(),
-            token: null,
+            token: currentCookies.token,
           };
         }
       }

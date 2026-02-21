@@ -116,7 +116,13 @@ export function ConvexAuthProvider({
     [convex, proxy, token],
   )
   const [state, setState] = useState<AuthState>(auth.state)
-  useEffect(() => auth.onChange(setState), [auth])
+  useEffect(() => {
+    const unsubscribe = auth.onChange(setState)
+    return () => {
+      unsubscribe()
+      auth.destroy()
+    }
+  }, [auth])
 
   const value = useMemo(
     () => ({

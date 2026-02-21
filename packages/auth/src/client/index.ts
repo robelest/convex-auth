@@ -218,6 +218,7 @@ export function client(options: ClientOptions) {
     : url!.replace(/[^a-zA-Z0-9]/g, "");
   const key = (name: string) => `${name}_${escapedNamespace}`;
   const subscribers = new Set<() => void>();
+  let disposeStorageListener: (() => void) | null = null;
 
   // Unauthenticated HTTP client for code verification & OAuth exchange.
   // Only needed in SPA mode — proxy mode routes everything through the proxy.
@@ -228,7 +229,10 @@ export function client(options: ClientOptions) {
   // ---------------------------------------------------------------------------
 
   // If a server-provided token was supplied (SSR hydration), start authenticated.
-  const serverToken = options.token ?? null;
+  const serverToken =
+    typeof options.token === "string" && options.token.trim().length > 0
+      ? options.token
+      : null;
   const hasServerToken = serverToken !== null;
 
   let token: string | null = serverToken;
@@ -265,13 +269,36 @@ export function client(options: ClientOptions) {
   // Storage helpers (SPA mode only)
   // ---------------------------------------------------------------------------
 
-  const storageGet = async (name: string) =>
-    storage ? ((await storage.getItem(key(name))) ?? null) : null;
+  const storageGet = async (name: string) => {
+    if (!storage) {
+      return null;
+    }
+    try {
+      return (await storage.getItem(key(name))) ?? null;
+    } catch (error) {
+      console.error(`[convex-auth] Failed to read ${name} from storage:`, error);
+      return null;
+    }
+  };
   const storageSet = async (name: string, value: string) => {
-    if (storage) await storage.setItem(key(name), value);
+    if (!storage) {
+      return;
+    }
+    try {
+      await storage.setItem(key(name), value);
+    } catch (error) {
+      console.error(`[convex-auth] Failed to write ${name} to storage:`, error);
+    }
   };
   const storageRemove = async (name: string) => {
-    if (storage) await storage.removeItem(key(name));
+    if (!storage) {
+      return;
+    }
+    try {
+      await storage.removeItem(key(name));
+    } catch (error) {
+      console.error(`[convex-auth] Failed to remove ${name} from storage:`, error);
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -304,9 +331,7 @@ export function client(options: ClientOptions) {
       // Without this, the initial convex.setAuth(fetchAccessToken) from
       // initialization never re-polls and queries run unauthenticated after
       // magic link code exchange.
-      if (!proxy) {
-        convex.setAuth(fetchAccessToken);
-      }
+      convex.setAuth(fetchAccessToken);
       notify();
     }
   };
@@ -338,7 +363,11 @@ export function client(options: ClientOptions) {
           `Proxy request failed: ${response.status}`,
       );
     }
-    return response.json();
+    try {
+      return await response.json();
+    } catch {
+      throw new Error("Proxy response was not valid JSON");
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -361,7 +390,11 @@ export function client(options: ClientOptions) {
       } catch (e) {
         lastError = e;
         const isNetworkError =
-          e instanceof Error && /network/i.test(e.message || "");
+          e instanceof TypeError ||
+          (e instanceof Error &&
+            /(network|fetch|load failed|failed to fetch)/i.test(
+              e.message || "",
+            ));
         if (!isNetworkError) break;
         const wait = RETRY_BACKOFF[retry]! + RETRY_JITTER * Math.random();
         retry++;
@@ -643,6 +676,13 @@ export function client(options: ClientOptions) {
 
   // Cross-tab sync via storage events (SPA mode only).
   if (!proxy && typeof window !== "undefined") {
+    const registryKey = key(JWT_STORAGE_KEY);
+    const registry = getStorageListenerRegistry();
+    const existingListener = registry[registryKey];
+    if (existingListener !== undefined) {
+      window.removeEventListener("storage", existingListener);
+    }
+
     const onStorage = (event: StorageEvent) => {
       void (async () => {
         if (event.key !== key(JWT_STORAGE_KEY)) return;
@@ -654,6 +694,13 @@ export function client(options: ClientOptions) {
       })();
     };
     window.addEventListener("storage", onStorage);
+    registry[registryKey] = onStorage;
+    disposeStorageListener = () => {
+      if (registry[registryKey] === onStorage) {
+        delete registry[registryKey];
+      }
+      window.removeEventListener("storage", onStorage);
+    };
   }
 
   // Auto-wire: feed our tokens into the Convex client so
@@ -666,7 +713,11 @@ export function client(options: ClientOptions) {
       // Proxy mode: if no initialToken was provided, try a refresh
       // to pick up any existing session from httpOnly cookies.
       if (!hasServerToken) {
-        void fetchAccessToken({ forceRefreshToken: true });
+        void fetchAccessToken({ forceRefreshToken: true }).catch(
+          (error: unknown) => {
+            console.error("[convex-auth] Proxy token refresh failed:", error);
+          },
+        );
       } else {
         // initialToken already set — mark loading as done.
         isLoading = false;
@@ -674,11 +725,15 @@ export function client(options: ClientOptions) {
       }
     } else {
       // SPA mode: hydrate from localStorage, then handle OAuth code flow.
-      void hydrateFromStorage().then(() =>
-        handleCodeFlow().catch((error: unknown) => {
-          console.error("[convex-auth] Code exchange failed:", error);
-        }),
-      );
+      void (async () => {
+        try {
+          await hydrateFromStorage();
+          await handleCodeFlow();
+        } catch (error: unknown) {
+          console.error("[convex-auth] Client initialization failed:", error);
+          await setToken({ shouldStore: false, tokens: null });
+        }
+      })();
     }
   }
 
@@ -1285,6 +1340,11 @@ export function client(options: ClientOptions) {
     totp,
     /** Device authorization (RFC 8628) helpers. */
     device,
+    /** Remove global listeners when disposing this client instance. */
+    destroy: () => {
+      disposeStorageListener?.();
+      subscribers.clear();
+    },
   };
 }
 
@@ -1302,77 +1362,52 @@ async function browserMutex<T>(
     : await manualMutex(key, callback);
 }
 
-function getMutexValue(key: string): {
-  currentlyRunning: Promise<void> | null;
-  waiting: Array<() => Promise<void>>;
-} {
-  if ((globalThis as any).__convexAuthMutexes === undefined) {
-    (globalThis as any).__convexAuthMutexes = {} as Record<
+function getStorageListenerRegistry(): Record<string, (event: StorageEvent) => void> {
+  const globalAny = globalThis as any;
+  if (globalAny.__convexAuthStorageListeners === undefined) {
+    globalAny.__convexAuthStorageListeners = {} as Record<
       string,
-      {
-        currentlyRunning: Promise<void> | null;
-        waiting: Array<() => Promise<void>>;
-      }
+      (event: StorageEvent) => void
     >;
   }
-  let mutex = (globalThis as any).__convexAuthMutexes[key];
-  if (mutex === undefined) {
-    (globalThis as any).__convexAuthMutexes[key] = {
-      currentlyRunning: null,
-      waiting: [],
-    };
-  }
-  mutex = (globalThis as any).__convexAuthMutexes[key];
-  return mutex;
+  return globalAny.__convexAuthStorageListeners as Record<
+    string,
+    (event: StorageEvent) => void
+  >;
 }
 
-function setMutexValue(
-  key: string,
-  value: {
-    currentlyRunning: Promise<void> | null;
-    waiting: Array<() => Promise<void>>;
-  },
-) {
-  (globalThis as any).__convexAuthMutexes[key] = value;
-}
-
-async function enqueueCallbackForMutex(
-  key: string,
-  callback: () => Promise<void>,
-) {
-  const mutex = getMutexValue(key);
-  if (mutex.currentlyRunning === null) {
-    setMutexValue(key, {
-      currentlyRunning: callback().finally(() => {
-        const nextCb = getMutexValue(key).waiting.shift();
-        getMutexValue(key).currentlyRunning = null;
-        setMutexValue(key, {
-          ...getMutexValue(key),
-          currentlyRunning:
-            nextCb === undefined ? null : enqueueCallbackForMutex(key, nextCb),
-        });
-      }),
-      waiting: [],
-    });
-  } else {
-    setMutexValue(key, {
-      ...mutex,
-      waiting: [...mutex.waiting, callback],
-    });
+function getManualMutexTails(): Record<string, Promise<void>> {
+  const globalAny = globalThis as any;
+  if (globalAny.__convexAuthMutexTails === undefined) {
+    globalAny.__convexAuthMutexTails = {} as Record<string, Promise<void>>;
   }
+  return globalAny.__convexAuthMutexTails as Record<string, Promise<void>>;
 }
 
 async function manualMutex<T>(
   key: string,
   callback: () => Promise<T>,
 ): Promise<T> {
-  const outerPromise = new Promise<T>((resolve, reject) => {
-    const wrappedCallback: () => Promise<void> = () => {
-      return callback()
-        .then((v) => resolve(v))
-        .catch((e) => reject(e));
-    };
-    void enqueueCallbackForMutex(key, wrappedCallback);
+  const mutexTails = getManualMutexTails();
+  const previousTail = mutexTails[key] ?? Promise.resolve();
+
+  let releaseCurrent: (() => void) | undefined;
+  const currentTail = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
   });
-  return outerPromise;
+
+  mutexTails[key] = previousTail.then(
+    () => currentTail,
+    () => currentTail,
+  );
+
+  try {
+    await previousTail;
+    return await callback();
+  } finally {
+    releaseCurrent?.();
+    if (mutexTails[key] === currentTail) {
+      delete mutexTails[key];
+    }
+  }
 }

@@ -149,7 +149,7 @@ export class Password<DataModel extends GenericDataModel = GenericDataModel> {
         let account: GenericDoc<DataModel, "account">;
         let user: GenericDoc<DataModel, "user">;
         if (flow === "signUp") {
-          if (secret === undefined) {
+          if (typeof secret !== "string" || secret.length === 0) {
             throw new Error("Missing `password` param for `signUp` flow");
           }
           const created = await ctx.auth.account.create(ctx, {
@@ -161,7 +161,7 @@ export class Password<DataModel extends GenericDataModel = GenericDataModel> {
           });
           ({ account, user } = created);
         } else if (flow === "signIn") {
-          if (secret === undefined) {
+          if (typeof secret !== "string" || secret.length === 0) {
             throw new Error("Missing `password` param for `signIn` flow");
           }
           const retrieved = await ctx.auth.account.get(ctx, {
@@ -279,7 +279,11 @@ function validateDefaultPasswordRequirements(password: string) {
 }
 
 function defaultProfile(params: Record<string, unknown>) {
+  const email = params.email;
+  if (typeof email !== "string" || email.trim().length === 0) {
+    throw new Error("Missing `email` param");
+  }
   return {
-    email: params.email as string,
+    email,
   };
 }

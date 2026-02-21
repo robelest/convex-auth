@@ -71,6 +71,7 @@ export async function invalidateRefreshTokensInSubtree(
 ) {
   const db = authDb(ctx, config);
   const tokensToInvalidate = [refreshToken];
+  const visited = new Set<GenericId<"token">>([refreshToken._id]);
   let frontier: GenericId<"token">[] = [refreshToken._id];
   while (frontier.length > 0) {
     const nextFrontier: GenericId<"token">[] = [];
@@ -79,8 +80,14 @@ export async function invalidateRefreshTokensInSubtree(
         refreshToken.sessionId,
         currentTokenId,
       )) as Doc<"token">[];
-      tokensToInvalidate.push(...children);
-      nextFrontier.push(...children.map((child) => child._id));
+      for (const child of children) {
+        if (visited.has(child._id)) {
+          continue;
+        }
+        visited.add(child._id);
+        tokensToInvalidate.push(child);
+        nextFrontier.push(child._id);
+      }
     }
     frontier = nextFrontier;
   }

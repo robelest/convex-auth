@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.0.91
+
+- Fix proxy-mode client token wiring so `convex.setAuth(fetchAccessToken)` is
+  re-synced after token updates (sign-in, TOTP, passkey, device), enabling
+  authenticated direct Convex queries/mutations after SSR/proxy sign-in.
+- Preserve existing auth cookies on OAuth code exchange errors and non-refresh
+  proxy sign-in errors instead of force-clearing active sessions.
+- Improve auth hardening: validate missing PKCE verifier cookies during OAuth
+  callbacks, make localhost detection robust without requiring explicit ports,
+  avoid cross-origin cookie mutation during server-side refresh handling, and
+  add cycle guards to refresh-token subtree invalidation.
+- Improve client resilience in browsers by handling storage read/write failures
+  gracefully, deduplicating global storage listeners, and serializing manual
+  refresh locks with a safer mutex fallback in environments without Web Locks.
+
 ## 0.0.90
 
 - fix negative `shouldHandleCode` logic for client
