@@ -182,6 +182,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         any,
         Name
       >;
+      inviteAcceptByToken: FunctionReference<
+        "mutation",
+        "internal",
+        { acceptedByUserId: string; tokenHash: string },
+        any,
+        Name
+      >;
       inviteCreate: FunctionReference<
         "mutation",
         "internal",
@@ -202,6 +209,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "query",
         "internal",
         { inviteId: string },
+        any,
+        Name
+      >;
+      inviteGetByTokenHash: FunctionReference<
+        "query",
+        "internal",
+        { tokenHash: string },
         any,
         Name
       >;

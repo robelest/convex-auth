@@ -33,10 +33,12 @@ import {
 import type { Tokens } from "./types";
 export type { Doc, Tokens } from "./types";
 import {
+  generateRandomString,
   LOG_LEVELS,
   TOKEN_SUB_CLAIM_DIVIDER,
   logError,
   logWithLevel,
+  sha256,
 } from "./utils";
 import { GetProviderOrThrowFunc } from "./provider";
 import {
@@ -147,6 +149,10 @@ export function Auth(config_: ConvexAuthConfig) {
     provider: string;
     account: { id: string; secret: string };
   };
+
+  const INVITE_TOKEN_ALPHABET =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const INVITE_TOKEN_LENGTH = 48;
 
   const auth = {
     user: {
@@ -615,15 +621,13 @@ export function Auth(config_: ConvexAuthConfig) {
        *   (omit for CLI-generated invites).
        * @param data.email - Optional email of the invitee (omit for
        *   CLI-generated invite links where the email is unknown upfront).
-       * @param data.tokenHash - Hashed token for secure acceptance.
        * @param data.role - Optional role to assign on acceptance.
-       * @param data.status - Initial status (typically "pending").
        * @param data.expiresTime - Optional expiration timestamp (omit for
        *   single-use, non-expiring invites).
        * @param data.extend - Optional arbitrary JSON extension data.
        * @throws ConvexError with code `DUPLICATE_INVITE` if a pending invite
        * already exists for this email and scope.
-       * @returns The ID of the new invite record.
+       * @returns An object with `inviteId` and raw `token`.
        */
       create: async (
         ctx: ComponentCtx,
@@ -631,20 +635,40 @@ export function Auth(config_: ConvexAuthConfig) {
           groupId?: string;
           invitedByUserId?: string;
           email?: string;
-          tokenHash: string;
           role?: string;
-          status: "pending" | "accepted" | "revoked" | "expired";
           expiresTime?: number;
           extend?: Record<string, unknown>;
         },
-      ): Promise<string> => {
-        return (await ctx.runMutation(config.component.public.inviteCreate, data)) as string;
+      ): Promise<{ inviteId: string; token: string }> => {
+        const token = generateRandomString(
+          INVITE_TOKEN_LENGTH,
+          INVITE_TOKEN_ALPHABET,
+        );
+        const tokenHash = await sha256(token);
+        const inviteId = (await ctx.runMutation(
+          config.component.public.inviteCreate,
+          {
+            ...data,
+            tokenHash,
+            status: "pending",
+          },
+        )) as string;
+        return { inviteId, token };
       },
       /**
        * Retrieve an invite by its ID. Returns `null` if not found.
        */
       get: async (ctx: ComponentReadCtx, inviteId: string) => {
         return await ctx.runQuery(config.component.public.inviteGet, { inviteId });
+      },
+      /**
+       * Retrieve an invite by raw token.
+       */
+      getByToken: async (ctx: ComponentReadCtx, token: string) => {
+        const tokenHash = await sha256(token);
+        return await ctx.runQuery(config.component.public.inviteGetByTokenHash, {
+          tokenHash,
+        });
       },
       /**
        * List invites with optional filtering, sorting, and pagination.
@@ -717,6 +741,20 @@ export function Auth(config_: ConvexAuthConfig) {
         await ctx.runMutation(config.component.public.inviteAccept, {
           inviteId,
           ...(acceptedByUserId ? { acceptedByUserId } : {}),
+        });
+      },
+      /**
+       * Accept an invitation by raw token and atomically add group membership
+       * when the invite is group-scoped.
+       */
+      acceptByToken: async (
+        ctx: ComponentCtx,
+        args: { token: string; acceptedByUserId: string },
+      ) => {
+        const tokenHash = await sha256(args.token);
+        return await ctx.runMutation(config.component.public.inviteAcceptByToken, {
+          tokenHash,
+          acceptedByUserId: args.acceptedByUserId,
         });
       },
       /**
@@ -1184,6 +1222,7 @@ export function Auth(config_: ConvexAuthConfig) {
                 Object.fromEntries(params.entries()),
                 cookies,
               );
+              const oauthCookies = result.cookies;
               const { id: profileId, ...profileData } = result.profile;
               const { signature } = result;
 
@@ -1194,20 +1233,49 @@ export function Auth(config_: ConvexAuthConfig) {
                 signature,
               });
 
+              const headers = new Headers({
+                Location: setURLSearchParam(
+                  destinationUrl,
+                  "code",
+                  verificationCode,
+                ),
+                "Cache-Control": "must-revalidate",
+              });
+              for (const { name, value, options } of oauthCookies) {
+                headers.append(
+                  "Set-Cookie",
+                  serializeCookie(name, value, options as any),
+                );
+              }
+              if (maybeRedirectTo !== null) {
+                headers.append(
+                  "Set-Cookie",
+                  serializeCookie(
+                    maybeRedirectTo.updatedCookie.name,
+                    maybeRedirectTo.updatedCookie.value,
+                    maybeRedirectTo.updatedCookie.options as any,
+                  ),
+                );
+              }
+
               return new Response(null, {
                 status: 302,
-                headers: {
-                  Location: setURLSearchParam(
-                    destinationUrl,
-                    "code",
-                    verificationCode,
-                  ),
-                  "Cache-Control": "must-revalidate",
-                },
+                headers,
               });
             } catch (error) {
               logError(error);
-              return Response.redirect(destinationUrl);
+              const headers = new Headers({ Location: destinationUrl });
+              if (maybeRedirectTo !== null) {
+                headers.append(
+                  "Set-Cookie",
+                  serializeCookie(
+                    maybeRedirectTo.updatedCookie.name,
+                    maybeRedirectTo.updatedCookie.value,
+                    maybeRedirectTo.updatedCookie.options as any,
+                  ),
+                );
+              }
+              return new Response(null, { status: 302, headers });
             }
           },
         );

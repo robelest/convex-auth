@@ -44,6 +44,10 @@ export const AUTH_ERRORS = {
     "Invalid or expired verification code.",
   INVALID_REFRESH_TOKEN:
     "Your session has expired. Please sign in again.",
+  AUTH_HANDSHAKE_TIMEOUT:
+    "Sign-in succeeded but authentication confirmation timed out.",
+  AUTH_HANDSHAKE_REJECTED:
+    "Authentication was rejected while confirming the session.",
   SIGN_IN_MISSING_PARAMS:
     "Cannot sign in: missing provider, code, or refresh token.",
   UNSUPPORTED_PROVIDER_TYPE:
@@ -182,6 +186,14 @@ export const AUTH_ERRORS = {
     "Missing device flow parameter.",
   DEVICE_UNKNOWN_FLOW:
     "Unknown device flow.",
+
+  // ---- Invites ----
+  INVITE_EXPIRED:
+    "This invitation has expired.",
+  INVITE_EMAIL_MISMATCH:
+    "This invitation is for a different verified email.",
+  INVITE_ALREADY_ACCEPTED:
+    "This invitation has already been accepted.",
 
   // ---- Internal (should never reach user) ----
   INTERNAL_ERROR:

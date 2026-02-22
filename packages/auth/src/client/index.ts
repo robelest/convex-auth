@@ -1,5 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { ConvexError, Value } from "convex/values";
+import { AUTH_ERRORS } from "../server/errors";
 
 // Re-export error utilities so consumers can import from `@robelest/convex-auth/client`.
 export {
@@ -88,9 +89,11 @@ export type SignInResult = {
 
 /** Reactive auth state snapshot returned by `auth.state` and `auth.onChange`. */
 export type AuthState = {
+  /** High-level auth phase for deterministic UI state handling. */
+  phase: "loading" | "handshake" | "authenticated" | "unauthenticated";
   /** `true` during initial hydration before the first token is resolved. */
   isLoading: boolean;
-  /** `true` when a valid JWT exists (user is signed in). */
+  /** `true` only after Convex confirms authentication with the backend. */
   isAuthenticated: boolean;
   /** The raw JWT string, or `null` when not authenticated. */
   token: string | null;
@@ -141,6 +144,24 @@ const REFRESH_TOKEN_STORAGE_KEY = "__convexAuthRefreshToken";
 
 const RETRY_BACKOFF = [500, 2000];
 const RETRY_JITTER = 100;
+const AUTH_HANDSHAKE_TIMEOUT_MS = 5000;
+
+type AuthHandshakeErrorCode =
+  | "AUTH_HANDSHAKE_TIMEOUT"
+  | "AUTH_HANDSHAKE_REJECTED";
+
+type AuthFlowContext = {
+  provider?: string;
+  flow: string;
+};
+
+type HandshakeWaiter = {
+  epoch: number;
+  context: AuthFlowContext;
+  resolve: () => void;
+  reject: (error: ConvexError<Value>) => void;
+  timeoutId: ReturnType<typeof setTimeout>;
+};
 
 /**
  * Resolve the Convex deployment URL from the client.
@@ -237,24 +258,162 @@ export function client(options: ClientOptions) {
 
   let token: string | null = serverToken;
   let isLoading = !hasServerToken;
+  let authConfirmed = false;
+  let handshakePending = hasServerToken;
+  let authEpoch = 0;
+  let destroyed = false;
+  const handshakeWaiters = new Set<HandshakeWaiter>();
   let snapshot: AuthState = {
-    isLoading,
-    isAuthenticated: hasServerToken,
+    phase: hasServerToken
+      ? "handshake"
+      : isLoading
+        ? "loading"
+        : "unauthenticated",
+    isLoading: hasServerToken || isLoading,
+    isAuthenticated: false,
     token,
   };
   let handlingCodeFlow = false;
+
+  const createHandshakeError = (
+    code: AuthHandshakeErrorCode,
+    context: Record<string, unknown>,
+  ) => {
+    return new ConvexError({
+      code,
+      message: AUTH_ERRORS[code],
+      ...context,
+    } as Value);
+  };
+
+  const settleHandshakeWaiters = (
+    epoch: number,
+    outcome:
+      | { type: "resolve" }
+      | { type: "reject"; error: ConvexError<Value> },
+  ) => {
+    for (const waiter of Array.from(handshakeWaiters)) {
+      if (waiter.epoch !== epoch) {
+        continue;
+      }
+      clearTimeout(waiter.timeoutId);
+      handshakeWaiters.delete(waiter);
+      if (outcome.type === "resolve") {
+        waiter.resolve();
+      } else {
+        waiter.reject(outcome.error);
+      }
+    }
+  };
+
+  const rejectObsoleteHandshakeWaiters = (activeEpoch: number) => {
+    for (const waiter of Array.from(handshakeWaiters)) {
+      if (waiter.epoch >= activeEpoch) {
+        continue;
+      }
+      clearTimeout(waiter.timeoutId);
+      handshakeWaiters.delete(waiter);
+      waiter.reject(
+        createHandshakeError("AUTH_HANDSHAKE_REJECTED", {
+          ...waiter.context,
+          reason: "token_changed",
+        }),
+      );
+    }
+  };
+
+  const waitForAuthHandshake = async (context: AuthFlowContext) => {
+    if (token === null) {
+      return;
+    }
+    if (authConfirmed && !handshakePending) {
+      return;
+    }
+    if (!handshakePending) {
+      throw createHandshakeError("AUTH_HANDSHAKE_REJECTED", {
+        ...context,
+        reason: "auth_rejected",
+      });
+    }
+
+    const epoch = authEpoch;
+    await new Promise<void>((resolve, reject) => {
+      const waiterRef: { current: HandshakeWaiter | null } = { current: null };
+      const timeoutId = setTimeout(() => {
+        if (waiterRef.current !== null) {
+          handshakeWaiters.delete(waiterRef.current);
+        }
+        reject(
+          createHandshakeError("AUTH_HANDSHAKE_TIMEOUT", {
+            ...context,
+            timeoutMs: AUTH_HANDSHAKE_TIMEOUT_MS,
+          }),
+        );
+      }, AUTH_HANDSHAKE_TIMEOUT_MS);
+
+      const waiter: HandshakeWaiter = {
+        epoch,
+        context,
+        resolve,
+        reject,
+        timeoutId,
+      };
+      waiterRef.current = waiter;
+      handshakeWaiters.add(waiter);
+    });
+  };
+
+  const handleConvexAuthChange = (isAuthenticated: boolean) => {
+    if (destroyed) {
+      return;
+    }
+
+    if (isAuthenticated) {
+      authConfirmed = true;
+      handshakePending = false;
+      settleHandshakeWaiters(authEpoch, { type: "resolve" });
+    } else {
+      authConfirmed = false;
+      if (token !== null && handshakePending) {
+        handshakePending = false;
+        settleHandshakeWaiters(authEpoch, {
+          type: "reject",
+          error: createHandshakeError("AUTH_HANDSHAKE_REJECTED", {
+            reason: "convex_rejected",
+          }),
+        });
+      }
+    }
+
+    if (updateSnapshot()) {
+      notify();
+    }
+  };
 
   const notify = () => {
     for (const cb of subscribers) cb();
   };
 
   const updateSnapshot = () => {
+    let phase: AuthState["phase"];
+    if (token !== null && handshakePending) {
+      phase = "handshake";
+    } else if (isLoading) {
+      phase = "loading";
+    } else if (token !== null && authConfirmed) {
+      phase = "authenticated";
+    } else {
+      phase = "unauthenticated";
+    }
+
     const next: AuthState = {
-      isLoading,
-      isAuthenticated: token !== null,
+      phase,
+      isLoading: phase === "loading" || phase === "handshake",
+      isAuthenticated: phase === "authenticated",
       token,
     };
     if (
+      snapshot.phase === next.phase &&
       snapshot.isLoading === next.isLoading &&
       snapshot.isAuthenticated === next.isAuthenticated &&
       snapshot.token === next.token
@@ -305,11 +464,25 @@ export function client(options: ClientOptions) {
   // Token management
   // ---------------------------------------------------------------------------
 
+  const bindConvexAuth = () => {
+    convex.setAuth(fetchAccessToken, handleConvexAuthChange);
+  };
+
   const setToken = async (
     args:
-      | { shouldStore: true; tokens: AuthSession | null }
-      | { shouldStore: false; tokens: { token: string } | null },
+      | {
+          shouldStore: true;
+          tokens: AuthSession | null;
+          requireHandshake?: boolean;
+        }
+      | {
+          shouldStore: false;
+          tokens: { token: string } | null;
+          requireHandshake?: boolean;
+        },
   ) => {
+    const previousToken = token;
+
     if (args.tokens === null) {
       token = null;
       if (args.shouldStore) {
@@ -323,17 +496,70 @@ export function client(options: ClientOptions) {
         await storageSet(REFRESH_TOKEN_STORAGE_KEY, args.tokens.refreshToken);
       }
     }
+
+    if (token !== previousToken) {
+      authEpoch += 1;
+      rejectObsoleteHandshakeWaiters(authEpoch);
+    }
+
+    if (token === null) {
+      authConfirmed = false;
+      handshakePending = false;
+      settleHandshakeWaiters(authEpoch, {
+        type: "reject",
+        error: createHandshakeError("AUTH_HANDSHAKE_REJECTED", {
+          reason: "token_cleared",
+        }),
+      });
+    } else {
+      const shouldEnterHandshake =
+        args.requireHandshake === true || !authConfirmed;
+      if (shouldEnterHandshake) {
+        authConfirmed = false;
+        handshakePending = true;
+      } else {
+        handshakePending = false;
+      }
+    }
+
     const hadPendingLoad = isLoading;
     isLoading = false;
     const changed = updateSnapshot();
+    bindConvexAuth();
     if (hadPendingLoad || changed) {
-      // Re-sync the Convex client so it picks up the new token immediately.
-      // Without this, the initial convex.setAuth(fetchAccessToken) from
-      // initialization never re-polls and queries run unauthenticated after
-      // magic link code exchange.
-      convex.setAuth(fetchAccessToken);
       notify();
     }
+  };
+
+  const setTokenAndMaybeWait = async (
+    args:
+      | {
+          shouldStore: true;
+          tokens: AuthSession | null;
+          waitForHandshake: boolean;
+          context: AuthFlowContext;
+        }
+      | {
+          shouldStore: false;
+          tokens: { token: string } | null;
+          waitForHandshake: boolean;
+          context: AuthFlowContext;
+        },
+  ): Promise<boolean> => {
+    const { waitForHandshake, context, ...tokenArgs } = args;
+    await setToken({
+      ...(tokenArgs as
+        | { shouldStore: true; tokens: AuthSession | null }
+        | { shouldStore: false; tokens: { token: string } | null }),
+      requireHandshake: waitForHandshake,
+    });
+    if (tokenArgs.tokens === null) {
+      return false;
+    }
+    if (waitForHandshake) {
+      await waitForAuthHandshake(context);
+    }
+    return true;
   };
 
   // ---------------------------------------------------------------------------
@@ -460,6 +686,10 @@ export function client(options: ClientOptions) {
             {} as Record<string, string>,
           )
         : args ?? {};
+    const flow =
+      typeof params.flow === "string" && params.flow.length > 0
+        ? params.flow
+        : "signIn";
 
     if (proxy) {
       // Proxy mode: POST to the proxy endpoint.
@@ -484,12 +714,14 @@ export function client(options: ClientOptions) {
       if (result.tokens !== undefined) {
         // Proxy returns { token, refreshToken: "dummy" }.
         // Store JWT in memory only — real refresh token is in httpOnly cookie.
-        await setToken({
+        const signingIn = await setTokenAndMaybeWait({
           shouldStore: false,
           tokens:
             result.tokens === null ? null : { token: result.tokens.token },
+          waitForHandshake: true,
+          context: { provider, flow },
         });
-        return { signingIn: result.tokens !== null };
+        return { signingIn };
       }
       return { signingIn: false };
     }
@@ -517,11 +749,13 @@ export function client(options: ClientOptions) {
       return { signingIn: false, deviceCode: result.deviceCode as DeviceCodeResult };
     }
     if (result.tokens !== undefined) {
-      await setToken({
+      const signingIn = await setTokenAndMaybeWait({
         shouldStore: true,
         tokens: (result.tokens as AuthSession | null) ?? null,
+        waitForHandshake: true,
+        context: { provider, flow },
       });
-      return { signingIn: result.tokens !== null };
+      return { signingIn };
     }
     return { signingIn: false };
   };
@@ -590,8 +824,8 @@ export function client(options: ClientOptions) {
           } else {
             await setToken({ shouldStore: false, tokens: null });
           }
-        } catch {
-          await setToken({ shouldStore: false, tokens: null });
+        } catch (error) {
+          console.error("[convex-auth] Proxy refresh failed:", error);
         }
         return token;
       });
@@ -624,11 +858,11 @@ export function client(options: ClientOptions) {
     const code = new URLSearchParams(window.location.search).get("code");
     if (!code) return;
     handlingCodeFlow = true;
-    const codeUrl = new URL(window.location.href);
-    codeUrl.searchParams.delete("code");
     try {
-      await replaceURL(codeUrl.pathname + codeUrl.search + codeUrl.hash);
       await signIn(undefined, { code });
+      const codeUrl = new URL(window.location.href);
+      codeUrl.searchParams.delete("code");
+      await replaceURL(codeUrl.pathname + codeUrl.search + codeUrl.hash);
     } finally {
       handlingCodeFlow = false;
     }
@@ -705,7 +939,7 @@ export function client(options: ClientOptions) {
 
   // Auto-wire: feed our tokens into the Convex client so
   // queries and mutations are automatically authenticated.
-  convex.setAuth(fetchAccessToken);
+  bindConvexAuth();
 
   // Auto-hydrate and handle code flow.
   if (typeof window !== "undefined") {
@@ -718,10 +952,6 @@ export function client(options: ClientOptions) {
             console.error("[convex-auth] Proxy token refresh failed:", error);
           },
         );
-      } else {
-        // initialToken already set — mark loading as done.
-        isLoading = false;
-        updateSnapshot();
       }
     } else {
       // SPA mode: hydrate from localStorage, then handle OAuth code flow.
@@ -928,17 +1158,21 @@ export function client(options: ClientOptions) {
 
       if (phase2Result.tokens) {
         if (proxy) {
-          await setToken({
+          await setTokenAndMaybeWait({
             shouldStore: false,
             tokens:
               phase2Result.tokens === null
                 ? null
                 : { token: phase2Result.tokens.token },
+            waitForHandshake: true,
+            context: { provider: "passkey", flow: "register-verify" },
           });
         } else {
-          await setToken({
+          await setTokenAndMaybeWait({
             shouldStore: true,
             tokens: phase2Result.tokens as AuthSession,
+            waitForHandshake: true,
+            context: { provider: "passkey", flow: "register-verify" },
           });
         }
         return { signingIn: true };
@@ -1058,17 +1292,21 @@ export function client(options: ClientOptions) {
 
       if (phase2Result.tokens) {
         if (proxy) {
-          await setToken({
+          await setTokenAndMaybeWait({
             shouldStore: false,
             tokens:
               phase2Result.tokens === null
                 ? null
                 : { token: phase2Result.tokens.token },
+            waitForHandshake: true,
+            context: { provider: "passkey", flow: "auth-verify" },
           });
         } else {
-          await setToken({
+          await setTokenAndMaybeWait({
             shouldStore: true,
             tokens: phase2Result.tokens as AuthSession,
+            waitForHandshake: true,
+            context: { provider: "passkey", flow: "auth-verify" },
           });
         }
         return { signingIn: true };
@@ -1135,9 +1373,11 @@ export function client(options: ClientOptions) {
           args: { provider: "totp", params, verifier: opts.verifier },
         });
         if (result.tokens) {
-          await setToken({
+          await setTokenAndMaybeWait({
             shouldStore: false,
             tokens: result.tokens === null ? null : { token: result.tokens.token },
+            waitForHandshake: true,
+            context: { provider: "totp", flow: "confirm" },
           });
         }
         return;
@@ -1149,9 +1389,11 @@ export function client(options: ClientOptions) {
         verifier: opts.verifier,
       });
       if (result.tokens) {
-        await setToken({
+        await setTokenAndMaybeWait({
           shouldStore: true,
           tokens: (result.tokens as AuthSession | null) ?? null,
+          waitForHandshake: true,
+          context: { provider: "totp", flow: "confirm" },
         });
       }
     },
@@ -1180,9 +1422,11 @@ export function client(options: ClientOptions) {
           args: { provider: "totp", params, verifier: opts.verifier },
         });
         if (result.tokens) {
-          await setToken({
+          await setTokenAndMaybeWait({
             shouldStore: false,
             tokens: result.tokens === null ? null : { token: result.tokens.token },
+            waitForHandshake: true,
+            context: { provider: "totp", flow: "verify" },
           });
         }
         return;
@@ -1194,9 +1438,11 @@ export function client(options: ClientOptions) {
         verifier: opts.verifier,
       });
       if (result.tokens) {
-        await setToken({
+        await setTokenAndMaybeWait({
           shouldStore: true,
           tokens: (result.tokens as AuthSession | null) ?? null,
+          waitForHandshake: true,
+          context: { provider: "totp", flow: "verify" },
         });
       }
     },
@@ -1251,17 +1497,21 @@ export function client(options: ClientOptions) {
           // Authorized — tokens received
           if (result.tokens) {
             if (proxy) {
-              await setToken({
+              await setTokenAndMaybeWait({
                 shouldStore: false,
                 tokens:
                   result.tokens === null
                     ? null
                     : { token: result.tokens.token },
+                waitForHandshake: true,
+                context: { provider: "device", flow: "poll" },
               });
             } else {
-              await setToken({
+              await setTokenAndMaybeWait({
                 shouldStore: true,
                 tokens: (result.tokens as AuthSession | null) ?? null,
+                waitForHandshake: true,
+                context: { provider: "device", flow: "poll" },
               });
             }
             return;
@@ -1342,6 +1592,13 @@ export function client(options: ClientOptions) {
     device,
     /** Remove global listeners when disposing this client instance. */
     destroy: () => {
+      destroyed = true;
+      settleHandshakeWaiters(authEpoch, {
+        type: "reject",
+        error: createHandshakeError("AUTH_HANDSHAKE_REJECTED", {
+          reason: "destroyed",
+        }),
+      });
       disposeStorageListener?.();
       subscribers.clear();
     },

@@ -1218,18 +1218,28 @@ export const inviteCreate = mutation({
     extend: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    const now = Date.now();
+
     // Only check for duplicates when an email is provided.
     // CLI-generated invites (no email) are always allowed.
     if (args.email !== undefined) {
       if (args.groupId !== undefined) {
-        const existingGroupInvite = await ctx.db
+        const existingGroupInvites = await ctx.db
           .query("invite")
           .withIndex("groupIdAndStatus", (q) =>
             q.eq("groupId", args.groupId).eq("status", "pending"),
           )
           .filter((q) => q.eq(q.field("email"), args.email))
-          .first();
-        if (existingGroupInvite !== null) {
+          .collect();
+
+        for (const existingGroupInvite of existingGroupInvites) {
+          const isExpired =
+            existingGroupInvite.expiresTime !== undefined &&
+            existingGroupInvite.expiresTime <= now;
+          if (isExpired) {
+            await ctx.db.patch(existingGroupInvite._id, { status: "expired" });
+            continue;
+          }
           throw new ConvexError({
             code: "DUPLICATE_INVITE",
             message:
@@ -1240,14 +1250,22 @@ export const inviteCreate = mutation({
           });
         }
       } else {
-        const existingPlatformInvite = await ctx.db
+        const existingPlatformInvites = await ctx.db
           .query("invite")
           .withIndex("emailAndStatus", (q) =>
             q.eq("email", args.email).eq("status", "pending"),
           )
           .filter((q) => q.eq(q.field("groupId"), undefined))
-          .first();
-        if (existingPlatformInvite !== null) {
+          .collect();
+
+        for (const existingPlatformInvite of existingPlatformInvites) {
+          const isExpired =
+            existingPlatformInvite.expiresTime !== undefined &&
+            existingPlatformInvite.expiresTime <= now;
+          if (isExpired) {
+            await ctx.db.patch(existingPlatformInvite._id, { status: "expired" });
+            continue;
+          }
           throw new ConvexError({
             code: "DUPLICATE_INVITE",
             message:
@@ -1267,6 +1285,17 @@ export const inviteGet = query({
   args: { inviteId: v.id("invite") },
   handler: async (ctx, { inviteId }) => {
     return await ctx.db.get(inviteId);
+  },
+});
+
+/** Retrieve an invite by hashed token. Returns `null` if not found. */
+export const inviteGetByTokenHash = query({
+  args: { tokenHash: v.string() },
+  handler: async (ctx, { tokenHash }) => {
+    return await ctx.db
+      .query("invite")
+      .withIndex("tokenHash", (q) => q.eq("tokenHash", tokenHash))
+      .first();
   },
 });
 
@@ -1441,11 +1470,136 @@ export const inviteAccept = mutation({
         currentStatus: invite.status,
       });
     }
+    if (invite.expiresTime !== undefined && invite.expiresTime <= Date.now()) {
+      await ctx.db.patch(inviteId, {
+        status: "expired",
+      });
+      throw new ConvexError({
+        code: "INVITE_EXPIRED",
+        message: "Invite has expired",
+        inviteId,
+      });
+    }
     await ctx.db.patch(inviteId, {
       status: "accepted",
       acceptedTime: Date.now(),
       ...(acceptedByUserId ? { acceptedByUserId } : {}),
     });
+  },
+});
+
+/**
+ * Accept an invitation by raw token hash and atomically join group membership.
+ *
+ * Returns idempotent success when the invite was already accepted by the same
+ * user. If the invite targets a group, this mutation also ensures membership.
+ */
+export const inviteAcceptByToken = mutation({
+  args: {
+    tokenHash: v.string(),
+    acceptedByUserId: v.id("user"),
+  },
+  handler: async (ctx, { tokenHash, acceptedByUserId }) => {
+    const invite = await ctx.db
+      .query("invite")
+      .withIndex("tokenHash", (q) => q.eq("tokenHash", tokenHash))
+      .first();
+
+    if (invite === null) {
+      throw new ConvexError({
+        code: "INVITE_NOT_FOUND",
+        message: "Invite not found",
+      });
+    }
+
+    const now = Date.now();
+    if (invite.status === "pending") {
+      if (invite.expiresTime !== undefined && invite.expiresTime <= now) {
+        await ctx.db.patch(invite._id, { status: "expired" });
+        throw new ConvexError({
+          code: "INVITE_EXPIRED",
+          message: "Invite has expired",
+          inviteId: invite._id,
+        });
+      }
+    } else if (invite.status === "accepted") {
+      if (invite.acceptedByUserId !== acceptedByUserId) {
+        throw new ConvexError({
+          code: "INVITE_ALREADY_ACCEPTED",
+          message: "Invite already accepted by another user",
+          inviteId: invite._id,
+        });
+      }
+    } else {
+      throw new ConvexError({
+        code: "INVITE_NOT_PENDING",
+        message: `Cannot accept invite with status "${invite.status}"`,
+        inviteId: invite._id,
+        currentStatus: invite.status,
+      });
+    }
+
+    if (invite.email !== undefined) {
+      const user = await ctx.db.get(acceptedByUserId);
+      const normalizedInviteEmail = invite.email.trim().toLowerCase();
+      const normalizedUserEmail = user?.email?.trim().toLowerCase();
+      const hasVerifiedEmail = user?.emailVerificationTime !== undefined;
+
+      if (
+        normalizedUserEmail === undefined ||
+        normalizedUserEmail !== normalizedInviteEmail ||
+        !hasVerifiedEmail
+      ) {
+        throw new ConvexError({
+          code: "INVITE_EMAIL_MISMATCH",
+          message:
+            "Invite email does not match a verified email on the accepting user",
+          inviteId: invite._id,
+        });
+      }
+    }
+
+    let membershipStatus: "joined" | "already_joined" | "not_applicable" =
+      "not_applicable";
+    let memberId: string | undefined;
+
+    if (invite.groupId !== undefined) {
+      const existingMembership = await ctx.db
+        .query("member")
+        .withIndex("groupIdAndUserId", (q) =>
+          q.eq("groupId", invite.groupId!).eq("userId", acceptedByUserId),
+        )
+        .unique();
+
+      if (existingMembership !== null) {
+        membershipStatus = "already_joined";
+        memberId = existingMembership._id;
+      } else {
+        memberId = await ctx.db.insert("member", {
+          groupId: invite.groupId,
+          userId: acceptedByUserId,
+          role: invite.role,
+          status: "active",
+        });
+        membershipStatus = "joined";
+      }
+    }
+
+    if (invite.status === "pending") {
+      await ctx.db.patch(invite._id, {
+        status: "accepted",
+        acceptedByUserId,
+        acceptedTime: now,
+      });
+    }
+
+    return {
+      inviteId: invite._id,
+      groupId: invite.groupId ?? null,
+      memberId,
+      inviteStatus: invite.status === "accepted" ? "already_accepted" : "accepted",
+      membershipStatus,
+    };
   },
 });
 

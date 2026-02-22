@@ -61,7 +61,7 @@ test("OAuth callback rejects PKCE provider when verifier cookie is missing", asy
   expect(provider.validateAuthorizationCode).not.toHaveBeenCalled();
 });
 
-test("refresh keeps existing session cookies when code exchange fails", async () => {
+test("refresh keeps existing session when code exchange fails transiently", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(ConvexHttpClient.prototype, "action").mockRejectedValue(
     new Error("exchange failed"),
@@ -81,20 +81,9 @@ test("refresh keeps existing session cookies when code exchange fails", async ()
 
   const result = await auth.refresh(request);
 
-  expect(result.redirect).toBe("https://app.example.com/");
+  expect(result.redirect).toBeUndefined();
   expect(result.token).toBe("jwt-token");
-
-  const tokenCookie = result.cookies.find((cookie) => cookie.name === cookieNames.token);
-  const refreshCookie = result.cookies.find(
-    (cookie) => cookie.name === cookieNames.refreshToken,
-  );
-  const verifierCookie = result.cookies.find(
-    (cookie) => cookie.name === cookieNames.verifier,
-  );
-
-  expect(tokenCookie?.value).toBe("jwt-token");
-  expect(refreshCookie?.value).toBe("refresh-token");
-  expect(verifierCookie?.value).toBe("");
+  expect(result.cookies).toEqual([]);
 });
 
 test("refresh does not mutate cookies for CORS requests", async () => {

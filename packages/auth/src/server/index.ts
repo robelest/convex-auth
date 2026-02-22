@@ -308,10 +308,46 @@ export function server(options: ServerOptions) {
       return false;
     }
     const requestUrl = new URL(request.url);
-    const originUrl = new URL(originHeader);
+    let originUrl: URL;
+    try {
+      originUrl = new URL(originHeader);
+    } catch {
+      return true;
+    }
     return (
       originUrl.host !== requestUrl.host ||
       originUrl.protocol !== requestUrl.protocol
+    );
+  };
+
+  const authErrorCode = (error: unknown): string | null => {
+    if (!(error instanceof ConvexError)) {
+      return null;
+    }
+    if (typeof error.data !== "object" || error.data === null) {
+      return null;
+    }
+    const code = (error.data as Record<string, unknown>).code;
+    return typeof code === "string" ? code : null;
+  };
+
+  const shouldClearSessionForRefreshError = (error: unknown) => {
+    return authErrorCode(error) === "INVALID_REFRESH_TOKEN";
+  };
+
+  const isTerminalCodeExchangeError = (error: unknown) => {
+    const code = authErrorCode(error);
+    if (code === null) {
+      return false;
+    }
+    return (
+      code === "OAUTH_INVALID_STATE" ||
+      code === "OAUTH_PROVIDER_ERROR" ||
+      code === "OAUTH_MISSING_ID_TOKEN" ||
+      code === "OAUTH_INVALID_PROFILE" ||
+      code === "OAUTH_MISSING_VERIFIER" ||
+      code === "INVALID_VERIFIER" ||
+      code === "INVALID_VERIFICATION_CODE"
     );
   };
 
@@ -375,8 +411,12 @@ export function server(options: ServerOptions) {
       return result.tokens;
     } catch (error) {
       console.error(error);
-      logVerbose("Token refresh failed, clearing auth cookies");
-      return null;
+      if (shouldClearSessionForRefreshError(error)) {
+        logVerbose("Refresh token rejected, clearing auth cookies");
+        return null;
+      }
+      logVerbose("Token refresh failed transiently, keeping current cookies");
+      return undefined;
     }
   };
 
@@ -522,7 +562,9 @@ export function server(options: ServerOptions) {
               ? { error: (error.data as { message?: string }).message ?? String(error), authError: error.data }
               : { error: error instanceof Error ? error.message : String(error) };
           const response = jsonResponse(errorBody, 400);
-          const clearSession = args.refreshToken !== undefined;
+          const clearSession =
+            args.refreshToken !== undefined &&
+            shouldClearSessionForRefreshError(error);
           return attachCookies(
             response,
             serializeAuthCookies(
@@ -604,7 +646,6 @@ export function server(options: ServerOptions) {
         shouldHandleCode
       ) {
         const redirectUrl = new URL(requestUrl);
-        redirectUrl.searchParams.delete("code");
         try {
           const result = await convexClient().action(
             signInActionRef,
@@ -616,6 +657,7 @@ export function server(options: ServerOptions) {
           if (result.tokens === undefined) {
             throw new Error("Invalid `auth:signIn` result for code exchange");
           }
+          redirectUrl.searchParams.delete("code");
           return {
             cookies: structuredAuthCookies(
               {
@@ -631,6 +673,14 @@ export function server(options: ServerOptions) {
           };
         } catch (error) {
           console.error(error);
+          if (!isTerminalCodeExchangeError(error)) {
+            return {
+              cookies: [],
+              token: currentCookies.token,
+            };
+          }
+
+          redirectUrl.searchParams.delete("code");
           return {
             cookies: structuredAuthCookies(
               {
