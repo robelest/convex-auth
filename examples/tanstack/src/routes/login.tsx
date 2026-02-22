@@ -13,15 +13,24 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Authenticated, Unauthenticated, useAuthActions } from '@/lib/auth'
 
-export const Route = createFileRoute('/login')({ component: LoginPage })
+export const Route = createFileRoute('/login')({
+  validateSearch: (search: Record<string, unknown>) => ({
+    invite: typeof search.invite === 'string' ? search.invite : undefined,
+    redirectTo:
+      typeof search.redirectTo === 'string' ? search.redirectTo : undefined,
+  }),
+  component: LoginPage,
+})
 
 function LoginPage() {
+  const search = Route.useSearch()
   const [flow, setFlow] = useState<'signIn' | 'signUp'>('signIn')
+  const postAuthRedirect = resolvePostAuthRedirect(search)
 
   return (
     <>
       <Authenticated>
-        <ClientRedirect to="/chat" />
+        <ClientRedirect to={postAuthRedirect} />
       </Authenticated>
       <Unauthenticated>
         <div className="flex flex-1 items-center justify-center">
@@ -39,7 +48,7 @@ function LoginPage() {
             </div>
 
             {/* Google OAuth */}
-            <GoogleButton />
+            <GoogleButton postAuthRedirect={postAuthRedirect} />
 
             <div className="relative my-6">
               <div className="absolute inset-0 flex items-center">
@@ -70,15 +79,23 @@ function LoginPage() {
               </TabsList>
 
               <TabsContent value="password">
-                <PasswordTab flow={flow} setFlow={setFlow} />
+                <PasswordTab
+                  flow={flow}
+                  setFlow={setFlow}
+                  postAuthRedirect={postAuthRedirect}
+                />
               </TabsContent>
 
               <TabsContent value="passkey">
-                <PasskeyTab flow={flow} setFlow={setFlow} />
+                <PasskeyTab
+                  flow={flow}
+                  setFlow={setFlow}
+                  postAuthRedirect={postAuthRedirect}
+                />
               </TabsContent>
 
               <TabsContent value="guest">
-                <GuestTab />
+                <GuestTab postAuthRedirect={postAuthRedirect} />
               </TabsContent>
             </Tabs>
           </div>
@@ -95,9 +112,11 @@ function LoginPage() {
 function PasswordTab({
   flow,
   setFlow,
+  postAuthRedirect,
 }: {
   flow: 'signIn' | 'signUp'
   setFlow: (flow: 'signIn' | 'signUp') => void
+  postAuthRedirect: string
 }) {
   const { signIn, totp } = useAuthActions()
   const [email, setEmail] = useState('')
@@ -115,13 +134,13 @@ function PasswordTab({
     setError(null)
     try {
       const result = await signIn('password', { email, password, flow })
-      if (result?.totpRequired) {
+      if (result.totpRequired) {
         setTotpStep(true)
         setTotpVerifier(result.verifier ?? null)
         setBusy(false)
         return
       }
-      window.location.replace('/chat')
+      window.location.replace(postAuthRedirect)
     } catch {
       setError(
         flow === 'signIn'
@@ -140,7 +159,7 @@ function PasswordTab({
     setError(null)
     try {
       await totp.verify({ code: totpCode, verifier: totpVerifier })
-      window.location.replace('/chat')
+      window.location.replace(postAuthRedirect)
     } catch {
       setError('Invalid code. Please try again.')
     } finally {
@@ -282,9 +301,11 @@ function PasswordTab({
 function PasskeyTab({
   flow,
   setFlow,
+  postAuthRedirect,
 }: {
   flow: 'signIn' | 'signUp'
   setFlow: (flow: 'signIn' | 'signUp') => void
+  postAuthRedirect: string
 }) {
   const { signIn, passkey } = useAuthActions()
   const [email, setEmail] = useState('')
@@ -305,7 +326,7 @@ function PasskeyTab({
     try {
       const result = await passkey.authenticate()
       if (result.signingIn) {
-        window.location.replace('/chat')
+        window.location.replace(postAuthRedirect)
       }
     } catch (e) {
       setError(
@@ -333,7 +354,7 @@ function PasskeyTab({
       // Step 2: Now authenticated — register a passkey
       await passkey.register({ email, userName: email })
 
-      window.location.replace('/chat')
+      window.location.replace(postAuthRedirect)
     } catch (e) {
       setStep('form')
       const msg = e instanceof Error ? e.message : String(e)
@@ -476,7 +497,7 @@ function PasskeyTab({
 // Guest tab
 // ---------------------------------------------------------------------------
 
-function GuestTab() {
+function GuestTab({ postAuthRedirect }: { postAuthRedirect: string }) {
   const { signIn } = useAuthActions()
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -487,7 +508,7 @@ function GuestTab() {
     setError(null)
     try {
       await signIn('anonymous')
-      window.location.replace('/chat')
+      window.location.replace(postAuthRedirect)
     } catch {
       setError('Could not continue as guest. Please try again.')
     } finally {
@@ -532,7 +553,7 @@ function GuestTab() {
 // Google OAuth button
 // ---------------------------------------------------------------------------
 
-function GoogleButton() {
+function GoogleButton({ postAuthRedirect }: { postAuthRedirect: string }) {
   const { signIn } = useAuthActions()
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -542,7 +563,7 @@ function GoogleButton() {
     setBusy(true)
     setError(null)
     try {
-      await signIn('google')
+      await signIn('google', { redirectTo: postAuthRedirect })
     } catch {
       setError('Could not sign in with Google. Please try again.')
       setBusy(false)
@@ -591,6 +612,32 @@ function GoogleButton() {
 // ---------------------------------------------------------------------------
 // Redirect helper
 // ---------------------------------------------------------------------------
+
+function resolvePostAuthRedirect(search: {
+  invite?: string
+  redirectTo?: string
+}) {
+  const fallback = search.invite
+    ? `/chat?invite=${encodeURIComponent(search.invite)}`
+    : '/chat'
+
+  if (!search.redirectTo) {
+    return fallback
+  }
+
+  try {
+    const resolved = new URL(search.redirectTo, 'http://localhost')
+    if (resolved.origin !== 'http://localhost') {
+      return fallback
+    }
+    if (!resolved.pathname.startsWith('/')) {
+      return fallback
+    }
+    return `${resolved.pathname}${resolved.search}${resolved.hash}`
+  } catch {
+    return fallback
+  }
+}
 
 function ClientRedirect({ to }: { to: string }) {
   useEffect(() => {

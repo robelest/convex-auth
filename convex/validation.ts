@@ -5,6 +5,7 @@ export const MAX_GROUP_NAME_LENGTH = 80;
 export const MAX_GROUP_DESCRIPTION_LENGTH = 280;
 export const MAX_MESSAGE_BODY_LENGTH = 2000;
 export const MAX_API_KEY_NAME_LENGTH = 80;
+export const MAX_INVITE_TOKEN_LENGTH = 256;
 
 export const emptyInput = z.object({}).strict();
 
@@ -36,6 +37,27 @@ export const sendAsUserInput = z
 export const listMessagesInput = z
   .object({
     groupId: nonEmptyId.optional(),
+  })
+  .strict();
+
+const inviteTokenInput = z
+  .string()
+  .trim()
+  .min(16)
+  .max(MAX_INVITE_TOKEN_LENGTH);
+
+export const createInviteInput = z
+  .object({
+    groupId: nonEmptyId,
+    email: z.string().trim().email().optional(),
+    role: z.string().trim().min(1).max(MAX_GROUP_NAME_LENGTH).optional(),
+    expiresInHours: z.number().int().positive().max(24 * 30).optional(),
+  })
+  .strict();
+
+export const acceptInviteInput = z
+  .object({
+    token: inviteTokenInput,
   })
   .strict();
 
