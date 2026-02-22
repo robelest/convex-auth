@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.0.4-preview.5
+
+- Breaking preview update: `isAuthenticated` on the client now represents
+  server-confirmed auth state instead of local token presence. Sign-in flows now
+  wait for Convex auth confirmation and throw structured handshake errors on
+  rejection/timeout.
+- Invite APIs now support token-first acceptance flows: create returns raw invite
+  token, acceptance can be performed by token, invite expiration is enforced, and
+  group membership is ensured atomically during acceptance.
+- Server refresh/proxy behavior is more resilient: transient OAuth code exchange
+  and token refresh failures preserve active sessions instead of eagerly clearing
+  cookies; terminal failures still clear verifier state.
+
 ## 0.0.91
 
 - Fix proxy-mode client token wiring so `convex.setAuth(fetchAccessToken)` is
