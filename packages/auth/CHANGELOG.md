@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.0.4-preview.8
+
+- Breaking preview update: normalized auth action references to
+  `auth/session:start`, `auth/session:stop`, and `auth/store:run`; removed
+  legacy aliases.
+- Breaking preview update: renamed auth component tables to PascalCase
+  identifiers (for example `User`, `Session`, `Account`, `RefreshToken`) and
+  propagated the new names through component/server types and queries.
+- Breaking preview update: provider API continues to use `OAuth(...)` and
+  class-based providers (`new Password()`, `new Passkey()`, `new Totp()`,
+  `new Device()`, `new Anonymous()`) without deprecated default-export
+  provider helpers.
+
 ## 0.0.4-preview.7
 
 - Isolate auth cookies by namespace in SSR server helpers. A deterministic
