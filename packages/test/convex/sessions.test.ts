@@ -1,4 +1,5 @@
 import { convexTest, TestConvex } from "../convex-test";
+import { decodeJwt } from "jose";
 import { expect, test, vi } from "vitest";
 import { api } from "@convex/_generated/api";
 import schema from "./schema";
@@ -25,6 +26,29 @@ test("session refresh", async () => {
   expect(tokens).not.toBeNull();
 
   vi.useRealTimers();
+});
+
+test("refreshed access token gets a unique jti", async () => {
+  setupEnv();
+  const t = convexTest(schema);
+
+  const { tokens: initialTokens } = await t.action(api.auth.signIn, {
+    provider: "password",
+    params: { email: "sarah@gmail.com", password: "44448888", flow: "signUp" },
+  });
+  const { refreshToken } = initialTokens!;
+
+  const { tokens: refreshedTokens } = await t.action(api.auth.signIn, {
+    refreshToken,
+    params: {},
+  });
+
+  const firstJti = decodeJwt(initialTokens!.token).jti;
+  const refreshedJti = decodeJwt(refreshedTokens!.token).jti;
+
+  expect(typeof firstJti).toBe("string");
+  expect(typeof refreshedJti).toBe("string");
+  expect(refreshedJti).not.toEqual(firstJti);
 });
 
 test("refresh token expiration", async () => {

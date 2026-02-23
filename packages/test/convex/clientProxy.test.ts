@@ -19,6 +19,7 @@ function createConvexMock() {
     fetchToken: (args: { forceRefreshToken: boolean }) => Promise<string | null | undefined>;
     onChange?: (isAuthenticated: boolean) => void;
   }> = [];
+  let authConfirmed = false;
 
   return {
     action: vi.fn(async () => null),
@@ -26,8 +27,15 @@ function createConvexMock() {
       authRegistrations.push({ fetchToken, onChange });
     }),
     clearAuth: vi.fn(),
+    protectedMutation: vi.fn(async () => {
+      if (!authConfirmed) {
+        throw new Error("UNAUTHORIZED");
+      }
+      return { ok: true };
+    }),
     authRegistrations,
     triggerAuthChange(isAuthenticated: boolean) {
+      authConfirmed = isAuthenticated;
       authRegistrations[authRegistrations.length - 1]?.onChange?.(isAuthenticated);
     },
   };
@@ -158,7 +166,7 @@ test("proxy signIn waits for Convex auth confirmation", async () => {
   auth.destroy();
 });
 
-test("proxy signIn fails with structured error when auth rejected", async () => {
+test("proxy signIn tolerates transient auth false before confirmation", async () => {
   const convex = createConvexMock();
   const auth = client({
     convex,
@@ -190,14 +198,69 @@ test("proxy signIn fails with structured error when auth rejected", async () => 
     flow: "signIn",
   });
 
-  await waitForSetAuthCalls(convex, 2);
+  await Promise.resolve();
+  await Promise.resolve();
   convex.triggerAuthChange(false);
 
-  await expect(signInPromise).rejects.toSatisfy((error: unknown) => {
-    return parseAuthError(error)?.code === "AUTH_HANDSHAKE_REJECTED";
+  let settled = false;
+  void signInPromise.finally(() => {
+    settled = true;
   });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(settled).toBe(false);
+
+  convex.triggerAuthChange(true);
+  const result = await signInPromise;
+  expect(result.signingIn).toBe(true);
 
   auth.destroy();
+});
+
+test("proxy signIn times out after rejection signal with no later confirmation", async () => {
+  vi.useFakeTimers();
+  const convex = createConvexMock();
+  const auth = client({
+    convex,
+    proxy: "/api/auth",
+    token: "existing-token",
+  });
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          tokens: {
+            token: "fresh-token",
+            refreshToken: "dummy",
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    ),
+  );
+
+  const signInPromise = auth.signIn("password", {
+    email: "sarah@gmail.com",
+    password: "44448888",
+    flow: "signIn",
+  });
+
+  await Promise.resolve();
+  await Promise.resolve();
+  convex.triggerAuthChange(false);
+
+  const rejection = expect(signInPromise).rejects.toSatisfy((error: unknown) => {
+    return parseAuthError(error)?.code === "AUTH_HANDSHAKE_TIMEOUT";
+  });
+  await vi.advanceTimersByTimeAsync(5001);
+  await rejection;
+
+  auth.destroy();
+  vi.useRealTimers();
 });
 
 test("proxy signIn times out when auth confirmation never arrives", async () => {
@@ -277,6 +340,50 @@ test("proxy refresh does not re-register Convex auth", async () => {
   const refreshedToken = await fetchAccessToken!({ forceRefreshToken: true });
   expect(refreshedToken).toBe("fresh-token");
   expect(convex.setAuth).toHaveBeenCalledTimes(1);
+
+  auth.destroy();
+});
+
+test("ledger-like flow can call protected mutation immediately after signIn", async () => {
+  const convex = createConvexMock();
+  const auth = client({
+    convex,
+    proxy: "/api/auth",
+    token: "existing-token",
+  });
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          tokens: {
+            token: "fresh-token",
+            refreshToken: "dummy",
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    ),
+  );
+
+  const signInPromise = auth.signIn("password", {
+    email: "sarah@gmail.com",
+    password: "44448888",
+    flow: "signIn",
+  });
+
+  await waitForSetAuthCalls(convex, 2);
+  convex.triggerAuthChange(false);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  convex.triggerAuthChange(true);
+
+  const signInResult = await signInPromise;
+  expect(signInResult.signingIn).toBe(true);
+  await expect(convex.protectedMutation()).resolves.toEqual({ ok: true });
 
   auth.destroy();
 });

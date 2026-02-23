@@ -2,9 +2,12 @@ import { GenericId } from "convex/values";
 import { ConvexAuthConfig } from "../types";
 import { SignJWT, importPKCS8 } from "jose";
 import { requireEnv } from "../utils";
-import { TOKEN_SUB_CLAIM_DIVIDER } from "./utils";
+import { generateRandomString, TOKEN_SUB_CLAIM_DIVIDER } from "./utils";
 
 const DEFAULT_JWT_DURATION_MS = 1000 * 60 * 60; // 1 hour
+const TOKEN_JTI_LENGTH = 24;
+const TOKEN_JTI_ALPHABET =
+  "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 export async function generateToken(
   args: {
@@ -22,6 +25,7 @@ export async function generateToken(
   })
     .setProtectedHeader({ alg: "RS256" })
     .setIssuedAt()
+    .setJti(generateRandomString(TOKEN_JTI_LENGTH, TOKEN_JTI_ALPHABET))
     .setIssuer(requireEnv("CONVEX_SITE_URL"))
     .setAudience("convex")
     .setExpirationTime(expirationTime)

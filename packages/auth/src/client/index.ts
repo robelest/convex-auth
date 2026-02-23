@@ -375,15 +375,9 @@ export function client(options: ClientOptions) {
       settleHandshakeWaiters(authEpoch, { type: "resolve" });
     } else {
       authConfirmed = false;
-      if (token !== null && handshakePending) {
-        handshakePending = false;
-        settleHandshakeWaiters(authEpoch, {
-          type: "reject",
-          error: createHandshakeError("AUTH_HANDSHAKE_REJECTED", {
-            reason: "convex_rejected",
-          }),
-        });
-      }
+      // Do not reject immediately while a handshake is pending.
+      // Convex can transiently emit `false` while reauth is still in flight,
+      // and a subsequent `true` confirms the same session.
     }
 
     if (updateSnapshot()) {
