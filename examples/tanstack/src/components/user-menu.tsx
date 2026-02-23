@@ -59,6 +59,7 @@ export function UserMenu({ label }: { label: string }) {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         label={label}
+        activeGroupId={null}
       />
     </>
   )

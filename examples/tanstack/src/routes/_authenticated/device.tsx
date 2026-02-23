@@ -1,17 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { createFileRoute, useSearch } from '@tanstack/react-router'
+import { Navigate, createFileRoute } from '@tanstack/react-router'
 import { RiDeviceLine, RiCheckLine } from '@remixicon/react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Authenticated,
-  Unauthenticated,
-  useAuthActions,
-} from '@/lib/auth'
+import { useAuthActions, useAuthState } from '@/lib/auth'
 
-export const Route = createFileRoute('/device')({
+export const Route = createFileRoute('/_authenticated/device')({
   validateSearch: (search: Record<string, unknown>) => ({
     user_code: (search.user_code as string) ?? '',
   }),
@@ -19,16 +15,27 @@ export const Route = createFileRoute('/device')({
 })
 
 function DevicePage() {
-  return (
-    <>
-      <Authenticated>
-        <DeviceVerification />
-      </Authenticated>
-      <Unauthenticated>
-        <ClientRedirect to="/login" />
-      </Unauthenticated>
-    </>
-  )
+  const search = Route.useSearch()
+  const { isAuthenticated, isLoading, token } = useAuthState()
+
+  if (isLoading && token === null) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <p className="text-muted-foreground font-mono text-xs animate-pulse">
+          Checking session...
+        </p>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated && token === null) {
+    const redirectTo = search.user_code
+      ? `/device?user_code=${encodeURIComponent(search.user_code)}`
+      : '/device'
+    return <Navigate to="/login" search={{ redirectTo }} replace />
+  }
+
+  return <DeviceVerification />
 }
 
 // ---------------------------------------------------------------------------
@@ -37,11 +44,15 @@ function DevicePage() {
 
 function DeviceVerification() {
   const { device } = useAuthActions()
-  const { user_code: prefilled } = useSearch({ from: '/device' })
+  const { user_code: prefilled } = Route.useSearch()
 
   // Split into two 4-char segments for the input UX
-  const [left, setLeft] = useState(() => prefilled.replace(/-/g, '').slice(0, 4).toUpperCase())
-  const [right, setRight] = useState(() => prefilled.replace(/-/g, '').slice(4, 8).toUpperCase())
+  const [left, setLeft] = useState(() =>
+    prefilled.replace(/-/g, '').slice(0, 4).toUpperCase(),
+  )
+  const [right, setRight] = useState(() =>
+    prefilled.replace(/-/g, '').slice(4, 8).toUpperCase(),
+  )
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -224,20 +235,5 @@ function DeviceVerification() {
         </div>
       </div>
     </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Redirect helper
-// ---------------------------------------------------------------------------
-
-function ClientRedirect({ to }: { to: string }) {
-  useEffect(() => {
-    window.location.replace(to)
-  }, [to])
-  return (
-    <p className="text-muted-foreground font-mono text-xs animate-pulse">
-      Redirecting...
-    </p>
   )
 }

@@ -49,7 +49,7 @@ const inviteTokenInput = z
 export const createInviteInput = z
   .object({
     groupId: nonEmptyId,
-    email: z.string().trim().email().optional(),
+    email: z.string().trim().email(),
     role: z.string().trim().min(1).max(MAX_GROUP_NAME_LENGTH).optional(),
     expiresInHours: z.number().int().positive().max(24 * 30).optional(),
   })

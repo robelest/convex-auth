@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   RiCheckLine,
   RiClipboardLine,
   RiDeleteBinLine,
   RiFingerprintLine,
   RiKey2Line,
+  RiLinksLine,
   RiMoonLine,
   RiPaletteLine,
   RiShieldKeyholeLine,
@@ -24,14 +25,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
-type SettingsTab = 'profile' | 'security' | 'api-keys' | 'appearance'
+type SettingsTab = 'profile' | 'security' | 'api-keys' | 'invites' | 'appearance'
 
 const tabs: { id: SettingsTab; label: string; icon: typeof RiUser3Line }[] = [
   { id: 'profile', label: 'Profile', icon: RiUser3Line },
   { id: 'security', label: 'Security', icon: RiShieldKeyholeLine },
   { id: 'api-keys', label: 'API Keys', icon: RiKey2Line },
+  { id: 'invites', label: 'Invites', icon: RiLinksLine },
   { id: 'appearance', label: 'Appearance', icon: RiPaletteLine },
 ]
 
@@ -39,10 +42,12 @@ export function SettingsDialog({
   open,
   onOpenChange,
   label,
+  activeGroupId,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   label: string
+  activeGroupId: string | null
 }) {
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile')
 
@@ -78,11 +83,177 @@ export function SettingsDialog({
             {activeTab === 'profile' && <ProfileTab label={label} />}
             {activeTab === 'security' && <SecurityTab />}
             {activeTab === 'api-keys' && <ApiKeysTab />}
+            {activeTab === 'invites' && <InvitesTab activeGroupId={activeGroupId} />}
             {activeTab === 'appearance' && <AppearanceTab />}
           </div>
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Invites Tab
+// ---------------------------------------------------------------------------
+
+function InvitesTab({ activeGroupId }: { activeGroupId: string | null }) {
+  const myGroups = useQuery(api.groups.list)
+  const sendInviteEmail = useMutation(api.invites.sendEmail)
+
+  const [groupId, setGroupId] = useState('')
+  const [email, setEmail] = useState('')
+  const [expiresInHours, setExpiresInHours] = useState('72')
+  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+  const [error, setError] = useState<string | null>(null)
+  const [sentTo, setSentTo] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!myGroups || myGroups.length === 0) {
+      setGroupId('')
+      return
+    }
+
+    const hasCurrent = myGroups.some((group) => group._id === groupId)
+    if (hasCurrent) {
+      return
+    }
+
+    const defaultGroupId =
+      activeGroupId !== null && myGroups.some((group) => group._id === activeGroupId)
+        ? activeGroupId
+        : myGroups[0]!._id
+    setGroupId(defaultGroupId)
+  }, [activeGroupId, groupId, myGroups])
+
+  const handleSendInvite = async () => {
+    if (!groupId || status === 'sending') {
+      return
+    }
+
+    const normalizedEmail = email.trim().toLowerCase()
+    if (normalizedEmail.length === 0) {
+      setError('Email is required')
+      setStatus('error')
+      return
+    }
+
+    setStatus('sending')
+    setError(null)
+    setSentTo(null)
+    try {
+      const parsedExpiry = Number.parseInt(expiresInHours, 10)
+      const result = await sendInviteEmail({
+        groupId,
+        email: normalizedEmail,
+        ...(Number.isFinite(parsedExpiry) && parsedExpiry > 0
+          ? { expiresInHours: parsedExpiry }
+          : {}),
+      })
+
+      setSentTo(result.email)
+      setStatus('sent')
+      setEmail('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not send invite email')
+      setStatus('error')
+      setTimeout(() => {
+        setStatus('idle')
+      }, 3000)
+    }
+  }
+
+  const hasGroups = (myGroups?.length ?? 0) > 0
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold">Invites</h3>
+          <p className="text-muted-foreground mt-1 text-xs">
+            Send email invites for teammates to join your channels.
+          </p>
+        </div>
+      </div>
+
+      {!hasGroups && (
+        <div className="text-muted-foreground flex flex-col items-center gap-2 py-8 text-center">
+          <RiLinksLine className="size-8 opacity-30" />
+          <p className="text-xs">You need at least one channel to send invites.</p>
+        </div>
+      )}
+
+      {hasGroups && (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-xs font-medium">Channel</p>
+            <select
+              value={groupId}
+              onChange={(event) => setGroupId(event.target.value)}
+              className="bg-input border-border text-foreground h-9 w-full rounded-md border px-3 text-sm"
+            >
+              {myGroups?.map((group) => (
+                <option key={group._id} value={group._id}>
+                  #{group.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium">Invited email</p>
+            <Input
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="teammate@example.com"
+              type="email"
+              required
+            />
+            <p className="text-muted-foreground text-[11px]">
+              The recipient must sign in with this exact invited email to accept.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium">Expires in</p>
+            <select
+              value={expiresInHours}
+              onChange={(event) => setExpiresInHours(event.target.value)}
+              className="bg-input border-border text-foreground h-9 w-full rounded-md border px-3 text-sm"
+            >
+              <option value="24">24 hours</option>
+              <option value="72">3 days</option>
+              <option value="168">7 days</option>
+              <option value="720">30 days</option>
+            </select>
+          </div>
+
+          <Button
+            size="sm"
+            onClick={() => void handleSendInvite()}
+            disabled={!groupId || email.trim().length === 0 || status === 'sending'}
+          >
+            <RiLinksLine className="size-3.5" />
+            {status === 'sending' ? 'Sending invite...' : 'Send invite email'}
+          </Button>
+        </div>
+      )}
+
+      {error && <p className="text-destructive text-xs">{error}</p>}
+
+      {status === 'sent' && sentTo && (
+        <div className="border-border rounded-lg border bg-muted/30 p-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium">Invite email sent</p>
+            <p className="text-muted-foreground text-xs">
+              Invite sent to <span className="font-medium text-foreground">{sentTo}</span>.
+            </p>
+          </div>
+          <p className="text-muted-foreground text-[11px]">
+            If they do not see it, ask them to check spam and confirm the email matches exactly.
+          </p>
+        </div>
+      )}
+    </div>
   )
 }
 

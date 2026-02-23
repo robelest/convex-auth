@@ -93,7 +93,7 @@ export class Auth {
   get account() { return this._auth.account; }
   /** Group helpers: `.create(ctx, ...)`, `.get(ctx, id)`, `.list(ctx, ...)`, `.update(ctx, ...)`, `.delete(ctx, id)`, `.member.*` */
   get group() { return this._auth.group; }
-  /** Invite helpers: `.create(ctx, ...)`, `.get(ctx, id)`, `.list(ctx, ...)`, `.accept(ctx, ...)`, `.revoke(ctx, id)` */
+  /** Invite helpers: `.create(ctx, ...)`, `.get(ctx, id)`, `.token.get(ctx, token)`, `.token.accept(ctx, ...)`, `.list(ctx, ...)`, `.accept(ctx, ...)`, `.revoke(ctx, id)` */
   get invite() { return this._auth.invite; }
   /** Passkey helpers: `.list(ctx, { userId })`, `.rename(ctx, id, name)`, `.remove(ctx, id)` */
   get passkey() { return this._auth.passkey; }

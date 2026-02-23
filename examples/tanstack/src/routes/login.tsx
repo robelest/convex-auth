@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import {
   RiFingerprintLine,
   RiMailLine,
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Authenticated, Unauthenticated, useAuthActions } from '@/lib/auth'
+import { useAuthActions } from '@/lib/auth'
 
 export const Route = createFileRoute('/login')({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -19,6 +19,16 @@ export const Route = createFileRoute('/login')({
     redirectTo:
       typeof search.redirectTo === 'string' ? search.redirectTo : undefined,
   }),
+  beforeLoad: ({ context, search }) => {
+    if (!context.token) {
+      return
+    }
+
+    throw redirect({
+      href: resolvePostAuthRedirect(search),
+      replace: true,
+    })
+  },
   component: LoginPage,
 })
 
@@ -26,82 +36,168 @@ function LoginPage() {
   const search = Route.useSearch()
   const [flow, setFlow] = useState<'signIn' | 'signUp'>('signIn')
   const postAuthRedirect = resolvePostAuthRedirect(search)
+  const inviteToken = extractInviteToken(postAuthRedirect) ?? search.invite ?? null
+  const inviteMode = inviteToken !== null
+
+  useEffect(() => {
+    if (inviteMode && flow !== 'signIn') {
+      setFlow('signIn')
+    }
+  }, [flow, inviteMode])
 
   return (
-    <>
-      <Authenticated>
-        <ClientRedirect to={postAuthRedirect} />
-      </Authenticated>
-      <Unauthenticated>
-        <div className="flex flex-1 items-center justify-center">
-          <div className="w-full max-w-sm">
-            {/* Header */}
-            <div className="mb-8 space-y-2">
-              <h1 className="font-mono text-2xl font-bold tracking-tight">
-                {flow === 'signIn' ? 'Welcome back' : 'Create account'}
-              </h1>
-              <p className="text-muted-foreground text-sm leading-relaxed">
-                {flow === 'signIn'
-                  ? 'Sign in to your account to continue.'
-                  : 'Choose how you want to create your account.'}
-              </p>
-            </div>
+    <div className="flex flex-1 items-center justify-center">
+      <div className="w-full max-w-sm">
+        {/* Header */}
+        <div className="mb-8 space-y-2">
+          <h1 className="font-mono text-2xl font-bold tracking-tight">
+            {inviteMode
+              ? 'Accept your invite'
+              : flow === 'signIn'
+                ? 'Welcome back'
+                : 'Create account'}
+          </h1>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            {inviteMode
+              ? 'Sign in with the invited email to join the channel.'
+              : flow === 'signIn'
+                ? 'Sign in to your account to continue.'
+                : 'Choose how you want to create your account.'}
+          </p>
+        </div>
 
-            {/* Google OAuth */}
-            <GoogleButton postAuthRedirect={postAuthRedirect} />
+        {inviteMode && <InviteEmailCard postAuthRedirect={postAuthRedirect} />}
 
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <span className="border-border w-full border-t" />
-              </div>
-              <div className="relative flex justify-center">
-                <span className="bg-background text-muted-foreground px-2 font-mono text-[11px] uppercase tracking-widest">
-                  or
-                </span>
-              </div>
-            </div>
+        {/* Google OAuth */}
+        <GoogleButton postAuthRedirect={postAuthRedirect} />
 
-            {/* Auth Tabs */}
-            <Tabs defaultValue="password" className="w-full">
-              <TabsList className="mb-6 grid w-full grid-cols-3">
-                <TabsTrigger value="password" className="gap-1.5 font-mono text-[11px]">
-                  <RiMailLine className="size-3.5" />
-                  Email
-                </TabsTrigger>
-                <TabsTrigger value="passkey" className="gap-1.5 font-mono text-[11px]">
-                  <RiFingerprintLine className="size-3.5" />
-                  Passkey
-                </TabsTrigger>
-                <TabsTrigger value="guest" className="gap-1.5 font-mono text-[11px]">
-                  <RiUserLine className="size-3.5" />
-                  Guest
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="password">
-                <PasswordTab
-                  flow={flow}
-                  setFlow={setFlow}
-                  postAuthRedirect={postAuthRedirect}
-                />
-              </TabsContent>
-
-              <TabsContent value="passkey">
-                <PasskeyTab
-                  flow={flow}
-                  setFlow={setFlow}
-                  postAuthRedirect={postAuthRedirect}
-                />
-              </TabsContent>
-
-              <TabsContent value="guest">
-                <GuestTab postAuthRedirect={postAuthRedirect} />
-              </TabsContent>
-            </Tabs>
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <span className="border-border w-full border-t" />
+          </div>
+          <div className="relative flex justify-center">
+            <span className="bg-background text-muted-foreground px-2 font-mono text-[11px] uppercase tracking-widest">
+              or
+            </span>
           </div>
         </div>
-      </Unauthenticated>
-    </>
+
+        {/* Auth Tabs */}
+        <Tabs defaultValue="password" className="w-full">
+          <TabsList
+            className={`mb-6 grid w-full ${inviteMode ? 'grid-cols-2' : 'grid-cols-3'}`}
+          >
+            <TabsTrigger value="password" className="gap-1.5 font-mono text-[11px]">
+              <RiMailLine className="size-3.5" />
+              Email
+            </TabsTrigger>
+            <TabsTrigger value="passkey" className="gap-1.5 font-mono text-[11px]">
+              <RiFingerprintLine className="size-3.5" />
+              Passkey
+            </TabsTrigger>
+            {!inviteMode && (
+              <TabsTrigger value="guest" className="gap-1.5 font-mono text-[11px]">
+                <RiUserLine className="size-3.5" />
+                Guest
+              </TabsTrigger>
+            )}
+          </TabsList>
+
+          <TabsContent value="password">
+            <PasswordTab
+              flow={flow}
+              setFlow={setFlow}
+              postAuthRedirect={postAuthRedirect}
+              inviteMode={inviteMode}
+            />
+          </TabsContent>
+
+          <TabsContent value="passkey">
+            <PasskeyTab
+              flow={flow}
+              setFlow={setFlow}
+              postAuthRedirect={postAuthRedirect}
+              inviteMode={inviteMode}
+            />
+          </TabsContent>
+
+          {!inviteMode && (
+            <TabsContent value="guest">
+              <GuestTab postAuthRedirect={postAuthRedirect} />
+            </TabsContent>
+          )}
+        </Tabs>
+      </div>
+    </div>
+  )
+}
+
+function InviteEmailCard({ postAuthRedirect }: { postAuthRedirect: string }) {
+  const { signIn } = useAuthActions()
+  const [email, setEmail] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSend = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (busy || email.trim().length === 0) {
+      return
+    }
+
+    setBusy(true)
+    setError(null)
+    setSent(false)
+    try {
+      await signIn('email', {
+        email: email.trim().toLowerCase(),
+        redirectTo: postAuthRedirect,
+      })
+      setSent(true)
+    } catch {
+      setError('Could not send sign-in link. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mb-5 space-y-3 border border-border bg-muted/30 p-4">
+      <div>
+        <p className="text-sm font-medium">Invite via email</p>
+        <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+          Enter the invited email address and we will send a sign-in link.
+        </p>
+      </div>
+      <form className="space-y-2" onSubmit={handleSend}>
+        <Input
+          type="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder="invited@example.com"
+          autoComplete="email"
+          required
+        />
+        <Button
+          type="submit"
+          className="w-full font-mono text-xs tracking-wide"
+          disabled={busy || email.trim().length === 0}
+        >
+          <RiMailLine className="size-4" />
+          {busy ? 'Sending link...' : 'Send email sign-in link'}
+        </Button>
+      </form>
+      {sent && (
+        <p className="bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+          Check your inbox for the invite sign-in link.
+        </p>
+      )}
+      {error && (
+        <p className="bg-destructive/10 text-destructive border-destructive/20 border px-3 py-2 font-mono text-[11px]">
+          {error}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -113,10 +209,12 @@ function PasswordTab({
   flow,
   setFlow,
   postAuthRedirect,
+  inviteMode,
 }: {
   flow: 'signIn' | 'signUp'
   setFlow: (flow: 'signIn' | 'signUp') => void
   postAuthRedirect: string
+  inviteMode: boolean
 }) {
   const { signIn, totp } = useAuthActions()
   const [email, setEmail] = useState('')
@@ -279,16 +377,22 @@ function PasswordTab({
       )}
 
       <div className="border-border/60 border-t pt-4">
-        <button
-          type="button"
-          onClick={() => setFlow(flow === 'signIn' ? 'signUp' : 'signIn')}
-          disabled={busy}
-          className="text-muted-foreground hover:text-foreground w-full text-center font-mono text-[11px] tracking-wide transition-colors"
-        >
-          {flow === 'signIn'
-            ? "Don't have an account? Sign up"
-            : 'Already have an account? Sign in'}
-        </button>
+        {inviteMode ? (
+          <p className="text-muted-foreground text-center font-mono text-[11px] tracking-wide">
+            Invite access requires the invited email.
+          </p>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setFlow(flow === 'signIn' ? 'signUp' : 'signIn')}
+            disabled={busy}
+            className="text-muted-foreground hover:text-foreground w-full text-center font-mono text-[11px] tracking-wide transition-colors"
+          >
+            {flow === 'signIn'
+              ? "Don't have an account? Sign up"
+              : 'Already have an account? Sign in'}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -302,10 +406,12 @@ function PasskeyTab({
   flow,
   setFlow,
   postAuthRedirect,
+  inviteMode,
 }: {
   flow: 'signIn' | 'signUp'
   setFlow: (flow: 'signIn' | 'signUp') => void
   postAuthRedirect: string
+  inviteMode: boolean
 }) {
   const { signIn, passkey } = useAuthActions()
   const [email, setEmail] = useState('')
@@ -434,7 +540,12 @@ function PasskeyTab({
           </p>
         )}
 
-        <div className="border-border/60 border-t pt-4">
+      <div className="border-border/60 border-t pt-4">
+        {inviteMode ? (
+          <p className="text-muted-foreground text-center font-mono text-[11px] tracking-wide">
+            For invited access, use sign in with an existing account.
+          </p>
+        ) : (
           <button
             type="button"
             onClick={() => setFlow('signIn')}
@@ -443,10 +554,11 @@ function PasskeyTab({
           >
             Already have an account? Sign in
           </button>
-        </div>
+        )}
       </div>
-    )
-  }
+    </div>
+  )
+}
 
   // Sign-in mode: authenticate with existing passkey
   return (
@@ -480,14 +592,20 @@ function PasskeyTab({
       )}
 
       <div className="border-border/60 border-t pt-4">
-        <button
-          type="button"
-          onClick={() => setFlow('signUp')}
-          disabled={busy}
-          className="text-muted-foreground hover:text-foreground w-full text-center font-mono text-[11px] tracking-wide transition-colors"
-        >
-          Don't have an account? Sign up
-        </button>
+        {inviteMode ? (
+          <p className="text-muted-foreground text-center font-mono text-[11px] tracking-wide">
+            Use the invited email if this passkey sign-in does not match.
+          </p>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setFlow('signUp')}
+            disabled={busy}
+            className="text-muted-foreground hover:text-foreground w-full text-center font-mono text-[11px] tracking-wide transition-colors"
+          >
+            Don't have an account? Sign up
+          </button>
+        )}
       </div>
     </div>
   )
@@ -627,10 +745,16 @@ function resolvePostAuthRedirect(search: {
 
   try {
     const resolved = new URL(search.redirectTo, 'http://localhost')
-    if (resolved.origin !== 'http://localhost') {
+    if (!isAllowedRedirectOrigin(search.redirectTo, resolved.origin)) {
       return fallback
     }
     if (!resolved.pathname.startsWith('/')) {
+      return fallback
+    }
+    if (resolved.pathname === '/login') {
+      return fallback
+    }
+    if (resolved.pathname.startsWith('/api/auth')) {
       return fallback
     }
     return `${resolved.pathname}${resolved.search}${resolved.hash}`
@@ -639,11 +763,29 @@ function resolvePostAuthRedirect(search: {
   }
 }
 
-function ClientRedirect({ to }: { to: string }) {
-  useEffect(() => {
-    window.location.replace(to)
-  }, [to])
-  return (
-    <p className="text-muted-foreground font-mono text-xs">Redirecting...</p>
-  )
+function extractInviteToken(redirectTo: string) {
+  try {
+    const resolved = new URL(redirectTo, 'http://localhost')
+    const token = resolved.searchParams.get('invite')
+    return token && token.length > 0 ? token : null
+  } catch {
+    return null
+  }
+}
+
+function isAllowedRedirectOrigin(rawRedirectTo: string, resolvedOrigin: string) {
+  const isRelative = rawRedirectTo.startsWith('/') || rawRedirectTo.startsWith('?')
+  if (isRelative) {
+    return true
+  }
+
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(rawRedirectTo)) {
+    return true
+  }
+
+  if (typeof window !== 'undefined' && resolvedOrigin === window.location.origin) {
+    return true
+  }
+
+  return false
 }

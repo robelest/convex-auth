@@ -1543,17 +1543,14 @@ export const inviteAcceptByToken = mutation({
       const user = await ctx.db.get(acceptedByUserId);
       const normalizedInviteEmail = invite.email.trim().toLowerCase();
       const normalizedUserEmail = user?.email?.trim().toLowerCase();
-      const hasVerifiedEmail = user?.emailVerificationTime !== undefined;
 
       if (
         normalizedUserEmail === undefined ||
-        normalizedUserEmail !== normalizedInviteEmail ||
-        !hasVerifiedEmail
+        normalizedUserEmail !== normalizedInviteEmail
       ) {
         throw new ConvexError({
           code: "INVITE_EMAIL_MISMATCH",
-          message:
-            "Invite email does not match a verified email on the accepting user",
+          message: "Invite email does not match accepting user's email",
           inviteId: invite._id,
         });
       }

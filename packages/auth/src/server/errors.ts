@@ -191,7 +191,7 @@ export const AUTH_ERRORS = {
   INVITE_EXPIRED:
     "This invitation has expired.",
   INVITE_EMAIL_MISMATCH:
-    "This invitation is for a different verified email.",
+    "This invitation is for a different email.",
   INVITE_ALREADY_ACCEPTED:
     "This invitation has already been accepted.",
 

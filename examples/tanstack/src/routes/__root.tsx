@@ -60,6 +60,8 @@ export const Route = createRootRoute({
     }
     return { token }
   },
+  errorComponent: RootErrorBoundary,
+  notFoundComponent: RootNotFound,
   component: RootApp,
   shellComponent: RootDocument,
 })
@@ -107,5 +109,33 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <Scripts />
       </body>
     </html>
+  )
+}
+
+function RootErrorBoundary({ error }: { error: unknown }) {
+  const message = error instanceof Error ? error.message : 'Unexpected error'
+
+  return (
+    <div className="flex min-h-screen items-center justify-center p-6">
+      <div className="border-border bg-background w-full max-w-lg rounded-md border p-6">
+        <h1 className="font-mono text-sm font-semibold">Something went wrong</h1>
+        <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
+          {message}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function RootNotFound() {
+  return (
+    <div className="flex min-h-screen items-center justify-center p-6">
+      <div className="border-border bg-background w-full max-w-lg rounded-md border p-6">
+        <h1 className="font-mono text-sm font-semibold">Page not found</h1>
+        <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
+          The page you requested does not exist.
+        </p>
+      </div>
+    </div>
   )
 }

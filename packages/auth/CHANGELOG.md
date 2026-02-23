@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.0.4-preview.5
+## 0.0.4-preview.5 (unreleased)
 
 - Breaking preview update: `isAuthenticated` on the client now represents
   server-confirmed auth state instead of local token presence. Sign-in flows now
@@ -9,6 +9,11 @@
 - Invite APIs now support token-first acceptance flows: create returns raw invite
   token, acceptance can be performed by token, invite expiration is enforced, and
   group membership is ensured atomically during acceptance.
+- Breaking preview API update: removed `auth.invite.getByToken(...)` and
+  `auth.invite.acceptByToken(...)`. Use `auth.invite.token.get(...)` and
+  `auth.invite.token.accept(...)` instead.
+- Token invite acceptance now requires matching invite email, but no longer
+  requires the accepting user email to already be verified.
 - Server refresh/proxy behavior is more resilient: transient OAuth code exchange
   and token refresh failures preserve active sessions instead of eagerly clearing
   cookies; terminal failures still clear verifier state.

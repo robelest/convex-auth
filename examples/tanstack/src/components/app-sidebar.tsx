@@ -3,7 +3,6 @@ import {
   RiAddLine,
   RiChat3Line,
   RiHashtag,
-  RiLinksLine,
   RiLogoutBoxLine,
   RiSearchLine,
 } from '@remixicon/react'
@@ -33,7 +32,6 @@ export function AppSidebar({ activeGroupId, onSelectGroup }: AppSidebarProps) {
   const allGroups = useQuery(api.groups.listAll)
   const createGroup = useMutation(api.groups.create)
   const joinGroup = useMutation(api.groups.join)
-  const createInviteLink = useMutation(api.invites.createLink)
   const viewer = useQuery(api.users.viewer)
   const { signOut } = useAuthActions()
 
@@ -44,8 +42,6 @@ export function AppSidebar({ activeGroupId, onSelectGroup }: AppSidebarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
-  const [inviteBusy, setInviteBusy] = useState(false)
-  const [inviteFeedback, setInviteFeedback] = useState<string | null>(null)
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -76,50 +72,12 @@ export function AppSidebar({ activeGroupId, onSelectGroup }: AppSidebarProps) {
     setBrowseOpen(false)
   }
 
-  const handleCreateInvite = async () => {
-    if (activeGroupId === null || inviteBusy) {
-      return
-    }
-
-    setInviteBusy(true)
-    setInviteFeedback(null)
-    try {
-      const result = await createInviteLink({ groupId: activeGroupId })
-      const absoluteInviteUrl = `${window.location.origin}${result.invitePath}`
-      await navigator.clipboard.writeText(absoluteInviteUrl)
-      setInviteFeedback('Invite link copied to clipboard')
-    } catch (error) {
-      setInviteFeedback(
-        error instanceof Error
-          ? error.message
-          : 'Could not create invite link',
-      )
-    } finally {
-      setInviteBusy(false)
-      window.setTimeout(() => {
-        setInviteFeedback(null)
-      }, 3000)
-    }
-  }
-
   return (
     <aside className="border-border flex h-full w-60 shrink-0 flex-col border-r bg-sidebar">
       {/* Header */}
       <div className="border-border flex h-12 items-center justify-between border-b px-4">
         <span className="text-sm font-semibold text-sidebar-foreground">Channels</span>
         <div className="flex gap-1">
-          {activeGroupId !== null && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-7 p-0 text-sidebar-foreground/60 hover:text-sidebar-foreground"
-              onClick={() => void handleCreateInvite()}
-              title="Create invite link"
-              disabled={inviteBusy}
-            >
-              <RiLinksLine className="size-3.5" />
-            </Button>
-          )}
           <Button
             variant="ghost"
             size="sm"
@@ -144,11 +102,6 @@ export function AppSidebar({ activeGroupId, onSelectGroup }: AppSidebarProps) {
       {/* Channel list */}
       <ScrollArea className="flex-1">
         <div className="p-2 space-y-0.5">
-          {inviteFeedback && (
-            <p className="text-xs px-3 py-1.5 text-sidebar-foreground/70">
-              {inviteFeedback}
-            </p>
-          )}
           {/* General channel (no groupId) */}
           <button
             type="button"
@@ -214,6 +167,7 @@ export function AppSidebar({ activeGroupId, onSelectGroup }: AppSidebarProps) {
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         label={userLabel}
+        activeGroupId={activeGroupId}
       />
 
       {/* Create channel dialog */}

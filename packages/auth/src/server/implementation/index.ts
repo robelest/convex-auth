@@ -662,13 +662,32 @@ export function Auth(config_: ConvexAuthConfig) {
         return await ctx.runQuery(config.component.public.inviteGet, { inviteId });
       },
       /**
-       * Retrieve an invite by raw token.
+       * Token-based invite helpers.
        */
-      getByToken: async (ctx: ComponentReadCtx, token: string) => {
-        const tokenHash = await sha256(token);
-        return await ctx.runQuery(config.component.public.inviteGetByTokenHash, {
-          tokenHash,
-        });
+      token: {
+        /**
+         * Retrieve an invite by raw token.
+         */
+        get: async (ctx: ComponentReadCtx, token: string) => {
+          const tokenHash = await sha256(token);
+          return await ctx.runQuery(config.component.public.inviteGetByTokenHash, {
+            tokenHash,
+          });
+        },
+        /**
+         * Accept an invitation by raw token and atomically add group membership
+         * when the invite is group-scoped.
+         */
+        accept: async (
+          ctx: ComponentCtx,
+          args: { token: string; acceptedByUserId: string },
+        ) => {
+          const tokenHash = await sha256(args.token);
+          return await ctx.runMutation(config.component.public.inviteAcceptByToken, {
+            tokenHash,
+            acceptedByUserId: args.acceptedByUserId,
+          });
+        },
       },
       /**
        * List invites with optional filtering, sorting, and pagination.
@@ -741,20 +760,6 @@ export function Auth(config_: ConvexAuthConfig) {
         await ctx.runMutation(config.component.public.inviteAccept, {
           inviteId,
           ...(acceptedByUserId ? { acceptedByUserId } : {}),
-        });
-      },
-      /**
-       * Accept an invitation by raw token and atomically add group membership
-       * when the invite is group-scoped.
-       */
-      acceptByToken: async (
-        ctx: ComponentCtx,
-        args: { token: string; acceptedByUserId: string },
-      ) => {
-        const tokenHash = await sha256(args.token);
-        return await ctx.runMutation(config.component.public.inviteAcceptByToken, {
-          tokenHash,
-          acceptedByUserId: args.acceptedByUserId,
         });
       },
       /**
