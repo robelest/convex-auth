@@ -33,15 +33,15 @@ export type Tokens = { token: string; refreshToken: string };
 
 /** Session information returned after authentication. */
 export type SessionInfo = {
-  userId: GenericId<"user">;
-  sessionId: GenericId<"session">;
+  userId: GenericId<"User">;
+  sessionId: GenericId<"Session">;
   tokens: Tokens | null;
 };
 
 /** Session information with guaranteed non-null tokens. */
 export type SessionInfoWithTokens = {
-  userId: GenericId<"user">;
-  sessionId: GenericId<"session">;
+  userId: GenericId<"User">;
+  sessionId: GenericId<"Session">;
   tokens: Tokens;
 };
 

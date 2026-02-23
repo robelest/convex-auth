@@ -39,8 +39,8 @@ type TotpActions = {
 type DeviceCodeResult = {
   deviceCode: string
   userCode: string
-  verificationUri: string
-  verificationUriComplete: string
+  verification_uri: string
+  verification_uri_complete: string
   expiresIn: number
   interval: number
 }
@@ -112,12 +112,12 @@ export function ConvexAuthProvider({
   children: ReactNode
 }) {
   const auth = useMemo(
-    () => client({ convex, proxy, token }),
+    () => client({ convex, proxy_path: proxy, token_seed: token }),
     [convex, proxy, token],
   )
   const [state, setState] = useState<AuthState>(auth.state)
   useEffect(() => {
-    const unsubscribe = auth.onChange(setState)
+    const unsubscribe = auth.on_change(setState)
     return () => {
       unsubscribe()
       auth.destroy()
@@ -127,10 +127,10 @@ export function ConvexAuthProvider({
   const value = useMemo(
     () => ({
       signIn: async (provider?: string, params?: FormData | Record<string, Value>) => {
-        const result = await auth.signIn(provider, params)
+        const result = await auth.sign_in(provider, params)
         return { totpRequired: result.totpRequired, verifier: result.verifier }
       },
-      signOut: auth.signOut,
+      signOut: auth.sign_out,
       passkey: auth.passkey,
       totp: auth.totp,
       device: auth.device,

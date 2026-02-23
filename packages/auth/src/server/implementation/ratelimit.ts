@@ -13,7 +13,7 @@ export async function isSignInRateLimited(
   if (state === null) {
     return false;
   }
-  return state.attempsLeft < 1;
+  return state.attemptsLeft < 1;
 }
 
 export async function recordFailedSignIn(
@@ -25,14 +25,14 @@ export async function recordFailedSignIn(
   const state = await getRateLimitState(ctx, identifier, config);
   if (state !== null) {
     await db.rateLimits.patch(state.limit._id, {
-      attemptsLeft: state.attempsLeft - 1,
+      attemptsLeft: state.attemptsLeft - 1,
       lastAttemptTime: Date.now(),
     });
   } else {
-    const maxAttempsPerHour = configuredMaxAttempsPerHour(config);
+    const maxAttemptsPerHour = configuredMaxAttemptsPerHour(config);
     await db.rateLimits.create({
       identifier,
-      attemptsLeft: maxAttempsPerHour - 1,
+      attemptsLeft: maxAttemptsPerHour - 1,
       lastAttemptTime: Date.now(),
     });
   }
@@ -55,24 +55,25 @@ async function getRateLimitState(
   config: ConvexAuthConfig,
 ) {
   const now = Date.now();
-  const maxAttempsPerHour = configuredMaxAttempsPerHour(config);
+  const maxAttemptsPerHour = configuredMaxAttemptsPerHour(config);
   const limit = (await authDb(ctx, config).rateLimits.get(identifier)) as
-    | Doc<"limit">
+    | (Doc<"RateLimit"> & { attemptsLeft: number; lastAttemptTime: number })
     | null;
   if (limit === null) {
     return null;
   }
   const elapsed = now - limit.lastAttemptTime;
-  const maxAttempsPerMs = maxAttempsPerHour / (60 * 60 * 1000);
-  const attempsLeft = Math.min(
-    maxAttempsPerHour,
-    limit.attemptsLeft + elapsed * maxAttempsPerMs,
+  const maxAttemptsPerMs = maxAttemptsPerHour / (60 * 60 * 1000);
+  const attemptsLeft = Math.min(
+    maxAttemptsPerHour,
+    limit.attemptsLeft + elapsed * maxAttemptsPerMs,
   );
-  return { limit, attempsLeft };
+  return { limit, attemptsLeft };
 }
 
-function configuredMaxAttempsPerHour(config: ConvexAuthConfig) {
+function configuredMaxAttemptsPerHour(config: ConvexAuthConfig) {
   return (
+    config.signIn?.max_failed_attempts_per_hour ??
     config.signIn?.maxFailedAttempsPerHour ??
     DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR
   );

@@ -35,12 +35,12 @@ export async function signInViaMagicLink(
     }),
   );
 
-  await t.action(api.auth.signIn, { provider, params: { email } });
+  await t.action(api.auth.session.start, { provider, params: { email } });
   vi.unstubAllGlobals();
 
   // Note: The client doesn't use auth for this call,
   // so ideally this should be `t.withoutIdentity().action(...)`
-  const result = await t.action(api.auth.signIn, {
+  const result = await t.action(api.auth.session.start, {
     params: { code: code! },
   });
   return result.tokens ?? null;
@@ -52,12 +52,12 @@ export async function signInViaOTP(
   params: Record<string, unknown>,
 ) {
   const { code } = await mockResendOTP(
-    async () => await t.action(api.auth.signIn, { provider, params }),
+    async () => await t.action(api.auth.session.start, { provider, params }),
   );
 
   // Note: The client doesn't use auth for this call,
   // so ideally this should be `t.withoutIdentity().action(...)`
-  const result = await t.action(api.auth.signIn, {
+  const result = await t.action(api.auth.session.start, {
     provider,
     params: { code, ...params },
   });

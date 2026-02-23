@@ -45,7 +45,7 @@ export interface AnonymousConfig<DataModel extends GenericDataModel> {
      * the database.
      */
     ctx: GenericActionCtxWithAuthConfig<DataModel>,
-  ) => WithoutSystemFields<DocumentByName<DataModel, "user">> & {
+  ) => WithoutSystemFields<DocumentByName<DataModel, "User">> & {
     isAnonymous: true;
   };
 }
@@ -93,17 +93,4 @@ export class Anonymous<DataModel extends GenericDataModel = GenericDataModel> {
       ...config,
     })._toMaterialized();
   }
-}
-
-// ============================================================================
-// Backward-compatible default export
-// ============================================================================
-
-/**
- * @deprecated Use `new Anonymous(config)` instead.
- */
-export default function anonymous<DataModel extends GenericDataModel>(
-  config: AnonymousConfig<DataModel> = {} as AnonymousConfig<DataModel>,
-): ConvexCredentialsConfig {
-  return new Anonymous(config)._toMaterialized();
 }

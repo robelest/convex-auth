@@ -77,6 +77,8 @@ export type ConvexAuthConfig = {
      * Defaults to 10 times per hour (that is 10 failed attempts, and then
      * allow another one every 6 minutes).
      */
+    max_failed_attempts_per_hour?: number;
+    /** @deprecated Use `max_failed_attempts_per_hour` instead. */
     maxFailedAttempsPerHour?: number;
   };
   /**
@@ -202,7 +204,7 @@ export type ConvexAuthConfig = {
          * If this is a sign-in to an existing account,
          * this is the existing user ID linked to that account.
          */
-        existingUserId: GenericId<"user"> | null;
+        existingUserId: GenericId<"User"> | null;
         /**
          * The provider type or "verification" if this callback is called
          * after an email or phone token verification.
@@ -231,7 +233,7 @@ export type ConvexAuthConfig = {
          */
         shouldLink?: boolean;
       },
-    ) => Promise<GenericId<"user">>;
+    ) => Promise<GenericId<"User">>;
     /**
      * Perform additional writes after a user is created.
      *
@@ -252,12 +254,12 @@ export type ConvexAuthConfig = {
         /**
          * The ID of the user that is being signed in.
          */
-        userId: GenericId<"user">;
+        userId: GenericId<"User">;
         /**
          * If this is a sign-in to an existing account,
          * this is the existing user ID linked to that account.
          */
-        existingUserId: GenericId<"user"> | null;
+        existingUserId: GenericId<"User"> | null;
         /**
          * The provider type or "verification" if this callback is called
          * after an email or phone token verification.
@@ -370,7 +372,7 @@ export interface EmailConfig<
      * The values passed to the `signIn` function.
      */
     params: Record<string, Value | undefined>,
-    account: GenericDoc<DataModel, "account">,
+    account: GenericDoc<DataModel, "Account">,
   ) => Promise<void>;
   /** Raw user options before merging with defaults. */
   options: EmailUserConfig<DataModel>;
@@ -440,7 +442,7 @@ export interface PhoneConfig<
      * The values passed to the `signIn` function.
      */
     params: Record<string, Value | undefined>,
-    account: GenericDoc<DataModel, "account">,
+    account: GenericDoc<DataModel, "Account">,
   ) => Promise<void>;
   options: PhoneUserConfig<DataModel>;
 }
@@ -574,20 +576,20 @@ export type AuthUpdateAccountArgs = {
 
 /** Arguments for `auth.session.invalidate()`. */
 export type AuthInvalidateSessionsArgs = {
-  userId: GenericId<"user">;
-  except?: GenericId<"session">[];
+  userId: GenericId<"User">;
+  except?: GenericId<"Session">[];
 };
 
 /** Arguments for `auth.provider.signIn()`. */
 export type AuthProviderSignInArgs = {
-  accountId?: GenericId<"account">;
+  accountId?: GenericId<"Account">;
   params?: Record<string, Value | undefined>;
 };
 
 /** Return type of `auth.provider.signIn()` — user and session IDs, or `null` on failure. */
 export type AuthProviderSignInResult = {
-  userId: GenericId<"user">;
-  sessionId: GenericId<"session">;
+  userId: GenericId<"User">;
+  sessionId: GenericId<"Session">;
 } | null;
 
 /** Server-side auth helpers available on enriched action contexts. */
@@ -597,15 +599,15 @@ export type AuthServerHelpers = {
       ctx: GenericActionCtx<any>,
       args: AuthCreateAccountArgs,
     ) => Promise<{
-      account: GenericDoc<GenericDataModel, "account">;
-      user: GenericDoc<GenericDataModel, "user">;
+      account: GenericDoc<GenericDataModel, "Account">;
+      user: GenericDoc<GenericDataModel, "User">;
     }>;
     get: (
       ctx: GenericActionCtx<any>,
       args: AuthRetrieveAccountArgs,
     ) => Promise<{
-      account: GenericDoc<GenericDataModel, "account">;
-      user: GenericDoc<GenericDataModel, "user">;
+      account: GenericDoc<GenericDataModel, "Account">;
+      user: GenericDoc<GenericDataModel, "User">;
     }>;
     update: (
       ctx: GenericActionCtx<any>,
@@ -615,7 +617,7 @@ export type AuthServerHelpers = {
   session: {
     current: (
       ctx: { auth: GenericActionCtx<GenericDataModel>["auth"] },
-    ) => Promise<GenericId<"session"> | null>;
+    ) => Promise<GenericId<"Session"> | null>;
     invalidate: (
       ctx: GenericActionCtx<any>,
       args: AuthInvalidateSessionsArgs,

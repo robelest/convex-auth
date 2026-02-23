@@ -50,7 +50,7 @@ export async function refreshSessionImpl(
   if (validationResult === null) {
     // Replicating `deleteSession` but ensuring that we delete both the session
     // and the refresh token, even if one of them is missing.
-    let session: Doc<"session"> | null = null;
+    let session: Doc<"Session"> | null = null;
     try {
       session = await db.sessions.getById(tokenSessionId);
     } catch {

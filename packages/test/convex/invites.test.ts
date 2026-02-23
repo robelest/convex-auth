@@ -21,7 +21,7 @@ test("token invite acceptance allows matching unverified email", async () => {
   const t = convexTest(schema);
   const inviteEmail = "invited@example.com";
 
-  const { tokens } = await t.action(api.auth.signIn, {
+  const { tokens } = await t.action(api.auth.session.start, {
     provider: "password",
     params: {
       email: inviteEmail,
@@ -57,7 +57,7 @@ test("token invite acceptance still rejects mismatched email", async () => {
   setupEnv();
   const t = convexTest(schema);
 
-  const { tokens } = await t.action(api.auth.signIn, {
+  const { tokens } = await t.action(api.auth.session.start, {
     provider: "password",
     params: {
       email: "different@example.com",
@@ -99,7 +99,7 @@ test("ledger-style proxy sign up can immediately accept invite", async () => {
         args?: Record<string, unknown>;
       };
 
-      if (body.action !== "auth:signIn") {
+      if (body.action !== "auth/session:start") {
         return new Response(JSON.stringify({ error: "Unsupported action" }), {
           status: 400,
           headers: { "Content-Type": "application/json" },
@@ -113,7 +113,7 @@ test("ledger-style proxy sign up can immediately accept invite", async () => {
         });
       }
 
-      const result = await t.action(api.auth.signIn, body.args ?? {});
+      const result = await t.action(api.auth.session.start, body.args ?? {});
       return new Response(JSON.stringify(result), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -123,10 +123,11 @@ test("ledger-style proxy sign up can immediately accept invite", async () => {
 
   const auth = client({
     convex,
-    proxy: "/api/auth",
+    proxy_path: "/api/auth",
+    url: "https://example.convex.cloud",
   });
 
-  const signInPromise = auth.signIn("password", {
+  const signInPromise = auth.sign_in("password", {
     email: inviteEmail,
     password: "44448888",
     flow: "signUp",

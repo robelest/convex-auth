@@ -20,7 +20,7 @@ type ReturnType =
   | "InvalidAccountId"
   | "TooManyFailedAttempts"
   | "InvalidSecret"
-  | { account: Doc<"account">; user: Doc<"user"> };
+  | { account: Doc<"Account">; user: Doc<"User"> };
 
 export async function retrieveAccountWithCredentialsImpl(
   ctx: MutationCtx,
@@ -40,7 +40,7 @@ export async function retrieveAccountWithCredentialsImpl(
   const existingAccount = (await db.accounts.get(
     providerId,
     account.id,
-  )) as Doc<"account"> | null;
+  )) as Doc<"Account"> | null;
   if (existingAccount === null) {
     return "InvalidAccountId";
   }
@@ -62,7 +62,7 @@ export async function retrieveAccountWithCredentialsImpl(
   }
   const existingUser = (await db.users.getById(
     existingAccount.userId,
-  )) as Doc<"user"> | null;
+  )) as Doc<"User"> | null;
   if (existingUser === null) {
     logWithLevel(
       LOG_LEVELS.ERROR,

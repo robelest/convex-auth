@@ -77,14 +77,14 @@ export const userList = query({
     let q;
     if (where.email !== undefined) {
       q = ctx.db
-        .query("user")
+        .query("User")
         .withIndex("email", (idx) => idx.eq("email", where.email!));
     } else if (where.phone !== undefined) {
       q = ctx.db
-        .query("user")
+        .query("User")
         .withIndex("phone", (idx) => idx.eq("phone", where.phone!));
     } else {
-      q = ctx.db.query("user");
+      q = ctx.db.query("User");
     }
 
     // Apply remaining filters
@@ -120,7 +120,7 @@ export const userList = query({
 
 /** Retrieve a user by their document ID. */
 export const userGetById = query({
-  args: { userId: v.id("user") },
+  args: { userId: v.id("User") },
   handler: async (ctx, { userId }) => {
     return await ctx.db.get(userId);
   },
@@ -135,7 +135,7 @@ export const userFindByVerifiedEmail = query({
   args: { email: v.string() },
   handler: async (ctx, { email }) => {
     const users = await ctx.db
-      .query("user")
+      .query("User")
       .withIndex("email", (q) => q.eq("email", email))
       .filter((q) => q.neq(q.field("emailVerificationTime"), undefined))
       .take(2);
@@ -152,7 +152,7 @@ export const userFindByVerifiedPhone = query({
   args: { phone: v.string() },
   handler: async (ctx, { phone }) => {
     const users = await ctx.db
-      .query("user")
+      .query("User")
       .withIndex("phone", (q) => q.eq("phone", phone))
       .filter((q) => q.neq(q.field("phoneVerificationTime"), undefined))
       .take(2);
@@ -164,25 +164,25 @@ export const userFindByVerifiedPhone = query({
 export const userInsert = mutation({
   args: { data: v.any() },
   handler: async (ctx, { data }) => {
-    return await ctx.db.insert("user", data);
+    return await ctx.db.insert("User", data);
   },
 });
 
 /** Insert a new user or update an existing one. */
 export const userUpsert = mutation({
-  args: { userId: v.optional(v.id("user")), data: v.any() },
+  args: { userId: v.optional(v.id("User")), data: v.any() },
   handler: async (ctx, { userId, data }) => {
     if (userId !== undefined) {
       await ctx.db.patch(userId, data);
       return userId;
     }
-    return await ctx.db.insert("user", data);
+    return await ctx.db.insert("User", data);
   },
 });
 
 /** Patch an existing user document with partial data. */
 export const userPatch = mutation({
-  args: { userId: v.id("user"), data: v.any() },
+  args: { userId: v.id("User"), data: v.any() },
   handler: async (ctx, { userId, data }) => {
     await ctx.db.patch(userId, data);
   },
@@ -194,11 +194,11 @@ export const userPatch = mutation({
 
 /** List all accounts for a user. */
 export const accountListByUser = query({
-  args: { userId: v.id("user") },
+  args: { userId: v.id("User") },
   handler: async (ctx, { userId }) => {
     return await ctx.db
-      .query("account")
-      .withIndex("userIdAndProvider", (q) => q.eq("userId", userId as any))
+      .query("Account")
+      .withIndex("user_id_provider", (q) => q.eq("userId", userId as any))
       .collect();
   },
 });
@@ -208,8 +208,8 @@ export const accountGet = query({
   args: { provider: v.string(), providerAccountId: v.string() },
   handler: async (ctx, { provider, providerAccountId }) => {
     return await ctx.db
-      .query("account")
-      .withIndex("providerAndAccountId", (q) =>
+      .query("Account")
+      .withIndex("provider_account_id", (q) =>
         q.eq("provider", provider).eq("providerAccountId", providerAccountId),
       )
       .unique();
@@ -218,7 +218,7 @@ export const accountGet = query({
 
 /** Retrieve an account by its document ID. */
 export const accountGetById = query({
-  args: { accountId: v.id("account") },
+  args: { accountId: v.id("Account") },
   handler: async (ctx, { accountId }) => {
     return await ctx.db.get(accountId);
   },
@@ -227,19 +227,19 @@ export const accountGetById = query({
 /** Create a new account linking a user to an auth provider. */
 export const accountInsert = mutation({
   args: {
-    userId: v.id("user"),
+    userId: v.id("User"),
     provider: v.string(),
     providerAccountId: v.string(),
     secret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("account", args as any);
+    return await ctx.db.insert("Account", args as any);
   },
 });
 
 /** Patch an existing account document with partial data. */
 export const accountPatch = mutation({
-  args: { accountId: v.id("account"), data: v.any() },
+  args: { accountId: v.id("Account"), data: v.any() },
   handler: async (ctx, { accountId, data }) => {
     await ctx.db.patch(accountId, data);
   },
@@ -247,7 +247,7 @@ export const accountPatch = mutation({
 
 /** Delete an account document. */
 export const accountDelete = mutation({
-  args: { accountId: v.id("account") },
+  args: { accountId: v.id("Account") },
   handler: async (ctx, { accountId }) => {
     await ctx.db.delete(accountId);
   },
@@ -266,7 +266,7 @@ export const sessionList = query({
   args: {
     where: v.optional(
       v.object({
-        userId: v.optional(v.id("user")),
+        userId: v.optional(v.id("User")),
       }),
     ),
     limit: v.optional(v.number()),
@@ -281,10 +281,10 @@ export const sessionList = query({
     let q;
     if (where.userId !== undefined) {
       q = ctx.db
-        .query("session")
-        .withIndex("userId", (idx) => idx.eq("userId", where.userId!));
+        .query("Session")
+        .withIndex("user_id", (idx) => idx.eq("userId", where.userId!));
     } else {
-      q = ctx.db.query("session");
+      q = ctx.db.query("Session");
     }
 
     q = q.order(order);
@@ -307,9 +307,9 @@ export const sessionList = query({
 
 /** Create a new session for a user with an expiration time. */
 export const sessionCreate = mutation({
-  args: { userId: v.id("user"), expirationTime: v.number() },
+  args: { userId: v.id("User"), expirationTime: v.number() },
   handler: async (ctx, { userId, expirationTime }) => {
-    return await ctx.db.insert("session", {
+    return await ctx.db.insert("Session", {
       userId: userId as any,
       expirationTime,
     });
@@ -318,7 +318,7 @@ export const sessionCreate = mutation({
 
 /** Retrieve a session by its document ID. */
 export const sessionGetById = query({
-  args: { sessionId: v.id("session") },
+  args: { sessionId: v.id("Session") },
   handler: async (ctx, { sessionId }) => {
     return await ctx.db.get(sessionId);
   },
@@ -326,7 +326,7 @@ export const sessionGetById = query({
 
 /** Delete a session. No-op if the session does not exist. */
 export const sessionDelete = mutation({
-  args: { sessionId: v.id("session") },
+  args: { sessionId: v.id("Session") },
   handler: async (ctx, { sessionId }) => {
     if ((await ctx.db.get(sessionId)) !== null) {
       await ctx.db.delete(sessionId);
@@ -336,11 +336,11 @@ export const sessionDelete = mutation({
 
 /** List all sessions for a user. */
 export const sessionListByUser = query({
-  args: { userId: v.id("user") },
+  args: { userId: v.id("User") },
   handler: async (ctx, { userId }) => {
     return await ctx.db
-      .query("session")
-      .withIndex("userId", (q) => q.eq("userId", userId as any))
+      .query("Session")
+      .withIndex("user_id", (q) => q.eq("userId", userId as any))
       .collect();
   },
 });
@@ -351,15 +351,15 @@ export const sessionListByUser = query({
 
 /** Create a new PKCE verifier, optionally linked to a session. */
 export const verifierCreate = mutation({
-  args: { sessionId: v.optional(v.id("session")) },
+  args: { sessionId: v.optional(v.id("Session")) },
   handler: async (ctx, { sessionId }) => {
-    return await ctx.db.insert("verifier", { sessionId: sessionId as any });
+    return await ctx.db.insert("AuthVerifier", { sessionId: sessionId as any });
   },
 });
 
 /** Retrieve a verifier by its document ID. */
 export const verifierGetById = query({
-  args: { verifierId: v.id("verifier") },
+  args: { verifierId: v.id("AuthVerifier") },
   handler: async (ctx, { verifierId }) => {
     return await ctx.db.get(verifierId);
   },
@@ -370,7 +370,7 @@ export const verifierGetBySignature = query({
   args: { signature: v.string() },
   handler: async (ctx, { signature }) => {
     return await ctx.db
-      .query("verifier")
+      .query("AuthVerifier")
       .withIndex("signature", (q) => q.eq("signature", signature))
       .unique();
   },
@@ -378,7 +378,7 @@ export const verifierGetBySignature = query({
 
 /** Patch a verifier document with partial data. */
 export const verifierPatch = mutation({
-  args: { verifierId: v.id("verifier"), data: v.any() },
+  args: { verifierId: v.id("AuthVerifier"), data: v.any() },
   handler: async (ctx, { verifierId, data }) => {
     await ctx.db.patch(verifierId, data);
   },
@@ -386,7 +386,7 @@ export const verifierPatch = mutation({
 
 /** Delete a verifier document. */
 export const verifierDelete = mutation({
-  args: { verifierId: v.id("verifier") },
+  args: { verifierId: v.id("AuthVerifier") },
   handler: async (ctx, { verifierId }) => {
     await ctx.db.delete(verifierId);
   },
@@ -398,11 +398,11 @@ export const verifierDelete = mutation({
 
 /** Find a verification code by its associated account ID. */
 export const verificationCodeGetByAccountId = query({
-  args: { accountId: v.id("account") },
+  args: { accountId: v.id("Account") },
   handler: async (ctx, { accountId }) => {
     return await ctx.db
-      .query("verification")
-      .withIndex("accountId", (q) => q.eq("accountId", accountId as any))
+      .query("VerificationCode")
+      .withIndex("account_id", (q) => q.eq("accountId", accountId as any))
       .unique();
   },
 });
@@ -412,7 +412,7 @@ export const verificationCodeGetByCode = query({
   args: { code: v.string() },
   handler: async (ctx, { code }) => {
     return await ctx.db
-      .query("verification")
+      .query("VerificationCode")
       .withIndex("code", (q) => q.eq("code", code))
       .unique();
   },
@@ -421,7 +421,7 @@ export const verificationCodeGetByCode = query({
 /** Create a new verification code for OTP, magic link, or OAuth flows. */
 export const verificationCodeCreate = mutation({
   args: {
-    accountId: v.id("account"),
+    accountId: v.id("Account"),
     provider: v.string(),
     code: v.string(),
     expirationTime: v.number(),
@@ -430,13 +430,13 @@ export const verificationCodeCreate = mutation({
     phoneVerified: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("verification", args as any);
+    return await ctx.db.insert("VerificationCode", args as any);
   },
 });
 
 /** Delete a verification code document. */
 export const verificationCodeDelete = mutation({
-  args: { verificationCodeId: v.id("verification") },
+  args: { verificationCodeId: v.id("VerificationCode") },
   handler: async (ctx, { verificationCodeId }) => {
     await ctx.db.delete(verificationCodeId);
   },
@@ -449,18 +449,18 @@ export const verificationCodeDelete = mutation({
 /** Create a new refresh token for a session. */
 export const refreshTokenCreate = mutation({
   args: {
-    sessionId: v.id("session"),
+    sessionId: v.id("Session"),
     expirationTime: v.number(),
-    parentRefreshTokenId: v.optional(v.id("token")),
+    parentRefreshTokenId: v.optional(v.id("RefreshToken")),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("token", args as any);
+    return await ctx.db.insert("RefreshToken", args as any);
   },
 });
 
 /** Retrieve a refresh token by its document ID. */
 export const refreshTokenGetById = query({
-  args: { refreshTokenId: v.id("token") },
+  args: { refreshTokenId: v.id("RefreshToken") },
   handler: async (ctx, { refreshTokenId }) => {
     return await ctx.db.get(refreshTokenId);
   },
@@ -468,7 +468,7 @@ export const refreshTokenGetById = query({
 
 /** Patch a refresh token document with partial data. */
 export const refreshTokenPatch = mutation({
-  args: { refreshTokenId: v.id("token"), data: v.any() },
+  args: { refreshTokenId: v.id("RefreshToken"), data: v.any() },
   handler: async (ctx, { refreshTokenId, data }) => {
     await ctx.db.patch(refreshTokenId, data);
   },
@@ -477,13 +477,13 @@ export const refreshTokenPatch = mutation({
 /** Get child tokens that were created by exchanging a specific parent token. */
 export const refreshTokenGetChildren = query({
   args: {
-    sessionId: v.id("session"),
-    parentRefreshTokenId: v.id("token"),
+    sessionId: v.id("Session"),
+    parentRefreshTokenId: v.id("RefreshToken"),
   },
   handler: async (ctx, { sessionId, parentRefreshTokenId }) => {
     return await ctx.db
-      .query("token")
-      .withIndex("sessionIdAndParentRefreshTokenId", (q) =>
+      .query("RefreshToken")
+      .withIndex("session_id_parent_refresh_token_id", (q) =>
         q
           .eq("sessionId", sessionId as any)
           .eq("parentRefreshTokenId", parentRefreshTokenId as any),
@@ -494,11 +494,11 @@ export const refreshTokenGetChildren = query({
 
 /** List all refresh tokens for a session. */
 export const refreshTokenListBySession = query({
-  args: { sessionId: v.id("session") },
+  args: { sessionId: v.id("Session") },
   handler: async (ctx, { sessionId }) => {
     return await ctx.db
-      .query("token")
-      .withIndex("sessionIdAndParentRefreshTokenId", (q) =>
+      .query("RefreshToken")
+      .withIndex("session_id_parent_refresh_token_id", (q) =>
         q.eq("sessionId", sessionId as any),
       )
       .collect();
@@ -507,11 +507,11 @@ export const refreshTokenListBySession = query({
 
 /** Delete all refresh tokens for a session. */
 export const refreshTokenDeleteAll = mutation({
-  args: { sessionId: v.id("session") },
+  args: { sessionId: v.id("Session") },
   handler: async (ctx, { sessionId }) => {
     const tokens = await ctx.db
-      .query("token")
-      .withIndex("sessionIdAndParentRefreshTokenId", (q) =>
+      .query("RefreshToken")
+      .withIndex("session_id_parent_refresh_token_id", (q) =>
         q.eq("sessionId", sessionId as any),
       )
       .collect();
@@ -521,11 +521,11 @@ export const refreshTokenDeleteAll = mutation({
 
 /** Get the active (unused) refresh token for a session. */
 export const refreshTokenGetActive = query({
-  args: { sessionId: v.id("session") },
+  args: { sessionId: v.id("Session") },
   handler: async (ctx, { sessionId }) => {
     return await ctx.db
-      .query("token")
-      .withIndex("sessionId", (q) => q.eq("sessionId", sessionId as any))
+      .query("RefreshToken")
+      .withIndex("session_id", (q) => q.eq("sessionId", sessionId as any))
       .filter((q) => q.eq(q.field("firstUsedTime"), undefined))
       .order("desc")
       .first();
@@ -539,7 +539,7 @@ export const refreshTokenGetActive = query({
 /** Store a new passkey credential for a user. */
 export const passkeyInsert = mutation({
   args: {
-    userId: v.id("user"),
+    userId: v.id("User"),
     credentialId: v.string(),
     publicKey: v.bytes(),
     algorithm: v.number(),
@@ -551,7 +551,7 @@ export const passkeyInsert = mutation({
     createdAt: v.number(),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("passkey", args);
+    return await ctx.db.insert("Passkey", args);
   },
 });
 
@@ -560,26 +560,26 @@ export const passkeyGetByCredentialId = query({
   args: { credentialId: v.string() },
   handler: async (ctx, { credentialId }) => {
     return await ctx.db
-      .query("passkey")
-      .withIndex("credentialId", (q) => q.eq("credentialId", credentialId))
+      .query("Passkey")
+      .withIndex("credential_id", (q) => q.eq("credentialId", credentialId))
       .unique();
   },
 });
 
 /** List all passkeys for a user. */
 export const passkeyListByUserId = query({
-  args: { userId: v.id("user") },
+  args: { userId: v.id("User") },
   handler: async (ctx, { userId }) => {
     return await ctx.db
-      .query("passkey")
-      .withIndex("userId", (q) => q.eq("userId", userId))
+      .query("Passkey")
+      .withIndex("user_id", (q) => q.eq("userId", userId))
       .collect();
   },
 });
 
 /** Update a passkey's counter and last used timestamp after authentication. */
 export const passkeyUpdateCounter = mutation({
-  args: { passkeyId: v.id("passkey"), counter: v.number(), lastUsedAt: v.number() },
+  args: { passkeyId: v.id("Passkey"), counter: v.number(), lastUsedAt: v.number() },
   handler: async (ctx, { passkeyId, counter, lastUsedAt }) => {
     await ctx.db.patch(passkeyId, { counter, lastUsedAt });
   },
@@ -587,7 +587,7 @@ export const passkeyUpdateCounter = mutation({
 
 /** Update a passkey's metadata (name). */
 export const passkeyUpdateMeta = mutation({
-  args: { passkeyId: v.id("passkey"), data: v.any() },
+  args: { passkeyId: v.id("Passkey"), data: v.any() },
   handler: async (ctx, { passkeyId, data }) => {
     await ctx.db.patch(passkeyId, data);
   },
@@ -595,7 +595,7 @@ export const passkeyUpdateMeta = mutation({
 
 /** Delete a passkey credential. */
 export const passkeyDelete = mutation({
-  args: { passkeyId: v.id("passkey") },
+  args: { passkeyId: v.id("Passkey") },
   handler: async (ctx, { passkeyId }) => {
     await ctx.db.delete(passkeyId);
   },
@@ -608,7 +608,7 @@ export const passkeyDelete = mutation({
 /** Store a new TOTP enrollment for a user. */
 export const totpInsert = mutation({
   args: {
-    userId: v.id("user"),
+    userId: v.id("User"),
     secret: v.bytes(),
     digits: v.number(),
     period: v.number(),
@@ -617,17 +617,17 @@ export const totpInsert = mutation({
     createdAt: v.number(),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("totp", args);
+    return await ctx.db.insert("TotpFactor", args);
   },
 });
 
 /** Get a verified TOTP enrollment for a user (returns first match). */
 export const totpGetVerifiedByUserId = query({
-  args: { userId: v.id("user") },
+  args: { userId: v.id("User") },
   handler: async (ctx, { userId }) => {
     return await ctx.db
-      .query("totp")
-      .withIndex("userId", (q) => q.eq("userId", userId))
+      .query("TotpFactor")
+      .withIndex("user_id", (q) => q.eq("userId", userId))
       .filter((q) => q.eq(q.field("verified"), true))
       .first();
   },
@@ -635,18 +635,18 @@ export const totpGetVerifiedByUserId = query({
 
 /** List all TOTP enrollments for a user. */
 export const totpListByUserId = query({
-  args: { userId: v.id("user") },
+  args: { userId: v.id("User") },
   handler: async (ctx, { userId }) => {
     return await ctx.db
-      .query("totp")
-      .withIndex("userId", (q) => q.eq("userId", userId))
+      .query("TotpFactor")
+      .withIndex("user_id", (q) => q.eq("userId", userId))
       .collect();
   },
 });
 
 /** Get a TOTP enrollment by its ID. */
 export const totpGetById = query({
-  args: { totpId: v.id("totp") },
+  args: { totpId: v.id("TotpFactor") },
   handler: async (ctx, { totpId }) => {
     return await ctx.db.get(totpId);
   },
@@ -654,7 +654,7 @@ export const totpGetById = query({
 
 /** Mark a TOTP enrollment as verified (setup complete). */
 export const totpMarkVerified = mutation({
-  args: { totpId: v.id("totp"), lastUsedAt: v.number() },
+  args: { totpId: v.id("TotpFactor"), lastUsedAt: v.number() },
   handler: async (ctx, { totpId, lastUsedAt }) => {
     await ctx.db.patch(totpId, { verified: true, lastUsedAt });
   },
@@ -662,7 +662,7 @@ export const totpMarkVerified = mutation({
 
 /** Update a TOTP enrollment's last used timestamp. */
 export const totpUpdateLastUsed = mutation({
-  args: { totpId: v.id("totp"), lastUsedAt: v.number() },
+  args: { totpId: v.id("TotpFactor"), lastUsedAt: v.number() },
   handler: async (ctx, { totpId, lastUsedAt }) => {
     await ctx.db.patch(totpId, { lastUsedAt });
   },
@@ -670,7 +670,7 @@ export const totpUpdateLastUsed = mutation({
 
 /** Delete a TOTP enrollment. */
 export const totpDelete = mutation({
-  args: { totpId: v.id("totp") },
+  args: { totpId: v.id("TotpFactor") },
   handler: async (ctx, { totpId }) => {
     await ctx.db.delete(totpId);
   },
@@ -684,10 +684,18 @@ export const totpDelete = mutation({
 export const rateLimitGet = query({
   args: { identifier: v.string() },
   handler: async (ctx, { identifier }) => {
-    return await ctx.db
-      .query("limit")
-      .withIndex("identifier", (q) => q.eq("identifier", identifier))
+    const row = await ctx.db
+      .query("RateLimit")
+      .withIndex("by_identifier", (q) => q.eq("identifier", identifier))
       .unique();
+    if (row === null) {
+      return null;
+    }
+    return {
+      ...row,
+      attemptsLeft: row.attempts_left,
+      lastAttemptTime: row.last_attempt_time,
+    };
   },
 });
 
@@ -698,22 +706,35 @@ export const rateLimitCreate = mutation({
     attemptsLeft: v.number(),
     lastAttemptTime: v.number(),
   },
-  handler: async (ctx, args) => {
-    return await ctx.db.insert("limit", args);
+  handler: async (ctx, { identifier, attemptsLeft, lastAttemptTime }) => {
+    return await ctx.db.insert("RateLimit", {
+      identifier,
+      attempts_left: attemptsLeft,
+      last_attempt_time: lastAttemptTime,
+    });
   },
 });
 
 /** Patch a rate limit entry with partial data. */
 export const rateLimitPatch = mutation({
-  args: { rateLimitId: v.id("limit"), data: v.any() },
+  args: { rateLimitId: v.id("RateLimit"), data: v.any() },
   handler: async (ctx, { rateLimitId, data }) => {
-    await ctx.db.patch(rateLimitId, data);
+    const nextData: Record<string, unknown> = { ...data };
+    if (nextData.attemptsLeft !== undefined) {
+      nextData.attempts_left = nextData.attemptsLeft;
+      delete nextData.attemptsLeft;
+    }
+    if (nextData.lastAttemptTime !== undefined) {
+      nextData.last_attempt_time = nextData.lastAttemptTime;
+      delete nextData.lastAttemptTime;
+    }
+    await ctx.db.patch(rateLimitId, nextData);
   },
 });
 
 /** Delete a rate limit entry. */
 export const rateLimitDelete = mutation({
-  args: { rateLimitId: v.id("limit") },
+  args: { rateLimitId: v.id("RateLimit") },
   handler: async (ctx, { rateLimitId }) => {
     await ctx.db.delete(rateLimitId);
   },
@@ -734,22 +755,22 @@ export const groupCreate = mutation({
     name: v.string(),
     slug: v.optional(v.string()),
     type: v.optional(v.string()),
-    parentGroupId: v.optional(v.id("group")),
+    parentGroupId: v.optional(v.id("Group")),
     tags: v.optional(v.array(vTag)),
     extend: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     const { tags: rawTags, ...rest } = args;
     const normalizedTags = rawTags ? normalizeTags(rawTags) : undefined;
-    const groupId = await ctx.db.insert("group", {
+    const groupId = await ctx.db.insert("Group", {
       ...rest,
       tags: normalizedTags,
     });
-    // Sync companion groupTag rows
+    // Sync companion group_tag rows
     if (normalizedTags) {
       for (const tag of normalizedTags) {
-        await ctx.db.insert("groupTag", {
-          groupId,
+        await ctx.db.insert("GroupTag", {
+          group_id: groupId,
           key: tag.key,
           value: tag.value,
         });
@@ -761,7 +782,7 @@ export const groupCreate = mutation({
 
 /** Retrieve a group by its document ID. Returns `null` if not found. */
 export const groupGet = query({
-  args: { groupId: v.id("group") },
+  args: { groupId: v.id("Group") },
   handler: async (ctx, { groupId }) => {
     return await ctx.db.get(groupId);
   },
@@ -778,7 +799,7 @@ export const groupList = query({
       v.object({
         slug: v.optional(v.string()),
         type: v.optional(v.string()),
-        parentGroupId: v.optional(v.id("group")),
+        parentGroupId: v.optional(v.id("Group")),
         name: v.optional(v.string()),
         isRoot: v.optional(v.boolean()),
         tagsAll: v.optional(v.array(vTag)),
@@ -802,7 +823,7 @@ export const groupList = query({
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
     const order = args.order ?? "desc";
 
-    // ---- Resolve tag filters into a Set<Id<"group">> ----
+    // ---- Resolve tag filters into a Set<Id<"Group">> ----
     let tagFilteredIds: Set<string> | null = null;
 
     if (where.tagsAll && where.tagsAll.length > 0) {
@@ -811,12 +832,12 @@ export const groupList = query({
       for (const rawTag of where.tagsAll) {
         const t = normalizeTag(rawTag);
         const rows = await ctx.db
-          .query("groupTag")
+          .query("GroupTag")
           .withIndex("by_key_value", (idx) =>
             idx.eq("key", t.key).eq("value", t.value),
           )
           .collect();
-        const ids = new Set(rows.map((r) => r.groupId as string));
+        const ids = new Set(rows.map((r) => r.group_id as string));
         if (allSet === null) {
           allSet = ids;
         } else {
@@ -837,13 +858,13 @@ export const groupList = query({
       for (const rawTag of where.tagsAny) {
         const t = normalizeTag(rawTag);
         const rows = await ctx.db
-          .query("groupTag")
+          .query("GroupTag")
           .withIndex("by_key_value", (idx) =>
             idx.eq("key", t.key).eq("value", t.value),
           )
           .collect();
         for (const r of rows) {
-          anySet.add(r.groupId as string);
+          anySet.add(r.group_id as string);
         }
       }
       if (tagFilteredIds !== null) {
@@ -860,26 +881,26 @@ export const groupList = query({
     let q;
     if (where.type !== undefined && where.parentGroupId !== undefined) {
       q = ctx.db
-        .query("group")
-        .withIndex("typeAndParentGroupId", (idx) =>
+        .query("Group")
+        .withIndex("type_parent_group_id", (idx) =>
           idx.eq("type", where.type!).eq("parentGroupId", where.parentGroupId!),
         );
     } else if (where.slug !== undefined) {
       q = ctx.db
-        .query("group")
+        .query("Group")
         .withIndex("slug", (idx) => idx.eq("slug", where.slug!));
     } else if (where.type !== undefined) {
       q = ctx.db
-        .query("group")
+        .query("Group")
         .withIndex("type", (idx) => idx.eq("type", where.type!));
     } else if (where.parentGroupId !== undefined) {
       q = ctx.db
-        .query("group")
-        .withIndex("parentGroupId", (idx) =>
+        .query("Group")
+        .withIndex("parent_group_id", (idx) =>
           idx.eq("parentGroupId", where.parentGroupId!),
         );
     } else {
-      q = ctx.db.query("group");
+      q = ctx.db.query("Group");
     }
 
     // Apply remaining non-tag filters not covered by index
@@ -923,25 +944,25 @@ export const groupList = query({
 
 /** Update a group's fields (name, slug, tags, extend, parentGroupId). */
 export const groupUpdate = mutation({
-  args: { groupId: v.id("group"), data: v.any() },
+  args: { groupId: v.id("Group"), data: v.any() },
   handler: async (ctx, { groupId, data }) => {
     // If tags are being updated, normalize and replace the full tag set
     if (data.tags !== undefined) {
       const normalizedTags: TagPair[] = Array.isArray(data.tags)
         ? normalizeTags(data.tags as TagPair[])
         : [];
-      // Delete existing groupTag rows for this group
+      // Delete existing group_tag rows for this group
       const existingTags = await ctx.db
-        .query("groupTag")
-        .withIndex("by_group", (idx) => idx.eq("groupId", groupId))
+        .query("GroupTag")
+        .withIndex("by_group", (idx) => idx.eq("group_id", groupId))
         .collect();
       for (const existing of existingTags) {
         await ctx.db.delete(existing._id);
       }
-      // Insert new normalized groupTag rows
+      // Insert new normalized group_tag rows
       for (const tag of normalizedTags) {
-        await ctx.db.insert("groupTag", {
-          groupId,
+        await ctx.db.insert("GroupTag", {
+          group_id: groupId,
           key: tag.key,
           value: tag.value,
         });
@@ -964,37 +985,37 @@ export const groupUpdate = mutation({
  * - All invites for this group and its descendants
  */
 export const groupDelete = mutation({
-  args: { groupId: v.id("group") },
+  args: { groupId: v.id("Group") },
   handler: async (ctx, { groupId }) => {
     const deleteGroup = async (id: typeof groupId) => {
       const children = await ctx.db
-        .query("group")
-        .withIndex("parentGroupId", (q) => q.eq("parentGroupId", id))
+        .query("Group")
+        .withIndex("parent_group_id", (q) => q.eq("parentGroupId", id))
         .collect();
       for (const child of children) {
         await deleteGroup(child._id);
       }
 
       const members = await ctx.db
-        .query("member")
-        .withIndex("groupId", (q) => q.eq("groupId", id))
+        .query("GroupMember")
+        .withIndex("group_id", (q) => q.eq("groupId", id))
         .collect();
       for (const member of members) {
         await ctx.db.delete(member._id);
       }
 
       const invites = await ctx.db
-        .query("invite")
-        .withIndex("groupId", (q) => q.eq("groupId", id))
+        .query("GroupInvite")
+        .withIndex("group_id", (q) => q.eq("groupId", id))
         .collect();
       for (const invite of invites) {
         await ctx.db.delete(invite._id);
       }
 
-      // Delete companion groupTag rows
+      // Delete companion group_tag rows
       const tags = await ctx.db
-        .query("groupTag")
-        .withIndex("by_group", (q) => q.eq("groupId", id))
+        .query("GroupTag")
+        .withIndex("by_group", (q) => q.eq("group_id", id))
         .collect();
       for (const tag of tags) {
         await ctx.db.delete(tag._id);
@@ -1025,16 +1046,16 @@ export const groupDelete = mutation({
  */
 export const memberAdd = mutation({
   args: {
-    groupId: v.id("group"),
-    userId: v.id("user"),
+    groupId: v.id("Group"),
+    userId: v.id("User"),
     role: v.optional(v.string()),
     status: v.optional(v.string()),
     extend: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     const existingMembership = await ctx.db
-      .query("member")
-      .withIndex("groupIdAndUserId", (q) =>
+      .query("GroupMember")
+      .withIndex("group_id_user_id", (q) =>
         q.eq("groupId", args.groupId).eq("userId", args.userId),
       )
       .unique();
@@ -1047,13 +1068,13 @@ export const memberAdd = mutation({
         existingMemberId: existingMembership._id,
       });
     }
-    return await ctx.db.insert("member", args);
+    return await ctx.db.insert("GroupMember", args);
   },
 });
 
 /** Retrieve a member record by its document ID. Returns `null` if not found. */
 export const memberGet = query({
-  args: { memberId: v.id("member") },
+  args: { memberId: v.id("GroupMember") },
   handler: async (ctx, { memberId }) => {
     return await ctx.db.get(memberId);
   },
@@ -1069,8 +1090,8 @@ export const memberList = query({
   args: {
     where: v.optional(
       v.object({
-        groupId: v.optional(v.id("group")),
-        userId: v.optional(v.id("user")),
+        groupId: v.optional(v.id("Group")),
+        userId: v.optional(v.id("User")),
         role: v.optional(v.string()),
         status: v.optional(v.string()),
       }),
@@ -1094,20 +1115,20 @@ export const memberList = query({
     let q;
     if (where.groupId !== undefined && where.userId !== undefined) {
       q = ctx.db
-        .query("member")
-        .withIndex("groupIdAndUserId", (idx) =>
+        .query("GroupMember")
+        .withIndex("group_id_user_id", (idx) =>
           idx.eq("groupId", where.groupId!).eq("userId", where.userId!),
         );
     } else if (where.groupId !== undefined) {
       q = ctx.db
-        .query("member")
-        .withIndex("groupId", (idx) => idx.eq("groupId", where.groupId!));
+        .query("GroupMember")
+        .withIndex("group_id", (idx) => idx.eq("groupId", where.groupId!));
     } else if (where.userId !== undefined) {
       q = ctx.db
-        .query("member")
-        .withIndex("userId", (idx) => idx.eq("userId", where.userId!));
+        .query("GroupMember")
+        .withIndex("user_id", (idx) => idx.eq("userId", where.userId!));
     } else {
-      q = ctx.db.query("member");
+      q = ctx.db.query("GroupMember");
     }
 
     if (where.role !== undefined) {
@@ -1140,11 +1161,11 @@ export const memberList = query({
  * Kept for backward compatibility with generated component types.
  */
 export const memberListByUser = query({
-  args: { userId: v.id("user") },
+  args: { userId: v.id("User") },
   handler: async (ctx, { userId }) => {
     return await ctx.db
-      .query("member")
-      .withIndex("userId", (q) => q.eq("userId", userId))
+      .query("GroupMember")
+      .withIndex("user_id", (q) => q.eq("userId", userId))
       .collect();
   },
 });
@@ -1154,11 +1175,11 @@ export const memberListByUser = query({
  * Returns `null` if the user is not a member of the group.
  */
 export const memberGetByGroupAndUser = query({
-  args: { groupId: v.id("group"), userId: v.id("user") },
+  args: { groupId: v.id("Group"), userId: v.id("User") },
   handler: async (ctx, { groupId, userId }) => {
     return await ctx.db
-      .query("member")
-      .withIndex("groupIdAndUserId", (q) =>
+      .query("GroupMember")
+      .withIndex("group_id_user_id", (q) =>
         q.eq("groupId", groupId).eq("userId", userId),
       )
       .unique();
@@ -1167,7 +1188,7 @@ export const memberGetByGroupAndUser = query({
 
 /** Remove a member from a group by deleting the member record. */
 export const memberRemove = mutation({
-  args: { memberId: v.id("member") },
+  args: { memberId: v.id("GroupMember") },
   handler: async (ctx, { memberId }) => {
     await ctx.db.delete(memberId);
   },
@@ -1179,7 +1200,7 @@ export const memberRemove = mutation({
  * Common usage: `memberUpdate({ memberId, data: { role: "admin" } })`
  */
 export const memberUpdate = mutation({
-  args: { memberId: v.id("member"), data: v.any() },
+  args: { memberId: v.id("GroupMember"), data: v.any() },
   handler: async (ctx, { memberId, data }) => {
     await ctx.db.patch(memberId, data);
   },
@@ -1203,8 +1224,8 @@ export const memberUpdate = mutation({
  */
 export const inviteCreate = mutation({
   args: {
-    groupId: v.optional(v.id("group")),
-    invitedByUserId: v.optional(v.id("user")),
+    groupId: v.optional(v.id("Group")),
+    invitedByUserId: v.optional(v.id("User")),
     email: v.optional(v.string()),
     tokenHash: v.string(),
     role: v.optional(v.string()),
@@ -1225,8 +1246,8 @@ export const inviteCreate = mutation({
     if (args.email !== undefined) {
       if (args.groupId !== undefined) {
         const existingGroupInvites = await ctx.db
-          .query("invite")
-          .withIndex("groupIdAndStatus", (q) =>
+          .query("GroupInvite")
+          .withIndex("group_id_status", (q) =>
             q.eq("groupId", args.groupId).eq("status", "pending"),
           )
           .filter((q) => q.eq(q.field("email"), args.email))
@@ -1251,8 +1272,8 @@ export const inviteCreate = mutation({
         }
       } else {
         const existingPlatformInvites = await ctx.db
-          .query("invite")
-          .withIndex("emailAndStatus", (q) =>
+          .query("GroupInvite")
+          .withIndex("email_status", (q) =>
             q.eq("email", args.email).eq("status", "pending"),
           )
           .filter((q) => q.eq(q.field("groupId"), undefined))
@@ -1276,13 +1297,13 @@ export const inviteCreate = mutation({
         }
       }
     }
-    return await ctx.db.insert("invite", args);
+    return await ctx.db.insert("GroupInvite", args);
   },
 });
 
 /** Retrieve an invite by its document ID. Returns `null` if not found. */
 export const inviteGet = query({
-  args: { inviteId: v.id("invite") },
+  args: { inviteId: v.id("GroupInvite") },
   handler: async (ctx, { inviteId }) => {
     return await ctx.db.get(inviteId);
   },
@@ -1293,8 +1314,8 @@ export const inviteGetByTokenHash = query({
   args: { tokenHash: v.string() },
   handler: async (ctx, { tokenHash }) => {
     return await ctx.db
-      .query("invite")
-      .withIndex("tokenHash", (q) => q.eq("tokenHash", tokenHash))
+      .query("GroupInvite")
+      .withIndex("token_hash", (q) => q.eq("tokenHash", tokenHash))
       .first();
   },
 });
@@ -1310,7 +1331,7 @@ export const inviteList = query({
     where: v.optional(
       v.object({
         tokenHash: v.optional(v.string()),
-        groupId: v.optional(v.id("group")),
+        groupId: v.optional(v.id("Group")),
         status: v.optional(
           v.union(
             v.literal("pending"),
@@ -1320,9 +1341,9 @@ export const inviteList = query({
           ),
         ),
         email: v.optional(v.string()),
-        invitedByUserId: v.optional(v.id("user")),
+        invitedByUserId: v.optional(v.id("User")),
         role: v.optional(v.string()),
-        acceptedByUserId: v.optional(v.id("user")),
+        acceptedByUserId: v.optional(v.id("User")),
       }),
     ),
     limit: v.optional(v.number()),
@@ -1347,16 +1368,16 @@ export const inviteList = query({
     let q;
     if (where.tokenHash !== undefined) {
       q = ctx.db
-        .query("invite")
-        .withIndex("tokenHash", (idx) => idx.eq("tokenHash", where.tokenHash!));
+        .query("GroupInvite")
+        .withIndex("token_hash", (idx) => idx.eq("tokenHash", where.tokenHash!));
     } else if (
       where.role !== undefined &&
       where.status !== undefined &&
       where.acceptedByUserId !== undefined
     ) {
       q = ctx.db
-        .query("invite")
-        .withIndex("roleAndStatusAndAcceptedByUserId", (idx) =>
+        .query("GroupInvite")
+        .withIndex("role_status_accepted_by_user_id", (idx) =>
           idx
             .eq("role", where.role!)
             .eq("status", where.status!)
@@ -1364,34 +1385,34 @@ export const inviteList = query({
         );
     } else if (where.groupId !== undefined && where.status !== undefined) {
       q = ctx.db
-        .query("invite")
-        .withIndex("groupIdAndStatus", (idx) =>
+        .query("GroupInvite")
+        .withIndex("group_id_status", (idx) =>
           idx.eq("groupId", where.groupId!).eq("status", where.status!),
         );
     } else if (where.email !== undefined && where.status !== undefined) {
       q = ctx.db
-        .query("invite")
-        .withIndex("emailAndStatus", (idx) =>
+        .query("GroupInvite")
+        .withIndex("email_status", (idx) =>
           idx.eq("email", where.email!).eq("status", where.status!),
         );
     } else if (where.invitedByUserId !== undefined && where.status !== undefined) {
       q = ctx.db
-        .query("invite")
-        .withIndex("invitedByUserIdAndStatus", (idx) =>
+        .query("GroupInvite")
+        .withIndex("invited_by_user_id_status", (idx) =>
           idx
             .eq("invitedByUserId", where.invitedByUserId!)
             .eq("status", where.status!),
         );
     } else if (where.groupId !== undefined) {
       q = ctx.db
-        .query("invite")
-        .withIndex("groupId", (idx) => idx.eq("groupId", where.groupId!));
+        .query("GroupInvite")
+        .withIndex("group_id", (idx) => idx.eq("groupId", where.groupId!));
     } else if (where.status !== undefined) {
       q = ctx.db
-        .query("invite")
+        .query("GroupInvite")
         .withIndex("status", (idx) => idx.eq("status", where.status!));
     } else {
-      q = ctx.db.query("invite");
+      q = ctx.db.query("GroupInvite");
     }
 
     // Apply remaining filters
@@ -1450,8 +1471,8 @@ export const inviteList = query({
  */
 export const inviteAccept = mutation({
   args: {
-    inviteId: v.id("invite"),
-    acceptedByUserId: v.optional(v.id("user")),
+    inviteId: v.id("GroupInvite"),
+    acceptedByUserId: v.optional(v.id("User")),
   },
   handler: async (ctx, { inviteId, acceptedByUserId }) => {
     const invite = await ctx.db.get(inviteId);
@@ -1497,12 +1518,12 @@ export const inviteAccept = mutation({
 export const inviteAcceptByToken = mutation({
   args: {
     tokenHash: v.string(),
-    acceptedByUserId: v.id("user"),
+    acceptedByUserId: v.id("User"),
   },
   handler: async (ctx, { tokenHash, acceptedByUserId }) => {
     const invite = await ctx.db
-      .query("invite")
-      .withIndex("tokenHash", (q) => q.eq("tokenHash", tokenHash))
+      .query("GroupInvite")
+      .withIndex("token_hash", (q) => q.eq("tokenHash", tokenHash))
       .first();
 
     if (invite === null) {
@@ -1562,8 +1583,8 @@ export const inviteAcceptByToken = mutation({
 
     if (invite.groupId !== undefined) {
       const existingMembership = await ctx.db
-        .query("member")
-        .withIndex("groupIdAndUserId", (q) =>
+        .query("GroupMember")
+        .withIndex("group_id_user_id", (q) =>
           q.eq("groupId", invite.groupId!).eq("userId", acceptedByUserId),
         )
         .unique();
@@ -1572,7 +1593,7 @@ export const inviteAcceptByToken = mutation({
         membershipStatus = "already_joined";
         memberId = existingMembership._id;
       } else {
-        memberId = await ctx.db.insert("member", {
+        memberId = await ctx.db.insert("GroupMember", {
           groupId: invite.groupId,
           userId: acceptedByUserId,
           role: invite.role,
@@ -1607,7 +1628,7 @@ export const inviteAcceptByToken = mutation({
  * invite doesn't exist or is not currently pending.
  */
 export const inviteRevoke = mutation({
-  args: { inviteId: v.id("invite") },
+  args: { inviteId: v.id("GroupInvite") },
   handler: async (ctx, { inviteId }) => {
     const invite = await ctx.db.get(inviteId);
     if (invite === null) {
@@ -1641,7 +1662,7 @@ export const inviteRevoke = mutation({
  */
 export const keyInsert = mutation({
   args: {
-    userId: v.id("user"),
+    userId: v.id("User"),
     prefix: v.string(),
     hashedKey: v.string(),
     name: v.string(),
@@ -1660,7 +1681,7 @@ export const keyInsert = mutation({
     expiresAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("key", {
+    return await ctx.db.insert("ApiKey", {
       ...args,
       createdAt: Date.now(),
       revoked: false,
@@ -1678,8 +1699,8 @@ export const keyGetByHashedKey = query({
   args: { hashedKey: v.string() },
   handler: async (ctx, { hashedKey }) => {
     return await ctx.db
-      .query("key")
-      .withIndex("hashedKey", (q) => q.eq("hashedKey", hashedKey))
+      .query("ApiKey")
+      .withIndex("hashed_key", (q) => q.eq("hashedKey", hashedKey))
       .first();
   },
 });
@@ -1689,11 +1710,11 @@ export const keyGetByHashedKey = query({
  * Kept for backward compatibility with generated component types.
  */
 export const keyListByUserId = query({
-  args: { userId: v.id("user") },
+  args: { userId: v.id("User") },
   handler: async (ctx, { userId }) => {
     return await ctx.db
-      .query("key")
-      .withIndex("userId", (q) => q.eq("userId", userId))
+      .query("ApiKey")
+      .withIndex("user_id", (q) => q.eq("userId", userId))
       .collect();
   },
 });
@@ -1708,7 +1729,7 @@ export const keyList = query({
   args: {
     where: v.optional(
       v.object({
-        userId: v.optional(v.id("user")),
+        userId: v.optional(v.id("User")),
         revoked: v.optional(v.boolean()),
         name: v.optional(v.string()),
         prefix: v.optional(v.string()),
@@ -1735,10 +1756,10 @@ export const keyList = query({
     let q;
     if (where.userId !== undefined) {
       q = ctx.db
-        .query("key")
-        .withIndex("userId", (idx) => idx.eq("userId", where.userId!));
+        .query("ApiKey")
+        .withIndex("user_id", (idx) => idx.eq("userId", where.userId!));
     } else {
-      q = ctx.db.query("key");
+      q = ctx.db.query("ApiKey");
     }
 
     if (where.revoked !== undefined) {
@@ -1771,7 +1792,7 @@ export const keyList = query({
 
 /** Get a single API key by document ID. */
 export const keyGetById = query({
-  args: { keyId: v.id("key") },
+  args: { keyId: v.id("ApiKey") },
   handler: async (ctx, { keyId }) => {
     return await ctx.db.get(keyId);
   },
@@ -1783,7 +1804,7 @@ export const keyGetById = query({
  */
 export const keyPatch = mutation({
   args: {
-    keyId: v.id("key"),
+    keyId: v.id("ApiKey"),
     data: v.object({
       name: v.optional(v.string()),
       scopes: v.optional(
@@ -1825,7 +1846,7 @@ export const keyPatch = mutation({
 
 /** Hard delete an API key record. */
 export const keyDelete = mutation({
-  args: { keyId: v.id("key") },
+  args: { keyId: v.id("ApiKey") },
   handler: async (ctx, { keyId }) => {
     const key = await ctx.db.get(keyId);
     if (key === null) {
@@ -1857,7 +1878,7 @@ export const deviceInsert = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("device", args);
+    return await ctx.db.insert("DeviceCode", args);
   },
 });
 
@@ -1866,8 +1887,8 @@ export const deviceGetByCodeHash = query({
   args: { deviceCodeHash: v.string() },
   handler: async (ctx, { deviceCodeHash }) => {
     return await ctx.db
-      .query("device")
-      .withIndex("deviceCodeHash", (q) => q.eq("deviceCodeHash", deviceCodeHash))
+      .query("DeviceCode")
+      .withIndex("device_code_hash", (q) => q.eq("deviceCodeHash", deviceCodeHash))
       .first();
   },
 });
@@ -1877,8 +1898,8 @@ export const deviceGetByUserCode = query({
   args: { userCode: v.string() },
   handler: async (ctx, { userCode }) => {
     return await ctx.db
-      .query("device")
-      .withIndex("userCode", (q) =>
+      .query("DeviceCode")
+      .withIndex("user_code_status", (q) =>
         q.eq("userCode", userCode).eq("status", "pending"),
       )
       .first();
@@ -1888,9 +1909,9 @@ export const deviceGetByUserCode = query({
 /** Authorize a device code — link it to a user and session. */
 export const deviceAuthorize = mutation({
   args: {
-    deviceId: v.id("device"),
-    userId: v.id("user"),
-    sessionId: v.id("session"),
+    deviceId: v.id("DeviceCode"),
+    userId: v.id("User"),
+    sessionId: v.id("Session"),
   },
   handler: async (ctx, { deviceId, userId, sessionId }) => {
     await ctx.db.patch(deviceId, {
@@ -1903,7 +1924,7 @@ export const deviceAuthorize = mutation({
 
 /** Update the last-polled timestamp on a device authorization record. */
 export const deviceUpdateLastPolled = mutation({
-  args: { deviceId: v.id("device"), lastPolledAt: v.number() },
+  args: { deviceId: v.id("DeviceCode"), lastPolledAt: v.number() },
   handler: async (ctx, { deviceId, lastPolledAt }) => {
     await ctx.db.patch(deviceId, { lastPolledAt });
   },
@@ -1911,7 +1932,7 @@ export const deviceUpdateLastPolled = mutation({
 
 /** Delete a device authorization record (cleanup after use or expiry). */
 export const deviceDelete = mutation({
-  args: { deviceId: v.id("device") },
+  args: { deviceId: v.id("DeviceCode") },
   handler: async (ctx, { deviceId }) => {
     await ctx.db.delete(deviceId);
   },

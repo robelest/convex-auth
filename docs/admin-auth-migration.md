@@ -26,7 +26,7 @@ import { v } from "convex/values";
 
 export default defineSchema({
   accessGrants: defineTable({
-    userId: v.optional(v.id("user")),
+    userId: v.optional(v.id("User")),
     email: v.optional(v.string()),
     createdAt: v.number(),
   })
@@ -137,4 +137,4 @@ After backfill + verification:
 ## Notes
 
 - Do not parse JWT `subject` manually unless you have to. Prefer `auth.user.require(ctx)` or `auth.user.viewer(ctx)`.
-- `account` is many-to-one with `user`; authorization should follow user identity.
+- `Account` is many-to-one with `User`; authorization should follow user identity.

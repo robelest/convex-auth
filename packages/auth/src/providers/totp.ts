@@ -60,16 +60,3 @@ export class Totp {
     };
   }
 }
-
-// ============================================================================
-// Backward-compatible default export
-// ============================================================================
-
-/**
- * @deprecated Use `new Totp(config)` instead.
- */
-export default function totp(
-  config?: TotpConfig,
-): TotpProviderConfig {
-  return new Totp(config)._toMaterialized();
-}

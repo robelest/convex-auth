@@ -39,7 +39,7 @@ export async function createVerificationCodeImpl(
   } = args;
   const db = authDb(ctx, config);
   const typedExistingAccountId = existingAccountId as
-    | GenericId<"account">
+    | GenericId<"Account">
     | undefined;
   const existingAccount =
     typedExistingAccountId !== undefined
@@ -88,7 +88,7 @@ export const callCreateVerificationCode = async <
 
 async function generateUniqueVerificationCode(
   ctx: MutationCtx,
-  accountId: GenericId<"account">,
+  accountId: GenericId<"Account">,
   provider: string,
   code: string,
   expirationTime: number,

@@ -13,7 +13,7 @@ test("rate limit on password", async () => {
   setupEnv();
   const t = convexTest(schema);
 
-  await t.action(api.auth.signIn, {
+  await t.action(api.auth.session.start, {
     provider: "password",
     params: { email: "sarah@gmail.com", password: "44448888", flow: "signUp" },
   });
@@ -26,7 +26,7 @@ test("rate limit on password", async () => {
     vi.advanceTimersByTime(10 * SECOND_MS);
     await expect(
       async () =>
-        await t.action(api.auth.signIn, {
+        await t.action(api.auth.session.start, {
           provider: "password",
           params: {
             email: "sarah@gmail.com",
@@ -40,7 +40,7 @@ test("rate limit on password", async () => {
   // Now we can't succeed, even with the right password
   await expect(
     async () =>
-      await t.action(api.auth.signIn, {
+      await t.action(api.auth.session.start, {
         provider: "password",
         params: {
           email: "sarah@gmail.com",
@@ -53,7 +53,7 @@ test("rate limit on password", async () => {
   // But if we wait a little bit, we can try again
   vi.advanceTimersByTime(8 * MINUTE_MS);
 
-  const { tokens } = await t.action(api.auth.signIn, {
+  const { tokens } = await t.action(api.auth.session.start, {
     provider: "password",
     params: { email: "sarah@gmail.com", password: "44448888", flow: "signIn" },
   });

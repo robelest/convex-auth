@@ -23,7 +23,7 @@ type EmailProviderUserConfig<DataModel extends GenericDataModel> =
  * you can override the `authorize` method to skip the check:
  *
  * ```ts
- * import email from "@robelest/convex-auth/providers/email";
+ * import { email } from "@robelest/convex-auth/providers/email";
  * import { Auth } from "@robelest/convex-auth/component";
  * import { components } from "./_generated/api";
  *
@@ -47,7 +47,7 @@ type EmailProviderUserConfig<DataModel extends GenericDataModel> =
  * @param config - Email provider options including required `from` and `sendVerificationRequest`.
  * @returns An `EmailConfig` to include in your `providers` array.
  */
-export default function email<DataModel extends GenericDataModel>(
+export function email<DataModel extends GenericDataModel>(
   config: EmailProviderUserConfig<DataModel>,
 ): EmailConfig<DataModel> {
   const from = config.from.trim();

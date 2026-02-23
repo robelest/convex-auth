@@ -16,7 +16,7 @@ test("sign in with email signs out existing user with different email", async ()
   const t = convexTest(schema);
 
   // 1. Sign up without email verification
-  const { tokens } = await t.action(api.auth.signIn, {
+  const { tokens } = await t.action(api.auth.session.start, {
     provider: "password",
     params: { email: "sarah@gmail.com", password: "44448888", flow: "signUp" },
   });
@@ -36,7 +36,7 @@ test("sign in with email signs out existing user with different email", async ()
     getUserIdFromToken(tokens!.token),
   );
 
-  const { tokens: refreshedOldSession } = await t.action(api.auth.signIn, {
+  const { tokens: refreshedOldSession } = await t.action(api.auth.session.start, {
     refreshToken: tokens!.refreshToken,
     params: {},
   });
@@ -47,7 +47,7 @@ test("unverified password accounts are not auto-linked to email sign-in", async 
   setupEnv();
   const t = convexTest(schema);
 
-  const { tokens } = await t.action(api.auth.signIn, {
+  const { tokens } = await t.action(api.auth.session.start, {
     provider: "password",
     params: { email: "linkme@gmail.com", password: "44448888", flow: "signUp" },
   });

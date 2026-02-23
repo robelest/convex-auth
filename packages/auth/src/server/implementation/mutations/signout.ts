@@ -7,8 +7,8 @@ import { authDb } from "../db";
 import { AUTH_STORE_REF } from "./store";
 
 type ReturnType = {
-  userId: GenericId<"user">;
-  sessionId: GenericId<"session">;
+  userId: GenericId<"User">;
+  sessionId: GenericId<"Session">;
 } | null;
 
 export async function signOutImpl(

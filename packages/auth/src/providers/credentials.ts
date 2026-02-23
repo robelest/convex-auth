@@ -39,8 +39,8 @@ export interface CredentialsConfig<
     credentials: Partial<Record<string, Value | undefined>>,
     ctx: GenericActionCtxWithAuthConfig<DataModel>,
   ) => Promise<{
-    userId: GenericId<"user">;
-    sessionId?: GenericId<"session">;
+    userId: GenericId<"User">;
+    sessionId?: GenericId<"Session">;
   } | null>;
   /**
    * Provide hashing and verification functions for account secrets.
@@ -92,16 +92,6 @@ export class Credentials<DataModel extends GenericDataModel = GenericDataModel> 
       type: "credentials",
     } as ConvexCredentialsConfig;
   }
-}
-
-// Keep the old factory function as default export for backward compatibility
-// during the transition. New code should use `new Credentials(...)`.
-
-/** @deprecated Use `new Credentials(config)` instead. */
-export default function credentials<DataModel extends GenericDataModel>(
-  config: CredentialsConfig<DataModel>,
-): ConvexCredentialsConfig {
-  return new Credentials(config)._toMaterialized();
 }
 
 // Re-export the old type name for backward compat

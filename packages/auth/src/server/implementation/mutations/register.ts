@@ -18,7 +18,7 @@ export const createAccountFromCredentialsArgs = v.object({
   shouldLinkViaPhone: v.optional(v.boolean()),
 });
 
-type ReturnType = { account: Doc<"account">; user: Doc<"user"> };
+type ReturnType = { account: Doc<"Account">; user: Doc<"User"> };
 
 export async function createAccountFromCredentialsImpl(
   ctx: MutationCtx,
@@ -45,7 +45,7 @@ export async function createAccountFromCredentialsImpl(
   const existingAccount = (await db.accounts.get(
     provider.id,
     account.id,
-  )) as Doc<"account"> | null;
+  )) as Doc<"Account"> | null;
   if (existingAccount !== null) {
     if (
       account.secret !== undefined &&
@@ -59,7 +59,7 @@ export async function createAccountFromCredentialsImpl(
     }
     const existingUser = (await db.users.getById(
       existingAccount.userId,
-    )) as Doc<"user"> | null;
+    )) as Doc<"User"> | null;
     if (existingUser === null) {
       throwAuthError(
         "ACCOUNT_NOT_FOUND",
@@ -92,13 +92,13 @@ export async function createAccountFromCredentialsImpl(
   );
 
   const createdAccount = (await db.accounts.getById(accountId)) as
-    | Doc<"account">
+    | Doc<"Account">
     | null;
   if (createdAccount === null) {
     throwAuthError("ACCOUNT_NOT_FOUND", `Created account ${accountId} was not found.`);
   }
 
-  const createdUser = (await db.users.getById(userId)) as Doc<"user"> | null;
+  const createdUser = (await db.users.getById(userId)) as Doc<"User"> | null;
   if (createdUser === null) {
     throwAuthError("USER_UPDATE_FAILED", `Created user ${userId} was not found.`);
   }

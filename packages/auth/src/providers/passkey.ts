@@ -75,16 +75,3 @@ export class Passkey {
     };
   }
 }
-
-// ============================================================================
-// Backward-compatible default export
-// ============================================================================
-
-/**
- * @deprecated Use `new Passkey(config)` instead.
- */
-export default function passkey(
-  config?: PasskeyConfig,
-): PasskeyProviderConfig {
-  return new Passkey(config)._toMaterialized();
-}

@@ -47,7 +47,7 @@ type AuthSession = {
 /**
  * Device code response returned when signing in with the `"device"` provider.
  *
- * The device displays the `userCode` (or `verificationUriComplete`) and
+ * The device displays the `userCode` (or `verification_uri_complete`) and
  * polls via `auth.device.poll()` until the user authorizes.
  */
 export type DeviceCodeResult = {
@@ -56,9 +56,9 @@ export type DeviceCodeResult = {
   /** Short human-readable code the user enters (e.g. "WDJB-MJHT"). */
   userCode: string;
   /** Base verification URL (e.g. "https://myapp.com/device"). */
-  verificationUri: string;
+  verification_uri: string;
   /** Verification URL with user code pre-filled as `?code=XXXX-XXXX`. */
-  verificationUriComplete: string;
+  verification_uri_complete: string;
   /** Lifetime of the codes in seconds. */
   expiresIn: number;
   /** Minimum polling interval in seconds. */
@@ -66,7 +66,7 @@ export type DeviceCodeResult = {
 };
 
 /**
- * Result of a `signIn` call.
+ * Result of a `sign_in` call.
  *
  * - `signingIn: true` — credentials were accepted and the user is authenticated.
  * - `redirect` — OAuth flow initiated; redirect the user to `redirect.toString()`.
@@ -87,7 +87,7 @@ export type SignInResult = {
   verifier?: string;
 };
 
-/** Reactive auth state snapshot returned by `auth.state` and `auth.onChange`. */
+/** Reactive auth state snapshot returned by `auth.state` and `auth.on_change`. */
 export type AuthState = {
   /** High-level auth phase for deterministic UI state handling. */
   phase: "loading" | "handshake" | "authenticated" | "unauthenticated";
@@ -112,22 +112,22 @@ export type ClientOptions = {
    * Key-value storage for persisting tokens.
    *
    * - Defaults to `localStorage` in SPA mode.
-   * - Defaults to `null` (in-memory only) when `proxy` is set,
+   * - Defaults to `null` (in-memory only) when `proxy_path` is set,
    *   since httpOnly cookies handle persistence.
    */
   storage?: Storage | null;
   /** Override how the URL bar is updated after OAuth code exchange. */
-  replaceURL?: (relativeUrl: string) => void | Promise<void>;
+  replace_url?: (relative_url: string) => void | Promise<void>;
   /**
    * SSR proxy endpoint (e.g. `"/api/auth"`).
    *
-   * When set, `signIn`/`signOut`/token refresh POST to this URL
+   * When set, `sign_in`/`sign_out`/token refresh POST to this URL
    * (with `credentials: "include"`) instead of calling Convex directly.
    * The server handles httpOnly cookies for token persistence.
    *
-   * Pair with {@link ClientOptions.token} for flash-free SSR hydration.
+   * Pair with {@link ClientOptions.token_seed} for flash-free SSR hydration.
    */
-  proxy?: string;
+  proxy_path?: string;
   /**
    * JWT from server-side hydration.
    *
@@ -135,7 +135,7 @@ export type ClientOptions = {
    * and passes it to the client during SSR. This avoids a loading
    * flash on first render — the client is immediately authenticated.
    */
-  token?: string | null;
+  token_seed?: string | null;
 };
 
 const VERIFIER_STORAGE_KEY = "__convexAuthOAuthVerifier";
@@ -182,7 +182,7 @@ function resolveUrl(convex: ConvexTransport, explicit?: string): string {
 /**
  * Create a framework-agnostic auth client.
  *
- * Returns an object with `signIn`, `signOut`, `onChange`, `state`,
+ * Returns an object with `sign_in`, `sign_out`, `on_change`, `state`,
  * `passkey`, and `totp` — everything needed for client-side auth.
  *
  * ### SPA mode (default)
@@ -200,8 +200,8 @@ function resolveUrl(convex: ConvexTransport, explicit?: string): string {
  * ```ts
  * const auth = client({
  *   convex,
- *   proxy: '/api/auth',
- *   token: tokenFromServer, // JWT read from httpOnly cookie during SSR
+ *   proxy_path: '/api/auth',
+ *   token_seed: tokenFromServer, // JWT read from httpOnly cookie during SSR
  * });
  * ```
  *
@@ -210,10 +210,11 @@ function resolveUrl(convex: ConvexTransport, explicit?: string): string {
  * holds the JWT in memory only.
  *
  * @param options - Client configuration. See {@link ClientOptions}.
- * @returns Auth client with `signIn`, `signOut`, `onChange`, `state`, `passkey`, and `totp`.
+ * @returns Auth client with `sign_in`, `sign_out`, `on_change`, `state`, `passkey`, and `totp`.
  */
 export function client(options: ClientOptions) {
-  const { convex, proxy } = options;
+  const { convex, proxy_path } = options;
+  const proxy = proxy_path;
 
   // In proxy mode, default storage to null (cookies handle persistence).
   const storage =
@@ -225,8 +226,8 @@ export function client(options: ClientOptions) {
           ? null
           : window.localStorage;
 
-  const replaceURL =
-    options.replaceURL ??
+  const replace_url =
+    options.replace_url ??
     ((url: string) => {
       if (typeof window !== "undefined") {
         window.history.replaceState({}, "", url);
@@ -252,8 +253,8 @@ export function client(options: ClientOptions) {
   // If a server-provided token was supplied (SSR hydration), treat it as
   // immediately authenticated to avoid a handshake-only loading screen.
   const serverToken =
-    typeof options.token === "string" && options.token.trim().length > 0
-      ? options.token
+    typeof options.token_seed === "string" && options.token_seed.trim().length > 0
+      ? options.token_seed
       : null;
   const hasServerToken = serverToken !== null;
 
@@ -651,7 +652,7 @@ export function client(options: ClientOptions) {
     for (let retry = 0; retry <= RETRY_BACKOFF.length; retry++) {
       try {
         return await httpClient!.action(
-          "auth:signIn" as any,
+          "auth/session:start" as any,
           "code" in args
             ? { params: { code: args.code }, verifier: args.verifier }
             : args,
@@ -688,6 +689,20 @@ export function client(options: ClientOptions) {
     return tokens !== null;
   };
 
+  const normalizeDeviceCodeResult = (device_code: any): DeviceCodeResult => {
+    return {
+      deviceCode: device_code.deviceCode,
+      userCode: device_code.userCode,
+      verification_uri:
+        device_code.verification_uri ?? device_code.verificationUri,
+      verification_uri_complete:
+        device_code.verification_uri_complete ??
+        device_code.verificationUriComplete,
+      expiresIn: device_code.expiresIn,
+      interval: device_code.interval,
+    };
+  };
+
   // ---------------------------------------------------------------------------
   // signIn
   // ---------------------------------------------------------------------------
@@ -703,12 +718,12 @@ export function client(options: ClientOptions) {
    *
    * @example Email magic link
    * ```ts
-   * await auth.signIn('email', { email: 'user@example.com' });
+   * await auth.sign_in('email', { email: 'user@example.com' });
    * ```
    *
    * @example Password
    * ```ts
-   * const result = await auth.signIn('password', { email, password, flow: 'signIn' });
+   * const result = await auth.sign_in('password', { email, password, flow: 'signIn' });
    * if (result.totpRequired) {
    *   await auth.totp.verify({ code: totpCode, verifier: result.verifier! });
    * }
@@ -716,7 +731,7 @@ export function client(options: ClientOptions) {
    *
    * @example OAuth (triggers redirect)
    * ```ts
-   * await auth.signIn('google'); // redirects to Google
+   * await auth.sign_in('google'); // redirects to Google
    * ```
    */
   const signIn = async (
@@ -741,7 +756,7 @@ export function client(options: ClientOptions) {
     if (proxy) {
       // Proxy mode: POST to the proxy endpoint.
       const result = await proxyFetch({
-        action: "auth:signIn",
+        action: "auth/session:start",
         args: { provider, params },
       });
       if (result.redirect !== undefined) {
@@ -756,7 +771,10 @@ export function client(options: ClientOptions) {
         return { signingIn: false, totpRequired: true, verifier: result.verifier };
       }
       if (result.deviceCode !== undefined) {
-        return { signingIn: false, deviceCode: result.deviceCode as DeviceCodeResult };
+        return {
+          signingIn: false,
+          deviceCode: normalizeDeviceCodeResult(result.deviceCode),
+        };
       }
       if (result.tokens !== undefined) {
         // Proxy returns { token, refreshToken: "dummy" }.
@@ -776,7 +794,7 @@ export function client(options: ClientOptions) {
     // SPA mode: call Convex directly.
     const verifier = (await storageGet(VERIFIER_STORAGE_KEY)) ?? undefined;
     await storageRemove(VERIFIER_STORAGE_KEY);
-    const result = await convex.action("auth:signIn" as any, {
+    const result = await convex.action("auth/session:start" as any, {
       provider,
       params,
       verifier,
@@ -793,7 +811,10 @@ export function client(options: ClientOptions) {
       return { signingIn: false, totpRequired: true, verifier: result.verifier };
     }
     if (result.deviceCode !== undefined) {
-      return { signingIn: false, deviceCode: result.deviceCode as DeviceCodeResult };
+      return {
+        signingIn: false,
+        deviceCode: normalizeDeviceCodeResult(result.deviceCode),
+      };
     }
     if (result.tokens !== undefined) {
       const signingIn = await setTokenAndMaybeWait({
@@ -821,7 +842,7 @@ export function client(options: ClientOptions) {
   const signOut = async () => {
     if (proxy) {
       try {
-        await proxyFetch({ action: "auth:signOut", args: {} });
+        await proxyFetch({ action: "auth/session:stop", args: {} });
       } catch {
         // Already signed out is fine.
       }
@@ -832,7 +853,7 @@ export function client(options: ClientOptions) {
 
     // SPA mode.
     try {
-      await convex.action("auth:signOut" as any, {});
+      await convex.action("auth/session:stop" as any, {});
     } catch {
       // Already signed out is fine.
     }
@@ -869,7 +890,7 @@ export function client(options: ClientOptions) {
         if (token !== tokenBeforeRefresh) return token;
         try {
           const result = await proxyFetch({
-            action: "auth:signIn",
+            action: "auth/session:start",
             args: { refreshToken: true },
           });
           if (result.tokens) {
@@ -930,7 +951,7 @@ export function client(options: ClientOptions) {
       await signIn(undefined, { code });
       const codeUrl = new URL(window.location.href);
       codeUrl.searchParams.delete("code");
-      await replaceURL(codeUrl.pathname + codeUrl.search + codeUrl.hash);
+      await replace_url(codeUrl.pathname + codeUrl.search + codeUrl.hash);
     } finally {
       handlingCodeFlow = false;
     }
@@ -957,13 +978,13 @@ export function client(options: ClientOptions) {
    * with the current state, then again on every state transition.
    *
    * ```ts
-   * const unsub = auth.onChange(setState);
+   * const unsub = auth.on_change(setState);
    * ```
    *
    * @param cb - Callback receiving the latest {@link AuthState}.
    * @returns An unsubscribe function.
    */
-  const onChange = (cb: (state: AuthState) => void): (() => void) => {
+  const on_change = (cb: (state: AuthState) => void): (() => void) => {
     cb(snapshot);
     const wrapped = () => cb(snapshot);
     subscribers.add(wrapped);
@@ -1138,11 +1159,11 @@ export function client(options: ClientOptions) {
       let phase1Result: any;
       if (proxy) {
         phase1Result = await proxyFetch({
-          action: "auth:signIn",
+          action: "auth/session:start",
           args: { provider: "passkey", params: phase1Params },
         });
       } else {
-        phase1Result = await convex.action("auth:signIn" as any, {
+        phase1Result = await convex.action("auth/session:start" as any, {
           provider: "passkey",
           params: phase1Params,
         });
@@ -1210,7 +1231,7 @@ export function client(options: ClientOptions) {
         // In proxy mode the verifier is stored in an httpOnly cookie by the proxy.
         // We pass it back explicitly so the proxy can forward it to Convex.
         phase2Result = await proxyFetch({
-          action: "auth:signIn",
+          action: "auth/session:start",
           args: {
             provider: "passkey",
             params: phase2Params,
@@ -1218,7 +1239,7 @@ export function client(options: ClientOptions) {
           },
         });
       } else {
-        phase2Result = await convex.action("auth:signIn" as any, {
+        phase2Result = await convex.action("auth/session:start" as any, {
           provider: "passkey",
           params: phase2Params,
           verifier: phase1Result.verifier,
@@ -1287,11 +1308,11 @@ export function client(options: ClientOptions) {
       let phase1Result: any;
       if (proxy) {
         phase1Result = await proxyFetch({
-          action: "auth:signIn",
+          action: "auth/session:start",
           args: { provider: "passkey", params: phase1Params },
         });
       } else {
-        phase1Result = await convex.action("auth:signIn" as any, {
+        phase1Result = await convex.action("auth/session:start" as any, {
           provider: "passkey",
           params: phase1Params,
         });
@@ -1344,7 +1365,7 @@ export function client(options: ClientOptions) {
       let phase2Result: any;
       if (proxy) {
         phase2Result = await proxyFetch({
-          action: "auth:signIn",
+          action: "auth/session:start",
           args: {
             provider: "passkey",
             params: phase2Params,
@@ -1352,7 +1373,7 @@ export function client(options: ClientOptions) {
           },
         });
       } else {
-        phase2Result = await convex.action("auth:signIn" as any, {
+        phase2Result = await convex.action("auth/session:start" as any, {
           provider: "passkey",
           params: phase2Params,
           verifier: phase1Result.verifier,
@@ -1405,13 +1426,13 @@ export function client(options: ClientOptions) {
 
       if (proxy) {
         const result = await proxyFetch({
-          action: "auth:signIn",
+          action: "auth/session:start",
           args: { provider: "totp", params },
         });
         return { uri: result.totpSetup.uri, secret: result.totpSetup.secret, verifier: result.verifier, totpId: result.totpSetup.totpId };
       }
 
-      const result = await convex.action("auth:signIn" as any, {
+      const result = await convex.action("auth/session:start" as any, {
         provider: "totp",
         params,
       });
@@ -1438,7 +1459,7 @@ export function client(options: ClientOptions) {
 
       if (proxy) {
         const result = await proxyFetch({
-          action: "auth:signIn",
+          action: "auth/session:start",
           args: { provider: "totp", params, verifier: opts.verifier },
         });
         if (result.tokens) {
@@ -1452,7 +1473,7 @@ export function client(options: ClientOptions) {
         return;
       }
 
-      const result = await convex.action("auth:signIn" as any, {
+      const result = await convex.action("auth/session:start" as any, {
         provider: "totp",
         params,
         verifier: opts.verifier,
@@ -1472,8 +1493,8 @@ export function client(options: ClientOptions) {
      *
      * Called after a credentials sign-in returns `totpRequired: true`.
      *
-     * ```ts
-     * const result = await auth.signIn("password", { email, password });
+      * ```ts
+      * const result = await auth.sign_in("password", { email, password });
      * if (result.totpRequired) {
      *   await auth.totp.verify({ code: "123456", verifier: result.verifier! });
      * }
@@ -1487,7 +1508,7 @@ export function client(options: ClientOptions) {
 
       if (proxy) {
         const result = await proxyFetch({
-          action: "auth:signIn",
+          action: "auth/session:start",
           args: { provider: "totp", params, verifier: opts.verifier },
         });
         if (result.tokens) {
@@ -1501,7 +1522,7 @@ export function client(options: ClientOptions) {
         return;
       }
 
-      const result = await convex.action("auth:signIn" as any, {
+      const result = await convex.action("auth/session:start" as any, {
         provider: "totp",
         params,
         verifier: opts.verifier,
@@ -1521,19 +1542,19 @@ export function client(options: ClientOptions) {
     /**
      * Poll for device authorization status.
      *
-     * The device calls this repeatedly (respecting `interval`) after
-     * initiating a device flow via `signIn("device")`. Returns when
+      * The device calls this repeatedly (respecting `interval`) after
+      * initiating a device flow via `sign_in("device")`. Returns when
      * the user authorizes, or throws on timeout/denial.
      *
-     * ```ts
-     * const result = await auth.signIn("device");
+      * ```ts
+      * const result = await auth.sign_in("device");
      * const { deviceCode } = result;
      * // Display deviceCode.userCode to the user, then poll:
      * await auth.device.poll(deviceCode);
      * // User is now signed in
      * ```
-     *
-     * @param code - The {@link DeviceCodeResult} from `signIn("device")`.
+      *
+      * @param code - The {@link DeviceCodeResult} from `sign_in("device")`.
      * @returns Resolves when the device is authorized and tokens are stored.
      * @throws When the code expires, is denied, or polling encounters an error.
      */
@@ -1553,11 +1574,11 @@ export function client(options: ClientOptions) {
 
           if (proxy) {
             result = await proxyFetch({
-              action: "auth:signIn",
+              action: "auth/session:start",
               args: { provider: "device", params },
             });
           } else {
-            result = await convex.action("auth:signIn" as any, {
+            result = await convex.action("auth/session:start" as any, {
               provider: "device",
               params,
             });
@@ -1630,11 +1651,11 @@ export function client(options: ClientOptions) {
 
       if (proxy) {
         await proxyFetch({
-          action: "auth:signIn",
+          action: "auth/session:start",
           args: { provider: "device", params },
         });
       } else {
-        await convex.action("auth:signIn" as any, {
+        await convex.action("auth/session:start" as any, {
           provider: "device",
           params,
         });
@@ -1648,11 +1669,11 @@ export function client(options: ClientOptions) {
       return snapshot;
     },
     /** Sign in with a provider. See {@link SignInResult} for return shape. */
-    signIn,
+    sign_in: signIn,
     /** Sign out and clear all token state. */
-    signOut,
+    sign_out: signOut,
     /** Subscribe to auth state changes. Returns an unsubscribe function. */
-    onChange,
+    on_change,
     /** Passkey (WebAuthn) authentication helpers. */
     passkey,
     /** TOTP two-factor authentication helpers. */

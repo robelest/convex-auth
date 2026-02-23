@@ -50,8 +50,8 @@ test("proxy mode re-syncs convex auth after sign in", async () => {
   const convex = createConvexMock();
   const auth = client({
     convex,
-    proxy: "/api/auth",
-    token: "server-token",
+    proxy_path: "/api/auth",
+    token_seed: "server-token",
   });
 
   const fetchMock = vi.fn(async () => {
@@ -70,7 +70,7 @@ test("proxy mode re-syncs convex auth after sign in", async () => {
   });
   vi.stubGlobal("fetch", fetchMock);
 
-  const resultPromise = auth.signIn("password", {
+  const resultPromise = auth.sign_in("password", {
     email: "sarah@gmail.com",
     password: "44448888",
     flow: "signIn",
@@ -106,8 +106,8 @@ test("server token starts authenticated without loading handshake", () => {
   const convex = createConvexMock();
   const auth = client({
     convex,
-    proxy: "/api/auth",
-    token: "server-token",
+    proxy_path: "/api/auth",
+    token_seed: "server-token",
   });
 
   expect(auth.state.phase).toBe("authenticated");
@@ -122,8 +122,8 @@ test("proxy signIn waits for Convex auth confirmation", async () => {
   const convex = createConvexMock();
   const auth = client({
     convex,
-    proxy: "/api/auth",
-    token: "existing-token",
+    proxy_path: "/api/auth",
+    token_seed: "existing-token",
   });
 
   vi.stubGlobal(
@@ -146,7 +146,7 @@ test("proxy signIn waits for Convex auth confirmation", async () => {
 
   let resolved = false;
   const signInPromise = auth
-    .signIn("password", {
+    .sign_in("password", {
       email: "sarah@gmail.com",
       password: "44448888",
       flow: "signIn",
@@ -170,8 +170,8 @@ test("proxy signIn tolerates transient auth false before confirmation", async ()
   const convex = createConvexMock();
   const auth = client({
     convex,
-    proxy: "/api/auth",
-    token: "existing-token",
+    proxy_path: "/api/auth",
+    token_seed: "existing-token",
   });
 
   vi.stubGlobal(
@@ -192,7 +192,7 @@ test("proxy signIn tolerates transient auth false before confirmation", async ()
     ),
   );
 
-  const signInPromise = auth.signIn("password", {
+  const signInPromise = auth.sign_in("password", {
     email: "sarah@gmail.com",
     password: "44448888",
     flow: "signIn",
@@ -221,8 +221,8 @@ test("proxy signIn times out after rejection signal with no later confirmation",
   const convex = createConvexMock();
   const auth = client({
     convex,
-    proxy: "/api/auth",
-    token: "existing-token",
+    proxy_path: "/api/auth",
+    token_seed: "existing-token",
   });
 
   vi.stubGlobal(
@@ -243,7 +243,7 @@ test("proxy signIn times out after rejection signal with no later confirmation",
     ),
   );
 
-  const signInPromise = auth.signIn("password", {
+  const signInPromise = auth.sign_in("password", {
     email: "sarah@gmail.com",
     password: "44448888",
     flow: "signIn",
@@ -268,8 +268,8 @@ test("proxy signIn times out when auth confirmation never arrives", async () => 
   const convex = createConvexMock();
   const auth = client({
     convex,
-    proxy: "/api/auth",
-    token: "existing-token",
+    proxy_path: "/api/auth",
+    token_seed: "existing-token",
   });
 
   vi.stubGlobal(
@@ -290,7 +290,7 @@ test("proxy signIn times out when auth confirmation never arrives", async () => 
     ),
   );
 
-  const signInPromise = auth.signIn("password", {
+  const signInPromise = auth.sign_in("password", {
     email: "sarah@gmail.com",
     password: "44448888",
     flow: "signIn",
@@ -310,8 +310,8 @@ test("proxy refresh does not re-register Convex auth", async () => {
   const convex = createConvexMock();
   const auth = client({
     convex,
-    proxy: "/api/auth",
-    token: "existing-token",
+    proxy_path: "/api/auth",
+    token_seed: "existing-token",
   });
 
   vi.stubGlobal(
@@ -348,8 +348,8 @@ test("ledger-like flow can call protected mutation immediately after signIn", as
   const convex = createConvexMock();
   const auth = client({
     convex,
-    proxy: "/api/auth",
-    token: "existing-token",
+    proxy_path: "/api/auth",
+    token_seed: "existing-token",
   });
 
   vi.stubGlobal(
@@ -370,7 +370,7 @@ test("ledger-like flow can call protected mutation immediately after signIn", as
     ),
   );
 
-  const signInPromise = auth.signIn("password", {
+  const signInPromise = auth.sign_in("password", {
     email: "sarah@gmail.com",
     password: "44448888",
     flow: "signIn",
@@ -397,7 +397,7 @@ test("proxy refresh skips relative URL in server runtime", async () => {
   const convex = createConvexMock();
   const auth = client({
     convex,
-    proxy: "/api/auth",
+    proxy_path: "/api/auth",
   });
 
   const fetchAccessToken = convex.setAuth.mock.calls[0]?.[0] as
@@ -429,8 +429,8 @@ test("empty SSR token is treated as signed out", () => {
   const convex = createConvexMock();
   const auth = client({
     convex,
-    proxy: "/api/auth",
-    token: "",
+    proxy_path: "/api/auth",
+    token_seed: "",
   });
 
   expect(auth.state.token).toBeNull();

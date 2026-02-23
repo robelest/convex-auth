@@ -32,7 +32,7 @@ export const invalidateSessionsImpl = async (
   logWithLevel(LOG_LEVELS.DEBUG, "invalidateSessionsImpl args:", args);
   const { userId, except } = args;
   const exceptSet = new Set(except ?? []);
-  const typedUserId = userId as GenericId<"user">;
+  const typedUserId = userId as GenericId<"User">;
   const sessions = await authDb(ctx, config).sessions.listByUser(typedUserId);
   for (const session of sessions) {
     if (!exceptSet.has(session._id)) {

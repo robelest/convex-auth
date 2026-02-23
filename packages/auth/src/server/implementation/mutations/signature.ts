@@ -20,7 +20,7 @@ export async function verifierSignatureImpl(
 ): Promise<ReturnType> {
   const { verifier, signature } = args;
   const db = authDb(ctx, config);
-  const verifierDoc = await db.verifiers.getById(verifier as GenericId<"verifier">);
+  const verifierDoc = await db.verifiers.getById(verifier as GenericId<"AuthVerifier">);
   if (verifierDoc === null) {
     throwAuthError("INVALID_VERIFIER");
   }

@@ -1,11 +1,11 @@
 import { Google } from "arctic";
 import { Resend } from "@convex-dev/resend";
 import { OAuth } from "@robelest/convex-auth/providers";
-import anonymous from "@robelest/convex-auth/providers/anonymous";
-import device from "@robelest/convex-auth/providers/device";
-import passkey from "@robelest/convex-auth/providers/passkey";
-import password from "@robelest/convex-auth/providers/password";
-import totp from "@robelest/convex-auth/providers/totp";
+import { Anonymous } from "@robelest/convex-auth/providers/anonymous";
+import { Device } from "@robelest/convex-auth/providers/device";
+import { Passkey } from "@robelest/convex-auth/providers/passkey";
+import { Password } from "@robelest/convex-auth/providers/password";
+import { Totp } from "@robelest/convex-auth/providers/totp";
 import { Auth } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
 
@@ -31,11 +31,11 @@ const auth = new Auth(components.auth, {
       ),
       { scopes: ["openid", "profile", "email"] },
     ),
-    password,
-    passkey,
-    totp({ issuer: "ConvexAuth Example" }),
-    anonymous,
-    device({
+    new Password(),
+    new Passkey(),
+    new Totp({ issuer: "ConvexAuth Example" }),
+    new Anonymous(),
+    new Device({
       verificationUri: process.env.APP_URL
         ? `${process.env.APP_URL}/device`
         : "http://localhost:3000/device",
@@ -77,4 +77,3 @@ const auth = new Auth(components.auth, {
 });
 
 export { auth };
-export const { signIn, signOut, store } = auth;

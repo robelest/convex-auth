@@ -106,7 +106,7 @@ export const storeImpl = async (
   config: Provider.Config,
 ) => {
   const args = fnArgs.args;
-  logWithLevel(LOG_LEVELS.INFO, `\`auth:store\` type: ${args.type}`);
+  logWithLevel(LOG_LEVELS.INFO, `\`auth/store:run\` type: ${args.type}`);
   switch (args.type) {
     case "signIn": {
       return signInImpl(ctx, args, config);

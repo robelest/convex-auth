@@ -5,8 +5,14 @@ import {
   handleOAuthCallback,
 } from "../../auth/src/server/oauth";
 import { parseAuthError } from "../../auth/src/server/errors";
-import { authCookieNames, server } from "../../auth/src/server/index";
+import {
+  auth_cookie_names,
+  parse_auth_cookies,
+  server,
+} from "../../auth/src/server/index";
 import { isLocalHost } from "../../auth/src/server/utils";
+
+const TEST_COOKIE_NAMESPACE = "server_security_tests";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -22,8 +28,34 @@ test("isLocalHost accepts localhost hosts with or without ports", () => {
   expect(isLocalHost("example.com")).toBe(false);
   expect(isLocalHost("localhost.example.com")).toBe(false);
 
-  const localhostCookieNames = authCookieNames("localhost");
+  const localhostCookieNames = auth_cookie_names("localhost");
   expect(localhostCookieNames.token.startsWith("__Host-")).toBe(false);
+});
+
+test("auth_cookie_names isolates cookie namespaces", () => {
+  const first = auth_cookie_names("localhost", "ledger_a");
+  const second = auth_cookie_names("localhost", "ledger_b");
+
+  expect(first.token).not.toBe(second.token);
+  expect(first.refreshToken).not.toBe(second.refreshToken);
+  expect(first.verifier).not.toBe(second.verifier);
+});
+
+test("parse_auth_cookies prefers namespaced cookies over legacy names", () => {
+  const host = "localhost";
+  const namespace = "ledger";
+  const namespaced = auth_cookie_names(host, namespace);
+  const legacy = auth_cookie_names(host);
+  const parsed = parse_auth_cookies(
+    `${legacy.token}=legacy-token; ${legacy.refreshToken}=legacy-refresh; ${legacy.verifier}=legacy-verifier; ` +
+      `${namespaced.token}=namespaced-token; ${namespaced.refreshToken}=namespaced-refresh; ${namespaced.verifier}=namespaced-verifier`,
+    host,
+    namespace,
+  );
+
+  expect(parsed.token).toBe("namespaced-token");
+  expect(parsed.refreshToken).toBe("namespaced-refresh");
+  expect(parsed.verifier).toBe("namespaced-verifier");
 });
 
 test("OAuth callback rejects PKCE provider when verifier cookie is missing", async () => {
@@ -67,9 +99,12 @@ test("refresh keeps existing session when code exchange fails transiently", asyn
     new Error("exchange failed"),
   );
 
-  const auth = server({ url: "https://example.convex.cloud" });
+  const auth = server({
+    url: "https://example.convex.cloud",
+    cookie_namespace: TEST_COOKIE_NAMESPACE,
+  });
   const host = "app.example.com";
-  const cookieNames = authCookieNames(host);
+  const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
   const request = new Request("https://app.example.com/?code=abc", {
     method: "GET",
     headers: {
@@ -94,9 +129,12 @@ test("refresh recovers from malformed access token with valid refresh token", as
     },
   });
 
-  const auth = server({ url: "https://example.convex.cloud" });
+  const auth = server({
+    url: "https://example.convex.cloud",
+    cookie_namespace: TEST_COOKIE_NAMESPACE,
+  });
   const host = "app.example.com";
-  const cookieNames = authCookieNames(host);
+  const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
   const request = new Request("https://app.example.com/dashboard", {
     method: "GET",
     headers: {
@@ -118,9 +156,12 @@ test("refresh recovers from malformed access token with valid refresh token", as
 });
 
 test("refresh does not mutate cookies for CORS requests", async () => {
-  const auth = server({ url: "https://example.convex.cloud" });
+  const auth = server({
+    url: "https://example.convex.cloud",
+    cookie_namespace: TEST_COOKIE_NAMESPACE,
+  });
   const host = "app.example.com";
-  const cookieNames = authCookieNames(host);
+  const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
   const request = new Request("https://app.example.com/dashboard", {
     method: "GET",
     headers: {
@@ -135,6 +176,87 @@ test("refresh does not mutate cookies for CORS requests", async () => {
   expect(result.token).toBeNull();
 });
 
+test("verify rejects foreign issuer tokens", async () => {
+  const auth = server({
+    url: "https://example.convex.cloud",
+    cookie_namespace: TEST_COOKIE_NAMESPACE,
+  });
+  const host = "app.example.com";
+  const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const foreignToken = unsignedToken({
+    iss: "https://other-deployment.convex.cloud",
+    iat: nowSeconds,
+    exp: nowSeconds + 60 * 60,
+  });
+
+  const request = new Request("https://app.example.com/dashboard", {
+    method: "GET",
+    headers: {
+      host,
+      cookie: `${cookieNames.token}=${foreignToken}`,
+    },
+  });
+
+  await expect(auth.verify(request)).resolves.toBe(false);
+});
+
+test("refresh clears foreign issuer token before expiry checks", async () => {
+  const auth = server({
+    url: "https://example.convex.cloud",
+    cookie_namespace: TEST_COOKIE_NAMESPACE,
+  });
+  const host = "app.example.com";
+  const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const foreignToken = unsignedToken({
+    iss: "https://other-deployment.convex.cloud",
+    iat: nowSeconds,
+    exp: nowSeconds + 60 * 60,
+  });
+
+  const request = new Request("https://app.example.com/dashboard", {
+    method: "GET",
+    headers: {
+      host,
+      cookie: `${cookieNames.token}=${foreignToken}; ${cookieNames.refreshToken}=foreign-refresh-token`,
+    },
+  });
+
+  const result = await auth.refresh(request);
+  expect(result.token).toBeNull();
+  expect(result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value).toBe("");
+  expect(result.cookies.find((cookie) => cookie.name === cookieNames.refreshToken)?.value).toBe("");
+});
+
+test("refresh clears malformed refresh token values", async () => {
+  const auth = server({
+    url: "https://example.convex.cloud",
+    cookie_namespace: TEST_COOKIE_NAMESPACE,
+  });
+  const host = "app.example.com";
+  const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const token = unsignedToken({
+    iss: "https://example.convex.cloud",
+    iat: nowSeconds,
+    exp: nowSeconds + 60 * 60,
+  });
+
+  const request = new Request("https://app.example.com/dashboard", {
+    method: "GET",
+    headers: {
+      host,
+      cookie: `${cookieNames.token}=${token}; ${cookieNames.refreshToken}=dummy`,
+    },
+  });
+
+  const result = await auth.refresh(request);
+  expect(result.token).toBeNull();
+  expect(result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value).toBe("");
+  expect(result.cookies.find((cookie) => cookie.name === cookieNames.refreshToken)?.value).toBe("");
+});
+
 test("proxy signIn errors keep existing cookies for non-refresh requests", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.spyOn(ConvexHttpClient.prototype, "action").mockRejectedValue(
@@ -143,10 +265,11 @@ test("proxy signIn errors keep existing cookies for non-refresh requests", async
 
   const auth = server({
     url: "https://example.convex.cloud",
-    apiRoute: "/api/auth",
+    api_route: "/api/auth",
+    cookie_namespace: TEST_COOKIE_NAMESPACE,
   });
   const host = "app.example.com";
-  const cookieNames = authCookieNames(host);
+  const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
   const request = new Request("https://app.example.com/api/auth", {
     method: "POST",
     headers: {
@@ -155,7 +278,7 @@ test("proxy signIn errors keep existing cookies for non-refresh requests", async
       cookie: `${cookieNames.token}=jwt-token; ${cookieNames.refreshToken}=refresh-token; ${cookieNames.verifier}=verifier-token`,
     },
     body: JSON.stringify({
-      action: "auth:signIn",
+      action: "auth/session:start",
       args: {
         provider: "password",
         params: { email: "sarah@gmail.com", password: "wrong", flow: "signIn" },
@@ -203,10 +326,11 @@ test("proxy signOut retries revocation via refresh token", async () => {
 
   const auth = server({
     url: "https://example.convex.cloud",
-    apiRoute: "/api/auth",
+    api_route: "/api/auth",
+    cookie_namespace: TEST_COOKIE_NAMESPACE,
   });
   const host = "app.example.com";
-  const cookieNames = authCookieNames(host);
+  const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
   const request = new Request("https://app.example.com/api/auth", {
     method: "POST",
     headers: {
@@ -215,7 +339,7 @@ test("proxy signOut retries revocation via refresh token", async () => {
       cookie: `${cookieNames.token}=expired-jwt; ${cookieNames.refreshToken}=valid-refresh-token`,
     },
     body: JSON.stringify({
-      action: "auth:signOut",
+      action: "auth/session:stop",
       args: {},
     }),
   });
@@ -224,3 +348,10 @@ test("proxy signOut retries revocation via refresh token", async () => {
   expect(response.status).toBe(200);
   expect(signOutCalls).toBe(2);
 });
+
+function unsignedToken(payload: Record<string, unknown>) {
+  const encode = (value: object) => {
+    return Buffer.from(JSON.stringify(value)).toString("base64url");
+  };
+  return `${encode({ alg: "none", typ: "JWT" })}.${encode(payload)}.`;
+}

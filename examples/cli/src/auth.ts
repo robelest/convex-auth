@@ -44,7 +44,7 @@ export async function deviceAuthFlow(
   onStatus("Requesting device code...");
 
   // Step 1: Initiate device flow
-  const result: any = await httpClient.action("auth:signIn" as any, {
+  const result: any = await httpClient.action("auth/session:start" as any, {
     provider: "device",
   });
 
@@ -102,7 +102,7 @@ export async function deviceAuthFlow(
     await Bun.sleep(intervalMs);
 
     try {
-      const poll: any = await httpClient.action("auth:signIn" as any, {
+      const poll: any = await httpClient.action("auth/session:start" as any, {
         provider: "device",
         params: { flow: "poll", deviceCode: code },
       });

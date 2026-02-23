@@ -24,9 +24,9 @@ export async function signInImpl(
 ): Promise<ReturnType> {
   logWithLevel(LOG_LEVELS.DEBUG, "signInImpl args:", args);
   const { userId, sessionId: existingSessionId, generateTokens } = args;
-  const typedUserId = userId as GenericId<"user">;
+  const typedUserId = userId as GenericId<"User">;
   const typedExistingSessionId = existingSessionId as
-    | GenericId<"session">
+    | GenericId<"Session">
     | undefined;
   const sessionId =
     typedExistingSessionId ??

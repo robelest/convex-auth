@@ -144,7 +144,7 @@ const parsed = parseAuthError(error); // { code, message } | null
 - Tests live in `packages/test/convex/*.test.ts`.
 - Use `test()` directly (no `describe()` blocks).
 - Each test creates an isolated environment via `convexTest(schema)`.
-- Call Convex functions: `t.action(api.auth.signIn, { ... })`.
+- Call Convex functions: `t.action(api.auth.session.start, { ... })`.
 - Simulate identity: `t.withIdentity({ subject: claims.sub })`.
 - Error assertions: `expect(...).rejects.toThrow("expected message")`.
 - Use `test.todo("...")` for planned tests.

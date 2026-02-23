@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.4-preview.7
+
+- Isolate auth cookies by namespace in SSR server helpers. A deterministic
+  deployment-based namespace is now used by default, and apps can override it
+  with `cookieNamespace` to prevent localhost cross-app cookie collisions.
+- Add issuer compatibility guards in token verification/refresh paths to clear
+  foreign deployment tokens instead of treating them as authenticated sessions.
+- Harden refresh handling for malformed refresh-token cookie values and add
+  security regressions for namespace isolation and issuer mismatch behavior.
+
 ## 0.0.4-preview.6
 
 - Harden proxy-mode client handshake confirmation by keeping in-flight handshakes

@@ -14,14 +14,18 @@ import { decodeJwt } from "jose";
 test("sign in anonymously", async () => {
   setupEnv();
   const t = convexTest(schema);
-  const { tokens } = await t.action(api.auth.signIn, { provider: "anonymous" });
+  const { tokens } = await t.action(api.auth.session.start, {
+    provider: "anonymous",
+  });
   expect(tokens).not.toBeNull();
 });
 
 test("anonymous sign-in is not auto-converted during email sign-in", async () => {
   setupEnv();
   const t = convexTest(schema);
-  const { tokens } = await t.action(api.auth.signIn, { provider: "anonymous" });
+  const { tokens } = await t.action(api.auth.session.start, {
+    provider: "anonymous",
+  });
   const claims = decodeJwt(tokens!.token);
   const asAnonymous = t.withIdentity({ subject: claims.sub });
   const newTokens = await signInViaMagicLink(

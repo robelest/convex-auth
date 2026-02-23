@@ -161,7 +161,7 @@ export function Auth(config_: ConvexAuthConfig) {
        * not signed in.
        *
        * @param ctx - Any Convex context with an `auth` field (query, mutation, or action).
-       * @returns The user's `Id<"user">`, or `null` when unauthenticated.
+       * @returns The user's `Id<"User">`, or `null` when unauthenticated.
        */
       current: async (ctx: { auth: Auth }) => {
         const identity = await ctx.auth.getUserIdentity();
@@ -169,14 +169,14 @@ export function Auth(config_: ConvexAuthConfig) {
           return null;
         }
         const [userId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
-        return userId as GenericId<"user">;
+        return userId as GenericId<"User">;
       },
       /**
        * Get the current user's ID, or throw if not signed in.
        * Use this when authentication is required.
        *
        * @param ctx - Any Convex context with an `auth` field.
-       * @returns The user's `Id<"user">`.
+       * @returns The user's `Id<"User">`.
        * @throws `ConvexError` with code `NOT_SIGNED_IN` when unauthenticated.
        */
       require: async (ctx: { auth: Auth }) => {
@@ -185,7 +185,7 @@ export function Auth(config_: ConvexAuthConfig) {
           throwAuthError("NOT_SIGNED_IN");
         }
         const [userId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
-        return userId as GenericId<"user">;
+        return userId as GenericId<"User">;
       },
       /**
        * Retrieve a user document by their ID.
@@ -299,7 +299,7 @@ export function Auth(config_: ConvexAuthConfig) {
        * not signed in.
        *
        * @param ctx - Any Convex context with an `auth` field.
-       * @returns The session's `Id<"session">`, or `null` when unauthenticated.
+       * @returns The session's `Id<"Session">`, or `null` when unauthenticated.
        */
       current: async (ctx: { auth: Auth }) => {
         const identity = await ctx.auth.getUserIdentity();
@@ -307,7 +307,7 @@ export function Auth(config_: ConvexAuthConfig) {
           return null;
         }
         const [, sessionId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
-        return sessionId as GenericId<"session">;
+        return sessionId as GenericId<"Session">;
       },
       /**
        * Invalidate sessions for a user, optionally preserving specific sessions.
@@ -319,8 +319,8 @@ export function Auth(config_: ConvexAuthConfig) {
       invalidate: async <DataModel extends GenericDataModel>(
         ctx: GenericActionCtx<DataModel>,
         args: {
-          userId: GenericId<"user">;
-          except?: GenericId<"session">[];
+          userId: GenericId<"User">;
+          except?: GenericId<"Session">[];
         },
       ): Promise<void> => {
         return await callInvalidateSessions(ctx, args);
@@ -384,7 +384,7 @@ export function Auth(config_: ConvexAuthConfig) {
         ctx: GenericActionCtx<DataModel>,
         provider: AuthProviderConfig,
         args: {
-          accountId?: GenericId<"account">;
+          accountId?: GenericId<"Account">;
           params?: Record<string, unknown>;
         },
       ) => {
@@ -392,7 +392,7 @@ export function Auth(config_: ConvexAuthConfig) {
           enrichCtx(ctx),
           materializeProvider(provider),
           // params type widened: Record<string, unknown> → Record<string, any>
-          args as { accountId?: GenericId<"account">; params?: Record<string, any> },
+          args as { accountId?: GenericId<"Account">; params?: Record<string, any> },
           {
             generateTokens: false,
             allowExtraProviders: true,
@@ -1546,7 +1546,7 @@ export function Auth(config_: ConvexAuthConfig) {
         };
       }> => {
         if (args.calledBy !== undefined) {
-          logWithLevel("INFO", `\`auth:signIn\` called by ${args.calledBy}`);
+          logWithLevel("INFO", `\`auth/session:start\` called by ${args.calledBy}`);
         }
         const provider =
           args.provider !== undefined

@@ -20,9 +20,9 @@ type CreateOrUpdateUserArgs = {
 
 export async function upsertUserAndAccount(
   ctx: MutationCtx,
-  sessionId: GenericId<"session"> | null,
+  sessionId: GenericId<"Session"> | null,
   account:
-    | { existingAccount: Doc<"account"> }
+    | { existingAccount: Doc<"Account"> }
     | {
         providerAccountId: string;
         secret?: string;
@@ -30,8 +30,8 @@ export async function upsertUserAndAccount(
   args: CreateOrUpdateUserArgs,
   config: ConvexAuthConfig,
 ): Promise<{
-  userId: GenericId<"user">;
-  accountId: GenericId<"account">;
+  userId: GenericId<"User">;
+  accountId: GenericId<"Account">;
 }> {
   const userId = await defaultCreateOrUpdateUser(
     ctx,
@@ -46,8 +46,8 @@ export async function upsertUserAndAccount(
 
 async function defaultCreateOrUpdateUser(
   ctx: MutationCtx,
-  existingSessionId: GenericId<"session"> | null,
-  existingAccount: Doc<"account"> | null,
+  existingSessionId: GenericId<"Session"> | null,
+  existingAccount: Doc<"Account"> | null,
   args: CreateOrUpdateUserArgs,
   config: ConvexAuthConfig,
 ) {
@@ -144,7 +144,7 @@ async function defaultCreateOrUpdateUser(
           `${(error as Error).message}`);
     }
   } else {
-    userId = (await db.users.insert(userData)) as GenericId<"user">;
+    userId = (await db.users.insert(userData)) as GenericId<"User">;
   }
   const afterUserCreatedOrUpdated = config.callbacks?.afterUserCreatedOrUpdated;
   if (afterUserCreatedOrUpdated !== undefined) {
@@ -172,7 +172,7 @@ async function uniqueUserWithVerifiedEmail(
   config: ConvexAuthConfig,
 ) {
   const db = authDb(ctx, config);
-  return (await db.users.findByVerifiedEmail(email)) as Doc<"user"> | null;
+  return (await db.users.findByVerifiedEmail(email)) as Doc<"User"> | null;
 }
 
 async function uniqueUserWithVerifiedPhone(
@@ -181,14 +181,14 @@ async function uniqueUserWithVerifiedPhone(
   config: ConvexAuthConfig,
 ) {
   const db = authDb(ctx, config);
-  return (await db.users.findByVerifiedPhone(phone)) as Doc<"user"> | null;
+  return (await db.users.findByVerifiedPhone(phone)) as Doc<"User"> | null;
 }
 
 async function createOrUpdateAccount(
   ctx: MutationCtx,
-  userId: GenericId<"user">,
+  userId: GenericId<"User">,
   account:
-    | { existingAccount: Doc<"account"> }
+    | { existingAccount: Doc<"Account"> }
     | {
         providerAccountId: string;
         secret?: string;
@@ -205,7 +205,7 @@ async function createOrUpdateAccount(
           provider: args.provider.id,
           providerAccountId: account.providerAccountId,
           secret: account.secret,
-        })) as GenericId<"account">);
+        })) as GenericId<"Account">);
   // This is never used with the default `createOrUpdateUser` implementation,
   // but it is used for manual linking via custom `createOrUpdateUser`:
   if (
@@ -225,7 +225,7 @@ async function createOrUpdateAccount(
 
 export async function getAccountOrThrow(
   ctx: MutationCtx,
-  existingAccountId: GenericId<"account">,
+  existingAccountId: GenericId<"Account">,
   config: ConvexAuthConfig,
 ) {
   const existingAccount = await authDb(ctx, config).accounts.getById(existingAccountId);

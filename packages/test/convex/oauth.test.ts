@@ -13,7 +13,7 @@ test("sign up with oauth starts redirect flow", async () => {
   setupEnv();
   const t = convexTest(schema);
 
-  const result = await t.action(api.auth.signIn, {
+  const result = await t.action(api.auth.session.start, {
     provider: "google",
   });
 
@@ -31,8 +31,8 @@ test("sign in with oauth issues a fresh verifier", async () => {
   setupEnv();
   const t = convexTest(schema);
 
-  const first = await t.action(api.auth.signIn, { provider: "google" });
-  const second = await t.action(api.auth.signIn, { provider: "google" });
+  const first = await t.action(api.auth.session.start, { provider: "google" });
+  const second = await t.action(api.auth.session.start, { provider: "google" });
 
   expect(first.verifier).toBeDefined();
   expect(second.verifier).toBeDefined();
@@ -43,7 +43,7 @@ test("redirectTo with oauth preserves auth redirect semantics", async () => {
   setupEnv();
   const t = convexTest(schema);
 
-  const result = await t.action(api.auth.signIn, {
+  const result = await t.action(api.auth.session.start, {
     provider: "google",
     params: {
       redirectTo: "/dashboard",

@@ -595,17 +595,17 @@ const userId = verified[0]._id;
 - **Public route with optional auth?** Use `await auth.user.current(ctx)` and
   branch on `null`.
 - **Client integration:** Keep one auth client instance per Convex client,
-  subscribe to `onChange`, and wait for `isLoading === false` before protected
+  subscribe to `on_change`, and wait for `isLoading === false` before protected
   UI checks.
-- **Sign out:** Call `authClient.signOut()` on the same client instance that
+- **Sign out:** Call `authClient.sign_out()` on the same client instance that
   manages auth state.
 
-### Account/user relationship
+### Account/User relationship
 
 Accounts are many-to-one with users:
 
-- one `user` can have many linked `account` records (GitHub + Google + password)
-- each `account` belongs to exactly one `user`
+- one `User` can have many linked `Account` records (GitHub + Google + password)
+- each `Account` belongs to exactly one `User`
 
 This is why authorization should be keyed on `userId`, not provider account IDs.
 
@@ -766,8 +766,8 @@ sequenceDiagram
     participant Convex as Convex Backend
     participant Browser as User's Browser
 
-    Device->>Convex: 1. signIn("device")
-    Convex-->>Device: { userCode, deviceCode, verificationUri }
+    Device->>Convex: 1. sign_in("device")
+    Convex-->>Device: { userCode, deviceCode, verification_uri }
 
     Note over Device: Display: "Go to myapp.com/device<br/>Enter code: WDJB-MJHT"
 
@@ -788,7 +788,7 @@ sequenceDiagram
 
 #### Device side (CLI / IoT app)
 
-Use the client SDK or call the `signIn` action directly:
+Use the client SDK or call the `sign_in` action directly:
 
 ```ts
 import { client } from "@robelest/convex-auth/client";
@@ -796,11 +796,11 @@ import { client } from "@robelest/convex-auth/client";
 const auth = client({ convex });
 
 // 1. Start the device flow
-const result = await auth.signIn("device");
+const result = await auth.sign_in("device");
 const { deviceCode } = result;
 
 // 2. Show the user what to do
-console.log(`Go to: ${deviceCode.verificationUri}`);
+console.log(`Go to: ${deviceCode.verification_uri}`);
 console.log(`Enter code: ${deviceCode.userCode}`);
 
 // 3. Poll until authorized (handles interval, slow_down, expiry)
@@ -817,14 +817,14 @@ import { ConvexHttpClient } from "convex/browser";
 const http = new ConvexHttpClient(CONVEX_URL);
 
 // Start flow
-const result = await http.action("auth:signIn", { provider: "device" });
+const result = await http.action("auth/session:start", { provider: "device" });
 const { deviceCode } = result;
 
 // Poll manually
 while (true) {
   await new Promise((r) => setTimeout(r, deviceCode.interval * 1000));
   try {
-    const poll = await http.action("auth:signIn", {
+    const poll = await http.action("auth/session:start", {
       provider: "device",
       params: { flow: "poll", deviceCode: deviceCode.deviceCode },
     });
@@ -878,7 +878,7 @@ function DeviceVerification() {
 }
 ```
 
-The verification page can pre-fill the code from the URL via `?user_code=XXXX-XXXX` (the `verificationUriComplete` includes this).
+The verification page can pre-fill the code from the URL via `?user_code=XXXX-XXXX` (the `verification_uri_complete` includes this).
 
 #### Configuration options
 
@@ -894,7 +894,7 @@ The verification page can pre-fill the code from the URL via `?user_code=XXXX-XX
 
 | Method | Description |
 |--------|-------------|
-| `auth.signIn("device")` | Start flow, returns `{ deviceCode: DeviceCodeResult }` |
+| `auth.sign_in("device")` | Start flow, returns `{ deviceCode: DeviceCodeResult }` |
 | `auth.device.poll(deviceCode)` | Poll until authorized (auto-handles interval + backoff) |
 | `auth.device.verify(userCode)` | Authorize a device from the verification page |
 

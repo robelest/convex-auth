@@ -62,7 +62,7 @@ export interface PasswordConfig<DataModel extends GenericDataModel> {
      * the database.
      */
     ctx: GenericActionCtxWithAuthConfig<DataModel>,
-  ) => WithoutSystemFields<DocumentByName<DataModel, "user">> & {
+  ) => WithoutSystemFields<DocumentByName<DataModel, "User">> & {
     email: string;
   };
   /**
@@ -146,8 +146,8 @@ export class Password<DataModel extends GenericDataModel = GenericDataModel> {
         const profile = config.profile?.(params, ctx) ?? defaultProfile(params);
         const { email } = profile;
         const secret = params.password as string;
-        let account: GenericDoc<DataModel, "account">;
-        let user: GenericDoc<DataModel, "user">;
+        let account: GenericDoc<DataModel, "Account">;
+        let user: GenericDoc<DataModel, "User">;
         if (flow === "signUp") {
           if (typeof secret !== "string" || secret.length === 0) {
             throw new Error("Missing `password` param for `signUp` flow");
@@ -253,19 +253,6 @@ export class Password<DataModel extends GenericDataModel = GenericDataModel> {
       ...config,
     })._toMaterialized();
   }
-}
-
-// ============================================================================
-// Backward-compatible default export
-// ============================================================================
-
-/**
- * @deprecated Use `new Password(config)` instead.
- */
-export default function password<DataModel extends GenericDataModel>(
-  config: PasswordConfig<DataModel> = {} as PasswordConfig<DataModel>,
-): ConvexCredentialsConfig {
-  return new Password(config)._toMaterialized();
 }
 
 // ============================================================================

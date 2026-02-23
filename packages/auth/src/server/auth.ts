@@ -37,7 +37,7 @@ import type { ComponentApi as AuthComponentApi } from "../component/_generated/c
 import { Auth as AuthFactory } from "./implementation/index";
 import type { ConvexAuthConfig } from "./types";
 import { defaultMagicLinkEmail } from "./templates";
-import emailProvider from "../providers/email";
+import { email as emailProvider } from "../providers/email";
 import { throwAuthError } from "./errors";
 
 // ============================================================================
@@ -168,7 +168,7 @@ export class Auth {
  * Includes system fields (`_id`, `_creationTime`) plus the schema fields
  * (`name`, `email`, `image`, `extend`, etc.).
  */
-export type UserDoc = Doc<"user">;
+export type UserDoc = Doc<"User">;
 
 /**
  * Configuration for auth context enrichment.
@@ -280,7 +280,7 @@ export function AuthCtx<
     ctx: {
       auth: {
         getUserIdentity: () => Promise<UserIdentity | null>;
-        userId: GenericId<"user"> | null;
+        userId: GenericId<"User"> | null;
         user: UserDoc | null;
       } & TResolve;
     };
@@ -305,7 +305,7 @@ export function AuthCtx<
     ctx: {
       auth: {
         getUserIdentity: () => Promise<UserIdentity | null>;
-        userId: GenericId<"user">;
+        userId: GenericId<"User">;
         user: UserDoc;
       } & TResolve;
     };

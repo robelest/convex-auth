@@ -9,8 +9,12 @@ import type {
 } from "./implementation/index";
 import { isLocalHost } from "./utils";
 
-const signInActionRef: SignInAction = makeFunctionReference("auth:signIn");
-const signOutActionRef: SignOutAction = makeFunctionReference("auth:signOut");
+const signInActionRef: SignInAction = makeFunctionReference(
+  "auth/session:start",
+);
+const signOutActionRef: SignOutAction = makeFunctionReference(
+  "auth/session:stop",
+);
 
 /** Cookie lifetime configuration for auth tokens. */
 export type AuthCookieConfig = {
@@ -50,13 +54,20 @@ export type ServerOptions = {
   url: string;
   /**
    * Path the client POSTs auth actions to. Defaults to `"/api/auth"`.
-   * Must match the `proxy` option on the client.
+   * Must match the `proxy_path` option on the client.
    */
-  apiRoute?: string;
+  api_route?: string;
   /** Cookie `maxAge` in seconds, or `null` for session cookies. */
-  cookieMaxAge?: number | null;
+  cookie_max_age?: number | null;
   /** Enable verbose debug logging for token refresh and cookie operations. */
   verbose?: boolean;
+  /**
+   * Optional namespace for auth cookie names.
+   *
+   * Use this to isolate auth cookies between multiple local apps on the same host.
+   * If omitted, a deterministic deployment-scoped namespace is derived from `url`.
+   */
+  cookie_namespace?: string;
   /**
    * Control whether `refresh()` handles OAuth `?code=` query parameters.
    *
@@ -64,7 +75,9 @@ export type ServerOptions = {
    * - `false`: never exchange — useful when only the client handles codes.
    * - A function: called with the `Request` for per-request decisions.
    */
-  shouldHandleCode?: ((request: Request) => boolean | Promise<boolean>) | boolean;
+  should_handle_code?:
+    | ((request: Request) => boolean | Promise<boolean>)
+    | boolean;
 };
 
 export type RefreshResult = {
@@ -76,6 +89,11 @@ export type RefreshResult = {
   token: string | null;
 };
 
+const TOKEN_COOKIE_BASE_NAME = "__convexAuthJWT";
+const REFRESH_COOKIE_BASE_NAME = "__convexAuthRefreshToken";
+const VERIFIER_COOKIE_BASE_NAME = "__convexAuthOAuthVerifier";
+const DERIVED_COOKIE_NAMESPACE_FALLBACK = "convexauth";
+
 /**
  * Derive the cookie names used for auth tokens.
  *
@@ -83,14 +101,17 @@ export type RefreshResult = {
  * use the `__Host-` prefix for tighter security.
  *
  * @param host - The `Host` header value. Omit to use unprefixed names.
+ * @param cookieNamespace - Optional namespace suffix for cookie isolation.
  * @returns An object with `token`, `refreshToken`, and `verifier` cookie names.
  */
-export function authCookieNames(host?: string) {
+export function auth_cookie_names(host?: string, cookieNamespace?: string | null) {
   const prefix = isLocalHost(host) ? "" : "__Host-";
+  const namespace = normalizeCookieNamespace(cookieNamespace);
+  const suffix = namespace === null ? "" : `_${namespace}`;
   return {
-    token: `${prefix}__convexAuthJWT`,
-    refreshToken: `${prefix}__convexAuthRefreshToken`,
-    verifier: `${prefix}__convexAuthOAuthVerifier`,
+    token: `${prefix}${TOKEN_COOKIE_BASE_NAME}${suffix}`,
+    refreshToken: `${prefix}${REFRESH_COOKIE_BASE_NAME}${suffix}`,
+    verifier: `${prefix}${VERIFIER_COOKIE_BASE_NAME}${suffix}`,
   };
 }
 
@@ -99,18 +120,34 @@ export function authCookieNames(host?: string) {
  *
  * @param cookieHeader - The raw `Cookie` header, or `null`/`undefined`.
  * @param host - The `Host` header, used to determine cookie name prefixes.
+ * @param cookieNamespace - Optional namespace suffix for cookie isolation.
  * @returns Parsed {@link AuthCookies} with `token`, `refreshToken`, and `verifier`.
  */
-export function parseAuthCookies(
+export function parse_auth_cookies(
   cookieHeader: string | null | undefined,
   host?: string,
+  cookieNamespace?: string | null,
 ): AuthCookies {
-  const names = authCookieNames(host);
+  const names = auth_cookie_names(host, cookieNamespace);
+  const legacyNames = auth_cookie_names(host);
   const parsed = parse(cookieHeader ?? "");
+  const readCookie = (name: string, legacyName: string) => {
+    const primary = parsed[name];
+    if (primary !== undefined) {
+      return primary;
+    }
+    if (legacyName !== name) {
+      const legacy = parsed[legacyName];
+      if (legacy !== undefined) {
+        return legacy;
+      }
+    }
+    return null;
+  };
   return {
-    token: parsed[names.token] ?? null,
-    refreshToken: parsed[names.refreshToken] ?? null,
-    verifier: parsed[names.verifier] ?? null,
+    token: readCookie(names.token, legacyNames.token),
+    refreshToken: readCookie(names.refreshToken, legacyNames.refreshToken),
+    verifier: readCookie(names.verifier, legacyNames.verifier),
   };
 }
 
@@ -122,14 +159,17 @@ export function parseAuthCookies(
  * @param cookies - The auth cookie values to serialize.
  * @param host - The `Host` header, used for cookie name prefixes and `Secure` flag.
  * @param config - Cookie lifetime config. Defaults to session cookies.
+ * @param cookieNamespace - Optional namespace suffix for cookie isolation.
  * @returns An array of three `Set-Cookie` header strings.
  */
-export function serializeAuthCookies(
+export function serialize_auth_cookies(
   cookies: AuthCookies,
   host?: string,
   config: AuthCookieConfig = { maxAge: null },
+  cookieNamespace?: string | null,
 ) {
-  const names = authCookieNames(host);
+  const names = auth_cookie_names(host, cookieNamespace);
+  const legacyNames = auth_cookie_names(host);
   const secure = !isLocalHost(host);
   const base = {
     path: "/",
@@ -138,7 +178,7 @@ export function serializeAuthCookies(
     secure,
   };
   const maxAge = config.maxAge ?? undefined;
-  return [
+  const serialized = [
     serialize(names.token, cookies.token ?? "", {
       ...base,
       maxAge: cookies.token === null ? 0 : maxAge,
@@ -155,6 +195,26 @@ export function serializeAuthCookies(
       expires: cookies.verifier === null ? new Date(0) : undefined,
     }),
   ];
+  if (legacyNames.token !== names.token) {
+    serialized.push(
+      serialize(legacyNames.token, "", {
+        ...base,
+        maxAge: 0,
+        expires: new Date(0),
+      }),
+      serialize(legacyNames.refreshToken, "", {
+        ...base,
+        maxAge: 0,
+        expires: new Date(0),
+      }),
+      serialize(legacyNames.verifier, "", {
+        ...base,
+        maxAge: 0,
+        expires: new Date(0),
+      }),
+    );
+  }
+  return serialized;
 }
 
 /**
@@ -163,12 +223,14 @@ export function serializeAuthCookies(
  * Use with SvelteKit's `event.cookies.set()`, TanStack Start's `setCookie()`,
  * Next.js's `cookies().set()`, or any other framework cookie API.
  */
-export function structuredAuthCookies(
+export function structured_auth_cookies(
   cookies: AuthCookies,
   host?: string,
   config: AuthCookieConfig = { maxAge: null },
+  cookieNamespace?: string | null,
 ): AuthCookie[] {
-  const names = authCookieNames(host);
+  const names = auth_cookie_names(host, cookieNamespace);
+  const legacyNames = auth_cookie_names(host);
   const secure = !isLocalHost(host);
   const base = {
     path: "/" as const,
@@ -177,7 +239,7 @@ export function structuredAuthCookies(
     sameSite: "lax" as const,
   };
   const maxAge = config.maxAge ?? undefined;
-  return [
+  const structured: AuthCookie[] = [
     {
       name: names.token,
       value: cookies.token ?? "",
@@ -206,29 +268,96 @@ export function structuredAuthCookies(
       },
     },
   ];
+
+  if (legacyNames.token !== names.token) {
+    structured.push(
+      {
+        name: legacyNames.token,
+        value: "",
+        options: {
+          ...base,
+          maxAge: 0,
+          expires: new Date(0),
+        },
+      },
+      {
+        name: legacyNames.refreshToken,
+        value: "",
+        options: {
+          ...base,
+          maxAge: 0,
+          expires: new Date(0),
+        },
+      },
+      {
+        name: legacyNames.verifier,
+        value: "",
+        options: {
+          ...base,
+          maxAge: 0,
+          expires: new Date(0),
+        },
+      },
+    );
+  }
+
+  return structured;
 }
 
 /**
  * Check whether a request pathname matches the auth proxy route.
  *
  * Handles trailing-slash ambiguity: both `/api/auth` and `/api/auth/`
- * match regardless of how `apiRoute` is configured.
+ * match regardless of how `api_route` is configured.
  *
  * @param pathname - The request URL pathname.
- * @param apiRoute - The configured proxy route (e.g. `"/api/auth"`).
+ * @param api_route - The configured proxy route (e.g. `"/api/auth"`).
  * @returns `true` when the pathname matches the proxy route.
  */
-export function shouldProxyAuthAction(pathname: string, apiRoute: string) {
-  if (apiRoute.endsWith("/")) {
-    return pathname === apiRoute || pathname === apiRoute.slice(0, -1);
+export function should_proxy_auth_action(pathname: string, api_route: string) {
+  if (api_route.endsWith("/")) {
+    return pathname === api_route || pathname === api_route.slice(0, -1);
   }
-  return pathname === apiRoute || pathname === `${apiRoute}/`;
+  return pathname === api_route || pathname === `${api_route}/`;
 }
 
 const REQUIRED_TOKEN_LIFETIME_MS = 60_000;
 const MINIMUM_REQUIRED_TOKEN_LIFETIME_MS = 10_000;
 
-type DecodedToken = { exp?: number; iat?: number };
+type DecodedToken = { exp?: number; iat?: number; iss?: string };
+
+function normalizeCookieNamespace(cookieNamespace?: string | null) {
+  if (cookieNamespace === undefined || cookieNamespace === null) {
+    return null;
+  }
+  const normalized = cookieNamespace
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function deriveCookieNamespaceFromUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    const raw = `${parsed.hostname}${parsed.pathname}`;
+    const normalized = normalizeCookieNamespace(raw);
+    return normalized ?? DERIVED_COOKIE_NAMESPACE_FALLBACK;
+  } catch {
+    return DERIVED_COOKIE_NAMESPACE_FALLBACK;
+  }
+}
+
+function normalizeIssuer(value: string) {
+  try {
+    const parsed = new URL(value);
+    const pathname = parsed.pathname === "/" ? "" : parsed.pathname.replace(/\/+$/, "");
+    return `${parsed.protocol}//${parsed.host}${pathname}`;
+  } catch {
+    return value.replace(/\/+$/, "");
+  }
+}
 
 /**
  * Create an SSR auth helper for server-side frameworks.
@@ -258,16 +387,20 @@ type DecodedToken = { exp?: number; iat?: number };
  *
  * @example Generic proxy endpoint
  * ```ts
- * if (shouldProxyAuthAction(url.pathname, '/api/auth')) {
+ * if (should_proxy_auth_action(url.pathname, '/api/auth')) {
  *   return auth.proxy(request);
  * }
  * ```
  */
 export function server(options: ServerOptions) {
   const convexUrl = options.url;
-  const apiRoute = options.apiRoute ?? "/api/auth";
-  const cookieConfig = { maxAge: options.cookieMaxAge ?? null };
+  const apiRoute = options.api_route ?? "/api/auth";
+  const cookieConfig = { maxAge: options.cookie_max_age ?? null };
   const verbose = options.verbose ?? false;
+  const cookieNamespace =
+    normalizeCookieNamespace(options.cookie_namespace) ??
+    deriveCookieNamespaceFromUrl(convexUrl);
+  const expectedIssuer = normalizeIssuer(convexUrl);
 
   const logVerbose = (message: string) => {
     if (!verbose) {
@@ -283,7 +416,11 @@ export function server(options: ServerOptions) {
   };
 
   const parseRequestCookies = (request: Request) => {
-    return parseAuthCookies(request.headers.get("cookie"), cookieHost(request));
+    return parse_auth_cookies(
+      request.headers.get("cookie"),
+      cookieHost(request),
+      cookieNamespace,
+    );
   };
 
   const attachCookies = (response: Response, cookies: string[]) => {
@@ -359,6 +496,10 @@ export function server(options: ServerOptions) {
     }
   };
 
+  const issuerMatches = (issuer: string) => {
+    return normalizeIssuer(issuer) === expectedIssuer;
+  };
+
   const convexClient = (token?: string | null) => {
     const client = new ConvexHttpClient(convexUrl);
     if (token !== undefined && token !== null) {
@@ -373,6 +514,24 @@ export function server(options: ServerOptions) {
     const cookies = parseRequestCookies(request);
     const { token, refreshToken } = cookies;
 
+    const isMalformedRefreshToken =
+      refreshToken !== null &&
+      (refreshToken.trim().length === 0 || refreshToken === "dummy");
+
+    if (isMalformedRefreshToken) {
+      logVerbose("Refresh token cookie malformed, clearing auth cookies");
+      return null;
+    }
+
+    const decodedToken = token === null ? null : decodeToken(token);
+    if (
+      decodedToken?.iss !== undefined &&
+      !issuerMatches(decodedToken.iss)
+    ) {
+      logVerbose("Access token issuer mismatch, clearing auth cookies");
+      return null;
+    }
+
     const attemptRefreshWithToken = async (
       refreshTokenValue: string,
     ): Promise<{ token: string; refreshToken: string } | null | undefined> => {
@@ -384,7 +543,9 @@ export function server(options: ServerOptions) {
           },
         );
         if (result.tokens === undefined) {
-          throw new Error("Invalid `auth:signIn` result for token refresh");
+          throw new Error(
+            "Invalid `auth/session:start` result for token refresh",
+          );
         }
         logVerbose(`Refreshed tokens, null=${result.tokens === null}`);
         return result.tokens;
@@ -410,8 +571,12 @@ export function server(options: ServerOptions) {
     }
 
     if (refreshToken === null && token !== null) {
-      const decodedToken = decodeToken(token);
-      if (decodedToken?.exp !== undefined && decodedToken.exp * 1000 > Date.now()) {
+      if (
+        decodedToken?.exp !== undefined &&
+        decodedToken.iss !== undefined &&
+        issuerMatches(decodedToken.iss) &&
+        decodedToken.exp * 1000 > Date.now()
+      ) {
         logVerbose("Refresh token cookie missing but access token still valid");
         return undefined;
       }
@@ -423,7 +588,6 @@ export function server(options: ServerOptions) {
       return undefined;
     }
 
-    const decodedToken = decodeToken(token);
     if (decodedToken?.exp === undefined || decodedToken.iat === undefined) {
       logVerbose("Failed to decode access token, attempting refresh-token recovery");
       return await attemptRefreshWithToken(refreshToken);
@@ -469,7 +633,10 @@ export function server(options: ServerOptions) {
         return false;
       }
       const decodedToken = decodeToken(token);
-      if (decodedToken?.exp === undefined) {
+      if (decodedToken?.exp === undefined || decodedToken.iss === undefined) {
+        return false;
+      }
+      if (!issuerMatches(decodedToken.iss)) {
         return false;
       }
       return decodedToken.exp * 1000 > Date.now();
@@ -488,7 +655,7 @@ export function server(options: ServerOptions) {
      */
     async proxy(request: Request): Promise<Response> {
       const requestUrl = new URL(request.url);
-      if (!shouldProxyAuthAction(requestUrl.pathname, apiRoute)) {
+      if (!should_proxy_auth_action(requestUrl.pathname, apiRoute)) {
         return new Response("Invalid route", { status: 404 });
       }
       if (request.method !== "POST") {
@@ -515,14 +682,14 @@ export function server(options: ServerOptions) {
           ? (body.args as Record<string, any>)
           : {};
 
-      if (action !== "auth:signIn" && action !== "auth:signOut") {
+      if (action !== "auth/session:start" && action !== "auth/session:stop") {
         return new Response("Invalid action", { status: 400 });
       }
 
       const currentCookies = parseRequestCookies(request);
       const host = cookieHost(request);
 
-      if (action === "auth:signIn") {
+      if (action === "auth/session:start") {
         if (args.refreshToken !== undefined) {
           if (currentCookies.refreshToken === null) {
             return jsonResponse({ tokens: null });
@@ -544,13 +711,14 @@ export function server(options: ServerOptions) {
             const response = jsonResponse({ redirect: result.redirect });
             return attachCookies(
               response,
-              serializeAuthCookies(
+              serialize_auth_cookies(
                 {
                   ...currentCookies,
                   verifier: result.verifier ?? null,
                 },
                 host,
                 cookieConfig,
+                cookieNamespace,
               ),
             );
           }
@@ -563,7 +731,7 @@ export function server(options: ServerOptions) {
             });
             return attachCookies(
               response,
-              serializeAuthCookies(
+              serialize_auth_cookies(
                 {
                   token: result.tokens?.token ?? null,
                   refreshToken: result.tokens?.refreshToken ?? null,
@@ -571,6 +739,7 @@ export function server(options: ServerOptions) {
                 },
                 host,
                 cookieConfig,
+                cookieNamespace,
               ),
             );
           }
@@ -590,7 +759,7 @@ export function server(options: ServerOptions) {
             shouldClearSessionForRefreshError(error);
           return attachCookies(
             response,
-            serializeAuthCookies(
+            serialize_auth_cookies(
               {
                 token: clearSession ? null : currentCookies.token,
                 refreshToken: clearSession
@@ -600,6 +769,7 @@ export function server(options: ServerOptions) {
               },
               host,
               cookieConfig,
+              cookieNamespace,
             ),
           );
         }
@@ -626,7 +796,7 @@ export function server(options: ServerOptions) {
       }
       return attachCookies(
         jsonResponse(null),
-        serializeAuthCookies(
+        serialize_auth_cookies(
           {
             token: null,
             refreshToken: null,
@@ -634,6 +804,7 @@ export function server(options: ServerOptions) {
           },
           host,
           cookieConfig,
+          cookieNamespace,
         ),
       );
     },
@@ -668,11 +839,11 @@ export function server(options: ServerOptions) {
       const requestUrl = new URL(request.url);
       const code = requestUrl.searchParams.get("code");
       const shouldHandleCode =
-        options.shouldHandleCode === undefined
+        options.should_handle_code === undefined
           ? true
-          : typeof options.shouldHandleCode === "function"
-            ? await options.shouldHandleCode(request)
-            : options.shouldHandleCode;
+          : typeof options.should_handle_code === "function"
+            ? await options.should_handle_code(request)
+            : options.should_handle_code;
 
       if (
         code !== null &&
@@ -690,11 +861,13 @@ export function server(options: ServerOptions) {
             },
           );
           if (result.tokens === undefined) {
-            throw new Error("Invalid `auth:signIn` result for code exchange");
+            throw new Error(
+              "Invalid `auth/session:start` result for code exchange",
+            );
           }
           redirectUrl.searchParams.delete("code");
           return {
-            cookies: structuredAuthCookies(
+            cookies: structured_auth_cookies(
               {
                 token: result.tokens?.token ?? null,
                 refreshToken: result.tokens?.refreshToken ?? null,
@@ -702,6 +875,7 @@ export function server(options: ServerOptions) {
               },
               host,
               cookieConfig,
+              cookieNamespace,
             ),
             redirect: redirectUrl.toString(),
             token: result.tokens?.token ?? null,
@@ -717,7 +891,7 @@ export function server(options: ServerOptions) {
 
           redirectUrl.searchParams.delete("code");
           return {
-            cookies: structuredAuthCookies(
+            cookies: structured_auth_cookies(
               {
                 token: currentCookies.token,
                 refreshToken: currentCookies.refreshToken,
@@ -725,6 +899,7 @@ export function server(options: ServerOptions) {
               },
               host,
               cookieConfig,
+              cookieNamespace,
             ),
             redirect: redirectUrl.toString(),
             token: currentCookies.token,
@@ -739,7 +914,7 @@ export function server(options: ServerOptions) {
         return { cookies: [], token: currentToken };
       }
       return {
-        cookies: structuredAuthCookies(
+        cookies: structured_auth_cookies(
           {
             token: tokens?.token ?? null,
             refreshToken: tokens?.refreshToken ?? null,
@@ -747,6 +922,7 @@ export function server(options: ServerOptions) {
           },
           host,
           cookieConfig,
+          cookieNamespace,
         ),
         token: tokens?.token ?? null,
       };

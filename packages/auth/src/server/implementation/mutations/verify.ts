@@ -118,7 +118,7 @@ async function verifyCodeOnly(
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   allowExtraProviders: boolean,
   config: ConvexAuthConfig,
-  sessionId: GenericId<"session"> | null,
+  sessionId: GenericId<"Session"> | null,
 ) {
   const db = authDb(ctx, config);
   const { params, verifier } = args;

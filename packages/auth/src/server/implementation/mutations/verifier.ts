@@ -6,7 +6,7 @@ import * as Provider from "../provider";
 import { authDb } from "../db";
 import { AUTH_STORE_REF } from "./store";
 
-type ReturnType = GenericId<"verifier">;
+type ReturnType = GenericId<"AuthVerifier">;
 
 export async function verifierImpl(
   ctx: MutationCtx,

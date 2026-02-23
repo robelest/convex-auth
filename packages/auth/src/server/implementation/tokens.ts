@@ -11,8 +11,8 @@ const TOKEN_JTI_ALPHABET =
 
 export async function generateToken(
   args: {
-    userId: GenericId<"user">;
-    sessionId: GenericId<"session">;
+    userId: GenericId<"User">;
+    sessionId: GenericId<"Session">;
   },
   config: ConvexAuthConfig,
 ) {

@@ -83,16 +83,3 @@ export class Device {
     };
   }
 }
-
-// ============================================================================
-// Backward-compatible default export
-// ============================================================================
-
-/**
- * @deprecated Use `new Device(config)` instead.
- */
-export default function device(
-  config?: DeviceConfig,
-): DeviceProviderConfig {
-  return new Device(config)._toMaterialized();
-}

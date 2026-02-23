@@ -23,7 +23,7 @@ import { PhoneConfig, PhoneUserConfig } from "../server/types";
  * @param config - Phone provider options including `sendVerificationRequest`.
  * @returns A `PhoneConfig` to include in your `providers` array.
  */
-export default function phone<DataModel extends GenericDataModel>(
+export function phone<DataModel extends GenericDataModel>(
   config: PhoneUserConfig & Pick<PhoneConfig, "sendVerificationRequest">,
 ): PhoneConfig<DataModel> {
   return {

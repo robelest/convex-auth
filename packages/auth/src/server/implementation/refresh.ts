@@ -16,9 +16,9 @@ export const REFRESH_TOKEN_REUSE_WINDOW_MS = 10 * 1000; // 10 seconds
 export async function createRefreshToken(
   ctx: MutationCtx,
   config: ConvexAuthConfig,
-  sessionId: GenericId<"session">,
-  parentRefreshTokenId: GenericId<"token"> | null,
-): Promise<GenericId<"token">> {
+  sessionId: GenericId<"Session">,
+  parentRefreshTokenId: GenericId<"RefreshToken"> | null,
+): Promise<GenericId<"RefreshToken">> {
   const db = authDb(ctx, config);
   const expirationTime =
     Date.now() +
@@ -29,13 +29,13 @@ export async function createRefreshToken(
     sessionId,
     expirationTime,
     parentRefreshTokenId: parentRefreshTokenId ?? undefined,
-  })) as GenericId<"token">;
+  })) as GenericId<"RefreshToken">;
   return newRefreshTokenId;
 }
 
 export const formatRefreshToken = (
-  refreshTokenId: GenericId<"token">,
-  sessionId: GenericId<"session">,
+  refreshTokenId: GenericId<"RefreshToken">,
+  sessionId: GenericId<"Session">,
 ) => {
   return `${refreshTokenId}${REFRESH_TOKEN_DIVIDER}${sessionId}`;
 };
@@ -43,16 +43,16 @@ export const formatRefreshToken = (
 export const parseRefreshToken = (
   refreshToken: string,
 ): {
-  refreshTokenId: GenericId<"token">;
-  sessionId: GenericId<"session">;
+  refreshTokenId: GenericId<"RefreshToken">;
+  sessionId: GenericId<"Session">;
 } => {
   const [refreshTokenId, sessionId] = refreshToken.split(REFRESH_TOKEN_DIVIDER);
   if (!refreshTokenId || !sessionId) {
     throwAuthError("INVALID_REFRESH_TOKEN", `Can't parse refresh token: ${maybeRedact(refreshToken)}`);
   }
   return {
-    refreshTokenId: refreshTokenId as GenericId<"token">,
-    sessionId: sessionId as GenericId<"session">,
+    refreshTokenId: refreshTokenId as GenericId<"RefreshToken">,
+    sessionId: sessionId as GenericId<"Session">,
   };
 };
 
@@ -66,20 +66,20 @@ export const parseRefreshToken = (
  */
 export async function invalidateRefreshTokensInSubtree(
   ctx: MutationCtx,
-  refreshToken: Doc<"token">,
+  refreshToken: Doc<"RefreshToken">,
   config: ConvexAuthConfig,
 ) {
   const db = authDb(ctx, config);
   const tokensToInvalidate = [refreshToken];
-  const visited = new Set<GenericId<"token">>([refreshToken._id]);
-  let frontier: GenericId<"token">[] = [refreshToken._id];
+  const visited = new Set<GenericId<"RefreshToken">>([refreshToken._id]);
+  let frontier: GenericId<"RefreshToken">[] = [refreshToken._id];
   while (frontier.length > 0) {
-    const nextFrontier: GenericId<"token">[] = [];
+    const nextFrontier: GenericId<"RefreshToken">[] = [];
     for (const currentTokenId of frontier) {
       const children = (await db.refreshTokens.getChildren(
         refreshToken.sessionId,
         currentTokenId,
-      )) as Doc<"token">[];
+      )) as Doc<"RefreshToken">[];
       for (const child of children) {
         if (visited.has(child._id)) {
           continue;
@@ -107,7 +107,7 @@ export async function invalidateRefreshTokensInSubtree(
 
 export async function deleteAllRefreshTokens(
   ctx: MutationCtx,
-  sessionId: GenericId<"session">,
+  sessionId: GenericId<"Session">,
   config: ConvexAuthConfig,
 ) {
   await authDb(ctx, config).refreshTokens.deleteAll(sessionId);
@@ -120,11 +120,11 @@ export async function refreshTokenIfValid(
   config: ConvexAuthConfig,
 ) {
   const db = authDb(ctx, config);
-  let refreshTokenDoc: Doc<"token"> | null;
+  let refreshTokenDoc: Doc<"RefreshToken"> | null;
   try {
     refreshTokenDoc = (await db.refreshTokens.getById(
-      refreshTokenId as GenericId<"token">,
-    )) as Doc<"token"> | null;
+      refreshTokenId as GenericId<"RefreshToken">,
+    )) as Doc<"RefreshToken"> | null;
   } catch {
     logWithLevel(LOG_LEVELS.ERROR, "Invalid refresh token format");
     return null;
@@ -142,10 +142,10 @@ export async function refreshTokenIfValid(
     logWithLevel(LOG_LEVELS.ERROR, "Invalid refresh token session ID");
     return null;
   }
-  let session: Doc<"session"> | null;
+  let session: Doc<"Session"> | null;
   try {
     session = (await db.sessions.getById(refreshTokenDoc.sessionId)) as
-      | Doc<"session">
+      | Doc<"Session">
       | null;
   } catch {
     logWithLevel(LOG_LEVELS.ERROR, "Invalid refresh token session format");
@@ -170,10 +170,10 @@ export async function refreshTokenIfValid(
  */
 export async function loadActiveRefreshToken(
   ctx: MutationCtx,
-  sessionId: GenericId<"session">,
+  sessionId: GenericId<"Session">,
   config: ConvexAuthConfig,
 ) {
   return (await authDb(ctx, config).refreshTokens.getActive(sessionId)) as
-    | Doc<"token">
+    | Doc<"RefreshToken">
     | null;
 }
