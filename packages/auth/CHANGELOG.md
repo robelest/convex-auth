@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.0.4-preview.5 (unreleased)
+## 0.0.4-preview.6
+
+- Harden proxy-mode client handshake confirmation by keeping in-flight handshakes
+  pending across transient Convex `onAuthChange(false)` callbacks, instead of
+  immediately rejecting with `AUTH_HANDSHAKE_REJECTED`.
+- Add a unique JWT `jti` claim to issued access tokens so rapid refresh/sign-in
+  cycles always produce distinct tokens for Convex auth confirmation.
+- Add regression coverage for handshake race conditions and a ledger-style
+  sign-up + invite-accept flow in proxy mode.
+
+## 0.0.4-preview.5
 
 - Breaking preview update: `isAuthenticated` on the client now represents
   server-confirmed auth state instead of local token presence. Sign-in flows now
