@@ -249,7 +249,8 @@ export function client(options: ClientOptions) {
   // State
   // ---------------------------------------------------------------------------
 
-  // If a server-provided token was supplied (SSR hydration), start authenticated.
+  // If a server-provided token was supplied (SSR hydration), treat it as
+  // immediately authenticated to avoid a handshake-only loading screen.
   const serverToken =
     typeof options.token === "string" && options.token.trim().length > 0
       ? options.token
@@ -258,19 +259,19 @@ export function client(options: ClientOptions) {
 
   let token: string | null = serverToken;
   let isLoading = !hasServerToken;
-  let authConfirmed = false;
-  let handshakePending = hasServerToken;
+  let authConfirmed = hasServerToken;
+  let handshakePending = false;
   let authEpoch = 0;
   let destroyed = false;
   const handshakeWaiters = new Set<HandshakeWaiter>();
   let snapshot: AuthState = {
     phase: hasServerToken
-      ? "handshake"
+      ? "authenticated"
       : isLoading
         ? "loading"
         : "unauthenticated",
-    isLoading: hasServerToken || isLoading,
-    isAuthenticated: false,
+    isLoading,
+    isAuthenticated: hasServerToken,
     token,
   };
   let handlingCodeFlow = false;
@@ -424,6 +425,16 @@ export function client(options: ClientOptions) {
     return true;
   };
 
+  const finalizeLoadingState = () => {
+    if (!isLoading) {
+      return;
+    }
+    isLoading = false;
+    if (updateSnapshot()) {
+      notify();
+    }
+  };
+
   // ---------------------------------------------------------------------------
   // Storage helpers (SPA mode only)
   // ---------------------------------------------------------------------------
@@ -474,11 +485,13 @@ export function client(options: ClientOptions) {
           shouldStore: true;
           tokens: AuthSession | null;
           requireHandshake?: boolean;
+          resyncConvexAuth?: boolean;
         }
       | {
           shouldStore: false;
           tokens: { token: string } | null;
           requireHandshake?: boolean;
+          resyncConvexAuth?: boolean;
         },
   ) => {
     const previousToken = token;
@@ -525,7 +538,9 @@ export function client(options: ClientOptions) {
     const hadPendingLoad = isLoading;
     isLoading = false;
     const changed = updateSnapshot();
-    bindConvexAuth();
+    if (args.resyncConvexAuth !== false) {
+      bindConvexAuth();
+    }
     if (hadPendingLoad || changed) {
       notify();
     }
@@ -566,8 +581,43 @@ export function client(options: ClientOptions) {
   // Proxy fetch helper
   // ---------------------------------------------------------------------------
 
+  const resolveProxyUrl = () => {
+    const origin =
+      typeof window !== "undefined" &&
+      typeof window.location?.origin === "string"
+        ? window.location.origin
+        : typeof location !== "undefined" && typeof location.origin === "string"
+          ? location.origin
+          : null;
+    if (origin !== null) {
+      return new URL(proxy!, origin).toString();
+    }
+    try {
+      return new URL(proxy!).toString();
+    } catch {
+      return proxy!;
+    }
+  };
+
+  const isAbsoluteUrl = (value: string) => {
+    try {
+      new URL(value);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const proxyFetch = async (body: Record<string, unknown>) => {
-    const response = await fetch(proxy!, {
+    const proxyUrl = resolveProxyUrl();
+    if (typeof window === "undefined" && !isAbsoluteUrl(proxyUrl)) {
+      throw new Error(
+        `Cannot call relative proxy URL \`${proxy!}\` without a browser origin. ` +
+          "Pass an absolute proxy URL for server runtimes.",
+      );
+    }
+
+    const response = await fetch(proxyUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -604,8 +654,7 @@ export function client(options: ClientOptions) {
     args: { code: string; verifier?: string } | { refreshToken: string },
   ) => {
     let lastError: unknown;
-    let retry = 0;
-    while (retry < RETRY_BACKOFF.length) {
+    for (let retry = 0; retry <= RETRY_BACKOFF.length; retry++) {
       try {
         return await httpClient!.action(
           "auth:signIn" as any,
@@ -622,8 +671,10 @@ export function client(options: ClientOptions) {
               e.message || "",
             ));
         if (!isNetworkError) break;
+        if (retry >= RETRY_BACKOFF.length) {
+          break;
+        }
         const wait = RETRY_BACKOFF[retry]! + RETRY_JITTER * Math.random();
-        retry++;
         await new Promise((resolve) => setTimeout(resolve, wait));
       }
     }
@@ -632,11 +683,13 @@ export function client(options: ClientOptions) {
 
   const verifyCodeAndSetToken = async (
     args: { code: string; verifier?: string } | { refreshToken: string },
+    opts?: { resyncConvexAuth?: boolean },
   ) => {
     const { tokens } = await verifyCode(args);
     await setToken({
       shouldStore: true,
       tokens: (tokens as AuthSession | null) ?? null,
+      resyncConvexAuth: opts?.resyncConvexAuth,
     });
     return tokens !== null;
   };
@@ -807,6 +860,15 @@ export function client(options: ClientOptions) {
     if (proxy) {
       // Proxy mode: POST to the proxy to refresh.
       // The proxy reads the real refresh token from the httpOnly cookie.
+      const resolvedProxyUrl = resolveProxyUrl();
+      if (
+        typeof window === "undefined" &&
+        !isAbsoluteUrl(resolvedProxyUrl)
+      ) {
+        finalizeLoadingState();
+        return token;
+      }
+
       const tokenBeforeRefresh = token;
       return await browserMutex("__convexAuthProxyRefresh", async () => {
         // Another tab/call may have already refreshed.
@@ -820,12 +882,20 @@ export function client(options: ClientOptions) {
             await setToken({
               shouldStore: false,
               tokens: { token: result.tokens.token },
+              resyncConvexAuth: false,
             });
           } else {
-            await setToken({ shouldStore: false, tokens: null });
+            await setToken({
+              shouldStore: false,
+              tokens: null,
+              resyncConvexAuth: false,
+            });
           }
         } catch (error) {
           console.error("[convex-auth] Proxy refresh failed:", error);
+          if (token === null) {
+            finalizeLoadingState();
+          }
         }
         return token;
       });
@@ -841,9 +911,13 @@ export function client(options: ClientOptions) {
       const refreshToken =
         (await storageGet(REFRESH_TOKEN_STORAGE_KEY)) ?? null;
       if (!refreshToken) {
+        finalizeLoadingState();
         return null;
       }
-      await verifyCodeAndSetToken({ refreshToken });
+      await verifyCodeAndSetToken(
+        { refreshToken },
+        { resyncConvexAuth: false },
+      );
       return token;
     });
   };
@@ -944,8 +1018,9 @@ export function client(options: ClientOptions) {
   // Auto-hydrate and handle code flow.
   if (typeof window !== "undefined") {
     if (proxy) {
-      // Proxy mode: if no initialToken was provided, try a refresh
-      // to pick up any existing session from httpOnly cookies.
+      // Proxy mode: eagerly resolve auth once on startup so routes that only
+      // read auth state (and do not issue Convex queries yet) don't stay in
+      // the initial loading phase.
       if (!hasServerToken) {
         void fetchAccessToken({ forceRefreshToken: true }).catch(
           (error: unknown) => {

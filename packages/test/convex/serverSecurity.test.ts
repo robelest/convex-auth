@@ -86,6 +86,37 @@ test("refresh keeps existing session when code exchange fails transiently", asyn
   expect(result.cookies).toEqual([]);
 });
 
+test("refresh recovers from malformed access token with valid refresh token", async () => {
+  vi.spyOn(ConvexHttpClient.prototype, "action").mockResolvedValue({
+    tokens: {
+      token: "new-jwt-token",
+      refreshToken: "new-refresh-token",
+    },
+  });
+
+  const auth = server({ url: "https://example.convex.cloud" });
+  const host = "app.example.com";
+  const cookieNames = authCookieNames(host);
+  const request = new Request("https://app.example.com/dashboard", {
+    method: "GET",
+    headers: {
+      host,
+      cookie: `${cookieNames.token}=not-a-jwt; ${cookieNames.refreshToken}=refresh-token`,
+    },
+  });
+
+  const result = await auth.refresh(request);
+
+  expect(result.token).toBe("new-jwt-token");
+  expect(
+    result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value,
+  ).toBe("new-jwt-token");
+  expect(
+    result.cookies.find((cookie) => cookie.name === cookieNames.refreshToken)
+      ?.value,
+  ).toBe("new-refresh-token");
+});
+
 test("refresh does not mutate cookies for CORS requests", async () => {
   const auth = server({ url: "https://example.convex.cloud" });
   const host = "app.example.com";
@@ -143,4 +174,53 @@ test("proxy signIn errors keep existing cookies for non-refresh requests", async
   expect(setCookie).toContain(`${cookieNames.token}=jwt-token`);
   expect(setCookie).toContain(`${cookieNames.refreshToken}=refresh-token`);
   expect(setCookie).toContain(`${cookieNames.verifier}=`);
+});
+
+test("proxy signOut retries revocation via refresh token", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  let signOutCalls = 0;
+  vi.spyOn(ConvexHttpClient.prototype, "action").mockImplementation(
+    async (_reference: unknown, args: any) => {
+      if (
+        typeof args === "object" &&
+        args !== null &&
+        "refreshToken" in args
+      ) {
+        return {
+          tokens: {
+            token: "fresh-jwt-token",
+            refreshToken: "fresh-refresh-token",
+          },
+        };
+      }
+      signOutCalls += 1;
+      if (signOutCalls === 1) {
+        throw new Error("signOut with expired JWT failed");
+      }
+      return null;
+    },
+  );
+
+  const auth = server({
+    url: "https://example.convex.cloud",
+    apiRoute: "/api/auth",
+  });
+  const host = "app.example.com";
+  const cookieNames = authCookieNames(host);
+  const request = new Request("https://app.example.com/api/auth", {
+    method: "POST",
+    headers: {
+      host,
+      "content-type": "application/json",
+      cookie: `${cookieNames.token}=expired-jwt; ${cookieNames.refreshToken}=valid-refresh-token`,
+    },
+    body: JSON.stringify({
+      action: "auth:signOut",
+      args: {},
+    }),
+  });
+
+  const response = await auth.proxy(request);
+  expect(response.status).toBe(200);
+  expect(signOutCalls).toBe(2);
 });

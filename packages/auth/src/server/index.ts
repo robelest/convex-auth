@@ -372,18 +372,61 @@ export function server(options: ServerOptions) {
   ): Promise<{ token: string; refreshToken: string } | null | undefined> => {
     const cookies = parseRequestCookies(request);
     const { token, refreshToken } = cookies;
+
+    const attemptRefreshWithToken = async (
+      refreshTokenValue: string,
+    ): Promise<{ token: string; refreshToken: string } | null | undefined> => {
+      try {
+        const result = await convexClient().action(
+          signInActionRef,
+          {
+            refreshToken: refreshTokenValue,
+          },
+        );
+        if (result.tokens === undefined) {
+          throw new Error("Invalid `auth:signIn` result for token refresh");
+        }
+        logVerbose(`Refreshed tokens, null=${result.tokens === null}`);
+        return result.tokens;
+      } catch (error) {
+        console.error(error);
+        if (shouldClearSessionForRefreshError(error)) {
+          logVerbose("Refresh token rejected, clearing auth cookies");
+          return null;
+        }
+        logVerbose("Token refresh failed transiently, keeping current cookies");
+        return undefined;
+      }
+    };
+
     if (refreshToken === null && token === null) {
       logVerbose("No auth cookies found, skipping refresh");
       return undefined;
     }
-    if (refreshToken === null || token === null) {
-      logVerbose("Only one auth cookie present, clearing auth cookies");
+
+    if (refreshToken !== null && token === null) {
+      logVerbose("Access token cookie missing, attempting refresh-token recovery");
+      return await attemptRefreshWithToken(refreshToken);
+    }
+
+    if (refreshToken === null && token !== null) {
+      const decodedToken = decodeToken(token);
+      if (decodedToken?.exp !== undefined && decodedToken.exp * 1000 > Date.now()) {
+        logVerbose("Refresh token cookie missing but access token still valid");
+        return undefined;
+      }
+      logVerbose("Refresh token cookie missing and access token invalid, clearing");
       return null;
     }
+
+    if (refreshToken === null || token === null) {
+      return undefined;
+    }
+
     const decodedToken = decodeToken(token);
     if (decodedToken?.exp === undefined || decodedToken.iat === undefined) {
-      logVerbose("Failed to decode token, clearing auth cookies");
-      return null;
+      logVerbose("Failed to decode access token, attempting refresh-token recovery");
+      return await attemptRefreshWithToken(refreshToken);
     }
     const totalTokenLifetimeMs = decodedToken.exp * 1000 - decodedToken.iat * 1000;
     const minimumExpiration =
@@ -397,27 +440,7 @@ export function server(options: ServerOptions) {
       return undefined;
     }
 
-    try {
-      const result = await convexClient().action(
-        signInActionRef,
-        {
-          refreshToken,
-        },
-      );
-      if (result.tokens === undefined) {
-        throw new Error("Invalid `auth:signIn` result for token refresh");
-      }
-      logVerbose(`Refreshed tokens, null=${result.tokens === null}`);
-      return result.tokens;
-    } catch (error) {
-      console.error(error);
-      if (shouldClearSessionForRefreshError(error)) {
-        logVerbose("Refresh token rejected, clearing auth cookies");
-        return null;
-      }
-      logVerbose("Token refresh failed transiently, keeping current cookies");
-      return undefined;
-    }
+    return await attemptRefreshWithToken(refreshToken);
   };
 
   return {
@@ -588,6 +611,18 @@ export function server(options: ServerOptions) {
         );
       } catch (error) {
         console.error(error);
+        if (currentCookies.refreshToken !== null) {
+          try {
+            const refreshed = await convexClient().action(signInActionRef, {
+              refreshToken: currentCookies.refreshToken,
+            });
+            if (refreshed.tokens !== undefined && refreshed.tokens !== null) {
+              await convexClient(refreshed.tokens.token).action(signOutActionRef);
+            }
+          } catch (fallbackError) {
+            console.error(fallbackError);
+          }
+        }
       }
       return attachCookies(
         jsonResponse(null),

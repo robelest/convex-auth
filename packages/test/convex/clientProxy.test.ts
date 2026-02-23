@@ -94,6 +94,22 @@ test("proxy mode re-syncs convex auth after sign in", async () => {
   auth.destroy();
 });
 
+test("server token starts authenticated without loading handshake", () => {
+  const convex = createConvexMock();
+  const auth = client({
+    convex,
+    proxy: "/api/auth",
+    token: "server-token",
+  });
+
+  expect(auth.state.phase).toBe("authenticated");
+  expect(auth.state.isLoading).toBe(false);
+  expect(auth.state.isAuthenticated).toBe(true);
+  expect(auth.state.token).toBe("server-token");
+
+  auth.destroy();
+});
+
 test("proxy signIn waits for Convex auth confirmation", async () => {
   const convex = createConvexMock();
   const auth = client({
@@ -225,6 +241,71 @@ test("proxy signIn times out when auth confirmation never arrives", async () => 
 
   auth.destroy();
   vi.useRealTimers();
+});
+
+test("proxy refresh does not re-register Convex auth", async () => {
+  const convex = createConvexMock();
+  const auth = client({
+    convex,
+    proxy: "/api/auth",
+    token: "existing-token",
+  });
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          tokens: {
+            token: "fresh-token",
+            refreshToken: "dummy",
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    ),
+  );
+
+  const fetchAccessToken = convex.setAuth.mock.calls[0]?.[0] as
+    | ((args: { forceRefreshToken: boolean }) => Promise<string | null>)
+    | undefined;
+  expect(fetchAccessToken).toBeDefined();
+
+  const refreshedToken = await fetchAccessToken!({ forceRefreshToken: true });
+  expect(refreshedToken).toBe("fresh-token");
+  expect(convex.setAuth).toHaveBeenCalledTimes(1);
+
+  auth.destroy();
+});
+
+test("proxy refresh skips relative URL in server runtime", async () => {
+  vi.stubGlobal("window", undefined as any);
+  vi.stubGlobal("location", undefined as any);
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+
+  const convex = createConvexMock();
+  const auth = client({
+    convex,
+    proxy: "/api/auth",
+  });
+
+  const fetchAccessToken = convex.setAuth.mock.calls[0]?.[0] as
+    | ((args: { forceRefreshToken: boolean }) => Promise<string | null>)
+    | undefined;
+  expect(fetchAccessToken).toBeDefined();
+
+  const refreshedToken = await fetchAccessToken!({ forceRefreshToken: true });
+
+  expect(refreshedToken).toBeNull();
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(auth.state.phase).toBe("unauthenticated");
+  expect(auth.state.isLoading).toBe(false);
+
+  auth.destroy();
 });
 
 test("empty SSR token is treated as signed out", () => {
