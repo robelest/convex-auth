@@ -344,6 +344,47 @@ test("proxy refresh does not re-register Convex auth", async () => {
   auth.destroy();
 });
 
+test("proxy refresh retries transient failures before succeeding", async () => {
+  const convex = createConvexMock();
+  const auth = client({
+    convex,
+    proxy_path: "/api/auth",
+    token_seed: "existing-token",
+  });
+
+  let attempts = 0;
+  const fetchMock = vi.fn(async () => {
+    attempts += 1;
+    if (attempts < 3) {
+      throw new TypeError("Failed to fetch");
+    }
+    return new Response(
+      JSON.stringify({
+        tokens: {
+          token: "fresh-token",
+          refreshToken: "dummy",
+        },
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  const fetchAccessToken = convex.setAuth.mock.calls[0]?.[0] as
+    | ((args: { forceRefreshToken: boolean }) => Promise<string | null>)
+    | undefined;
+  expect(fetchAccessToken).toBeDefined();
+
+  const refreshedToken = await fetchAccessToken!({ forceRefreshToken: true });
+  expect(refreshedToken).toBe("fresh-token");
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+
+  auth.destroy();
+});
+
 test("ledger-like flow can call protected mutation immediately after signIn", async () => {
   const convex = createConvexMock();
   const auth = client({

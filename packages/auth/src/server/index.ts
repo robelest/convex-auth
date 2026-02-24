@@ -50,8 +50,15 @@ export type AuthCookie = {
  * Options for the SSR auth helper returned by {@link server}.
  */
 export type ServerOptions = {
-  /** Convex deployment URL (e.g. `https://your-app.convex.cloud`). */
+  /** Convex deployment API URL (e.g. `https://your-app.convex.cloud`). */
   url: string;
+  /**
+   * Accepted JWT issuers for `refresh()` and `verify()`.
+   *
+   * By default, this is derived from `url`. If `url` ends with
+   * `.convex.cloud`, the matching `.convex.site` issuer is also accepted.
+   */
+  accepted_issuers?: string[];
   /**
    * Path the client POSTs auth actions to. Defaults to `"/api/auth"`.
    * Must match the `proxy_path` option on the client.
@@ -359,6 +366,29 @@ function normalizeIssuer(value: string) {
   }
 }
 
+function convexSiteIssuerFromCloudUrl(value: string) {
+  try {
+    const parsed = new URL(value);
+    if (!parsed.hostname.endsWith(".convex.cloud")) {
+      return null;
+    }
+    parsed.hostname =
+      parsed.hostname.slice(0, -".convex.cloud".length) + ".convex.site";
+    return normalizeIssuer(parsed.toString());
+  } catch {
+    return null;
+  }
+}
+
+function defaultAcceptedIssuersForUrl(value: string) {
+  const issuers = [normalizeIssuer(value)];
+  const siteIssuer = convexSiteIssuerFromCloudUrl(value);
+  if (siteIssuer !== null) {
+    issuers.push(siteIssuer);
+  }
+  return issuers;
+}
+
 /**
  * Create an SSR auth helper for server-side frameworks.
  *
@@ -367,7 +397,7 @@ function normalizeIssuer(value: string) {
  * framework that gives you a `Request` object — SvelteKit,
  * TanStack Start, Remix, Next.js, etc.
  *
- * @param options - SSR configuration (Convex URL, proxy route, cookie lifetime).
+ * @param options - SSR configuration (Convex API URL, issuer rules, proxy route, cookie lifetime).
  * @returns An object with `token`, `verify`, `proxy`, and `refresh` methods.
  *
  * @example SvelteKit hooks
@@ -400,7 +430,11 @@ export function server(options: ServerOptions) {
   const cookieNamespace =
     normalizeCookieNamespace(options.cookie_namespace) ??
     deriveCookieNamespaceFromUrl(convexUrl);
-  const expectedIssuer = normalizeIssuer(convexUrl);
+  const acceptedIssuers = new Set(
+    (options.accepted_issuers ?? defaultAcceptedIssuersForUrl(convexUrl))
+      .map(normalizeIssuer)
+      .filter((issuer) => issuer.length > 0),
+  );
 
   const logVerbose = (message: string) => {
     if (!verbose) {
@@ -413,6 +447,27 @@ export function server(options: ServerOptions) {
 
   const cookieHost = (request: Request) => {
     return request.headers.get("host") ?? new URL(request.url).host;
+  };
+
+  const requestProtocol = (request: Request) => {
+    const forwardedProtoHeader = request.headers.get("x-forwarded-proto");
+    if (forwardedProtoHeader !== null) {
+      const forwardedProto = forwardedProtoHeader.split(",")[0]?.trim();
+      if (forwardedProto !== undefined && forwardedProto.length > 0) {
+        return forwardedProto.endsWith(":")
+          ? forwardedProto
+          : `${forwardedProto}:`;
+      }
+    }
+    return new URL(request.url).protocol;
+  };
+
+  const normalizeHost = (host: string, protocol: string) => {
+    try {
+      return new URL(`${protocol}//${host}`).host;
+    } catch {
+      return host;
+    }
   };
 
   const parseRequestCookies = (request: Request) => {
@@ -444,7 +499,8 @@ export function server(options: ServerOptions) {
     if (originHeader === null) {
       return false;
     }
-    const requestUrl = new URL(request.url);
+    const protocol = requestProtocol(request);
+    const host = normalizeHost(cookieHost(request), protocol);
     let originUrl: URL;
     try {
       originUrl = new URL(originHeader);
@@ -452,8 +508,8 @@ export function server(options: ServerOptions) {
       return true;
     }
     return (
-      originUrl.host !== requestUrl.host ||
-      originUrl.protocol !== requestUrl.protocol
+      originUrl.host !== host ||
+      originUrl.protocol !== protocol
     );
   };
 
@@ -497,7 +553,7 @@ export function server(options: ServerOptions) {
   };
 
   const issuerMatches = (issuer: string) => {
-    return normalizeIssuer(issuer) === expectedIssuer;
+    return acceptedIssuers.has(normalizeIssuer(issuer));
   };
 
   const convexClient = (token?: string | null) => {
@@ -692,6 +748,24 @@ export function server(options: ServerOptions) {
       if (action === "auth/session:start") {
         if (args.refreshToken !== undefined) {
           if (currentCookies.refreshToken === null) {
+            const decodedToken =
+              currentCookies.token === null
+                ? null
+                : decodeToken(currentCookies.token);
+            if (
+              currentCookies.token !== null &&
+              decodedToken?.exp !== undefined &&
+              decodedToken.iss !== undefined &&
+              issuerMatches(decodedToken.iss) &&
+              decodedToken.exp * 1000 > Date.now()
+            ) {
+              return jsonResponse({
+                tokens: {
+                  token: currentCookies.token,
+                  refreshToken: "dummy",
+                },
+              });
+            }
             return jsonResponse({ tokens: null });
           }
           args.refreshToken = currentCookies.refreshToken;

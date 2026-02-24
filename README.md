@@ -967,6 +967,20 @@ const auth = server({ url: process.env.CONVEX_URL! })
 const { cookies, redirect, token } = await auth.refresh(request)
 ```
 
+`url` is the Convex deployment API URL (typically `https://<deployment>.convex.cloud`) used by `ConvexHttpClient`. It should not be your app URL.
+
+Issuer validation in `refresh()` and `verify()` is decoupled from API transport:
+- by default, the normalized `url` issuer is accepted
+- when `url` ends with `.convex.cloud`, the matching `.convex.site` issuer is also accepted
+- set `accepted_issuers` to override the default issuer list
+
+```ts
+const auth = server({
+  url: process.env.CONVEX_URL!,
+  accepted_issuers: ['https://issuer.internal.example'],
+})
+```
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `cookies` | `AuthCookie[]` | Structured cookies to set (`{ name, value, options }`) |
@@ -993,6 +1007,18 @@ export const handle = async ({ event, resolve }) => {
 
   event.locals.token = token
   return resolve(event)
+}
+```
+
+```ts
+// src/routes/api/auth/+server.ts
+import { server } from '@robelest/convex-auth/server'
+import { CONVEX_URL } from '$env/static/private'
+
+const auth = server({ url: CONVEX_URL })
+
+export const POST = async ({ request }) => {
+  return auth.proxy(request)
 }
 ```
 

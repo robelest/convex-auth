@@ -145,6 +145,7 @@ const REFRESH_TOKEN_STORAGE_KEY = "__convexAuthRefreshToken";
 const RETRY_BACKOFF = [500, 2000];
 const RETRY_JITTER = 100;
 const AUTH_HANDSHAKE_TIMEOUT_MS = 5000;
+const NETWORK_ERROR_PATTERN = /(network|fetch|load failed|failed to fetch)/i;
 
 type AuthHandshakeErrorCode =
   | "AUTH_HANDSHAKE_TIMEOUT"
@@ -177,6 +178,28 @@ function resolveUrl(convex: ConvexTransport, explicit?: string): string {
   throw new Error(
     "Could not determine Convex deployment URL. Pass `url` explicitly.",
   );
+}
+
+function isTransientNetworkError(error: unknown): boolean {
+  return (
+    error instanceof TypeError ||
+    (error instanceof Error && NETWORK_ERROR_PATTERN.test(error.message || ""))
+  );
+}
+
+function isRetriableProxyRefreshError(error: unknown): boolean {
+  if (isTransientNetworkError(error)) {
+    return true;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const statusMatch = error.message.match(/Proxy request failed:\s*(\d{3})/);
+  if (statusMatch === null) {
+    return false;
+  }
+  const statusCode = Number(statusMatch[1]);
+  return statusCode >= 500 && statusCode < 600;
 }
 
 /**
@@ -659,13 +682,7 @@ export function client(options: ClientOptions) {
         );
       } catch (e) {
         lastError = e;
-        const isNetworkError =
-          e instanceof TypeError ||
-          (e instanceof Error &&
-            /(network|fetch|load failed|failed to fetch)/i.test(
-              e.message || "",
-            ));
-        if (!isNetworkError) break;
+        if (!isTransientNetworkError(e)) break;
         if (retry >= RETRY_BACKOFF.length) {
           break;
         }
@@ -889,10 +906,28 @@ export function client(options: ClientOptions) {
         // Another tab/call may have already refreshed.
         if (token !== tokenBeforeRefresh) return token;
         try {
-          const result = await proxyFetch({
-            action: "auth/session:start",
-            args: { refreshToken: true },
-          });
+          const result = await (async () => {
+            let lastError: unknown = new Error("Proxy refresh failed");
+            for (let retry = 0; retry <= RETRY_BACKOFF.length; retry++) {
+              try {
+                return await proxyFetch({
+                  action: "auth/session:start",
+                  args: { refreshToken: true },
+                });
+              } catch (error) {
+                lastError = error;
+                if (
+                  !isRetriableProxyRefreshError(error) ||
+                  retry >= RETRY_BACKOFF.length
+                ) {
+                  throw error;
+                }
+                const wait = RETRY_BACKOFF[retry]! + RETRY_JITTER * Math.random();
+                await new Promise((resolve) => setTimeout(resolve, wait));
+              }
+            }
+            throw lastError;
+          })();
           if (result.tokens) {
             await setToken({
               shouldStore: false,

@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.0.4-preview.9
+
+- Fix SSR issuer validation in `server()` so `url` stays the Convex API URL
+  (`*.convex.cloud`) while tokens issued by the matching `*.convex.site`
+  deployment are accepted by default.
+- Add `accepted_issuers` to `server()` options for explicit issuer override in
+  `refresh()` and `verify()` flows.
+- Add regression coverage for cloud/site issuer compatibility, unrelated issuer
+  rejection, and explicit issuer override behavior.
+- Clarify SSR docs: `url` is the Convex deployment URL, issuer validation rules,
+  and a minimal SvelteKit proxy-mode setup.
+- Harden proxy refresh handling by keeping a still-valid access token when the
+  refresh-token cookie is temporarily missing, and by preserving rejection for
+  invalid issuers.
+- Retry transient proxy refresh failures client-side before falling back to
+  signed-out state.
+- Improve same-origin detection behind reverse proxies by honoring
+  `x-forwarded-proto` in SSR helper checks.
+
+Migration note:
+- Most SSR proxy-mode apps need no changes after upgrading.
+- If you use a custom JWT issuer, set `accepted_issuers` explicitly in
+  `server({...})`.
+
 ## 0.0.4-preview.8
 
 - Breaking preview update: normalized auth action references to

@@ -176,7 +176,125 @@ test("refresh does not mutate cookies for CORS requests", async () => {
   expect(result.token).toBeNull();
 });
 
-test("verify rejects foreign issuer tokens", async () => {
+test("refresh honors forwarded protocol when checking same-origin", async () => {
+  const auth = server({
+    url: "https://example.convex.cloud",
+    cookie_namespace: TEST_COOKIE_NAMESPACE,
+  });
+  const host = "app.example.com";
+  const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const token = unsignedToken({
+    iss: "https://example.convex.cloud",
+    iat: nowSeconds,
+    exp: nowSeconds + 60 * 60,
+  });
+
+  const request = new Request("http://127.0.0.1/internal/dashboard", {
+    method: "GET",
+    headers: {
+      host,
+      origin: "https://app.example.com",
+      "x-forwarded-proto": "https",
+      cookie: `${cookieNames.token}=${token}; ${cookieNames.refreshToken}=refresh-token`,
+    },
+  });
+
+  const result = await auth.refresh(request);
+  expect(result.cookies).toEqual([]);
+  expect(result.token).toBe(token);
+});
+
+test("verify accepts convex.site issuer for convex.cloud URL", async () => {
+  const auth = server({
+    url: "https://example.convex.cloud",
+    cookie_namespace: TEST_COOKIE_NAMESPACE,
+  });
+  const host = "app.example.com";
+  const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const siteToken = unsignedToken({
+    iss: "https://example.convex.site",
+    iat: nowSeconds,
+    exp: nowSeconds + 60 * 60,
+  });
+
+  const request = new Request("https://app.example.com/dashboard", {
+    method: "GET",
+    headers: {
+      host,
+      cookie: `${cookieNames.token}=${siteToken}`,
+    },
+  });
+
+  await expect(auth.verify(request)).resolves.toBe(true);
+});
+
+test("verify accepts convex.cloud issuer for convex.cloud URL", async () => {
+  const auth = server({
+    url: "https://example.convex.cloud",
+    cookie_namespace: TEST_COOKIE_NAMESPACE,
+  });
+  const host = "app.example.com";
+  const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const cloudToken = unsignedToken({
+    iss: "https://example.convex.cloud",
+    iat: nowSeconds,
+    exp: nowSeconds + 60 * 60,
+  });
+
+  const request = new Request("https://app.example.com/dashboard", {
+    method: "GET",
+    headers: {
+      host,
+      cookie: `${cookieNames.token}=${cloudToken}`,
+    },
+  });
+
+  await expect(auth.verify(request)).resolves.toBe(true);
+});
+
+test("verify supports accepted_issuers override", async () => {
+  const auth = server({
+    url: "https://example.convex.cloud",
+    accepted_issuers: ["https://issuer.internal.example"],
+    cookie_namespace: TEST_COOKIE_NAMESPACE,
+  });
+  const host = "app.example.com";
+  const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const customToken = unsignedToken({
+    iss: "https://issuer.internal.example",
+    iat: nowSeconds,
+    exp: nowSeconds + 60 * 60,
+  });
+  const defaultToken = unsignedToken({
+    iss: "https://example.convex.cloud",
+    iat: nowSeconds,
+    exp: nowSeconds + 60 * 60,
+  });
+
+  const customRequest = new Request("https://app.example.com/dashboard", {
+    method: "GET",
+    headers: {
+      host,
+      cookie: `${cookieNames.token}=${customToken}`,
+    },
+  });
+  const defaultRequest = new Request("https://app.example.com/dashboard", {
+    method: "GET",
+    headers: {
+      host,
+      cookie: `${cookieNames.token}=${defaultToken}`,
+    },
+  });
+
+  await expect(auth.verify(customRequest)).resolves.toBe(true);
+  await expect(auth.verify(defaultRequest)).resolves.toBe(false);
+});
+
+test("verify rejects unrelated issuer tokens", async () => {
   const auth = server({
     url: "https://example.convex.cloud",
     cookie_namespace: TEST_COOKIE_NAMESPACE,
@@ -185,7 +303,7 @@ test("verify rejects foreign issuer tokens", async () => {
   const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
   const nowSeconds = Math.floor(Date.now() / 1000);
   const foreignToken = unsignedToken({
-    iss: "https://other-deployment.convex.cloud",
+    iss: "https://malicious.example.com",
     iat: nowSeconds,
     exp: nowSeconds + 60 * 60,
   });
@@ -199,6 +317,43 @@ test("verify rejects foreign issuer tokens", async () => {
   });
 
   await expect(auth.verify(request)).resolves.toBe(false);
+});
+
+test("refresh keeps valid convex.site issuer token for convex.cloud URL", async () => {
+  const actionSpy = vi
+    .spyOn(ConvexHttpClient.prototype, "action")
+    .mockResolvedValue({
+      tokens: {
+        token: "unexpected-token",
+        refreshToken: "unexpected-refresh-token",
+      },
+    });
+
+  const auth = server({
+    url: "https://example.convex.cloud",
+    cookie_namespace: TEST_COOKIE_NAMESPACE,
+  });
+  const host = "app.example.com";
+  const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const siteToken = unsignedToken({
+    iss: "https://example.convex.site",
+    iat: nowSeconds,
+    exp: nowSeconds + 60 * 60,
+  });
+
+  const request = new Request("https://app.example.com/dashboard", {
+    method: "GET",
+    headers: {
+      host,
+      cookie: `${cookieNames.token}=${siteToken}; ${cookieNames.refreshToken}=refresh-token`,
+    },
+  });
+
+  const result = await auth.refresh(request);
+  expect(result.cookies).toEqual([]);
+  expect(result.token).toBe(siteToken);
+  expect(actionSpy).not.toHaveBeenCalled();
 });
 
 test("refresh clears foreign issuer token before expiry checks", async () => {
@@ -255,6 +410,81 @@ test("refresh clears malformed refresh token values", async () => {
   expect(result.token).toBeNull();
   expect(result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value).toBe("");
   expect(result.cookies.find((cookie) => cookie.name === cookieNames.refreshToken)?.value).toBe("");
+});
+
+test("proxy refresh keeps valid access token when refresh cookie is missing", async () => {
+  const actionSpy = vi.spyOn(ConvexHttpClient.prototype, "action");
+  const auth = server({
+    url: "https://example.convex.cloud",
+    api_route: "/api/auth",
+    cookie_namespace: TEST_COOKIE_NAMESPACE,
+  });
+  const host = "app.example.com";
+  const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const token = unsignedToken({
+    iss: "https://example.convex.cloud",
+    iat: nowSeconds,
+    exp: nowSeconds + 60 * 60,
+  });
+
+  const request = new Request("https://app.example.com/api/auth", {
+    method: "POST",
+    headers: {
+      host,
+      "content-type": "application/json",
+      cookie: `${cookieNames.token}=${token}`,
+    },
+    body: JSON.stringify({
+      action: "auth/session:start",
+      args: { refreshToken: true },
+    }),
+  });
+
+  const response = await auth.proxy(request);
+  expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toEqual({
+    tokens: {
+      token,
+      refreshToken: "dummy",
+    },
+  });
+  expect(actionSpy).not.toHaveBeenCalled();
+});
+
+test("proxy refresh returns null when missing refresh cookie and access token is invalid", async () => {
+  const actionSpy = vi.spyOn(ConvexHttpClient.prototype, "action");
+  const auth = server({
+    url: "https://example.convex.cloud",
+    api_route: "/api/auth",
+    cookie_namespace: TEST_COOKIE_NAMESPACE,
+  });
+  const host = "app.example.com";
+  const cookieNames = auth_cookie_names(host, TEST_COOKIE_NAMESPACE);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const token = unsignedToken({
+    iss: "https://malicious.example.com",
+    iat: nowSeconds,
+    exp: nowSeconds + 60 * 60,
+  });
+
+  const request = new Request("https://app.example.com/api/auth", {
+    method: "POST",
+    headers: {
+      host,
+      "content-type": "application/json",
+      cookie: `${cookieNames.token}=${token}`,
+    },
+    body: JSON.stringify({
+      action: "auth/session:start",
+      args: { refreshToken: true },
+    }),
+  });
+
+  const response = await auth.proxy(request);
+  expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toEqual({ tokens: null });
+  expect(actionSpy).not.toHaveBeenCalled();
 });
 
 test("proxy signIn errors keep existing cookies for non-refresh requests", async () => {
