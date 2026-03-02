@@ -28,21 +28,39 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "mutation",
         "internal",
         { accountId: string },
-        any,
+        null,
         Name
       >;
       accountGet: FunctionReference<
         "query",
         "internal",
         { provider: string; providerAccountId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          emailVerified?: string;
+          phoneVerified?: string;
+          provider: string;
+          providerAccountId: string;
+          secret?: string;
+          userId: string;
+        } | null,
         Name
       >;
       accountGetById: FunctionReference<
         "query",
         "internal",
         { accountId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          emailVerified?: string;
+          phoneVerified?: string;
+          provider: string;
+          providerAccountId: string;
+          secret?: string;
+          userId: string;
+        } | null,
         Name
       >;
       accountInsert: FunctionReference<
@@ -54,49 +72,80 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           secret?: string;
           userId: string;
         },
-        any,
+        string,
         Name
       >;
       accountListByUser: FunctionReference<
         "query",
         "internal",
         { userId: string },
-        any,
+        Array<{
+          _creationTime: number;
+          _id: string;
+          emailVerified?: string;
+          phoneVerified?: string;
+          provider: string;
+          providerAccountId: string;
+          secret?: string;
+          userId: string;
+        }>,
         Name
       >;
       accountPatch: FunctionReference<
         "mutation",
         "internal",
         { accountId: string; data: any },
-        any,
+        null,
         Name
       >;
       deviceAuthorize: FunctionReference<
         "mutation",
         "internal",
         { deviceId: string; sessionId: string; userId: string },
-        any,
+        null,
         Name
       >;
       deviceDelete: FunctionReference<
         "mutation",
         "internal",
         { deviceId: string },
-        any,
+        null,
         Name
       >;
       deviceGetByCodeHash: FunctionReference<
         "query",
         "internal",
         { deviceCodeHash: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          deviceCodeHash: string;
+          expiresAt: number;
+          interval: number;
+          lastPolledAt?: number;
+          sessionId?: string;
+          status: "pending" | "authorized" | "denied";
+          userCode: string;
+          userId?: string;
+        } | null,
         Name
       >;
       deviceGetByUserCode: FunctionReference<
         "query",
         "internal",
         { userCode: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          deviceCodeHash: string;
+          expiresAt: number;
+          interval: number;
+          lastPolledAt?: number;
+          sessionId?: string;
+          status: "pending" | "authorized" | "denied";
+          userCode: string;
+          userId?: string;
+        } | null,
         Name
       >;
       deviceInsert: FunctionReference<
@@ -109,14 +158,14 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           status: "pending" | "authorized" | "denied";
           userCode: string;
         },
-        any,
+        string,
         Name
       >;
       deviceUpdateLastPolled: FunctionReference<
         "mutation",
         "internal",
         { deviceId: string; lastPolledAt: number },
-        any,
+        null,
         Name
       >;
       groupCreate: FunctionReference<
@@ -130,21 +179,30 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           tags?: Array<{ key: string; value: string }>;
           type?: string;
         },
-        any,
+        string,
         Name
       >;
       groupDelete: FunctionReference<
         "mutation",
         "internal",
         { groupId: string },
-        any,
+        null,
         Name
       >;
       groupGet: FunctionReference<
         "query",
         "internal",
         { groupId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          extend?: any;
+          name: string;
+          parentGroupId?: string;
+          slug?: string;
+          tags?: Array<{ key: string; value: string }>;
+          type?: string;
+        } | null,
         Name
       >;
       groupList: FunctionReference<
@@ -165,28 +223,46 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             type?: string;
           };
         },
-        any,
+        {
+          items: Array<{
+            _creationTime: number;
+            _id: string;
+            extend?: any;
+            name: string;
+            parentGroupId?: string;
+            slug?: string;
+            tags?: Array<{ key: string; value: string }>;
+            type?: string;
+          }>;
+          nextCursor: string | null;
+        },
         Name
       >;
       groupUpdate: FunctionReference<
         "mutation",
         "internal",
         { data: any; groupId: string },
-        any,
+        null,
         Name
       >;
       inviteAccept: FunctionReference<
         "mutation",
         "internal",
         { acceptedByUserId?: string; inviteId: string },
-        any,
+        null,
         Name
       >;
       inviteAcceptByToken: FunctionReference<
         "mutation",
         "internal",
         { acceptedByUserId: string; tokenHash: string },
-        any,
+        {
+          groupId: string | null;
+          inviteId: string;
+          inviteStatus: "accepted" | "already_accepted";
+          memberId?: string;
+          membershipStatus: "joined" | "already_joined" | "not_applicable";
+        },
         Name
       >;
       inviteCreate: FunctionReference<
@@ -202,21 +278,47 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           status: "pending" | "accepted" | "revoked" | "expired";
           tokenHash: string;
         },
-        any,
+        string,
         Name
       >;
       inviteGet: FunctionReference<
         "query",
         "internal",
         { inviteId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          acceptedByUserId?: string;
+          acceptedTime?: number;
+          email?: string;
+          expiresTime?: number;
+          extend?: any;
+          groupId?: string;
+          invitedByUserId?: string;
+          role?: string;
+          status: "pending" | "accepted" | "revoked" | "expired";
+          tokenHash: string;
+        } | null,
         Name
       >;
       inviteGetByTokenHash: FunctionReference<
         "query",
         "internal",
         { tokenHash: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          acceptedByUserId?: string;
+          acceptedTime?: number;
+          email?: string;
+          expiresTime?: number;
+          extend?: any;
+          groupId?: string;
+          invitedByUserId?: string;
+          role?: string;
+          status: "pending" | "accepted" | "revoked" | "expired";
+          tokenHash: string;
+        } | null,
         Name
       >;
       inviteList: FunctionReference<
@@ -242,35 +344,79 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             tokenHash?: string;
           };
         },
-        any,
+        {
+          items: Array<{
+            _creationTime: number;
+            _id: string;
+            acceptedByUserId?: string;
+            acceptedTime?: number;
+            email?: string;
+            expiresTime?: number;
+            extend?: any;
+            groupId?: string;
+            invitedByUserId?: string;
+            role?: string;
+            status: "pending" | "accepted" | "revoked" | "expired";
+            tokenHash: string;
+          }>;
+          nextCursor: string | null;
+        },
         Name
       >;
       inviteRevoke: FunctionReference<
         "mutation",
         "internal",
         { inviteId: string },
-        any,
+        null,
         Name
       >;
       keyDelete: FunctionReference<
         "mutation",
         "internal",
         { keyId: string },
-        any,
+        null,
         Name
       >;
       keyGetByHashedKey: FunctionReference<
         "query",
         "internal",
         { hashedKey: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          createdAt: number;
+          expiresAt?: number;
+          hashedKey: string;
+          lastUsedAt?: number;
+          name: string;
+          prefix: string;
+          rateLimit?: { maxRequests: number; windowMs: number };
+          rateLimitState?: { attemptsLeft: number; lastAttemptTime: number };
+          revoked: boolean;
+          scopes: Array<{ actions: Array<string>; resource: string }>;
+          userId: string;
+        } | null,
         Name
       >;
       keyGetById: FunctionReference<
         "query",
         "internal",
         { keyId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          createdAt: number;
+          expiresAt?: number;
+          hashedKey: string;
+          lastUsedAt?: number;
+          name: string;
+          prefix: string;
+          rateLimit?: { maxRequests: number; windowMs: number };
+          rateLimitState?: { attemptsLeft: number; lastAttemptTime: number };
+          revoked: boolean;
+          scopes: Array<{ actions: Array<string>; resource: string }>;
+          userId: string;
+        } | null,
         Name
       >;
       keyInsert: FunctionReference<
@@ -285,7 +431,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           scopes: Array<{ actions: Array<string>; resource: string }>;
           userId: string;
         },
-        any,
+        string,
         Name
       >;
       keyList: FunctionReference<
@@ -308,14 +454,45 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             userId?: string;
           };
         },
-        any,
+        {
+          items: Array<{
+            _creationTime: number;
+            _id: string;
+            createdAt: number;
+            expiresAt?: number;
+            hashedKey: string;
+            lastUsedAt?: number;
+            name: string;
+            prefix: string;
+            rateLimit?: { maxRequests: number; windowMs: number };
+            rateLimitState?: { attemptsLeft: number; lastAttemptTime: number };
+            revoked: boolean;
+            scopes: Array<{ actions: Array<string>; resource: string }>;
+            userId: string;
+          }>;
+          nextCursor: string | null;
+        },
         Name
       >;
       keyListByUserId: FunctionReference<
         "query",
         "internal",
         { userId: string },
-        any,
+        Array<{
+          _creationTime: number;
+          _id: string;
+          createdAt: number;
+          expiresAt?: number;
+          hashedKey: string;
+          lastUsedAt?: number;
+          name: string;
+          prefix: string;
+          rateLimit?: { maxRequests: number; windowMs: number };
+          rateLimitState?: { attemptsLeft: number; lastAttemptTime: number };
+          revoked: boolean;
+          scopes: Array<{ actions: Array<string>; resource: string }>;
+          userId: string;
+        }>,
         Name
       >;
       keyPatch: FunctionReference<
@@ -332,7 +509,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           };
           keyId: string;
         },
-        any,
+        null,
         Name
       >;
       memberAdd: FunctionReference<
@@ -345,21 +522,37 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           status?: string;
           userId: string;
         },
-        any,
+        string,
         Name
       >;
       memberGet: FunctionReference<
         "query",
         "internal",
         { memberId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          extend?: any;
+          groupId: string;
+          role?: string;
+          status?: string;
+          userId: string;
+        } | null,
         Name
       >;
       memberGetByGroupAndUser: FunctionReference<
         "query",
         "internal",
         { groupId: string; userId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          extend?: any;
+          groupId: string;
+          role?: string;
+          status?: string;
+          userId: string;
+        } | null,
         Name
       >;
       memberList: FunctionReference<
@@ -377,42 +570,75 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             userId?: string;
           };
         },
-        any,
+        {
+          items: Array<{
+            _creationTime: number;
+            _id: string;
+            extend?: any;
+            groupId: string;
+            role?: string;
+            status?: string;
+            userId: string;
+          }>;
+          nextCursor: string | null;
+        },
         Name
       >;
       memberListByUser: FunctionReference<
         "query",
         "internal",
         { userId: string },
-        any,
+        Array<{
+          _creationTime: number;
+          _id: string;
+          extend?: any;
+          groupId: string;
+          role?: string;
+          status?: string;
+          userId: string;
+        }>,
         Name
       >;
       memberRemove: FunctionReference<
         "mutation",
         "internal",
         { memberId: string },
-        any,
+        null,
         Name
       >;
       memberUpdate: FunctionReference<
         "mutation",
         "internal",
         { data: any; memberId: string },
-        any,
+        null,
         Name
       >;
       passkeyDelete: FunctionReference<
         "mutation",
         "internal",
         { passkeyId: string },
-        any,
+        null,
         Name
       >;
       passkeyGetByCredentialId: FunctionReference<
         "query",
         "internal",
         { credentialId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          algorithm: number;
+          backedUp: boolean;
+          counter: number;
+          createdAt: number;
+          credentialId: string;
+          deviceType: string;
+          lastUsedAt?: number;
+          name?: string;
+          publicKey: ArrayBuffer;
+          transports?: Array<string>;
+          userId: string;
+        } | null,
         Name
       >;
       passkeyInsert: FunctionReference<
@@ -430,56 +656,78 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           transports?: Array<string>;
           userId: string;
         },
-        any,
+        string,
         Name
       >;
       passkeyListByUserId: FunctionReference<
         "query",
         "internal",
         { userId: string },
-        any,
+        Array<{
+          _creationTime: number;
+          _id: string;
+          algorithm: number;
+          backedUp: boolean;
+          counter: number;
+          createdAt: number;
+          credentialId: string;
+          deviceType: string;
+          lastUsedAt?: number;
+          name?: string;
+          publicKey: ArrayBuffer;
+          transports?: Array<string>;
+          userId: string;
+        }>,
         Name
       >;
       passkeyUpdateCounter: FunctionReference<
         "mutation",
         "internal",
         { counter: number; lastUsedAt: number; passkeyId: string },
-        any,
+        null,
         Name
       >;
       passkeyUpdateMeta: FunctionReference<
         "mutation",
         "internal",
         { data: any; passkeyId: string },
-        any,
+        null,
         Name
       >;
       rateLimitCreate: FunctionReference<
         "mutation",
         "internal",
         { attemptsLeft: number; identifier: string; lastAttemptTime: number },
-        any,
+        string,
         Name
       >;
       rateLimitDelete: FunctionReference<
         "mutation",
         "internal",
         { rateLimitId: string },
-        any,
+        null,
         Name
       >;
       rateLimitGet: FunctionReference<
         "query",
         "internal",
         { identifier: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          attemptsLeft: number;
+          attempts_left: number;
+          identifier: string;
+          lastAttemptTime: number;
+          last_attempt_time: number;
+        } | null,
         Name
       >;
       rateLimitPatch: FunctionReference<
         "mutation",
         "internal",
         { data: any; rateLimitId: string },
-        any,
+        null,
         Name
       >;
       refreshTokenCreate: FunctionReference<
@@ -490,70 +738,103 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           parentRefreshTokenId?: string;
           sessionId: string;
         },
-        any,
+        string,
         Name
       >;
       refreshTokenDeleteAll: FunctionReference<
         "mutation",
         "internal",
         { sessionId: string },
-        any,
+        null,
         Name
       >;
       refreshTokenGetActive: FunctionReference<
         "query",
         "internal",
         { sessionId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          expirationTime: number;
+          firstUsedTime?: number;
+          parentRefreshTokenId?: string;
+          sessionId: string;
+        } | null,
         Name
       >;
       refreshTokenGetById: FunctionReference<
         "query",
         "internal",
         { refreshTokenId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          expirationTime: number;
+          firstUsedTime?: number;
+          parentRefreshTokenId?: string;
+          sessionId: string;
+        } | null,
         Name
       >;
       refreshTokenGetChildren: FunctionReference<
         "query",
         "internal",
         { parentRefreshTokenId: string; sessionId: string },
-        any,
+        Array<{
+          _creationTime: number;
+          _id: string;
+          expirationTime: number;
+          firstUsedTime?: number;
+          parentRefreshTokenId?: string;
+          sessionId: string;
+        }>,
         Name
       >;
       refreshTokenListBySession: FunctionReference<
         "query",
         "internal",
         { sessionId: string },
-        any,
+        Array<{
+          _creationTime: number;
+          _id: string;
+          expirationTime: number;
+          firstUsedTime?: number;
+          parentRefreshTokenId?: string;
+          sessionId: string;
+        }>,
         Name
       >;
       refreshTokenPatch: FunctionReference<
         "mutation",
         "internal",
         { data: any; refreshTokenId: string },
-        any,
+        null,
         Name
       >;
       sessionCreate: FunctionReference<
         "mutation",
         "internal",
         { expirationTime: number; userId: string },
-        any,
+        string,
         Name
       >;
       sessionDelete: FunctionReference<
         "mutation",
         "internal",
         { sessionId: string },
-        any,
+        null,
         Name
       >;
       sessionGetById: FunctionReference<
         "query",
         "internal",
         { sessionId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          expirationTime: number;
+          userId: string;
+        } | null,
         Name
       >;
       sessionList: FunctionReference<
@@ -565,35 +846,70 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           order?: "asc" | "desc";
           where?: { userId?: string };
         },
-        any,
+        {
+          items: Array<{
+            _creationTime: number;
+            _id: string;
+            expirationTime: number;
+            userId: string;
+          }>;
+          nextCursor: string | null;
+        },
         Name
       >;
       sessionListByUser: FunctionReference<
         "query",
         "internal",
         { userId: string },
-        any,
+        Array<{
+          _creationTime: number;
+          _id: string;
+          expirationTime: number;
+          userId: string;
+        }>,
         Name
       >;
       totpDelete: FunctionReference<
         "mutation",
         "internal",
         { totpId: string },
-        any,
+        null,
         Name
       >;
       totpGetById: FunctionReference<
         "query",
         "internal",
         { totpId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          createdAt: number;
+          digits: number;
+          lastUsedAt?: number;
+          name?: string;
+          period: number;
+          secret: ArrayBuffer;
+          userId: string;
+          verified: boolean;
+        } | null,
         Name
       >;
       totpGetVerifiedByUserId: FunctionReference<
         "query",
         "internal",
         { userId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          createdAt: number;
+          digits: number;
+          lastUsedAt?: number;
+          name?: string;
+          period: number;
+          secret: ArrayBuffer;
+          userId: string;
+          verified: boolean;
+        } | null,
         Name
       >;
       totpInsert: FunctionReference<
@@ -608,56 +924,100 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           userId: string;
           verified: boolean;
         },
-        any,
+        string,
         Name
       >;
       totpListByUserId: FunctionReference<
         "query",
         "internal",
         { userId: string },
-        any,
+        Array<{
+          _creationTime: number;
+          _id: string;
+          createdAt: number;
+          digits: number;
+          lastUsedAt?: number;
+          name?: string;
+          period: number;
+          secret: ArrayBuffer;
+          userId: string;
+          verified: boolean;
+        }>,
         Name
       >;
       totpMarkVerified: FunctionReference<
         "mutation",
         "internal",
         { lastUsedAt: number; totpId: string },
-        any,
+        null,
         Name
       >;
       totpUpdateLastUsed: FunctionReference<
         "mutation",
         "internal",
         { lastUsedAt: number; totpId: string },
-        any,
+        null,
         Name
       >;
       userFindByVerifiedEmail: FunctionReference<
         "query",
         "internal",
         { email: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          email?: string;
+          emailVerificationTime?: number;
+          extend?: any;
+          image?: string;
+          isAnonymous?: boolean;
+          name?: string;
+          phone?: string;
+          phoneVerificationTime?: number;
+        } | null,
         Name
       >;
       userFindByVerifiedPhone: FunctionReference<
         "query",
         "internal",
         { phone: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          email?: string;
+          emailVerificationTime?: number;
+          extend?: any;
+          image?: string;
+          isAnonymous?: boolean;
+          name?: string;
+          phone?: string;
+          phoneVerificationTime?: number;
+        } | null,
         Name
       >;
       userGetById: FunctionReference<
         "query",
         "internal",
         { userId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          email?: string;
+          emailVerificationTime?: number;
+          extend?: any;
+          image?: string;
+          isAnonymous?: boolean;
+          name?: string;
+          phone?: string;
+          phoneVerificationTime?: number;
+        } | null,
         Name
       >;
       userInsert: FunctionReference<
         "mutation",
         "internal",
         { data: any },
-        any,
+        string,
         Name
       >;
       userList: FunctionReference<
@@ -675,21 +1035,35 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             phone?: string;
           };
         },
-        any,
+        {
+          items: Array<{
+            _creationTime: number;
+            _id: string;
+            email?: string;
+            emailVerificationTime?: number;
+            extend?: any;
+            image?: string;
+            isAnonymous?: boolean;
+            name?: string;
+            phone?: string;
+            phoneVerificationTime?: number;
+          }>;
+          nextCursor: string | null;
+        },
         Name
       >;
       userPatch: FunctionReference<
         "mutation",
         "internal",
         { data: any; userId: string },
-        any,
+        null,
         Name
       >;
       userUpsert: FunctionReference<
         "mutation",
         "internal",
         { data: any; userId?: string },
-        any,
+        string,
         Name
       >;
       verificationCodeCreate: FunctionReference<
@@ -704,63 +1078,93 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           provider: string;
           verifier?: string;
         },
-        any,
+        string,
         Name
       >;
       verificationCodeDelete: FunctionReference<
         "mutation",
         "internal",
         { verificationCodeId: string },
-        any,
+        null,
         Name
       >;
       verificationCodeGetByAccountId: FunctionReference<
         "query",
         "internal",
         { accountId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          accountId: string;
+          code: string;
+          emailVerified?: string;
+          expirationTime: number;
+          phoneVerified?: string;
+          provider: string;
+          verifier?: string;
+        } | null,
         Name
       >;
       verificationCodeGetByCode: FunctionReference<
         "query",
         "internal",
         { code: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          accountId: string;
+          code: string;
+          emailVerified?: string;
+          expirationTime: number;
+          phoneVerified?: string;
+          provider: string;
+          verifier?: string;
+        } | null,
         Name
       >;
       verifierCreate: FunctionReference<
         "mutation",
         "internal",
         { sessionId?: string },
-        any,
+        string,
         Name
       >;
       verifierDelete: FunctionReference<
         "mutation",
         "internal",
         { verifierId: string },
-        any,
+        null,
         Name
       >;
       verifierGetById: FunctionReference<
         "query",
         "internal",
         { verifierId: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          sessionId?: string;
+          signature?: string;
+        } | null,
         Name
       >;
       verifierGetBySignature: FunctionReference<
         "query",
         "internal",
         { signature: string },
-        any,
+        {
+          _creationTime: number;
+          _id: string;
+          sessionId?: string;
+          signature?: string;
+        } | null,
         Name
       >;
       verifierPatch: FunctionReference<
         "mutation",
         "internal",
         { data: any; verifierId: string },
-        any,
+        null,
         Name
       >;
     };

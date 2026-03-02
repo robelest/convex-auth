@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./functions";
 
 // ============================================================================
@@ -7,6 +8,240 @@ import { mutation, query } from "./functions";
 
 /** Validator for a single `{ key, value }` tag pair. */
 const vTag = v.object({ key: v.string(), value: v.string() });
+
+const TABLES = {
+  User: "User",
+  Session: "Session",
+  Account: "Account",
+  AuthVerifier: "AuthVerifier",
+  VerificationCode: "VerificationCode",
+  RefreshToken: "RefreshToken",
+  Passkey: "Passkey",
+  TotpFactor: "TotpFactor",
+  RateLimit: "RateLimit",
+  Group: "Group",
+  GroupTag: "GroupTag",
+  GroupMember: "GroupMember",
+  GroupInvite: "GroupInvite",
+  ApiKey: "ApiKey",
+  DeviceCode: "DeviceCode",
+} as const;
+
+const vInviteStatus = v.union(
+  v.literal("pending"),
+  v.literal("accepted"),
+  v.literal("revoked"),
+  v.literal("expired"),
+);
+
+const vDeviceStatus = v.union(
+  v.literal("pending"),
+  v.literal("authorized"),
+  v.literal("denied"),
+);
+
+const vInviteTokenAcceptStatus = v.union(
+  v.literal("accepted"),
+  v.literal("already_accepted"),
+);
+
+const vMembershipStatus = v.union(
+  v.literal("joined"),
+  v.literal("already_joined"),
+  v.literal("not_applicable"),
+);
+
+const vApiKeyScope = v.object({
+  resource: v.string(),
+  actions: v.array(v.string()),
+});
+
+const vApiKeyRateLimit = v.object({
+  maxRequests: v.number(),
+  windowMs: v.number(),
+});
+
+const vApiKeyRateLimitState = v.object({
+  attemptsLeft: v.number(),
+  lastAttemptTime: v.number(),
+});
+
+function vDocMeta<T extends (typeof TABLES)[keyof typeof TABLES]>(tableName: T) {
+  return {
+    _id: v.id(tableName),
+    _creationTime: v.number(),
+  };
+}
+
+const vUserDoc = v.object({
+  ...vDocMeta(TABLES.User),
+  name: v.optional(v.string()),
+  image: v.optional(v.string()),
+  email: v.optional(v.string()),
+  emailVerificationTime: v.optional(v.number()),
+  phone: v.optional(v.string()),
+  phoneVerificationTime: v.optional(v.number()),
+  isAnonymous: v.optional(v.boolean()),
+  extend: v.optional(v.any()),
+});
+
+const vSessionDoc = v.object({
+  ...vDocMeta(TABLES.Session),
+  userId: v.id(TABLES.User),
+  expirationTime: v.number(),
+});
+
+const vAccountDoc = v.object({
+  ...vDocMeta(TABLES.Account),
+  userId: v.id(TABLES.User),
+  provider: v.string(),
+  providerAccountId: v.string(),
+  secret: v.optional(v.string()),
+  emailVerified: v.optional(v.string()),
+  phoneVerified: v.optional(v.string()),
+});
+
+const vAuthVerifierDoc = v.object({
+  ...vDocMeta(TABLES.AuthVerifier),
+  sessionId: v.optional(v.id(TABLES.Session)),
+  signature: v.optional(v.string()),
+});
+
+const vVerificationCodeDoc = v.object({
+  ...vDocMeta(TABLES.VerificationCode),
+  accountId: v.id(TABLES.Account),
+  provider: v.string(),
+  code: v.string(),
+  expirationTime: v.number(),
+  verifier: v.optional(v.string()),
+  emailVerified: v.optional(v.string()),
+  phoneVerified: v.optional(v.string()),
+});
+
+const vRefreshTokenDoc = v.object({
+  ...vDocMeta(TABLES.RefreshToken),
+  sessionId: v.id(TABLES.Session),
+  expirationTime: v.number(),
+  firstUsedTime: v.optional(v.number()),
+  parentRefreshTokenId: v.optional(v.id(TABLES.RefreshToken)),
+});
+
+const vPasskeyDoc = v.object({
+  ...vDocMeta(TABLES.Passkey),
+  userId: v.id(TABLES.User),
+  credentialId: v.string(),
+  publicKey: v.bytes(),
+  algorithm: v.number(),
+  counter: v.number(),
+  transports: v.optional(v.array(v.string())),
+  deviceType: v.string(),
+  backedUp: v.boolean(),
+  name: v.optional(v.string()),
+  createdAt: v.number(),
+  lastUsedAt: v.optional(v.number()),
+});
+
+const vTotpFactorDoc = v.object({
+  ...vDocMeta(TABLES.TotpFactor),
+  userId: v.id(TABLES.User),
+  secret: v.bytes(),
+  digits: v.number(),
+  period: v.number(),
+  verified: v.boolean(),
+  name: v.optional(v.string()),
+  createdAt: v.number(),
+  lastUsedAt: v.optional(v.number()),
+});
+
+const vRateLimitDoc = v.object({
+  ...vDocMeta(TABLES.RateLimit),
+  identifier: v.string(),
+  last_attempt_time: v.number(),
+  attempts_left: v.number(),
+});
+
+const vGroupDoc = v.object({
+  ...vDocMeta(TABLES.Group),
+  name: v.string(),
+  slug: v.optional(v.string()),
+  type: v.optional(v.string()),
+  parentGroupId: v.optional(v.id(TABLES.Group)),
+  tags: v.optional(v.array(vTag)),
+  extend: v.optional(v.any()),
+});
+
+const vGroupMemberDoc = v.object({
+  ...vDocMeta(TABLES.GroupMember),
+  groupId: v.id(TABLES.Group),
+  userId: v.id(TABLES.User),
+  role: v.optional(v.string()),
+  status: v.optional(v.string()),
+  extend: v.optional(v.any()),
+});
+
+const vGroupInviteDoc = v.object({
+  ...vDocMeta(TABLES.GroupInvite),
+  groupId: v.optional(v.id(TABLES.Group)),
+  invitedByUserId: v.optional(v.id(TABLES.User)),
+  email: v.optional(v.string()),
+  tokenHash: v.string(),
+  role: v.optional(v.string()),
+  status: vInviteStatus,
+  expiresTime: v.optional(v.number()),
+  acceptedByUserId: v.optional(v.id(TABLES.User)),
+  acceptedTime: v.optional(v.number()),
+  extend: v.optional(v.any()),
+});
+
+const vApiKeyDoc = v.object({
+  ...vDocMeta(TABLES.ApiKey),
+  userId: v.id(TABLES.User),
+  prefix: v.string(),
+  hashedKey: v.string(),
+  name: v.string(),
+  scopes: v.array(vApiKeyScope),
+  rateLimit: v.optional(vApiKeyRateLimit),
+  rateLimitState: v.optional(vApiKeyRateLimitState),
+  expiresAt: v.optional(v.number()),
+  lastUsedAt: v.optional(v.number()),
+  createdAt: v.number(),
+  revoked: v.boolean(),
+});
+
+const vDeviceCodeDoc = v.object({
+  ...vDocMeta(TABLES.DeviceCode),
+  deviceCodeHash: v.string(),
+  userCode: v.string(),
+  expiresAt: v.number(),
+  interval: v.number(),
+  status: vDeviceStatus,
+  userId: v.optional(v.id(TABLES.User)),
+  sessionId: v.optional(v.id(TABLES.Session)),
+  lastPolledAt: v.optional(v.number()),
+});
+
+const vRateLimitResult = v.object({
+  ...vDocMeta(TABLES.RateLimit),
+  identifier: v.string(),
+  last_attempt_time: v.number(),
+  attempts_left: v.number(),
+  attemptsLeft: v.number(),
+  lastAttemptTime: v.number(),
+});
+
+const vInviteAcceptByTokenResult = v.object({
+  inviteId: v.id(TABLES.GroupInvite),
+  groupId: v.union(v.id(TABLES.Group), v.null()),
+  memberId: v.optional(v.id(TABLES.GroupMember)),
+  inviteStatus: vInviteTokenAcceptStatus,
+  membershipStatus: vMembershipStatus,
+});
+
+const vPaginated = (item: any) =>
+  v.object({
+    items: v.array(item),
+    nextCursor: v.union(v.string(), v.null()),
+  });
 
 type TagPair = { key: string; value: string };
 
@@ -68,6 +303,7 @@ export const userList = query({
     ),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
+  returns: vPaginated(vUserDoc),
   handler: async (ctx, args) => {
     const where = args.where ?? {};
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
@@ -121,6 +357,7 @@ export const userList = query({
 /** Retrieve a user by their document ID. */
 export const userGetById = query({
   args: { userId: v.id("User") },
+  returns: v.union(vUserDoc, v.null()),
   handler: async (ctx, { userId }) => {
     return await ctx.db.get(userId);
   },
@@ -133,6 +370,7 @@ export const userGetById = query({
  */
 export const userFindByVerifiedEmail = query({
   args: { email: v.string() },
+  returns: v.union(vUserDoc, v.null()),
   handler: async (ctx, { email }) => {
     const users = await ctx.db
       .query("User")
@@ -150,6 +388,7 @@ export const userFindByVerifiedEmail = query({
  */
 export const userFindByVerifiedPhone = query({
   args: { phone: v.string() },
+  returns: v.union(vUserDoc, v.null()),
   handler: async (ctx, { phone }) => {
     const users = await ctx.db
       .query("User")
@@ -163,6 +402,7 @@ export const userFindByVerifiedPhone = query({
 /** Insert a new user document. */
 export const userInsert = mutation({
   args: { data: v.any() },
+  returns: v.id("User"),
   handler: async (ctx, { data }) => {
     return await ctx.db.insert("User", data);
   },
@@ -171,6 +411,7 @@ export const userInsert = mutation({
 /** Insert a new user or update an existing one. */
 export const userUpsert = mutation({
   args: { userId: v.optional(v.id("User")), data: v.any() },
+  returns: v.id("User"),
   handler: async (ctx, { userId, data }) => {
     if (userId !== undefined) {
       await ctx.db.patch(userId, data);
@@ -183,8 +424,10 @@ export const userUpsert = mutation({
 /** Patch an existing user document with partial data. */
 export const userPatch = mutation({
   args: { userId: v.id("User"), data: v.any() },
+  returns: v.null(),
   handler: async (ctx, { userId, data }) => {
     await ctx.db.patch(userId, data);
+    return null;
   },
 });
 
@@ -195,6 +438,7 @@ export const userPatch = mutation({
 /** List all accounts for a user. */
 export const accountListByUser = query({
   args: { userId: v.id("User") },
+  returns: v.array(vAccountDoc),
   handler: async (ctx, { userId }) => {
     return await ctx.db
       .query("Account")
@@ -206,6 +450,7 @@ export const accountListByUser = query({
 /** Look up an account by provider and provider-specific account ID. */
 export const accountGet = query({
   args: { provider: v.string(), providerAccountId: v.string() },
+  returns: v.union(vAccountDoc, v.null()),
   handler: async (ctx, { provider, providerAccountId }) => {
     return await ctx.db
       .query("Account")
@@ -219,6 +464,7 @@ export const accountGet = query({
 /** Retrieve an account by its document ID. */
 export const accountGetById = query({
   args: { accountId: v.id("Account") },
+  returns: v.union(vAccountDoc, v.null()),
   handler: async (ctx, { accountId }) => {
     return await ctx.db.get(accountId);
   },
@@ -232,6 +478,7 @@ export const accountInsert = mutation({
     providerAccountId: v.string(),
     secret: v.optional(v.string()),
   },
+  returns: v.id("Account"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("Account", args as any);
   },
@@ -240,16 +487,20 @@ export const accountInsert = mutation({
 /** Patch an existing account document with partial data. */
 export const accountPatch = mutation({
   args: { accountId: v.id("Account"), data: v.any() },
+  returns: v.null(),
   handler: async (ctx, { accountId, data }) => {
     await ctx.db.patch(accountId, data);
+    return null;
   },
 });
 
 /** Delete an account document. */
 export const accountDelete = mutation({
   args: { accountId: v.id("Account") },
+  returns: v.null(),
   handler: async (ctx, { accountId }) => {
     await ctx.db.delete(accountId);
+    return null;
   },
 });
 
@@ -273,6 +524,7 @@ export const sessionList = query({
     cursor: v.optional(v.union(v.string(), v.null())),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
+  returns: vPaginated(vSessionDoc),
   handler: async (ctx, args) => {
     const where = args.where ?? {};
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
@@ -308,6 +560,7 @@ export const sessionList = query({
 /** Create a new session for a user with an expiration time. */
 export const sessionCreate = mutation({
   args: { userId: v.id("User"), expirationTime: v.number() },
+  returns: v.id("Session"),
   handler: async (ctx, { userId, expirationTime }) => {
     return await ctx.db.insert("Session", {
       userId: userId as any,
@@ -319,6 +572,7 @@ export const sessionCreate = mutation({
 /** Retrieve a session by its document ID. */
 export const sessionGetById = query({
   args: { sessionId: v.id("Session") },
+  returns: v.union(vSessionDoc, v.null()),
   handler: async (ctx, { sessionId }) => {
     return await ctx.db.get(sessionId);
   },
@@ -327,16 +581,19 @@ export const sessionGetById = query({
 /** Delete a session. No-op if the session does not exist. */
 export const sessionDelete = mutation({
   args: { sessionId: v.id("Session") },
+  returns: v.null(),
   handler: async (ctx, { sessionId }) => {
     if ((await ctx.db.get(sessionId)) !== null) {
       await ctx.db.delete(sessionId);
     }
+    return null;
   },
 });
 
 /** List all sessions for a user. */
 export const sessionListByUser = query({
   args: { userId: v.id("User") },
+  returns: v.array(vSessionDoc),
   handler: async (ctx, { userId }) => {
     return await ctx.db
       .query("Session")
@@ -352,6 +609,7 @@ export const sessionListByUser = query({
 /** Create a new PKCE verifier, optionally linked to a session. */
 export const verifierCreate = mutation({
   args: { sessionId: v.optional(v.id("Session")) },
+  returns: v.id("AuthVerifier"),
   handler: async (ctx, { sessionId }) => {
     return await ctx.db.insert("AuthVerifier", { sessionId: sessionId as any });
   },
@@ -360,6 +618,7 @@ export const verifierCreate = mutation({
 /** Retrieve a verifier by its document ID. */
 export const verifierGetById = query({
   args: { verifierId: v.id("AuthVerifier") },
+  returns: v.union(vAuthVerifierDoc, v.null()),
   handler: async (ctx, { verifierId }) => {
     return await ctx.db.get(verifierId);
   },
@@ -368,6 +627,7 @@ export const verifierGetById = query({
 /** Look up a verifier by its cryptographic signature. */
 export const verifierGetBySignature = query({
   args: { signature: v.string() },
+  returns: v.union(vAuthVerifierDoc, v.null()),
   handler: async (ctx, { signature }) => {
     return await ctx.db
       .query("AuthVerifier")
@@ -379,16 +639,20 @@ export const verifierGetBySignature = query({
 /** Patch a verifier document with partial data. */
 export const verifierPatch = mutation({
   args: { verifierId: v.id("AuthVerifier"), data: v.any() },
+  returns: v.null(),
   handler: async (ctx, { verifierId, data }) => {
     await ctx.db.patch(verifierId, data);
+    return null;
   },
 });
 
 /** Delete a verifier document. */
 export const verifierDelete = mutation({
   args: { verifierId: v.id("AuthVerifier") },
+  returns: v.null(),
   handler: async (ctx, { verifierId }) => {
     await ctx.db.delete(verifierId);
+    return null;
   },
 });
 
@@ -399,6 +663,7 @@ export const verifierDelete = mutation({
 /** Find a verification code by its associated account ID. */
 export const verificationCodeGetByAccountId = query({
   args: { accountId: v.id("Account") },
+  returns: v.union(vVerificationCodeDoc, v.null()),
   handler: async (ctx, { accountId }) => {
     return await ctx.db
       .query("VerificationCode")
@@ -410,6 +675,7 @@ export const verificationCodeGetByAccountId = query({
 /** Find a verification code by its code string. */
 export const verificationCodeGetByCode = query({
   args: { code: v.string() },
+  returns: v.union(vVerificationCodeDoc, v.null()),
   handler: async (ctx, { code }) => {
     return await ctx.db
       .query("VerificationCode")
@@ -429,6 +695,7 @@ export const verificationCodeCreate = mutation({
     emailVerified: v.optional(v.string()),
     phoneVerified: v.optional(v.string()),
   },
+  returns: v.id("VerificationCode"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("VerificationCode", args as any);
   },
@@ -437,8 +704,10 @@ export const verificationCodeCreate = mutation({
 /** Delete a verification code document. */
 export const verificationCodeDelete = mutation({
   args: { verificationCodeId: v.id("VerificationCode") },
+  returns: v.null(),
   handler: async (ctx, { verificationCodeId }) => {
     await ctx.db.delete(verificationCodeId);
+    return null;
   },
 });
 
@@ -453,6 +722,7 @@ export const refreshTokenCreate = mutation({
     expirationTime: v.number(),
     parentRefreshTokenId: v.optional(v.id("RefreshToken")),
   },
+  returns: v.id("RefreshToken"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("RefreshToken", args as any);
   },
@@ -461,6 +731,7 @@ export const refreshTokenCreate = mutation({
 /** Retrieve a refresh token by its document ID. */
 export const refreshTokenGetById = query({
   args: { refreshTokenId: v.id("RefreshToken") },
+  returns: v.union(vRefreshTokenDoc, v.null()),
   handler: async (ctx, { refreshTokenId }) => {
     return await ctx.db.get(refreshTokenId);
   },
@@ -469,8 +740,10 @@ export const refreshTokenGetById = query({
 /** Patch a refresh token document with partial data. */
 export const refreshTokenPatch = mutation({
   args: { refreshTokenId: v.id("RefreshToken"), data: v.any() },
+  returns: v.null(),
   handler: async (ctx, { refreshTokenId, data }) => {
     await ctx.db.patch(refreshTokenId, data);
+    return null;
   },
 });
 
@@ -480,6 +753,7 @@ export const refreshTokenGetChildren = query({
     sessionId: v.id("Session"),
     parentRefreshTokenId: v.id("RefreshToken"),
   },
+  returns: v.array(vRefreshTokenDoc),
   handler: async (ctx, { sessionId, parentRefreshTokenId }) => {
     return await ctx.db
       .query("RefreshToken")
@@ -495,6 +769,7 @@ export const refreshTokenGetChildren = query({
 /** List all refresh tokens for a session. */
 export const refreshTokenListBySession = query({
   args: { sessionId: v.id("Session") },
+  returns: v.array(vRefreshTokenDoc),
   handler: async (ctx, { sessionId }) => {
     return await ctx.db
       .query("RefreshToken")
@@ -508,6 +783,7 @@ export const refreshTokenListBySession = query({
 /** Delete all refresh tokens for a session. */
 export const refreshTokenDeleteAll = mutation({
   args: { sessionId: v.id("Session") },
+  returns: v.null(),
   handler: async (ctx, { sessionId }) => {
     const tokens = await ctx.db
       .query("RefreshToken")
@@ -516,12 +792,14 @@ export const refreshTokenDeleteAll = mutation({
       )
       .collect();
     await Promise.all(tokens.map((token) => ctx.db.delete(token._id)));
+    return null;
   },
 });
 
 /** Get the active (unused) refresh token for a session. */
 export const refreshTokenGetActive = query({
   args: { sessionId: v.id("Session") },
+  returns: v.union(vRefreshTokenDoc, v.null()),
   handler: async (ctx, { sessionId }) => {
     return await ctx.db
       .query("RefreshToken")
@@ -550,6 +828,7 @@ export const passkeyInsert = mutation({
     name: v.optional(v.string()),
     createdAt: v.number(),
   },
+  returns: v.id("Passkey"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("Passkey", args);
   },
@@ -558,6 +837,7 @@ export const passkeyInsert = mutation({
 /** Look up a passkey by its credential ID. */
 export const passkeyGetByCredentialId = query({
   args: { credentialId: v.string() },
+  returns: v.union(vPasskeyDoc, v.null()),
   handler: async (ctx, { credentialId }) => {
     return await ctx.db
       .query("Passkey")
@@ -569,6 +849,7 @@ export const passkeyGetByCredentialId = query({
 /** List all passkeys for a user. */
 export const passkeyListByUserId = query({
   args: { userId: v.id("User") },
+  returns: v.array(vPasskeyDoc),
   handler: async (ctx, { userId }) => {
     return await ctx.db
       .query("Passkey")
@@ -580,24 +861,30 @@ export const passkeyListByUserId = query({
 /** Update a passkey's counter and last used timestamp after authentication. */
 export const passkeyUpdateCounter = mutation({
   args: { passkeyId: v.id("Passkey"), counter: v.number(), lastUsedAt: v.number() },
+  returns: v.null(),
   handler: async (ctx, { passkeyId, counter, lastUsedAt }) => {
     await ctx.db.patch(passkeyId, { counter, lastUsedAt });
+    return null;
   },
 });
 
 /** Update a passkey's metadata (name). */
 export const passkeyUpdateMeta = mutation({
   args: { passkeyId: v.id("Passkey"), data: v.any() },
+  returns: v.null(),
   handler: async (ctx, { passkeyId, data }) => {
     await ctx.db.patch(passkeyId, data);
+    return null;
   },
 });
 
 /** Delete a passkey credential. */
 export const passkeyDelete = mutation({
   args: { passkeyId: v.id("Passkey") },
+  returns: v.null(),
   handler: async (ctx, { passkeyId }) => {
     await ctx.db.delete(passkeyId);
+    return null;
   },
 });
 
@@ -616,6 +903,7 @@ export const totpInsert = mutation({
     name: v.optional(v.string()),
     createdAt: v.number(),
   },
+  returns: v.id("TotpFactor"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("TotpFactor", args);
   },
@@ -624,6 +912,7 @@ export const totpInsert = mutation({
 /** Get a verified TOTP enrollment for a user (returns first match). */
 export const totpGetVerifiedByUserId = query({
   args: { userId: v.id("User") },
+  returns: v.union(vTotpFactorDoc, v.null()),
   handler: async (ctx, { userId }) => {
     return await ctx.db
       .query("TotpFactor")
@@ -636,6 +925,7 @@ export const totpGetVerifiedByUserId = query({
 /** List all TOTP enrollments for a user. */
 export const totpListByUserId = query({
   args: { userId: v.id("User") },
+  returns: v.array(vTotpFactorDoc),
   handler: async (ctx, { userId }) => {
     return await ctx.db
       .query("TotpFactor")
@@ -647,6 +937,7 @@ export const totpListByUserId = query({
 /** Get a TOTP enrollment by its ID. */
 export const totpGetById = query({
   args: { totpId: v.id("TotpFactor") },
+  returns: v.union(vTotpFactorDoc, v.null()),
   handler: async (ctx, { totpId }) => {
     return await ctx.db.get(totpId);
   },
@@ -655,24 +946,30 @@ export const totpGetById = query({
 /** Mark a TOTP enrollment as verified (setup complete). */
 export const totpMarkVerified = mutation({
   args: { totpId: v.id("TotpFactor"), lastUsedAt: v.number() },
+  returns: v.null(),
   handler: async (ctx, { totpId, lastUsedAt }) => {
     await ctx.db.patch(totpId, { verified: true, lastUsedAt });
+    return null;
   },
 });
 
 /** Update a TOTP enrollment's last used timestamp. */
 export const totpUpdateLastUsed = mutation({
   args: { totpId: v.id("TotpFactor"), lastUsedAt: v.number() },
+  returns: v.null(),
   handler: async (ctx, { totpId, lastUsedAt }) => {
     await ctx.db.patch(totpId, { lastUsedAt });
+    return null;
   },
 });
 
 /** Delete a TOTP enrollment. */
 export const totpDelete = mutation({
   args: { totpId: v.id("TotpFactor") },
+  returns: v.null(),
   handler: async (ctx, { totpId }) => {
     await ctx.db.delete(totpId);
+    return null;
   },
 });
 
@@ -683,6 +980,7 @@ export const totpDelete = mutation({
 /** Look up a rate limit entry by its identifier. */
 export const rateLimitGet = query({
   args: { identifier: v.string() },
+  returns: v.union(vRateLimitResult, v.null()),
   handler: async (ctx, { identifier }) => {
     const row = await ctx.db
       .query("RateLimit")
@@ -706,6 +1004,7 @@ export const rateLimitCreate = mutation({
     attemptsLeft: v.number(),
     lastAttemptTime: v.number(),
   },
+  returns: v.id("RateLimit"),
   handler: async (ctx, { identifier, attemptsLeft, lastAttemptTime }) => {
     return await ctx.db.insert("RateLimit", {
       identifier,
@@ -718,6 +1017,7 @@ export const rateLimitCreate = mutation({
 /** Patch a rate limit entry with partial data. */
 export const rateLimitPatch = mutation({
   args: { rateLimitId: v.id("RateLimit"), data: v.any() },
+  returns: v.null(),
   handler: async (ctx, { rateLimitId, data }) => {
     const nextData: Record<string, unknown> = { ...data };
     if (nextData.attemptsLeft !== undefined) {
@@ -729,14 +1029,17 @@ export const rateLimitPatch = mutation({
       delete nextData.lastAttemptTime;
     }
     await ctx.db.patch(rateLimitId, nextData);
+    return null;
   },
 });
 
 /** Delete a rate limit entry. */
 export const rateLimitDelete = mutation({
   args: { rateLimitId: v.id("RateLimit") },
+  returns: v.null(),
   handler: async (ctx, { rateLimitId }) => {
     await ctx.db.delete(rateLimitId);
+    return null;
   },
 });
 
@@ -759,6 +1062,7 @@ export const groupCreate = mutation({
     tags: v.optional(v.array(vTag)),
     extend: v.optional(v.any()),
   },
+  returns: v.id("Group"),
   handler: async (ctx, args) => {
     const { tags: rawTags, ...rest } = args;
     const normalizedTags = rawTags ? normalizeTags(rawTags) : undefined;
@@ -783,6 +1087,7 @@ export const groupCreate = mutation({
 /** Retrieve a group by its document ID. Returns `null` if not found. */
 export const groupGet = query({
   args: { groupId: v.id("Group") },
+  returns: v.union(vGroupDoc, v.null()),
   handler: async (ctx, { groupId }) => {
     return await ctx.db.get(groupId);
   },
@@ -818,6 +1123,7 @@ export const groupList = query({
     ),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
+  returns: vPaginated(vGroupDoc),
   handler: async (ctx, args) => {
     const where = args.where ?? {};
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
@@ -945,6 +1251,7 @@ export const groupList = query({
 /** Update a group's fields (name, slug, tags, extend, parentGroupId). */
 export const groupUpdate = mutation({
   args: { groupId: v.id("Group"), data: v.any() },
+  returns: v.null(),
   handler: async (ctx, { groupId, data }) => {
     // If tags are being updated, normalize and replace the full tag set
     if (data.tags !== undefined) {
@@ -975,6 +1282,7 @@ export const groupUpdate = mutation({
     } else {
       await ctx.db.patch(groupId, data);
     }
+    return null;
   },
 });
 
@@ -986,6 +1294,7 @@ export const groupUpdate = mutation({
  */
 export const groupDelete = mutation({
   args: { groupId: v.id("Group") },
+  returns: v.null(),
   handler: async (ctx, { groupId }) => {
     const deleteGroup = async (id: typeof groupId) => {
       const children = await ctx.db
@@ -1025,6 +1334,7 @@ export const groupDelete = mutation({
     };
 
     await deleteGroup(groupId);
+    return null;
   },
 });
 
@@ -1052,6 +1362,7 @@ export const memberAdd = mutation({
     status: v.optional(v.string()),
     extend: v.optional(v.any()),
   },
+  returns: v.id("GroupMember"),
   handler: async (ctx, args) => {
     const existingMembership = await ctx.db
       .query("GroupMember")
@@ -1075,6 +1386,7 @@ export const memberAdd = mutation({
 /** Retrieve a member record by its document ID. Returns `null` if not found. */
 export const memberGet = query({
   args: { memberId: v.id("GroupMember") },
+  returns: v.union(vGroupMemberDoc, v.null()),
   handler: async (ctx, { memberId }) => {
     return await ctx.db.get(memberId);
   },
@@ -1107,6 +1419,7 @@ export const memberList = query({
     ),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
+  returns: vPaginated(vGroupMemberDoc),
   handler: async (ctx, args) => {
     const where = args.where ?? {};
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
@@ -1162,6 +1475,7 @@ export const memberList = query({
  */
 export const memberListByUser = query({
   args: { userId: v.id("User") },
+  returns: v.array(vGroupMemberDoc),
   handler: async (ctx, { userId }) => {
     return await ctx.db
       .query("GroupMember")
@@ -1176,6 +1490,7 @@ export const memberListByUser = query({
  */
 export const memberGetByGroupAndUser = query({
   args: { groupId: v.id("Group"), userId: v.id("User") },
+  returns: v.union(vGroupMemberDoc, v.null()),
   handler: async (ctx, { groupId, userId }) => {
     return await ctx.db
       .query("GroupMember")
@@ -1189,8 +1504,10 @@ export const memberGetByGroupAndUser = query({
 /** Remove a member from a group by deleting the member record. */
 export const memberRemove = mutation({
   args: { memberId: v.id("GroupMember") },
+  returns: v.null(),
   handler: async (ctx, { memberId }) => {
     await ctx.db.delete(memberId);
+    return null;
   },
 });
 
@@ -1201,8 +1518,10 @@ export const memberRemove = mutation({
  */
 export const memberUpdate = mutation({
   args: { memberId: v.id("GroupMember"), data: v.any() },
+  returns: v.null(),
   handler: async (ctx, { memberId, data }) => {
     await ctx.db.patch(memberId, data);
+    return null;
   },
 });
 
@@ -1229,15 +1548,11 @@ export const inviteCreate = mutation({
     email: v.optional(v.string()),
     tokenHash: v.string(),
     role: v.optional(v.string()),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("accepted"),
-      v.literal("revoked"),
-      v.literal("expired"),
-    ),
+    status: vInviteStatus,
     expiresTime: v.optional(v.number()),
     extend: v.optional(v.any()),
   },
+  returns: v.id("GroupInvite"),
   handler: async (ctx, args) => {
     const now = Date.now();
 
@@ -1304,6 +1619,7 @@ export const inviteCreate = mutation({
 /** Retrieve an invite by its document ID. Returns `null` if not found. */
 export const inviteGet = query({
   args: { inviteId: v.id("GroupInvite") },
+  returns: v.union(vGroupInviteDoc, v.null()),
   handler: async (ctx, { inviteId }) => {
     return await ctx.db.get(inviteId);
   },
@@ -1312,6 +1628,7 @@ export const inviteGet = query({
 /** Retrieve an invite by hashed token. Returns `null` if not found. */
 export const inviteGetByTokenHash = query({
   args: { tokenHash: v.string() },
+  returns: v.union(vGroupInviteDoc, v.null()),
   handler: async (ctx, { tokenHash }) => {
     return await ctx.db
       .query("GroupInvite")
@@ -1332,14 +1649,7 @@ export const inviteList = query({
       v.object({
         tokenHash: v.optional(v.string()),
         groupId: v.optional(v.id("Group")),
-        status: v.optional(
-          v.union(
-            v.literal("pending"),
-            v.literal("accepted"),
-            v.literal("revoked"),
-            v.literal("expired"),
-          ),
-        ),
+        status: v.optional(vInviteStatus),
         email: v.optional(v.string()),
         invitedByUserId: v.optional(v.id("User")),
         role: v.optional(v.string()),
@@ -1359,6 +1669,7 @@ export const inviteList = query({
     ),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
+  returns: vPaginated(vGroupInviteDoc),
   handler: async (ctx, args) => {
     const where = args.where ?? {};
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
@@ -1474,6 +1785,7 @@ export const inviteAccept = mutation({
     inviteId: v.id("GroupInvite"),
     acceptedByUserId: v.optional(v.id("User")),
   },
+  returns: v.null(),
   handler: async (ctx, { inviteId, acceptedByUserId }) => {
     const invite = await ctx.db.get(inviteId);
     if (invite === null) {
@@ -1506,6 +1818,7 @@ export const inviteAccept = mutation({
       acceptedTime: Date.now(),
       ...(acceptedByUserId ? { acceptedByUserId } : {}),
     });
+    return null;
   },
 });
 
@@ -1520,6 +1833,7 @@ export const inviteAcceptByToken = mutation({
     tokenHash: v.string(),
     acceptedByUserId: v.id("User"),
   },
+  returns: vInviteAcceptByTokenResult,
   handler: async (ctx, { tokenHash, acceptedByUserId }) => {
     const invite = await ctx.db
       .query("GroupInvite")
@@ -1579,7 +1893,7 @@ export const inviteAcceptByToken = mutation({
 
     let membershipStatus: "joined" | "already_joined" | "not_applicable" =
       "not_applicable";
-    let memberId: string | undefined;
+    let memberId: Id<"GroupMember"> | undefined;
 
     if (invite.groupId !== undefined) {
       const existingMembership = await ctx.db
@@ -1611,11 +1925,14 @@ export const inviteAcceptByToken = mutation({
       });
     }
 
+    const inviteStatus: "accepted" | "already_accepted" =
+      invite.status === "accepted" ? "already_accepted" : "accepted";
+
     return {
       inviteId: invite._id,
       groupId: invite.groupId ?? null,
       memberId,
-      inviteStatus: invite.status === "accepted" ? "already_accepted" : "accepted",
+      inviteStatus,
       membershipStatus,
     };
   },
@@ -1629,6 +1946,7 @@ export const inviteAcceptByToken = mutation({
  */
 export const inviteRevoke = mutation({
   args: { inviteId: v.id("GroupInvite") },
+  returns: v.null(),
   handler: async (ctx, { inviteId }) => {
     const invite = await ctx.db.get(inviteId);
     if (invite === null) {
@@ -1647,6 +1965,7 @@ export const inviteRevoke = mutation({
       });
     }
     await ctx.db.patch(inviteId, { status: "revoked" });
+    return null;
   },
 });
 
@@ -1673,13 +1992,11 @@ export const keyInsert = mutation({
       }),
     ),
     rateLimit: v.optional(
-      v.object({
-        maxRequests: v.number(),
-        windowMs: v.number(),
-      }),
+      vApiKeyRateLimit,
     ),
     expiresAt: v.optional(v.number()),
   },
+  returns: v.id("ApiKey"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("ApiKey", {
       ...args,
@@ -1697,6 +2014,7 @@ export const keyInsert = mutation({
  */
 export const keyGetByHashedKey = query({
   args: { hashedKey: v.string() },
+  returns: v.union(vApiKeyDoc, v.null()),
   handler: async (ctx, { hashedKey }) => {
     return await ctx.db
       .query("ApiKey")
@@ -1711,6 +2029,7 @@ export const keyGetByHashedKey = query({
  */
 export const keyListByUserId = query({
   args: { userId: v.id("User") },
+  returns: v.array(vApiKeyDoc),
   handler: async (ctx, { userId }) => {
     return await ctx.db
       .query("ApiKey")
@@ -1748,6 +2067,7 @@ export const keyList = query({
     ),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
+  returns: vPaginated(vApiKeyDoc),
   handler: async (ctx, args) => {
     const where = args.where ?? {};
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
@@ -1793,6 +2113,7 @@ export const keyList = query({
 /** Get a single API key by document ID. */
 export const keyGetById = query({
   args: { keyId: v.id("ApiKey") },
+  returns: v.union(vApiKeyDoc, v.null()),
   handler: async (ctx, { keyId }) => {
     return await ctx.db.get(keyId);
   },
@@ -1808,29 +2129,15 @@ export const keyPatch = mutation({
     data: v.object({
       name: v.optional(v.string()),
       scopes: v.optional(
-        v.array(
-          v.object({
-            resource: v.string(),
-            actions: v.array(v.string()),
-          }),
-        ),
+        v.array(vApiKeyScope),
       ),
-      rateLimit: v.optional(
-        v.object({
-          maxRequests: v.number(),
-          windowMs: v.number(),
-        }),
-      ),
-      rateLimitState: v.optional(
-        v.object({
-          attemptsLeft: v.number(),
-          lastAttemptTime: v.number(),
-        }),
-      ),
+      rateLimit: v.optional(vApiKeyRateLimit),
+      rateLimitState: v.optional(vApiKeyRateLimitState),
       revoked: v.optional(v.boolean()),
       lastUsedAt: v.optional(v.number()),
     }),
   },
+  returns: v.null(),
   handler: async (ctx, { keyId, data }) => {
     const key = await ctx.db.get(keyId);
     if (key === null) {
@@ -1841,12 +2148,14 @@ export const keyPatch = mutation({
       });
     }
     await ctx.db.patch(keyId, data);
+    return null;
   },
 });
 
 /** Hard delete an API key record. */
 export const keyDelete = mutation({
   args: { keyId: v.id("ApiKey") },
+  returns: v.null(),
   handler: async (ctx, { keyId }) => {
     const key = await ctx.db.get(keyId);
     if (key === null) {
@@ -1857,6 +2166,7 @@ export const keyDelete = mutation({
       });
     }
     await ctx.db.delete(keyId);
+    return null;
   },
 });
 
@@ -1871,12 +2181,9 @@ export const deviceInsert = mutation({
     userCode: v.string(),
     expiresAt: v.number(),
     interval: v.number(),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("authorized"),
-      v.literal("denied"),
-    ),
+    status: vDeviceStatus,
   },
+  returns: v.id("DeviceCode"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("DeviceCode", args);
   },
@@ -1885,6 +2192,7 @@ export const deviceInsert = mutation({
 /** Look up a device authorization by its hashed device code. */
 export const deviceGetByCodeHash = query({
   args: { deviceCodeHash: v.string() },
+  returns: v.union(vDeviceCodeDoc, v.null()),
   handler: async (ctx, { deviceCodeHash }) => {
     return await ctx.db
       .query("DeviceCode")
@@ -1896,6 +2204,7 @@ export const deviceGetByCodeHash = query({
 /** Look up a pending device authorization by its user code. */
 export const deviceGetByUserCode = query({
   args: { userCode: v.string() },
+  returns: v.union(vDeviceCodeDoc, v.null()),
   handler: async (ctx, { userCode }) => {
     return await ctx.db
       .query("DeviceCode")
@@ -1913,27 +2222,33 @@ export const deviceAuthorize = mutation({
     userId: v.id("User"),
     sessionId: v.id("Session"),
   },
+  returns: v.null(),
   handler: async (ctx, { deviceId, userId, sessionId }) => {
     await ctx.db.patch(deviceId, {
       status: "authorized",
       userId,
       sessionId,
     });
+    return null;
   },
 });
 
 /** Update the last-polled timestamp on a device authorization record. */
 export const deviceUpdateLastPolled = mutation({
   args: { deviceId: v.id("DeviceCode"), lastPolledAt: v.number() },
+  returns: v.null(),
   handler: async (ctx, { deviceId, lastPolledAt }) => {
     await ctx.db.patch(deviceId, { lastPolledAt });
+    return null;
   },
 });
 
 /** Delete a device authorization record (cleanup after use or expiry). */
 export const deviceDelete = mutation({
   args: { deviceId: v.id("DeviceCode") },
+  returns: v.null(),
   handler: async (ctx, { deviceId }) => {
     await ctx.db.delete(deviceId);
+    return null;
   },
 });
