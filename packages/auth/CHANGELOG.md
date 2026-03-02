@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.4-preview.10
+
+- Enforce explicit return validators for all auth component public endpoints so
+  generated function references expose concrete output types instead of `any`.
+- Tighten component function wrappers to bind handler return types to declared
+  validators, including `null` outputs for no-return handlers.
+
 ## 0.0.4-preview.9
 
 - Fix SSR issuer validation in `server()` so `url` stays the Convex API URL
