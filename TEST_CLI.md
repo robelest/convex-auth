@@ -2,7 +2,8 @@
 
 ## Quick Test (No Deployment Required)
 
-Test the CLI help and option parsing:
+Test only the CLI surface (help/flags). This does **not** mutate deployment env
+vars or local files:
 
 ```bash
 # From packages/auth directory
@@ -11,16 +12,24 @@ cd packages/auth
 # Test help
 node dist/bin.cjs --help
 
-# Test with dry-run flags (won't actually deploy)
-node dist/bin.cjs --site-url "http://localhost:5173" --skip-git-check --allow-dirty-git-state
+# Optional: show help via package runner
+npx @robelest/convex-auth --help
 ```
+
+Any setup run (without `--help`) writes deployment env vars and may create or
+modify local files.
 
 ## Full Test (Requires Convex Deployment)
 
 ### Prerequisites
 
-1. You need a Convex project with `npx convex dev` running
-2. The CLI needs to read `CONVEX_DEPLOYMENT` from your environment
+1. You need a Convex project root with a valid `package.json`.
+2. Select a deployment either by:
+   - running `npx convex dev` first (so `CONVEX_DEPLOYMENT` is available), or
+   - passing one of `--prod`, `--preview-name`, `--deployment-name`, `--url`,
+     or `--admin-key`.
+3. If the repo is dirty, pass `--allow-dirty-git-state` (note:
+   `--skip-git-check` only skips the no-Git warning).
 
 ### Test Dev Setup
 
@@ -67,7 +76,7 @@ The repo already has example apps. Use those to test the full flow:
 
 ```bash
 # Start from repo root
-cd examples/vite
+cd examples/tanstack
 
 # Make sure Convex is running
 bun run --cwd ../.. dev:convex
@@ -116,10 +125,13 @@ If you want to test the full prod flow:
 
 4. **Deploy:**
    ```bash
-   npx convex deploy --cmd 'npm run build'
+   npx convex deploy --cmd 'bun run build'
    ```
 
 ## Common Test Scenarios
+
+Note: `--skip-git-check` does not bypass dirty working tree checks. Use
+`--allow-dirty-git-state` when testing in a dirty repo.
 
 ### Scenario 1: First-time user (no env vars set)
 
@@ -181,13 +193,14 @@ If the CLI fails or behaves unexpectedly:
 
 2. **Check deployment connection:**
    ```bash
-   npx convex env get CONVEX_SITE_URL  # Should return a URL
+   npx convex env get SITE_URL  # Should return your configured app URL
    ```
 
-3. **Run with verbose logging:**
-   The CLI doesn't have a `--verbose` flag yet, but you can check:
+3. **Check effective behavior (no verbose mode):**
+   The CLI doesn't have a `--verbose` flag. Validate behavior by checking:
    - What deployment it's targeting (shown in prompts/messages)
-   - The `convex env get/set` commands it runs (shown in output)
+   - Post-run env values with `npx convex env get ...`
+   - Generated/updated files under your Convex functions directory
 
 4. **Check the generated files:**
    ```bash

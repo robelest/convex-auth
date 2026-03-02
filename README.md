@@ -18,20 +18,33 @@ bun add @robelest/convex-auth
 
 ## Quick Setup (CLI)
 
+Before running setup:
+
+- Run from your app project root (must include a valid `package.json`).
+- Make sure the CLI can resolve a Convex deployment. By default it reads
+  `CONVEX_DEPLOYMENT` (from env, `.env.local`, or `.env`, usually set by
+  `npx convex dev`). You can also pass one of `--prod`, `--preview-name`,
+  `--deployment-name`, `--url`, or `--admin-key`.
+
 ```bash
 bunx @robelest/convex-auth
 ```
 
-The interactive setup wizard runs 6 steps:
+Before step 1, the CLI checks source control state:
 
-1. **Configure `SITE_URL`** — auto-detects your framework (Vite `:5173`, Next.js `:3000`, etc.)
+- `--skip-git-check` only skips the warning when no Git checkout is detected.
+- `--allow-dirty-git-state` skips all source-control warnings/checks.
+
+The setup wizard runs 6 steps:
+
+1. **Configure `SITE_URL`** — skipped for Expo; otherwise prompts (TTY) and defaults to `http://localhost:5173` for Vite or `http://localhost:3000` for other local/dev setups.
 2. **Generate key pair** — creates RS256 `JWT_PRIVATE_KEY` and `JWKS`, sets them on your deployment
-3. **Configure `tsconfig.json`** — sets `moduleResolution: "Bundler"` and `skipLibCheck: true`
-4. **Create `convex/convex.config.ts`** — registers the auth component with `app.use(auth)`
-5. **Create `convex/auth.ts`** — scaffolds `new Auth(components.auth, { providers })` with auth exports
-6. **Create `convex/http.ts`** — wires up `auth.http.add(http)` for OAuth callbacks and JWKS
+3. **Configure functions `tsconfig.json`** — updates `<functionsDir>/tsconfig.json` (`convex/tsconfig.json` by default) to set `moduleResolution: "Bundler"` and `skipLibCheck: true` when applicable.
+4. **Create/update `convex.config`** — ensures `<functionsDir>/convex.config.{ts,js}` registers the auth component with `app.use(auth)`.
+5. **Create/update `auth`** — ensures `<functionsDir>/auth.{ts,js}` initializes `new Auth(components.auth, ...)` and exports auth actions.
+6. **Create/update `http`** — ensures `<functionsDir>/http.{ts,js}` wires `auth.http.add(http)`.
 
-Pass `--site-url` to skip the URL prompt:
+Pass `--site-url` to skip the URL prompt (recommended for non-interactive runs):
 
 ```bash
 bunx @robelest/convex-auth --site-url "http://localhost:5173"
@@ -1077,15 +1090,21 @@ Key design constraints of the Convex component system:
 bunx @robelest/convex-auth [options]
 ```
 
+By default this targets the deployment from `CONVEX_DEPLOYMENT`.
+If that is not configured, the command exits and asks you to run
+`npx convex dev` first or pass an explicit deployment selector.
+
 | Option | Description |
 |--------|-------------|
-| `--site-url <url>` | Frontend URL (prompts if omitted) |
+| `--site-url <url>` | Value for `SITE_URL`; avoids interactive prompt |
 | `--prod` | Target production deployment |
 | `--preview-name <name>` | Target preview deployment |
 | `--deployment-name <name>` | Target specific named deployment |
+| `--url <url>` | Target deployment by URL (advanced, hidden in `--help`) |
+| `--admin-key <adminKey>` | Use explicit Convex admin key (advanced, hidden in `--help`) |
 | `--variables <json>` | Additional variables for interactive configuration |
-| `--skip-git-check` | Don't warn when running outside a Git repo |
-| `--allow-dirty-git-state` | Don't warn when Git state is dirty |
+| `--skip-git-check` | Skip only the "outside Git repo" warning |
+| `--allow-dirty-git-state` | Skip all source-control checks/warnings |
 
 ## Roadmap
 
