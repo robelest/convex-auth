@@ -20,6 +20,7 @@ import {
   fg,
   type CliRenderer,
 } from "@opentui/core";
+
 import { colors, borders, styled } from "./theme";
 
 // ---------------------------------------------------------------------------

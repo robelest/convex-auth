@@ -10,6 +10,7 @@
  */
 
 import { GenericDataModel } from "convex/server";
+
 import { PhoneConfig, PhoneUserConfig } from "../server/types";
 
 /**

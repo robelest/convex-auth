@@ -28,9 +28,7 @@ export function Message({
       <p
         className={cn(
           'max-w-[min(32rem,80vw)] rounded-lg px-3.5 py-2 text-sm leading-relaxed',
-          fromViewer
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-muted',
+          fromViewer ? 'bg-primary text-primary-foreground' : 'bg-muted',
         )}
       >
         {children}

@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 
+import { execSync } from "child_process";
+import { existsSync, readFileSync, writeFileSync } from "fs";
+import path from "path";
+
 import { Command } from "@commander-js/extra-typings";
 import chalk from "chalk";
-import { execSync } from "child_process";
 import { config as loadEnvFile } from "dotenv";
-import { existsSync, readFileSync, writeFileSync } from "fs";
 import inquirer from "inquirer";
-import path from "path";
 import * as v from "valibot";
+
 import { actionDescription } from "./command";
 import { generateKeys } from "./keys";
 
@@ -818,18 +820,32 @@ function printFinalSuccessMessage(config: ProjectConfig) {
   if (isProd) {
     logSuccess(`Production setup complete for ${deploymentName}.`);
     print("");
-    print(`  Full docs: ${chalk.cyan("https://deepwiki.com/robelest/convex-auth")}`);
+    print(
+      `  Full docs: ${chalk.cyan("https://deepwiki.com/robelest/convex-auth")}`,
+    );
   } else {
     logSuccess(`Setup complete for ${deploymentName}.`);
     print("");
-    print(`  ${chalk.bold("To set up production")}, run this command with your production URL:`);
-    print(`    ${chalk.cyan("npx @robelest/convex-auth --prod --site-url \"https://myapp.com\"")}`);
+    print(
+      `  ${chalk.bold("To set up production")}, run this command with your production URL:`,
+    );
+    print(
+      `    ${chalk.cyan('npx @robelest/convex-auth --prod --site-url "https://myapp.com"')}`,
+    );
     print("");
-    print(`  ${chalk.bold("Don't forget")} to set provider secrets on production too:`);
-    print(`    ${chalk.grey("npx convex env set --prod AUTH_GITHUB_ID \"...\"")}`);
-    print(`    ${chalk.grey("npx convex env set --prod AUTH_GITHUB_SECRET \"...\"")}`);
+    print(
+      `  ${chalk.bold("Don't forget")} to set provider secrets on production too:`,
+    );
+    print(
+      `    ${chalk.grey('npx convex env set --prod AUTH_GITHUB_ID "..."')}`,
+    );
+    print(
+      `    ${chalk.grey('npx convex env set --prod AUTH_GITHUB_SECRET "..."')}`,
+    );
     print("");
-    print(`  Full docs: ${chalk.cyan("https://deepwiki.com/robelest/convex-auth")}`);
+    print(
+      `  Full docs: ${chalk.cyan("https://deepwiki.com/robelest/convex-auth")}`,
+    );
   }
 }
 

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-import { Navigate, createFileRoute } from '@tanstack/react-router'
 import { RiDeviceLine, RiCheckLine } from '@remixicon/react'
+import { Navigate, createFileRoute } from '@tanstack/react-router'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -181,9 +181,7 @@ function DeviceVerification() {
                 autoComplete="off"
                 spellCheck={false}
               />
-              <span className="text-muted-foreground font-mono text-lg">
-                -
-              </span>
+              <span className="text-muted-foreground font-mono text-lg">-</span>
               <Input
                 id="code-right"
                 ref={rightRef}
@@ -194,10 +192,7 @@ function DeviceVerification() {
                 value={right}
                 onChange={(e) => setRight(filterInput(e.target.value))}
                 onKeyDown={(e) => {
-                  if (
-                    e.key === 'Backspace' &&
-                    right.length === 0
-                  ) {
+                  if (e.key === 'Backspace' && right.length === 0) {
                     document.getElementById('code-left')?.focus()
                   }
                 }}

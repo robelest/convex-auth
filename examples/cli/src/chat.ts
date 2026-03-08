@@ -21,26 +21,9 @@ import {
   dim,
   type CliRenderer,
 } from "@opentui/core";
+
+import { deviceAuthFlow, clearSavedTokens } from "./auth";
 import { httpClient, realtimeClient, waitForAuth } from "./convex";
-import { colors, borders } from "./theme";
-import {
-  createSidebar,
-  renderChannels,
-  setUserInfo,
-  type Group,
-} from "./sidebar";
-import {
-  createMessagePanel,
-  renderMessages,
-  setChannelHeader,
-  type Message,
-} from "./messages";
-import {
-  createInputBar,
-  setStatus,
-  focusInput,
-  type InputHandlers,
-} from "./input";
 import {
   initDialogs,
   showCreateChannelDialog,
@@ -50,7 +33,25 @@ import {
   showError,
   showInfo,
 } from "./dialogs";
-import { deviceAuthFlow, clearSavedTokens } from "./auth";
+import {
+  createInputBar,
+  setStatus,
+  focusInput,
+  type InputHandlers,
+} from "./input";
+import {
+  createMessagePanel,
+  renderMessages,
+  setChannelHeader,
+  type Message,
+} from "./messages";
+import {
+  createSidebar,
+  renderChannels,
+  setUserInfo,
+  type Group,
+} from "./sidebar";
+import { colors, borders } from "./theme";
 
 // ---------------------------------------------------------------------------
 // State
@@ -296,10 +297,7 @@ async function loadUserAndSubscribe(): Promise<void> {
   setStatus("Loading...");
 
   try {
-    const identity: any = await httpClient.query(
-      "users:viewer" as any,
-      {},
-    );
+    const identity: any = await httpClient.query("users:viewer" as any, {});
     if (identity) {
       const displayName =
         identity.name || identity.email || identity.phone || "You";
@@ -368,10 +366,7 @@ function cycleChannel(direction: number): void {
   switchToChannel(channel.id, channel.name);
 }
 
-function switchToChannel(
-  groupId: string | undefined,
-  name: string,
-): void {
+function switchToChannel(groupId: string | undefined, name: string): void {
   currentGroupId = groupId;
   currentGroupName = name;
   setChannelHeader(currentGroupName, messages.length);
@@ -425,9 +420,7 @@ async function handleSend(body: string): Promise<void> {
       ...(currentGroupId ? { groupId: currentGroupId } : {}),
     });
   } catch (e) {
-    showError(
-      `Send failed: ${e instanceof Error ? e.message : String(e)}`,
-    );
+    showError(`Send failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 
@@ -508,9 +501,7 @@ async function handleReAuth(): Promise<void> {
     await loadUserAndSubscribe();
   } catch (e) {
     hideAuthOverlay();
-    showError(
-      `Auth failed: ${e instanceof Error ? e.message : String(e)}`,
-    );
+    showError(`Auth failed: ${e instanceof Error ? e.message : String(e)}`);
     setStatus("Not authenticated. Use /auth to try again.");
   }
 }
@@ -521,16 +512,13 @@ async function handleReAuth(): Promise<void> {
 
 async function createChannel(name: string): Promise<void> {
   try {
-    const groupId: any = await httpClient.mutation(
-      "groups:create" as any,
-      { name },
-    );
+    const groupId: any = await httpClient.mutation("groups:create" as any, {
+      name,
+    });
     switchToChannel(groupId as string, name);
     showSuccess(`Created #${name}`);
   } catch (e) {
-    showError(
-      `Create failed: ${e instanceof Error ? e.message : String(e)}`,
-    );
+    showError(`Create failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 
@@ -553,9 +541,7 @@ async function promptJoinChannel(): Promise<void> {
     switchToChannel(result._id, result.name);
     showSuccess(`Joined #${result.name}`);
   } catch (e) {
-    showError(
-      `Join failed: ${e instanceof Error ? e.message : String(e)}`,
-    );
+    showError(`Join failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 

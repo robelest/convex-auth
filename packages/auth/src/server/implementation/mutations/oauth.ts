@@ -1,13 +1,14 @@
-import { Infer, v } from "convex/values";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
-import { MutationCtx } from "../types";
-import * as Provider from "../provider";
+import { Infer, v } from "convex/values";
+
+import { throwAuthError } from "../../errors";
 import type { AuthProviderMaterializedConfig } from "../../types";
+import { authDb } from "../db";
+import * as Provider from "../provider";
+import { MutationCtx } from "../types";
 import { upsertUserAndAccount } from "../users";
 import { generateRandomString, logWithLevel, sha256 } from "../utils";
-import { authDb } from "../db";
 import { AUTH_STORE_REF } from "./store";
-import { throwAuthError } from "../../errors";
 
 const OAUTH_SIGN_IN_EXPIRATION_MS = 1000 * 60 * 2; // 2 minutes
 
@@ -29,7 +30,9 @@ export async function userOAuthImpl(
   logWithLevel("DEBUG", "userOAuthImpl args:", args);
   const { profile, provider, providerAccountId, signature } = args;
   const db = authDb(ctx, config);
-  const providerConfig = getProviderOrThrow(provider) as AuthProviderMaterializedConfig;
+  const providerConfig = getProviderOrThrow(
+    provider,
+  ) as AuthProviderMaterializedConfig;
   const existingAccount = await db.accounts.get(provider, providerAccountId);
 
   const verifier = await db.verifiers.getBySignature(signature);
@@ -47,17 +50,18 @@ export async function userOAuthImpl(
 
   const code = generateRandomString(8, "0123456789");
   await db.verifiers.delete(verifier._id);
-  const existingVerificationCode = await db.verificationCodes.getByAccountId(accountId);
+  const existingVerificationCode =
+    await db.verificationCodes.getByAccountId(accountId);
   if (existingVerificationCode !== null) {
     await db.verificationCodes.delete(existingVerificationCode._id);
   }
   await db.verificationCodes.create({
-      code: await sha256(code),
-      accountId,
-      provider,
-      expirationTime: Date.now() + OAUTH_SIGN_IN_EXPIRATION_MS,
-      verifier: verifier._id,
-    });
+    code: await sha256(code),
+    accountId,
+    provider,
+    expirationTime: Date.now() + OAUTH_SIGN_IN_EXPIRATION_MS,
+    verifier: verifier._id,
+  });
   return code;
 }
 

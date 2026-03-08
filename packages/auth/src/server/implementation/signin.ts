@@ -1,4 +1,6 @@
 import { GenericId } from "convex/values";
+
+import { throwAuthError } from "../errors";
 import {
   AuthProviderMaterializedConfig,
   ConvexCredentialsConfig,
@@ -6,12 +8,9 @@ import {
   GenericActionCtxWithAuthConfig,
   PhoneConfig,
 } from "../types";
-import {
-  AuthDataModel,
-  SessionInfo,
-  SessionInfoWithTokens,
-  Tokens,
-} from "./types";
+import type { OAuthMaterializedConfig } from "../types";
+import { requireEnv } from "../utils";
+import { handleDevice } from "./device";
 import {
   callCreateVerificationCode,
   callRefreshSession,
@@ -20,14 +19,16 @@ import {
   callVerifierSignature,
   callVerifyCodeAndSignIn,
 } from "./mutations/index";
-import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects";
-import { requireEnv } from "../utils";
-import type { OAuthMaterializedConfig } from "../types";
-import { generateRandomString } from "./utils";
 import { handlePasskey } from "./passkey";
+import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects";
 import { handleTotp, checkTotpRequired } from "./totp";
-import { handleDevice } from "./device";
-import { throwAuthError } from "../errors";
+import {
+  AuthDataModel,
+  SessionInfo,
+  SessionInfoWithTokens,
+  Tokens,
+} from "./types";
+import { generateRandomString } from "./utils";
 
 const DEFAULT_EMAIL_VERIFICATION_CODE_DURATION_S = 60 * 60 * 24; // 24 hours
 
@@ -60,7 +61,13 @@ export async function signInImpl(
   // TOTP 2FA required after credentials sign-in
   | { kind: "totpRequired"; verifier: string }
   // TOTP setup response (enrollment)
-  | { kind: "totpSetup"; uri: string; secret: string; verifier: string; totpId: string }
+  | {
+      kind: "totpSetup";
+      uri: string;
+      secret: string;
+      verifier: string;
+      totpId: string;
+    }
   // Device authorization (RFC 8628) — codes for the device to display
   | {
       kind: "deviceCode";
@@ -279,7 +286,8 @@ async function handleOAuthProvider(
     };
   }
   const redirect = new URL(
-    (process.env.CUSTOM_AUTH_SITE_URL ?? requireEnv("CONVEX_SITE_URL")) + `/api/auth/signin/${provider.id}`,
+    (process.env.CUSTOM_AUTH_SITE_URL ?? requireEnv("CONVEX_SITE_URL")) +
+      `/api/auth/signin/${provider.id}`,
   );
   const verifier = await callVerifier(ctx);
   redirect.searchParams.set("code", verifier);

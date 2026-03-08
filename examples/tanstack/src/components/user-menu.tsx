@@ -1,10 +1,7 @@
-import {
-  RiLogoutBoxLine,
-  RiSettings3Line,
-} from '@remixicon/react'
+import { RiLogoutBoxLine, RiSettings3Line } from '@remixicon/react'
 import { useState } from 'react'
 
-import { useAuthActions } from '@/lib/auth'
+import { SettingsDialog } from '@/components/settings-dialog'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -14,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { SettingsDialog } from '@/components/settings-dialog'
+import { useAuthActions } from '@/lib/auth'
 
 export function UserMenu({ label }: { label: string }) {
   const { signOut } = useAuthActions()
@@ -43,12 +40,18 @@ export function UserMenu({ label }: { label: string }) {
             {label}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setSettingsOpen(true)} className="gap-2 text-sm">
+          <DropdownMenuItem
+            onClick={() => setSettingsOpen(true)}
+            className="gap-2 text-sm"
+          >
             <RiSettings3Line className="size-4" />
             Settings
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => void handleSignOut()} className="gap-2 text-sm">
+          <DropdownMenuItem
+            onClick={() => void handleSignOut()}
+            className="gap-2 text-sm"
+          >
             <RiLogoutBoxLine className="size-4" />
             Sign out
           </DropdownMenuItem>

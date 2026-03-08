@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { api } from '@convex/_generated/api'
 import {
   RiAddLine,
   RiChat3Line,
@@ -7,11 +7,10 @@ import {
   RiSearchLine,
 } from '@remixicon/react'
 import { useMutation, useQuery } from 'convex/react'
-import { api } from '@convex/_generated/api'
+import { useState } from 'react'
 
-import { useAuthActions } from '@/lib/auth'
+import { SettingsDialog } from '@/components/settings-dialog'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Dialog,
   DialogContent,
@@ -19,7 +18,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { SettingsDialog } from '@/components/settings-dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { useAuthActions } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 
 interface AppSidebarProps {
@@ -35,7 +35,8 @@ export function AppSidebar({ activeGroupId, onSelectGroup }: AppSidebarProps) {
   const viewer = useQuery(api.users.viewer)
   const { signOut } = useAuthActions()
 
-  const userLabel = viewer?.name ?? viewer?.email ?? viewer?.phone ?? 'Anonymous'
+  const userLabel =
+    viewer?.name ?? viewer?.email ?? viewer?.phone ?? 'Anonymous'
 
   const [createOpen, setCreateOpen] = useState(false)
   const [browseOpen, setBrowseOpen] = useState(false)
@@ -76,7 +77,9 @@ export function AppSidebar({ activeGroupId, onSelectGroup }: AppSidebarProps) {
     <aside className="border-border flex h-full w-60 shrink-0 flex-col border-r bg-sidebar">
       {/* Header */}
       <div className="border-border flex h-12 items-center justify-between border-b px-4">
-        <span className="text-sm font-semibold text-sidebar-foreground">Channels</span>
+        <span className="text-sm font-semibold text-sidebar-foreground">
+          Channels
+        </span>
         <div className="flex gap-1">
           <Button
             variant="ghost"
@@ -184,7 +187,11 @@ export function AppSidebar({ activeGroupId, onSelectGroup }: AppSidebarProps) {
               autoFocus
             />
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" type="button" onClick={() => setCreateOpen(false)}>
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => setCreateOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={!newName.trim() || creating}>
@@ -213,7 +220,9 @@ export function AppSidebar({ activeGroupId, onSelectGroup }: AppSidebarProps) {
                     <span className="text-sm">{group.name}</span>
                   </div>
                   {myGroupIds.has(group._id) ? (
-                    <span className="text-muted-foreground text-xs">Joined</span>
+                    <span className="text-muted-foreground text-xs">
+                      Joined
+                    </span>
                   ) : (
                     <Button
                       size="sm"

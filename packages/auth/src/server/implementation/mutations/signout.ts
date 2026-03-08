@@ -1,9 +1,10 @@
-import { GenericId } from "convex/values";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
-import { MutationCtx } from "../types";
-import { deleteSession, getAuthSessionId } from "../sessions";
-import * as Provider from "../provider";
+import { GenericId } from "convex/values";
+
 import { authDb } from "../db";
+import * as Provider from "../provider";
+import { deleteSession, getAuthSessionId } from "../sessions";
+import { MutationCtx } from "../types";
 import { AUTH_STORE_REF } from "./store";
 
 type ReturnType = {

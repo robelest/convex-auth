@@ -1,10 +1,13 @@
 import {
+  isOAuthProvider,
+  type OAuthProviderInstance,
+} from "../providers/oauth";
+import {
   AuthProviderConfig,
   AuthProviderMaterializedConfig,
   ConvexAuthConfig,
   OAuthMaterializedConfig,
 } from "./types";
-import { isOAuthProvider, type OAuthProviderInstance } from "../providers/oauth";
 
 // ============================================================================
 // Provider class detection

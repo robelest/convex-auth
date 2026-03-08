@@ -1,7 +1,15 @@
-import { GenericActionCtx, GenericDataModel, GenericMutationCtx } from "convex/server";
+import {
+  GenericActionCtx,
+  GenericDataModel,
+  GenericMutationCtx,
+} from "convex/server";
+
 import { AuthComponentApi } from "../types";
 
-type MutationCtxLike = Pick<GenericMutationCtx<GenericDataModel>, "runQuery" | "runMutation">;
+type MutationCtxLike = Pick<
+  GenericMutationCtx<GenericDataModel>,
+  "runQuery" | "runMutation"
+>;
 type ActionCtxLike = Pick<
   GenericActionCtx<GenericDataModel>,
   "runQuery" | "runMutation" | "runAction"
@@ -24,15 +32,23 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
       findByVerifiedPhone: (phone: string) =>
         ctx.runQuery(component.public.userFindByVerifiedPhone, { phone }),
       insert: (data: Record<string, unknown>) =>
-        ctx.runMutation(component.public.userInsert, { data }) as Promise<string>,
+        ctx.runMutation(component.public.userInsert, {
+          data,
+        }) as Promise<string>,
       patch: (userId: string, data: Record<string, unknown>) =>
         ctx.runMutation(component.public.userPatch, { userId, data }),
       upsert: (userId: string | undefined, data: Record<string, unknown>) =>
-        ctx.runMutation(component.public.userUpsert, { userId, data }) as Promise<string>,
+        ctx.runMutation(component.public.userUpsert, {
+          userId,
+          data,
+        }) as Promise<string>,
     },
     accounts: {
       get: (provider: string, providerAccountId: string) =>
-        ctx.runQuery(component.public.accountGet, { provider, providerAccountId }),
+        ctx.runQuery(component.public.accountGet, {
+          provider,
+          providerAccountId,
+        }),
       getById: (accountId: string) =>
         ctx.runQuery(component.public.accountGetById, { accountId }),
       create: (args: {
@@ -40,7 +56,11 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         provider: string;
         providerAccountId: string;
         secret?: string;
-      }) => ctx.runMutation(component.public.accountInsert, args) as Promise<string>,
+      }) =>
+        ctx.runMutation(
+          component.public.accountInsert,
+          args,
+        ) as Promise<string>,
       patch: (accountId: string, data: Record<string, unknown>) =>
         ctx.runMutation(component.public.accountPatch, { accountId, data }),
       delete: (accountId: string) =>
@@ -48,7 +68,10 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
     },
     sessions: {
       create: (userId: string, expirationTime: number) =>
-        ctx.runMutation(component.public.sessionCreate, { userId, expirationTime }) as Promise<string>,
+        ctx.runMutation(component.public.sessionCreate, {
+          userId,
+          expirationTime,
+        }) as Promise<string>,
       getById: (sessionId: string) =>
         ctx.runQuery(component.public.sessionGetById, { sessionId }),
       delete: (sessionId: string) =>
@@ -58,7 +81,9 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
     },
     verifiers: {
       create: (sessionId?: string) =>
-        ctx.runMutation(component.public.verifierCreate, { sessionId }) as Promise<string>,
+        ctx.runMutation(component.public.verifierCreate, {
+          sessionId,
+        }) as Promise<string>,
       getById: (verifierId: string) =>
         ctx.runQuery(component.public.verifierGetById, { verifierId }),
       getBySignature: (signature: string) =>
@@ -70,7 +95,9 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
     },
     verificationCodes: {
       getByAccountId: (accountId: string) =>
-        ctx.runQuery(component.public.verificationCodeGetByAccountId, { accountId }),
+        ctx.runQuery(component.public.verificationCodeGetByAccountId, {
+          accountId,
+        }),
       getByCode: (code: string) =>
         ctx.runQuery(component.public.verificationCodeGetByCode, { code }),
       create: (args: {
@@ -81,8 +108,7 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         verifier?: string;
         emailVerified?: string;
         phoneVerified?: string;
-      }) =>
-        ctx.runMutation(component.public.verificationCodeCreate, args),
+      }) => ctx.runMutation(component.public.verificationCodeCreate, args),
       delete: (verificationCodeId: string) =>
         ctx.runMutation(component.public.verificationCodeDelete, {
           verificationCodeId,
@@ -94,11 +120,17 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         expirationTime: number;
         parentRefreshTokenId?: string;
       }) =>
-        ctx.runMutation(component.public.refreshTokenCreate, args) as Promise<string>,
+        ctx.runMutation(
+          component.public.refreshTokenCreate,
+          args,
+        ) as Promise<string>,
       getById: (refreshTokenId: string) =>
         ctx.runQuery(component.public.refreshTokenGetById, { refreshTokenId }),
       patch: (refreshTokenId: string, data: Record<string, unknown>) =>
-        ctx.runMutation(component.public.refreshTokenPatch, { refreshTokenId, data }),
+        ctx.runMutation(component.public.refreshTokenPatch, {
+          refreshTokenId,
+          data,
+        }),
       getChildren: (sessionId: string, parentRefreshTokenId: string) =>
         ctx.runQuery(component.public.refreshTokenGetChildren, {
           sessionId,

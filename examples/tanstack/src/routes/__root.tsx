@@ -1,3 +1,5 @@
+import { server } from '@robelest/convex-auth/server'
+import { TanStackDevtools } from '@tanstack/react-devtools'
 import {
   HeadContent,
   Outlet,
@@ -5,18 +7,17 @@ import {
   createRootRoute,
   redirect,
 } from '@tanstack/react-router'
+import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest, setCookie } from '@tanstack/react-start/server'
-import { server } from '@robelest/convex-auth/server'
-import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
-import { TanStackDevtools } from '@tanstack/react-devtools'
 import { ConvexReactClient } from 'convex/react'
 import { useMemo } from 'react'
 
-import appCss from '../styles.css?url'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { ConvexAuthProvider } from '@/lib/auth'
 import { ThemeProvider } from '@/lib/theme'
-import { TooltipProvider } from '@/components/ui/tooltip'
+
+import appCss from '../styles.css?url'
 
 // ---------------------------------------------------------------------------
 // Server function: runs during SSR to refresh tokens, handle OAuth code
@@ -93,9 +94,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <ThemeProvider>
-          <TooltipProvider>
-            {children}
-          </TooltipProvider>
+          <TooltipProvider>{children}</TooltipProvider>
         </ThemeProvider>
         <TanStackDevtools
           config={{ position: 'bottom-right' }}
@@ -118,7 +117,9 @@ function RootErrorBoundary({ error }: { error: unknown }) {
   return (
     <div className="flex min-h-screen items-center justify-center p-6">
       <div className="border-border bg-background w-full max-w-lg rounded-md border p-6">
-        <h1 className="font-mono text-sm font-semibold">Something went wrong</h1>
+        <h1 className="font-mono text-sm font-semibold">
+          Something went wrong
+        </h1>
         <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
           {message}
         </p>

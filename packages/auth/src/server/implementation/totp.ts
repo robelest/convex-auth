@@ -11,15 +11,13 @@
  * `@oslojs/encoding` for base-32 secret encoding.
  */
 
-import {
-  verifyTOTPWithGracePeriod,
-  createTOTPKeyURI,
-} from "@oslojs/otp";
 import { encodeBase32LowerCaseNoPadding } from "@oslojs/encoding";
-import {
-  TotpProviderConfig,
-  GenericActionCtxWithAuthConfig,
-} from "../types";
+import { verifyTOTPWithGracePeriod, createTOTPKeyURI } from "@oslojs/otp";
+
+import { throwAuthError } from "../errors";
+import { TotpProviderConfig, GenericActionCtxWithAuthConfig } from "../types";
+import { callSignIn, callVerifier } from "./mutations/index";
+import { callVerifierSignature } from "./mutations/signature";
 import {
   AuthDataModel,
   SessionInfo,
@@ -32,9 +30,6 @@ import {
   mutateTotpUpdateLastUsed,
   mutateVerifierDelete,
 } from "./types";
-import { callSignIn, callVerifier } from "./mutations/index";
-import { callVerifierSignature } from "./mutations/signature";
-import { throwAuthError } from "../errors";
 
 type EnrichedActionCtx = GenericActionCtxWithAuthConfig<AuthDataModel>;
 
@@ -304,19 +299,9 @@ export async function handleTotp(
     case "setup":
       return handleSetup(ctx, provider, args.params ?? {});
     case "confirm":
-      return handleConfirm(
-        ctx,
-        provider,
-        args.params ?? {},
-        args.verifier,
-      );
+      return handleConfirm(ctx, provider, args.params ?? {}, args.verifier);
     case "verify":
-      return handleVerify(
-        ctx,
-        provider,
-        args.params ?? {},
-        args.verifier,
-      );
+      return handleVerify(ctx, provider, args.params ?? {}, args.verifier);
     default:
       throwAuthError(
         "TOTP_UNKNOWN_FLOW",

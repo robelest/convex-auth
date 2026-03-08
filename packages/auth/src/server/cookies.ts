@@ -38,5 +38,9 @@ export function useRedirectToParam(
 }
 
 function redirectToParamCookieName(providerId: string) {
-  return (!isLocalHost(process.env.CONVEX_SITE_URL) ? "__Host-" : "") + providerId + "RedirectTo";
+  return (
+    (!isLocalHost(process.env.CONVEX_SITE_URL) ? "__Host-" : "") +
+    providerId +
+    "RedirectTo"
+  );
 }

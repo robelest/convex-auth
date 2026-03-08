@@ -8,11 +8,12 @@
  */
 
 import * as arctic from "arctic";
+
 import { SHARED_COOKIE_OPTIONS } from "./cookies";
-import { requireEnv, isLocalHost } from "./utils";
-import { logWithLevel } from "./implementation/utils";
 import { throwAuthError } from "./errors";
+import { logWithLevel } from "./implementation/utils";
 import type { OAuthProviderConfig, OAuthProfile } from "./types";
+import { requireEnv, isLocalHost } from "./utils";
 
 // ============================================================================
 // Types
@@ -46,10 +47,7 @@ export interface CallbackResult {
 
 const COOKIE_TTL = 60 * 15; // 15 minutes
 
-function oauthCookieName(
-  type: "state" | "pkce" | "nonce",
-  providerId: string,
-) {
+function oauthCookieName(type: "state" | "pkce" | "nonce", providerId: string) {
   const prefix = !isLocalHost(process.env.CONVEX_SITE_URL) ? "__Host-" : "";
   return prefix + providerId + "OAuth" + type;
 }
@@ -94,9 +92,7 @@ export function getAuthorizationSignature({
   codeVerifier?: string;
   state?: string;
 }) {
-  return [codeVerifier, state]
-    .filter((param) => param !== undefined)
-    .join(" ");
+  return [codeVerifier, state].filter((param) => param !== undefined).join(" ");
 }
 
 // ============================================================================
@@ -231,7 +227,11 @@ export async function handleOAuthCallback(
 
   // Check for error from provider
   if (params.error) {
-    const cause = { providerId, error: params.error, error_description: params.error_description };
+    const cause = {
+      providerId,
+      error: params.error,
+      error_description: params.error_description,
+    };
     logWithLevel("DEBUG", "OAuthCallbackError", cause);
     throwAuthError("OAUTH_PROVIDER_ERROR", "OAuth provider returned an error", {
       cause: JSON.stringify(cause),
@@ -241,7 +241,10 @@ export async function handleOAuthCallback(
   // 2. Get code
   const code = params.code;
   if (!code) {
-    throwAuthError("OAUTH_PROVIDER_ERROR", "Missing authorization code in callback");
+    throwAuthError(
+      "OAUTH_PROVIDER_ERROR",
+      "Missing authorization code in callback",
+    );
   }
 
   // 3. Read PKCE verifier from cookie if applicable
@@ -262,16 +265,25 @@ export async function handleOAuthCallback(
   let tokens: arctic.OAuth2Tokens;
   try {
     if (isPKCEProvider(arcticProvider)) {
-      tokens = await arcticProvider.validateAuthorizationCode(code, codeVerifier);
+      tokens = await arcticProvider.validateAuthorizationCode(
+        code,
+        codeVerifier,
+      );
     } else {
       tokens = await arcticProvider.validateAuthorizationCode(code);
     }
   } catch (e) {
     if (e instanceof arctic.OAuth2RequestError) {
-      throwAuthError("OAUTH_PROVIDER_ERROR", `Token exchange failed: ${e.code}`);
+      throwAuthError(
+        "OAUTH_PROVIDER_ERROR",
+        `Token exchange failed: ${e.code}`,
+      );
     }
     if (e instanceof arctic.ArcticFetchError) {
-      throwAuthError("OAUTH_PROVIDER_ERROR", `Network error during token exchange: ${e.message}`);
+      throwAuthError(
+        "OAUTH_PROVIDER_ERROR",
+        `Network error during token exchange: ${e.message}`,
+      );
     }
     throw e;
   }

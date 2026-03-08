@@ -74,7 +74,9 @@ export interface CredentialsConfig<
  * })
  * ```
  */
-export class Credentials<DataModel extends GenericDataModel = GenericDataModel> {
+export class Credentials<
+  DataModel extends GenericDataModel = GenericDataModel,
+> {
   readonly id: string;
   readonly type = "credentials" as const;
   readonly config: CredentialsConfig<DataModel>;

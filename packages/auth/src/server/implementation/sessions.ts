@@ -1,7 +1,15 @@
-import { GenericId } from "convex/values";
-import { ConvexAuthConfig } from "../types";
-import { Doc, MutationCtx, SessionInfo } from "./types";
 import { Auth } from "convex/server";
+import { GenericId } from "convex/values";
+
+import { ConvexAuthConfig } from "../types";
+import { authDb } from "./db";
+import {
+  createRefreshToken,
+  formatRefreshToken,
+  deleteAllRefreshTokens,
+} from "./refresh";
+import { generateToken } from "./tokens";
+import { Doc, MutationCtx, SessionInfo } from "./types";
 import {
   LOG_LEVELS,
   TOKEN_SUB_CLAIM_DIVIDER,
@@ -9,13 +17,6 @@ import {
   maybeRedact,
   stringToNumber,
 } from "./utils";
-import { generateToken } from "./tokens";
-import {
-  createRefreshToken,
-  formatRefreshToken,
-  deleteAllRefreshTokens,
-} from "./refresh";
-import { authDb } from "./db";
 
 const DEFAULT_SESSION_TOTAL_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
@@ -97,7 +98,10 @@ async function createSession(
     (config.session?.totalDurationMs ??
       stringToNumber(process.env.AUTH_SESSION_TOTAL_DURATION_MS) ??
       DEFAULT_SESSION_TOTAL_DURATION_MS);
-  return (await db.sessions.create(userId, expirationTime)) as GenericId<"Session">;
+  return (await db.sessions.create(
+    userId,
+    expirationTime,
+  )) as GenericId<"Session">;
 }
 
 export async function deleteSession(

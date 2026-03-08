@@ -5,11 +5,14 @@
  */
 
 import { GenericDataModel } from "convex/server";
+
 import { EmailConfig, EmailUserConfig } from "../server/types";
 
-type EmailProviderUserConfig<DataModel extends GenericDataModel> =
-  Omit<EmailUserConfig<DataModel>, "from" | "sendVerificationRequest"> &
-    Required<Pick<EmailConfig<DataModel>, "from" | "sendVerificationRequest">>;
+type EmailProviderUserConfig<DataModel extends GenericDataModel> = Omit<
+  EmailUserConfig<DataModel>,
+  "from" | "sendVerificationRequest"
+> &
+  Required<Pick<EmailConfig<DataModel>, "from" | "sendVerificationRequest">>;
 
 /**
  * Email providers send a token to the user's email address

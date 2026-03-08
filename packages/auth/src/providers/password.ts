@@ -20,14 +20,6 @@
  * @module
  */
 
-import { Credentials, type CredentialsConfig } from "./credentials";
-import type {
-  EmailConfig,
-  GenericActionCtxWithAuthConfig,
-  GenericDoc,
-  AuthProviderConfig,
-  ConvexCredentialsConfig,
-} from "../server/types";
 import {
   DocumentByName,
   GenericDataModel,
@@ -35,6 +27,15 @@ import {
 } from "convex/server";
 import { Value } from "convex/values";
 import { Scrypt } from "lucia";
+
+import type {
+  EmailConfig,
+  GenericActionCtxWithAuthConfig,
+  GenericDoc,
+  AuthProviderConfig,
+  ConvexCredentialsConfig,
+} from "../server/types";
+import { Credentials, type CredentialsConfig } from "./credentials";
 
 /**
  * The available options to a {@link Password} provider for Convex Auth.
@@ -116,7 +117,9 @@ export class Password<DataModel extends GenericDataModel = GenericDataModel> {
   readonly type = "credentials" as const;
   readonly config: PasswordConfig<DataModel>;
 
-  constructor(config: PasswordConfig<DataModel> = {} as PasswordConfig<DataModel>) {
+  constructor(
+    config: PasswordConfig<DataModel> = {} as PasswordConfig<DataModel>,
+  ) {
     this.id = config.id ?? "password";
     this.config = config;
   }
@@ -180,10 +183,14 @@ export class Password<DataModel extends GenericDataModel = GenericDataModel> {
             provider,
             account: { id: email },
           });
-          return await ctx.auth.provider.signIn(ctx, config.reset as AuthProviderConfig, {
-            accountId: account._id,
-            params,
-          });
+          return await ctx.auth.provider.signIn(
+            ctx,
+            config.reset as AuthProviderConfig,
+            {
+              accountId: account._id,
+              params,
+            },
+          );
         } else if (flow === "reset-verification") {
           if (!config.reset) {
             throw new Error(`Password reset is not enabled for ${provider}`);
@@ -207,7 +214,10 @@ export class Password<DataModel extends GenericDataModel = GenericDataModel> {
             provider,
             account: { id: email, secret },
           });
-          await ctx.auth.session.invalidate(ctx, { userId, except: [sessionId] });
+          await ctx.auth.session.invalidate(ctx, {
+            userId,
+            except: [sessionId],
+          });
           return { userId, sessionId };
         } else if (flow === "email-verification") {
           if (!config.verify) {
@@ -219,10 +229,14 @@ export class Password<DataModel extends GenericDataModel = GenericDataModel> {
             provider,
             account: { id: email },
           });
-          return await ctx.auth.provider.signIn(ctx, config.verify as AuthProviderConfig, {
-            accountId: account._id,
-            params,
-          });
+          return await ctx.auth.provider.signIn(
+            ctx,
+            config.verify as AuthProviderConfig,
+            {
+              accountId: account._id,
+              params,
+            },
+          );
         } else {
           throw new Error(
             "Missing `flow` param, it must be one of " +
@@ -231,10 +245,14 @@ export class Password<DataModel extends GenericDataModel = GenericDataModel> {
           );
         }
         if (config.verify && !account.emailVerified) {
-          return await ctx.auth.provider.signIn(ctx, config.verify as AuthProviderConfig, {
-            accountId: account._id,
-            params,
-          });
+          return await ctx.auth.provider.signIn(
+            ctx,
+            config.verify as AuthProviderConfig,
+            {
+              accountId: account._id,
+              params,
+            },
+          );
         }
         return { userId: user._id };
       },

@@ -15,12 +15,15 @@ function withJsExtension(specifier) {
 }
 
 function patchModuleSpecifiers(content) {
-  return content.replace(/(["'])(\.{1,2}\/[^"]+)(["'])/g, (full, q1, specifier, q2) => {
-    if (q1 !== q2) {
-      return full;
-    }
-    return `${q1}${withJsExtension(specifier)}${q2}`;
-  });
+  return content.replace(
+    /(["'])(\.{1,2}\/[^"]+)(["'])/g,
+    (full, q1, specifier, q2) => {
+      if (q1 !== q2) {
+        return full;
+      }
+      return `${q1}${withJsExtension(specifier)}${q2}`;
+    },
+  );
 }
 
 async function main() {

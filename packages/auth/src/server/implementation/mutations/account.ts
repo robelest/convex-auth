@@ -1,12 +1,13 @@
-import { Infer, v } from "convex/values";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
-import { MutationCtx } from "../types";
-import { GetProviderOrThrowFunc, hash } from "../provider";
-import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils";
-import * as Provider from "../provider";
-import { authDb } from "../db";
-import { AUTH_STORE_REF } from "./store";
+import { Infer, v } from "convex/values";
+
 import { throwAuthError } from "../../errors";
+import { authDb } from "../db";
+import { GetProviderOrThrowFunc, hash } from "../provider";
+import * as Provider from "../provider";
+import { MutationCtx } from "../types";
+import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils";
+import { AUTH_STORE_REF } from "./store";
 
 export const modifyAccountArgs = v.object({
   provider: v.string(),
@@ -30,7 +31,10 @@ export async function modifyAccountImpl(
   });
   const existingAccount = await db.accounts.get(provider, account.id);
   if (existingAccount === null) {
-    throwAuthError("ACCOUNT_NOT_FOUND", `Cannot modify account with ID ${account.id} because it does not exist`);
+    throwAuthError(
+      "ACCOUNT_NOT_FOUND",
+      `Cannot modify account with ID ${account.id} because it does not exist`,
+    );
   }
   await db.accounts.patch(existingAccount._id, {
     secret: await hash(getProviderOrThrow(provider), account.secret),

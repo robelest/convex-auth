@@ -10,17 +10,18 @@
  * @module
  */
 
-import { Credentials } from "./credentials";
-import type {
-  GenericActionCtxWithAuthConfig,
-  ConvexCredentialsConfig,
-} from "../server/types";
 import {
   DocumentByName,
   GenericDataModel,
   WithoutSystemFields,
 } from "convex/server";
 import { Value } from "convex/values";
+
+import type {
+  GenericActionCtxWithAuthConfig,
+  ConvexCredentialsConfig,
+} from "../server/types";
+import { Credentials } from "./credentials";
 
 /**
  * The available options to an {@link Anonymous} provider for Convex Auth.
@@ -69,7 +70,9 @@ export class Anonymous<DataModel extends GenericDataModel = GenericDataModel> {
   readonly type = "credentials" as const;
   readonly config: AnonymousConfig<DataModel>;
 
-  constructor(config: AnonymousConfig<DataModel> = {} as AnonymousConfig<DataModel>) {
+  constructor(
+    config: AnonymousConfig<DataModel> = {} as AnonymousConfig<DataModel>,
+  ) {
     this.id = config.id ?? "anonymous";
     this.config = config;
   }

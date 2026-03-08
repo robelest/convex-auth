@@ -70,8 +70,6 @@ try {
   await enterChat();
 } catch (e) {
   cleanup();
-  console.error(
-    `\nChat error: ${e instanceof Error ? e.message : String(e)}`,
-  );
+  console.error(`\nChat error: ${e instanceof Error ? e.message : String(e)}`);
   process.exit(1);
 }

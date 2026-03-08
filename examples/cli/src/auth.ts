@@ -8,6 +8,7 @@
  */
 
 import { ConvexError } from "convex/values";
+
 import { httpClient, setAuth } from "./convex";
 
 const SERVICE = "convex-auth-cli";
@@ -162,8 +163,12 @@ export async function deviceAuthFlow(
 export async function clearSavedTokens(): Promise<void> {
   try {
     await Bun.secrets.delete({ service: SERVICE, name: TOKEN_NAME });
-  } catch { /* cleanup */ }
+  } catch {
+    /* cleanup */
+  }
   try {
     await Bun.secrets.delete({ service: SERVICE, name: REFRESH_TOKEN_NAME });
-  } catch { /* cleanup */ }
+  } catch {
+    /* cleanup */
+  }
 }

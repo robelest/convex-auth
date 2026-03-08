@@ -1,10 +1,11 @@
-import { GenericId, Infer, v } from "convex/values";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
-import { MutationCtx } from "../types";
-import * as Provider from "../provider";
-import { authDb } from "../db";
-import { AUTH_STORE_REF } from "./store";
+import { GenericId, Infer, v } from "convex/values";
+
 import { throwAuthError } from "../../errors";
+import { authDb } from "../db";
+import * as Provider from "../provider";
+import { MutationCtx } from "../types";
+import { AUTH_STORE_REF } from "./store";
 
 export const verifierSignatureArgs = v.object({
   verifier: v.string(),
@@ -20,7 +21,9 @@ export async function verifierSignatureImpl(
 ): Promise<ReturnType> {
   const { verifier, signature } = args;
   const db = authDb(ctx, config);
-  const verifierDoc = await db.verifiers.getById(verifier as GenericId<"AuthVerifier">);
+  const verifierDoc = await db.verifiers.getById(
+    verifier as GenericId<"AuthVerifier">,
+  );
   if (verifierDoc === null) {
     throwAuthError("INVALID_VERIFIER");
   }

@@ -4,8 +4,8 @@ import {
   useContext,
   useEffect,
   useState,
-  type ReactNode,
 } from 'react'
+import type { ReactNode } from 'react'
 
 type Theme = 'light' | 'dark' | 'system'
 type ResolvedTheme = 'light' | 'dark'

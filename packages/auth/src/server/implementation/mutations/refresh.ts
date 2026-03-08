@@ -1,8 +1,8 @@
-import { Infer, v } from "convex/values";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
-import { Doc, MutationCtx } from "../types";
+import { Infer, v } from "convex/values";
+
+import { authDb } from "../db";
 import * as Provider from "../provider";
-import { logWithLevel, maybeRedact } from "../utils";
 import {
   deleteAllRefreshTokens,
   invalidateRefreshTokensInSubtree,
@@ -12,7 +12,8 @@ import {
   refreshTokenIfValid,
 } from "../refresh";
 import { generateTokensForSession } from "../sessions";
-import { authDb } from "../db";
+import { Doc, MutationCtx } from "../types";
+import { logWithLevel, maybeRedact } from "../utils";
 import { AUTH_STORE_REF } from "./store";
 
 export const refreshSessionArgs = v.object({
@@ -54,7 +55,10 @@ export async function refreshSessionImpl(
     try {
       session = await db.sessions.getById(tokenSessionId);
     } catch {
-      logWithLevel("DEBUG", "Skipping invalid session id during refresh cleanup");
+      logWithLevel(
+        "DEBUG",
+        "Skipping invalid session id during refresh cleanup",
+      );
     }
     if (session !== null) {
       await db.sessions.delete(session._id);

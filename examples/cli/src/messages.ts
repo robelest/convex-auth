@@ -14,6 +14,7 @@ import {
   fg,
   type CliRenderer,
 } from "@opentui/core";
+
 import { colors, styled } from "./theme";
 
 // ---------------------------------------------------------------------------
@@ -89,19 +90,14 @@ export function createMessagePanel(r: CliRenderer): {
 // ---------------------------------------------------------------------------
 
 /** Remove all children from a renderable. */
-function removeAllChildren(
-  parent: BoxRenderable | ScrollBoxRenderable,
-): void {
+function removeAllChildren(parent: BoxRenderable | ScrollBoxRenderable): void {
   const children = parent.getChildren();
   for (const child of children) {
     child.destroy();
   }
 }
 
-export function setChannelHeader(
-  name: string,
-  messageCount: number,
-): void {
+export function setChannelHeader(name: string, messageCount: number): void {
   const countStr = messageCount > 0 ? ` (${messageCount})` : "";
   headerText.content = t` ${bold(fg(colors.aqua)(`# ${name}`))}${fg(colors.gray)(countStr)}`;
 }

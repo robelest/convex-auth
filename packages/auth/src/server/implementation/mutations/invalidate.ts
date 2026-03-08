@@ -1,10 +1,11 @@
-import { GenericId, Infer, v } from "convex/values";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import { GenericId, Infer, v } from "convex/values";
+
+import { authDb } from "../db";
+import * as Provider from "../provider";
 import { deleteSession } from "../sessions";
 import { MutationCtx } from "../types";
 import { LOG_LEVELS, logWithLevel } from "../utils";
-import * as Provider from "../provider";
-import { authDb } from "../db";
 import { AUTH_STORE_REF } from "./store";
 
 export const invalidateSessionsArgs = v.object({
@@ -12,7 +13,9 @@ export const invalidateSessionsArgs = v.object({
   except: v.optional(v.array(v.string())),
 });
 
-export const callInvalidateSessions = async <DataModel extends GenericDataModel>(
+export const callInvalidateSessions = async <
+  DataModel extends GenericDataModel,
+>(
   ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof invalidateSessionsArgs>,
 ): Promise<void> => {

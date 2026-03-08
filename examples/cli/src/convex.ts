@@ -8,8 +8,9 @@
  * since Bun auto-loads .env.local relative to cwd which may differ.
  */
 
-import { ConvexHttpClient, ConvexClient } from "convex/browser";
 import { resolve, dirname } from "node:path";
+
+import { ConvexHttpClient, ConvexClient } from "convex/browser";
 
 function findEnvFile(): string | null {
   let dir = dirname(Bun.main);

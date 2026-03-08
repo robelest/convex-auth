@@ -1,14 +1,15 @@
-import { Infer, v } from "convex/values";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
-import { Doc, MutationCtx } from "../types";
-import * as Provider from "../provider";
-import { ConvexCredentialsConfig } from "../../types";
-import { upsertUserAndAccount } from "../users";
-import { getAuthSessionId } from "../sessions";
-import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils";
-import { authDb } from "../db";
-import { AUTH_STORE_REF } from "./store";
+import { Infer, v } from "convex/values";
+
 import { throwAuthError } from "../../errors";
+import { ConvexCredentialsConfig } from "../../types";
+import { authDb } from "../db";
+import * as Provider from "../provider";
+import { getAuthSessionId } from "../sessions";
+import { Doc, MutationCtx } from "../types";
+import { upsertUserAndAccount } from "../users";
+import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils";
+import { AUTH_STORE_REF } from "./store";
 
 export const createAccountFromCredentialsArgs = v.object({
   provider: v.string(),
@@ -55,7 +56,10 @@ export async function createAccountFromCredentialsImpl(
         existingAccount.secret ?? "",
       ))
     ) {
-      throwAuthError("ACCOUNT_ALREADY_EXISTS", `Account ${account.id} already exists`);
+      throwAuthError(
+        "ACCOUNT_ALREADY_EXISTS",
+        `Account ${account.id} already exists`,
+      );
     }
     const existingUser = (await db.users.getById(
       existingAccount.userId,
@@ -91,16 +95,22 @@ export async function createAccountFromCredentialsImpl(
     config,
   );
 
-  const createdAccount = (await db.accounts.getById(accountId)) as
-    | Doc<"Account">
-    | null;
+  const createdAccount = (await db.accounts.getById(
+    accountId,
+  )) as Doc<"Account"> | null;
   if (createdAccount === null) {
-    throwAuthError("ACCOUNT_NOT_FOUND", `Created account ${accountId} was not found.`);
+    throwAuthError(
+      "ACCOUNT_NOT_FOUND",
+      `Created account ${accountId} was not found.`,
+    );
   }
 
   const createdUser = (await db.users.getById(userId)) as Doc<"User"> | null;
   if (createdUser === null) {
-    throwAuthError("USER_UPDATE_FAILED", `Created user ${userId} was not found.`);
+    throwAuthError(
+      "USER_UPDATE_FAILED",
+      `Created user ${userId} was not found.`,
+    );
   }
 
   return {

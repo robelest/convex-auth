@@ -1,6 +1,6 @@
+import { throwAuthError } from "../errors";
 import { ConvexAuthMaterializedConfig } from "../types";
 import { requireEnv } from "../utils";
-import { throwAuthError } from "../errors";
 
 export async function redirectAbsoluteUrl(
   config: ConvexAuthMaterializedConfig,
@@ -8,7 +8,10 @@ export async function redirectAbsoluteUrl(
 ) {
   if (params.redirectTo !== undefined) {
     if (typeof params.redirectTo !== "string") {
-      throwAuthError("INVALID_REDIRECT", `Expected \`redirectTo\` to be a string, got ${params.redirectTo as any}`);
+      throwAuthError(
+        "INVALID_REDIRECT",
+        `Expected \`redirectTo\` to be a string, got ${params.redirectTo as any}`,
+      );
     }
     const redirectCallback =
       config.callbacks?.redirect ?? defaultRedirectCallback;

@@ -1,15 +1,10 @@
 import { client } from '@robelest/convex-auth/client'
 import type { AuthState } from '@robelest/convex-auth/client'
-import { ConvexProvider, ConvexReactClient } from 'convex/react'
+import type { ConvexReactClient } from 'convex/react'
+import { ConvexProvider } from 'convex/react'
 import type { Value } from 'convex/values'
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 
 // ---------------------------------------------------------------------------
 // Auth context
@@ -31,8 +26,17 @@ type PasskeyActions = {
 }
 
 type TotpActions = {
-  setup: (opts?: { name?: string; accountName?: string }) => Promise<{ uri: string; secret: string; verifier: string; totpId: string }>
-  confirm: (opts: { code: string; verifier: string; totpId: string }) => Promise<void>
+  setup: (opts?: { name?: string; accountName?: string }) => Promise<{
+    uri: string
+    secret: string
+    verifier: string
+    totpId: string
+  }>
+  confirm: (opts: {
+    code: string
+    verifier: string
+    totpId: string
+  }) => Promise<void>
   verify: (opts: { code: string; verifier: string }) => Promise<void>
 }
 
@@ -51,15 +55,16 @@ type DeviceActions = {
 }
 
 const AuthContext = createContext<{
-  signIn: (provider?: string, params?: FormData | Record<string, Value>) => Promise<{ totpRequired?: boolean; verifier?: string }>
+  signIn: (
+    provider?: string,
+    params?: FormData | Record<string, Value>,
+  ) => Promise<{ totpRequired?: boolean; verifier?: string }>
   signOut: () => Promise<void>
   passkey: PasskeyActions
   totp: TotpActions
   device: DeviceActions
   state: AuthState
 } | null>(null)
-
-
 
 function useAuth() {
   const ctx = useContext(AuthContext)
@@ -126,7 +131,10 @@ export function ConvexAuthProvider({
 
   const value = useMemo(
     () => ({
-      signIn: async (provider?: string, params?: FormData | Record<string, Value>) => {
+      signIn: async (
+        provider?: string,
+        params?: FormData | Record<string, Value>,
+      ) => {
         const result = await auth.sign_in(provider, params)
         return { totpRequired: result.totpRequired, verifier: result.verifier }
       },
@@ -141,9 +149,7 @@ export function ConvexAuthProvider({
 
   return (
     <AuthContext.Provider value={value}>
-      <ConvexProvider client={convex}>
-        {children}
-      </ConvexProvider>
+      <ConvexProvider client={convex}>{children}</ConvexProvider>
     </AuthContext.Provider>
   )
 }

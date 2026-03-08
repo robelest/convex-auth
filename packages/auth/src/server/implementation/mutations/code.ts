@@ -1,12 +1,13 @@
-import { GenericId, Infer, v } from "convex/values";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
-import { MutationCtx } from "../types";
-import * as Provider from "../provider";
+import { GenericId, Infer, v } from "convex/values";
+
 import { EmailConfig, PhoneConfig } from "../../types";
-import { getAccountOrThrow, upsertUserAndAccount } from "../users";
-import { getAuthSessionId } from "../sessions";
-import { LOG_LEVELS, logWithLevel, sha256 } from "../utils";
 import { authDb } from "../db";
+import * as Provider from "../provider";
+import { getAuthSessionId } from "../sessions";
+import { MutationCtx } from "../types";
+import { getAccountOrThrow, upsertUserAndAccount } from "../users";
+import { LOG_LEVELS, logWithLevel, sha256 } from "../utils";
 import { AUTH_STORE_REF } from "./store";
 
 export const createVerificationCodeArgs = v.object({

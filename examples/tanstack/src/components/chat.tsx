@@ -1,5 +1,5 @@
-import { RiSendPlaneLine } from '@remixicon/react'
 import { api } from '@convex/_generated/api'
+import { RiSendPlaneLine } from '@remixicon/react'
 import { useMutation, useQuery } from 'convex/react'
 import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
@@ -90,9 +90,7 @@ export function Chat({
             <span className="sr-only">Send</span>
           </Button>
         </form>
-        {error && (
-          <p className="text-destructive text-xs">{error}</p>
-        )}
+        {error && <p className="text-destructive text-xs">{error}</p>}
       </div>
     </div>
   )

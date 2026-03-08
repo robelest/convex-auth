@@ -10,10 +10,10 @@
  * `@oslojs/crypto/sha2` for hashing device codes before storage.
  */
 
-import {
-  DeviceProviderConfig,
-  GenericActionCtxWithAuthConfig,
-} from "../types";
+import { throwAuthError } from "../errors";
+import { DeviceProviderConfig, GenericActionCtxWithAuthConfig } from "../types";
+import { requireEnv } from "../utils";
+import { callSignIn } from "./mutations/index";
 import {
   AuthDataModel,
   SessionInfo,
@@ -24,10 +24,7 @@ import {
   mutateDeviceUpdateLastPolled,
   mutateDeviceDelete,
 } from "./types";
-import { callSignIn } from "./mutations/index";
 import { generateRandomString, sha256 } from "./utils";
-import { throwAuthError } from "../errors";
-import { requireEnv } from "../utils";
 
 type EnrichedActionCtx = GenericActionCtxWithAuthConfig<AuthDataModel>;
 
@@ -127,7 +124,10 @@ async function handlePoll(
 ): Promise<{ kind: "signedIn"; signedIn: SessionInfo | null }> {
   const rawDeviceCode = params.deviceCode as string | undefined;
   if (!rawDeviceCode) {
-    throwAuthError("DEVICE_MISSING_FLOW", "Missing `deviceCode` parameter for poll flow.");
+    throwAuthError(
+      "DEVICE_MISSING_FLOW",
+      "Missing `deviceCode` parameter for poll flow.",
+    );
   }
 
   const deviceCodeHash = await sha256(rawDeviceCode);
@@ -170,7 +170,10 @@ async function handlePoll(
     case "authorized": {
       // Device is authorized — issue tokens for the linked user/session
       if (!doc.userId || !doc.sessionId) {
-        throwAuthError("INTERNAL_ERROR", "Authorized device code missing userId or sessionId.");
+        throwAuthError(
+          "INTERNAL_ERROR",
+          "Authorized device code missing userId or sessionId.",
+        );
       }
 
       // Clean up the device code record
@@ -211,13 +214,19 @@ async function handleVerify(
 ): Promise<{ kind: "signedIn"; signedIn: SessionInfo | null }> {
   const userCode = params.userCode as string | undefined;
   if (!userCode) {
-    throwAuthError("DEVICE_INVALID_USER_CODE", "Missing `userCode` parameter for verify flow.");
+    throwAuthError(
+      "DEVICE_INVALID_USER_CODE",
+      "Missing `userCode` parameter for verify flow.",
+    );
   }
 
   // Require an authenticated user
   const identity = await ctx.auth.getUserIdentity();
   if (identity === null) {
-    throwAuthError("NOT_SIGNED_IN", "You must be signed in to authorize a device.");
+    throwAuthError(
+      "NOT_SIGNED_IN",
+      "You must be signed in to authorize a device.",
+    );
   }
   const [userId] = identity.subject.split("|");
 

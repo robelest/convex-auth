@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
-import { createFileRoute, redirect } from '@tanstack/react-router'
 import {
   RiFingerprintLine,
   RiMailLine,
   RiShieldKeyholeLine,
   RiUserLine,
 } from '@remixicon/react'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,7 +36,8 @@ function LoginPage() {
   const search = Route.useSearch()
   const [flow, setFlow] = useState<'signIn' | 'signUp'>('signIn')
   const postAuthRedirect = resolvePostAuthRedirect(search)
-  const inviteToken = extractInviteToken(postAuthRedirect) ?? search.invite ?? null
+  const inviteToken =
+    extractInviteToken(postAuthRedirect) ?? search.invite ?? null
   const inviteMode = inviteToken !== null
 
   useEffect(() => {
@@ -87,16 +88,25 @@ function LoginPage() {
           <TabsList
             className={`mb-6 grid w-full ${inviteMode ? 'grid-cols-2' : 'grid-cols-3'}`}
           >
-            <TabsTrigger value="password" className="gap-1.5 font-mono text-[11px]">
+            <TabsTrigger
+              value="password"
+              className="gap-1.5 font-mono text-[11px]"
+            >
               <RiMailLine className="size-3.5" />
               Email
             </TabsTrigger>
-            <TabsTrigger value="passkey" className="gap-1.5 font-mono text-[11px]">
+            <TabsTrigger
+              value="passkey"
+              className="gap-1.5 font-mono text-[11px]"
+            >
               <RiFingerprintLine className="size-3.5" />
               Passkey
             </TabsTrigger>
             {!inviteMode && (
-              <TabsTrigger value="guest" className="gap-1.5 font-mono text-[11px]">
+              <TabsTrigger
+                value="guest"
+                className="gap-1.5 font-mono text-[11px]"
+              >
                 <RiUserLine className="size-3.5" />
                 Guest
               </TabsTrigger>
@@ -282,7 +292,10 @@ function PasswordTab({
 
         <form className="space-y-4" onSubmit={handleTotpVerify}>
           <div className="space-y-2">
-            <Label htmlFor="totp-code" className="font-mono text-[11px] tracking-wide uppercase">
+            <Label
+              htmlFor="totp-code"
+              className="font-mono text-[11px] tracking-wide uppercase"
+            >
               Verification code
             </Label>
             <Input
@@ -292,7 +305,9 @@ function PasswordTab({
               maxLength={6}
               placeholder="000000"
               value={totpCode}
-              onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              onChange={(e) =>
+                setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+              }
               className="font-mono text-lg tracking-[0.3em] text-center"
               autoFocus
               required
@@ -337,7 +352,10 @@ function PasswordTab({
     <div className="space-y-5">
       <form className="space-y-4" onSubmit={handleSubmit}>
         <div className="space-y-2">
-          <Label htmlFor="email" className="font-mono text-[11px] tracking-wide uppercase">
+          <Label
+            htmlFor="email"
+            className="font-mono text-[11px] tracking-wide uppercase"
+          >
             Email
           </Label>
           <Input
@@ -351,22 +369,37 @@ function PasswordTab({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="password" className="font-mono text-[11px] tracking-wide uppercase">
+          <Label
+            htmlFor="password"
+            className="font-mono text-[11px] tracking-wide uppercase"
+          >
             Password
           </Label>
           <Input
             id="password"
             type="password"
-            placeholder={flow === 'signUp' ? 'Create a password' : 'Enter password'}
-            autoComplete={flow === 'signIn' ? 'current-password' : 'new-password'}
+            placeholder={
+              flow === 'signUp' ? 'Create a password' : 'Enter password'
+            }
+            autoComplete={
+              flow === 'signIn' ? 'current-password' : 'new-password'
+            }
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
           />
         </div>
 
-        <Button type="submit" className="w-full font-mono text-xs tracking-wide" disabled={busy}>
-          {busy ? 'Please wait...' : flow === 'signIn' ? 'Sign in' : 'Create account'}
+        <Button
+          type="submit"
+          className="w-full font-mono text-xs tracking-wide"
+          disabled={busy}
+        >
+          {busy
+            ? 'Please wait...'
+            : flow === 'signIn'
+              ? 'Sign in'
+              : 'Create account'}
         </Button>
       </form>
 
@@ -455,7 +488,11 @@ function PasskeyTab({
       // Step 1: Create account with a random password (user never sees it)
       const tempPassword = crypto.randomUUID() + crypto.randomUUID()
       setStep('registering')
-      await signIn('password', { email, password: tempPassword, flow: 'signUp' })
+      await signIn('password', {
+        email,
+        password: tempPassword,
+        flow: 'signUp',
+      })
 
       // Step 2: Now authenticated — register a passkey
       await passkey.register({ email, userName: email })
@@ -465,9 +502,13 @@ function PasskeyTab({
       setStep('form')
       const msg = e instanceof Error ? e.message : String(e)
       if (msg.includes('cancelled')) {
-        setError('Passkey registration was cancelled. Your account was created — you can add a passkey later from settings.')
+        setError(
+          'Passkey registration was cancelled. Your account was created — you can add a passkey later from settings.',
+        )
       } else if (msg.includes('already')) {
-        setError('An account with this email already exists. Try signing in instead.')
+        setError(
+          'An account with this email already exists. Try signing in instead.',
+        )
       } else {
         setError('Could not create account. Please try again.')
       }
@@ -482,7 +523,8 @@ function PasskeyTab({
         <div className="bg-muted/60 border-border flex flex-col items-center gap-3 border p-8">
           <RiShieldKeyholeLine className="text-muted-foreground size-8" />
           <p className="text-muted-foreground text-center text-sm">
-            Passkeys are not supported in this browser. Try Chrome, Safari, or Edge.
+            Passkeys are not supported in this browser. Try Chrome, Safari, or
+            Edge.
           </p>
         </div>
       </div>
@@ -507,7 +549,10 @@ function PasskeyTab({
 
         <form className="space-y-4" onSubmit={handleSignUp}>
           <div className="space-y-2">
-            <Label htmlFor="passkey-email" className="font-mono text-[11px] tracking-wide uppercase">
+            <Label
+              htmlFor="passkey-email"
+              className="font-mono text-[11px] tracking-wide uppercase"
+            >
               Email
             </Label>
             <Input
@@ -540,25 +585,25 @@ function PasskeyTab({
           </p>
         )}
 
-      <div className="border-border/60 border-t pt-4">
-        {inviteMode ? (
-          <p className="text-muted-foreground text-center font-mono text-[11px] tracking-wide">
-            For invited access, use sign in with an existing account.
-          </p>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setFlow('signIn')}
-            disabled={busy}
-            className="text-muted-foreground hover:text-foreground w-full text-center font-mono text-[11px] tracking-wide transition-colors"
-          >
-            Already have an account? Sign in
-          </button>
-        )}
+        <div className="border-border/60 border-t pt-4">
+          {inviteMode ? (
+            <p className="text-muted-foreground text-center font-mono text-[11px] tracking-wide">
+              For invited access, use sign in with an existing account.
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setFlow('signIn')}
+              disabled={busy}
+              className="text-muted-foreground hover:text-foreground w-full text-center font-mono text-[11px] tracking-wide transition-colors"
+            >
+              Already have an account? Sign in
+            </button>
+          )}
+        </div>
       </div>
-    </div>
-  )
-}
+    )
+  }
 
   // Sign-in mode: authenticate with existing passkey
   return (
@@ -570,7 +615,8 @@ function PasskeyTab({
         <div className="space-y-1 text-center">
           <p className="text-sm font-medium">Passwordless sign in</p>
           <p className="text-muted-foreground text-xs leading-relaxed">
-            Use your fingerprint, face, or security key to authenticate instantly.
+            Use your fingerprint, face, or security key to authenticate
+            instantly.
           </p>
         </div>
       </div>
@@ -643,7 +689,8 @@ function GuestTab({ postAuthRedirect }: { postAuthRedirect: string }) {
         <div className="space-y-1 text-center">
           <p className="text-sm font-medium">Continue as guest</p>
           <p className="text-muted-foreground text-xs leading-relaxed">
-            No account needed. Jump straight in. Your data won't persist across sessions.
+            No account needed. Jump straight in. Your data won't persist across
+            sessions.
           </p>
         </div>
       </div>
@@ -773,17 +820,26 @@ function extractInviteToken(redirectTo: string) {
   }
 }
 
-function isAllowedRedirectOrigin(rawRedirectTo: string, resolvedOrigin: string) {
-  const isRelative = rawRedirectTo.startsWith('/') || rawRedirectTo.startsWith('?')
+function isAllowedRedirectOrigin(
+  rawRedirectTo: string,
+  resolvedOrigin: string,
+) {
+  const isRelative =
+    rawRedirectTo.startsWith('/') || rawRedirectTo.startsWith('?')
   if (isRelative) {
     return true
   }
 
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(rawRedirectTo)) {
+  if (
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(rawRedirectTo)
+  ) {
     return true
   }
 
-  if (typeof window !== 'undefined' && resolvedOrigin === window.location.origin) {
+  if (
+    typeof window !== 'undefined' &&
+    resolvedOrigin === window.location.origin
+  ) {
     return true
   }
 

@@ -1,10 +1,10 @@
+import { api } from '@convex/_generated/api'
 import { Navigate, createFileRoute } from '@tanstack/react-router'
 import { useMutation, useQuery } from 'convex/react'
 import { useEffect, useRef, useState } from 'react'
 
-import { api } from '@convex/_generated/api'
-import { Chat } from '@/components/chat'
 import { AppSidebar } from '@/components/app-sidebar'
+import { Chat } from '@/components/chat'
 import { useAuthState } from '@/lib/auth'
 
 export const Route = createFileRoute('/_authenticated/chat')({
@@ -127,7 +127,7 @@ function ChatPage() {
   const channelName =
     activeGroupId === null
       ? 'general'
-      : myGroups?.find((g) => g._id === activeGroupId)?.name ?? 'channel'
+      : (myGroups?.find((g) => g._id === activeGroupId)?.name ?? 'channel')
 
   if (inviteAccepting) {
     return (
@@ -142,7 +142,9 @@ function ChatPage() {
   if (!viewerId) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-muted-foreground text-sm animate-pulse">Loading...</p>
+        <p className="text-muted-foreground text-sm animate-pulse">
+          Loading...
+        </p>
       </div>
     )
   }
@@ -155,8 +157,15 @@ function ChatPage() {
         </div>
       )}
       <div className="flex h-full w-full">
-        <AppSidebar activeGroupId={activeGroupId} onSelectGroup={setActiveGroupId} />
-        <Chat viewer={viewerId} groupId={activeGroupId} channelName={channelName} />
+        <AppSidebar
+          activeGroupId={activeGroupId}
+          onSelectGroup={setActiveGroupId}
+        />
+        <Chat
+          viewer={viewerId}
+          groupId={activeGroupId}
+          channelName={channelName}
+        />
       </div>
     </div>
   )

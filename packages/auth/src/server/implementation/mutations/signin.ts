@@ -1,11 +1,12 @@
-import { GenericId, Infer, v } from "convex/values";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
-import { MutationCtx, SessionInfo } from "../types";
+import { GenericId, Infer, v } from "convex/values";
+
 import * as Provider from "../provider";
 import {
   createNewAndDeleteExistingSession,
   maybeGenerateTokensForSession,
 } from "../sessions";
+import { MutationCtx, SessionInfo } from "../types";
 import { LOG_LEVELS, logWithLevel } from "../utils";
 import { AUTH_STORE_REF } from "./store";
 

@@ -8,9 +8,9 @@
  * @module
  */
 
-import { sha256, generateRandomString } from "./utils";
-import type { KeyScope, ScopeChecker } from "../types";
 import { throwAuthError } from "../errors";
+import type { KeyScope, ScopeChecker } from "../types";
+import { sha256, generateRandomString } from "./utils";
 
 // ============================================================================
 // Constants
@@ -40,7 +40,9 @@ const VISIBLE_PREFIX_EXTRA_CHARS = 4;
  * @param prefix - Key prefix, defaults to "sk_live_"
  * @returns `{ raw, hashedKey, displayPrefix }`
  */
-export async function generateApiKey(prefix: string = DEFAULT_KEY_PREFIX): Promise<{
+export async function generateApiKey(
+  prefix: string = DEFAULT_KEY_PREFIX,
+): Promise<{
   /** The full raw key — show to user once, never store. */
   raw: string;
   /** SHA-256 hex hash of the raw key — store this. */
@@ -48,7 +50,10 @@ export async function generateApiKey(prefix: string = DEFAULT_KEY_PREFIX): Promi
   /** Truncated prefix for display (e.g. "sk_live_aBc1..."). */
   displayPrefix: string;
 }> {
-  const randomPart = generateRandomString(KEY_RANDOM_LENGTH, KEY_RANDOM_ALPHABET);
+  const randomPart = generateRandomString(
+    KEY_RANDOM_LENGTH,
+    KEY_RANDOM_ALPHABET,
+  );
   const raw = `${prefix}${randomPart}`;
   const hashedKey = await sha256(raw);
   const displayPrefix = `${raw.substring(0, prefix.length + VISIBLE_PREFIX_EXTRA_CHARS)}...`;

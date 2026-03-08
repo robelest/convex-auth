@@ -12,16 +12,6 @@
  */
 
 import {
-  parseAttestationObject,
-  parseClientDataJSON,
-  parseAuthenticatorData,
-  createAssertionSignatureMessage,
-  ClientDataType,
-  coseAlgorithmES256,
-  coseAlgorithmRS256,
-  COSEKeyType,
-} from "@oslojs/webauthn";
-import {
   p256,
   verifyECDSASignature,
   decodeSEC1PublicKey,
@@ -39,9 +29,24 @@ import {
   decodeBase64urlIgnorePadding,
 } from "@oslojs/encoding";
 import {
+  parseAttestationObject,
+  parseClientDataJSON,
+  parseAuthenticatorData,
+  createAssertionSignatureMessage,
+  ClientDataType,
+  coseAlgorithmES256,
+  coseAlgorithmRS256,
+  COSEKeyType,
+} from "@oslojs/webauthn";
+
+import { throwAuthError } from "../errors";
+import {
   PasskeyProviderConfig,
   GenericActionCtxWithAuthConfig,
 } from "../types";
+import { authDb } from "./db";
+import { callSignIn, callVerifier } from "./mutations/index";
+import { callVerifierSignature } from "./mutations/signature";
 import {
   AuthDataModel,
   SessionInfo,
@@ -54,11 +59,6 @@ import {
   mutatePasskeyUpdateCounter,
   mutateVerifierDelete,
 } from "./types";
-import { callSignIn, callVerifier } from "./mutations/index";
-import { callVerifierSignature } from "./mutations/signature";
-import { authDb } from "./db";
-import { throwAuthError } from "../errors";
-
 
 type EnrichedActionCtx = GenericActionCtxWithAuthConfig<AuthDataModel>;
 
@@ -77,8 +77,8 @@ function resolveRpOptions(provider: PasskeyProviderConfig) {
     throwAuthError(
       "PASSKEY_MISSING_CONFIG",
       "Passkey provider requires SITE_URL env var (your frontend URL) " +
-      "or explicit rpId / origin in the provider config. " +
-      "CONVEX_SITE_URL cannot be used because WebAuthn RP ID must match the frontend domain.",
+        "or explicit rpId / origin in the provider config. " +
+        "CONVEX_SITE_URL cannot be used because WebAuthn RP ID must match the frontend domain.",
     );
   }
   const siteHostname = siteUrl ? new URL(siteUrl).hostname : undefined;
@@ -91,7 +91,10 @@ function resolveRpOptions(provider: PasskeyProviderConfig) {
     userVerification: provider.options.userVerification ?? "required",
     residentKey: provider.options.residentKey ?? "preferred",
     authenticatorAttachment: provider.options.authenticatorAttachment,
-    algorithms: provider.options.algorithms ?? [coseAlgorithmES256, coseAlgorithmRS256],
+    algorithms: provider.options.algorithms ?? [
+      coseAlgorithmES256,
+      coseAlgorithmRS256,
+    ],
     challengeExpirationMs: provider.options.challengeExpirationMs ?? 300_000,
   };
 }
@@ -230,7 +233,10 @@ async function handleRegisterVerify(
 
   // Verify client data type is "webauthn.create"
   if (clientData.type !== ClientDataType.Create) {
-    throwAuthError("PASSKEY_INVALID_CLIENT_DATA", "Invalid client data type: expected webauthn.create");
+    throwAuthError(
+      "PASSKEY_INVALID_CLIENT_DATA",
+      "Invalid client data type: expected webauthn.create",
+    );
   }
 
   // Verify origin
@@ -255,7 +261,9 @@ async function handleRegisterVerify(
   await mutateVerifierDelete(ctx, verifierValue);
 
   // Parse attestation object
-  const attestationObjectBytes = decodeBase64urlIgnorePadding(params.attestationObject);
+  const attestationObjectBytes = decodeBase64urlIgnorePadding(
+    params.attestationObject,
+  );
   const attestation = parseAttestationObject(attestationObjectBytes);
   const authenticatorData = attestation.authenticatorData;
 
@@ -311,7 +319,10 @@ async function handleRegisterVerify(
     const rsaPubKey = new RSAPublicKey(rsa.n, rsa.e);
     publicKeyBytes = rsaPubKey.encodePKCS1();
   } else {
-    throwAuthError("PASSKEY_UNSUPPORTED_ALGORITHM", `Unsupported algorithm: ${algorithm}`);
+    throwAuthError(
+      "PASSKEY_UNSUPPORTED_ALGORITHM",
+      `Unsupported algorithm: ${algorithm}`,
+    );
   }
 
   const deviceType = params.deviceType ?? "single-device";
@@ -384,7 +395,9 @@ async function handleAuthOptions(
   });
 
   // Build allowCredentials if email is provided
-  let allowCredentials: Array<{ type: string; id: string; transports?: string[] }> | undefined;
+  let allowCredentials:
+    | Array<{ type: string; id: string; transports?: string[] }>
+    | undefined;
   if (params.email) {
     // Look up user by email, then find their passkeys
     const user = await queryUserByVerifiedEmail(ctx, params.email);
@@ -438,7 +451,10 @@ async function handleAuthVerify(
 
   // Verify client data type is "webauthn.get"
   if (clientData.type !== ClientDataType.Get) {
-    throwAuthError("PASSKEY_INVALID_CLIENT_DATA", "Invalid client data type: expected webauthn.get");
+    throwAuthError(
+      "PASSKEY_INVALID_CLIENT_DATA",
+      "Invalid client data type: expected webauthn.get",
+    );
   }
 
   // Verify origin
@@ -474,7 +490,9 @@ async function handleAuthVerify(
   }
 
   // Parse authenticator data
-  const authenticatorDataBytes = decodeBase64urlIgnorePadding(params.authenticatorData);
+  const authenticatorDataBytes = decodeBase64urlIgnorePadding(
+    params.authenticatorData,
+  );
   const authenticatorData = parseAuthenticatorData(authenticatorDataBytes);
 
   // Verify RP ID hash
@@ -527,7 +545,10 @@ async function handleAuthVerify(
       throwAuthError("PASSKEY_INVALID_SIGNATURE");
     }
   } else {
-    throwAuthError("PASSKEY_UNSUPPORTED_ALGORITHM", `Unsupported algorithm: ${passkey.algorithm}`);
+    throwAuthError(
+      "PASSKEY_UNSUPPORTED_ALGORITHM",
+      `Unsupported algorithm: ${passkey.algorithm}`,
+    );
   }
 
   // Verify counter (clone detection)
@@ -589,7 +610,12 @@ export async function handlePasskey(
     case "register-options":
       return handleRegisterOptions(ctx, provider, args.params ?? {});
     case "register-verify":
-      return handleRegisterVerify(ctx, provider, args.params ?? {}, args.verifier);
+      return handleRegisterVerify(
+        ctx,
+        provider,
+        args.params ?? {},
+        args.verifier,
+      );
     case "auth-options":
       return handleAuthOptions(ctx, provider, args.params ?? {});
     case "auth-verify":

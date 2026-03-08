@@ -14,6 +14,7 @@
  */
 
 import type { OAuth2Tokens } from "arctic";
+
 import type { OAuthProfile } from "../server/types";
 
 /**
@@ -90,8 +91,7 @@ export function OAuth(
     );
   }
 
-  const id =
-    config?.id ?? provider.constructor?.name?.toLowerCase() ?? "oauth";
+  const id = config?.id ?? provider.constructor?.name?.toLowerCase() ?? "oauth";
 
   return {
     _tag: OAUTH_PROVIDER_TAG,
@@ -105,7 +105,9 @@ export function OAuth(
 /**
  * Type guard to check if a provider config is an OAuth provider.
  */
-export function isOAuthProvider(value: unknown): value is OAuthProviderInstance {
+export function isOAuthProvider(
+  value: unknown,
+): value is OAuthProviderInstance {
   return (
     typeof value === "object" &&
     value !== null &&

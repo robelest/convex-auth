@@ -1,8 +1,9 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import shell from "shelljs";
 import { fileURLToPath } from "url";
+
+import shell from "shelljs";
 
 if (!shell.which("git")) {
   shell.echo("Error: Git is not installed.");

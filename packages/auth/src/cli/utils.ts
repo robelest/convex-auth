@@ -5,10 +5,11 @@
  * All output goes to stderr so stdout can be piped cleanly.
  */
 
-import chalk from "chalk";
 import { execFileSync } from "child_process";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { extname } from "path";
+
+import chalk from "chalk";
 
 // ---------------------------------------------------------------------------
 // Logging — unified output to stderr with chalk prefixes
@@ -17,15 +18,18 @@ import { extname } from "path";
 const write = (msg: string) => process.stderr.write(msg + "\n");
 
 export const log = {
-  step:    (n: number, msg: string) => write(`${chalk.blue.bold(`[${n}]`)} ${chalk.bold(msg)}`),
+  step: (n: number, msg: string) =>
+    write(`${chalk.blue.bold(`[${n}]`)} ${chalk.bold(msg)}`),
   success: (msg: string) => write(`${chalk.green("✔")} ${msg}`),
-  warn:    (msg: string) => write(`${chalk.yellow.bold("!")} ${msg}`),
-  error:   (msg: string, detail?: string) =>
-    write(`${chalk.red("✖")} ${msg}${detail ? `\n  ${chalk.grey(`Error: ${detail}`)}` : ""}`),
-  info:    (msg: string) => write(`${chalk.blue.bold("i")} ${msg}`),
-  blank:   () => write(""),
-  raw:     (msg: string) => write(msg),
-  indent:  (msg: string) => write(`  ${msg}`),
+  warn: (msg: string) => write(`${chalk.yellow.bold("!")} ${msg}`),
+  error: (msg: string, detail?: string) =>
+    write(
+      `${chalk.red("✖")} ${msg}${detail ? `\n  ${chalk.grey(`Error: ${detail}`)}` : ""}`,
+    ),
+  info: (msg: string) => write(`${chalk.blue.bold("i")} ${msg}`),
+  blank: () => write(""),
+  raw: (msg: string) => write(msg),
+  indent: (msg: string) => write(`  ${msg}`),
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -43,11 +47,12 @@ export type DeploymentOptions = {
 /** Build CLI args array for Convex deployment selection. */
 export const deploymentArgs = (opts: DeploymentOptions): string[] => {
   const args: string[] = [];
-  if (opts.adminKey)       args.push("--admin-key", opts.adminKey);
-  if (opts.url)            args.push("--url", opts.url);
-  else if (opts.prod)      args.push("--prod");
-  else if (opts.previewName)     args.push("--preview-name", opts.previewName);
-  else if (opts.deploymentName)  args.push("--deployment-name", opts.deploymentName);
+  if (opts.adminKey) args.push("--admin-key", opts.adminKey);
+  if (opts.url) args.push("--url", opts.url);
+  else if (opts.prod) args.push("--prod");
+  else if (opts.previewName) args.push("--preview-name", opts.previewName);
+  else if (opts.deploymentName)
+    args.push("--deployment-name", opts.deploymentName);
   return args;
 };
 
@@ -83,24 +88,33 @@ export const convexRun = <T = unknown>(
   new Promise((resolve, reject) => {
     const { execFile } = require("child_process");
     const cmdArgs = [
-      "convex", "run", functionPath,
+      "convex",
+      "run",
+      functionPath,
       JSON.stringify(args),
       "--typecheck=disable",
       "--codegen=disable",
       ...(opts.prod ? ["--prod"] : []),
     ];
-    execFile("npx", cmdArgs, { encoding: "utf-8" }, (error: any, stdout: string, stderr: string) => {
-      if (error) {
-        reject(new Error(`convex run ${functionPath} failed: ${stderr || stdout}`));
-        return;
-      }
-      try {
-        resolve(JSON.parse(stdout.trim()) as T);
-      } catch {
-        // If output is not JSON, return raw string as-is
-        resolve(stdout.trim() as T);
-      }
-    });
+    execFile(
+      "npx",
+      cmdArgs,
+      { encoding: "utf-8" },
+      (error: any, stdout: string, stderr: string) => {
+        if (error) {
+          reject(
+            new Error(`convex run ${functionPath} failed: ${stderr || stdout}`),
+          );
+          return;
+        }
+        try {
+          resolve(JSON.parse(stdout.trim()) as T);
+        } catch {
+          // If output is not JSON, return raw string as-is
+          resolve(stdout.trim() as T);
+        }
+      },
+    );
   });
 
 // ---------------------------------------------------------------------------
@@ -109,26 +123,26 @@ export const convexRun = <T = unknown>(
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
-  ".js":   "application/javascript; charset=utf-8",
-  ".mjs":  "application/javascript; charset=utf-8",
-  ".css":  "text/css; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".mjs": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
-  ".png":  "image/png",
-  ".jpg":  "image/jpeg",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
-  ".gif":  "image/gif",
-  ".svg":  "image/svg+xml",
-  ".ico":  "image/x-icon",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
   ".webp": "image/webp",
   ".woff": "font/woff",
-  ".woff2":"font/woff2",
-  ".ttf":  "font/ttf",
-  ".txt":  "text/plain; charset=utf-8",
-  ".map":  "application/json",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".txt": "text/plain; charset=utf-8",
+  ".map": "application/json",
   ".webmanifest": "application/manifest+json",
-  ".xml":  "application/xml",
-  ".br":   "application/octet-stream",
-  ".gz":   "application/gzip",
+  ".xml": "application/xml",
+  ".br": "application/octet-stream",
+  ".gz": "application/gzip",
 };
 
 export const getMimeType = (path: string): string =>
@@ -145,8 +159,8 @@ export const getMimeType = (path: string): string =>
 export const findExistingSource = (basePath: string): string | null =>
   [".ts", ".js"]
     .map((ext) => basePath + ext)
-    .find((p) => existsSync(p) && readFileSync(p, "utf-8").trim() !== "")
-    ?? null;
+    .find((p) => existsSync(p) && readFileSync(p, "utf-8").trim() !== "") ??
+  null;
 
 /**
  * Test whether an existing file already matches a template.
@@ -239,7 +253,12 @@ export const getPackageVersion = (): string => {
   } catch {
     // Fallback: if running from dist/bin.cjs, package.json is two levels up
     try {
-      const pkgPath = require("path").resolve(__dirname, "..", "..", "package.json");
+      const pkgPath = require("path").resolve(
+        __dirname,
+        "..",
+        "..",
+        "package.json",
+      );
       return JSON.parse(readFileSync(pkgPath, "utf-8")).version;
     } catch {
       return "unknown";

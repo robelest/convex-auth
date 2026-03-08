@@ -1,6 +1,8 @@
 import { GenericId } from "convex/values";
-import { ConvexAuthConfig } from "../types";
+
 import { throwAuthError } from "../errors";
+import { ConvexAuthConfig } from "../types";
+import { authDb } from "./db";
 import { Doc, MutationCtx } from "./types";
 import {
   LOG_LEVELS,
@@ -9,7 +11,6 @@ import {
   maybeRedact,
   stringToNumber,
 } from "./utils";
-import { authDb } from "./db";
 
 const DEFAULT_SESSION_INACTIVE_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 export const REFRESH_TOKEN_REUSE_WINDOW_MS = 10 * 1000; // 10 seconds
@@ -48,7 +49,10 @@ export const parseRefreshToken = (
 } => {
   const [refreshTokenId, sessionId] = refreshToken.split(REFRESH_TOKEN_DIVIDER);
   if (!refreshTokenId || !sessionId) {
-    throwAuthError("INVALID_REFRESH_TOKEN", `Can't parse refresh token: ${maybeRedact(refreshToken)}`);
+    throwAuthError(
+      "INVALID_REFRESH_TOKEN",
+      `Can't parse refresh token: ${maybeRedact(refreshToken)}`,
+    );
   }
   return {
     refreshTokenId: refreshTokenId as GenericId<"RefreshToken">,
@@ -144,9 +148,9 @@ export async function refreshTokenIfValid(
   }
   let session: Doc<"Session"> | null;
   try {
-    session = (await db.sessions.getById(refreshTokenDoc.sessionId)) as
-      | Doc<"Session">
-      | null;
+    session = (await db.sessions.getById(
+      refreshTokenDoc.sessionId,
+    )) as Doc<"Session"> | null;
   } catch {
     logWithLevel(LOG_LEVELS.ERROR, "Invalid refresh token session format");
     return null;
@@ -173,7 +177,7 @@ export async function loadActiveRefreshToken(
   sessionId: GenericId<"Session">,
   config: ConvexAuthConfig,
 ) {
-  return (await authDb(ctx, config).refreshTokens.getActive(sessionId)) as
-    | Doc<"RefreshToken">
-    | null;
+  return (await authDb(ctx, config).refreshTokens.getActive(
+    sessionId,
+  )) as Doc<"RefreshToken"> | null;
 }

@@ -1,11 +1,12 @@
 import { RiMoonLine, RiSunLine } from '@remixicon/react'
-import { useTheme } from '@/lib/theme'
+
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useTheme } from '@/lib/theme'
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()

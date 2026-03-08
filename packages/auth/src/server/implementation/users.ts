@@ -1,9 +1,10 @@
 import { GenericId } from "convex/values";
-import { Doc, MutationCtx } from "./types";
-import { AuthProviderMaterializedConfig, ConvexAuthConfig } from "../types";
-import { LOG_LEVELS, logWithLevel } from "./utils";
-import { authDb } from "./db";
+
 import { throwAuthError } from "../errors";
+import { AuthProviderMaterializedConfig, ConvexAuthConfig } from "../types";
+import { authDb } from "./db";
+import { Doc, MutationCtx } from "./types";
+import { LOG_LEVELS, logWithLevel } from "./utils";
 
 type CreateOrUpdateUserArgs = {
   type: "oauth" | "credentials" | "email" | "phone" | "verification";
@@ -40,7 +41,13 @@ export async function upsertUserAndAccount(
     args,
     config,
   );
-  const accountId = await createOrUpdateAccount(ctx, userId, account, args, config);
+  const accountId = await createOrUpdateAccount(
+    ctx,
+    userId,
+    account,
+    args,
+    config,
+  );
   return { userId, accountId };
 }
 
@@ -88,14 +95,14 @@ async function defaultCreateOrUpdateUser(
   if (existingUserId === null) {
     const existingUserWithVerifiedEmailId =
       typeof profile.email === "string" && shouldLinkViaEmail
-        ? (await uniqueUserWithVerifiedEmail(ctx, profile.email, config))?._id ??
-          null
+        ? ((await uniqueUserWithVerifiedEmail(ctx, profile.email, config))
+            ?._id ?? null)
         : null;
 
     const existingUserWithVerifiedPhoneId =
       typeof profile.phone === "string" && shouldLinkViaPhone
-        ? (await uniqueUserWithVerifiedPhone(ctx, profile.phone, config))?._id ??
-          null
+        ? ((await uniqueUserWithVerifiedPhone(ctx, profile.phone, config))
+            ?._id ?? null)
         : null;
     // If there is both email and phone verified user
     // already we can't link.
@@ -138,10 +145,13 @@ async function defaultCreateOrUpdateUser(
     try {
       await db.users.patch(userId, userData);
     } catch (error) {
-      throwAuthError("USER_UPDATE_FAILED", `Could not update user document with ID \`${userId}\`, ` +
+      throwAuthError(
+        "USER_UPDATE_FAILED",
+        `Could not update user document with ID \`${userId}\`, ` +
           `either the user has been deleted but their account has not, ` +
           `or the profile data doesn't match the \`users\` table schema: ` +
-          `${(error as Error).message}`);
+          `${(error as Error).message}`,
+      );
     }
   } else {
     userId = (await db.users.insert(userData)) as GenericId<"User">;
@@ -228,9 +238,14 @@ export async function getAccountOrThrow(
   existingAccountId: GenericId<"Account">,
   config: ConvexAuthConfig,
 ) {
-  const existingAccount = await authDb(ctx, config).accounts.getById(existingAccountId);
+  const existingAccount = await authDb(ctx, config).accounts.getById(
+    existingAccountId,
+  );
   if (existingAccount === null) {
-    throwAuthError("ACCOUNT_NOT_FOUND", `Expected an account to exist for ID "${existingAccountId}"`);
+    throwAuthError(
+      "ACCOUNT_NOT_FOUND",
+      `Expected an account to exist for ID "${existingAccountId}"`,
+    );
   }
   return existingAccount;
 }

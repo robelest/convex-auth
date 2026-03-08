@@ -9,6 +9,8 @@
  * container without adding its own border or width.
  */
 
+import { DialogManager, DialogContainerRenderable } from "@opentui-ui/dialog";
+import { toast, ToasterRenderable } from "@opentui-ui/toast";
 import {
   BoxRenderable,
   TextRenderable,
@@ -21,16 +23,9 @@ import {
   fg,
   type CliRenderer,
 } from "@opentui/core";
-import {
-  DialogManager,
-  DialogContainerRenderable,
-} from "@opentui-ui/dialog";
-import {
-  toast,
-  ToasterRenderable,
-} from "@opentui-ui/toast";
-import { colors, borders } from "./theme";
+
 import type { Group } from "./sidebar";
+import { colors, borders } from "./theme";
 
 // ---------------------------------------------------------------------------
 // Exports
@@ -238,23 +233,62 @@ export async function showHelpDialog(): Promise<void> {
       const lines = [
         [t`${bold(fg(colors.orange)("Keyboard Shortcuts"))}`, ""],
         ["", ""],
-        [t`  ${fg(colors.yellow)("Enter")}`, t`  ${fg(colors.fg)("Send message")}`],
-        [t`  ${fg(colors.yellow)("Tab")}`, t`    ${fg(colors.fg)("Next channel")}`],
-        [t`  ${fg(colors.yellow)("S-Tab")}`, t`  ${fg(colors.fg)("Previous channel")}`],
-        [t`  ${fg(colors.yellow)("C")}`, t`      ${fg(colors.fg)("Create channel")}`],
-        [t`  ${fg(colors.yellow)("J")}`, t`      ${fg(colors.fg)("Join channel")}`],
-        [t`  ${fg(colors.yellow)("?")}`, t`      ${fg(colors.fg)("This help")}`],
+        [
+          t`  ${fg(colors.yellow)("Enter")}`,
+          t`  ${fg(colors.fg)("Send message")}`,
+        ],
+        [
+          t`  ${fg(colors.yellow)("Tab")}`,
+          t`    ${fg(colors.fg)("Next channel")}`,
+        ],
+        [
+          t`  ${fg(colors.yellow)("S-Tab")}`,
+          t`  ${fg(colors.fg)("Previous channel")}`,
+        ],
+        [
+          t`  ${fg(colors.yellow)("C")}`,
+          t`      ${fg(colors.fg)("Create channel")}`,
+        ],
+        [
+          t`  ${fg(colors.yellow)("J")}`,
+          t`      ${fg(colors.fg)("Join channel")}`,
+        ],
+        [
+          t`  ${fg(colors.yellow)("?")}`,
+          t`      ${fg(colors.fg)("This help")}`,
+        ],
         [t`  ${fg(colors.yellow)("Ctrl+C")}`, t` ${fg(colors.fg)("Quit")}`],
         ["", ""],
         [t`${bold(fg(colors.orange)("Slash Commands"))}`, ""],
         ["", ""],
-        [t`  ${fg(colors.aqua)("/create <name>")}`, t` ${fg(colors.fg)("Create channel")}`],
-        [t`  ${fg(colors.aqua)("/join")}`, t`          ${fg(colors.fg)("Browse channels")}`],
-        [t`  ${fg(colors.aqua)("/leave")}`, t`         ${fg(colors.fg)("Leave channel")}`],
-        [t`  ${fg(colors.aqua)("/auth")}`, t`          ${fg(colors.fg)("Re-authenticate")}`],
-        [t`  ${fg(colors.aqua)("/logout")}`, t`        ${fg(colors.fg)("Clear saved tokens")}`],
-        [t`  ${fg(colors.aqua)("/help")}`, t`          ${fg(colors.fg)("Show this help")}`],
-        [t`  ${fg(colors.aqua)("/quit")}`, t`          ${fg(colors.fg)("Quit")}`],
+        [
+          t`  ${fg(colors.aqua)("/create <name>")}`,
+          t` ${fg(colors.fg)("Create channel")}`,
+        ],
+        [
+          t`  ${fg(colors.aqua)("/join")}`,
+          t`          ${fg(colors.fg)("Browse channels")}`,
+        ],
+        [
+          t`  ${fg(colors.aqua)("/leave")}`,
+          t`         ${fg(colors.fg)("Leave channel")}`,
+        ],
+        [
+          t`  ${fg(colors.aqua)("/auth")}`,
+          t`          ${fg(colors.fg)("Re-authenticate")}`,
+        ],
+        [
+          t`  ${fg(colors.aqua)("/logout")}`,
+          t`        ${fg(colors.fg)("Clear saved tokens")}`,
+        ],
+        [
+          t`  ${fg(colors.aqua)("/help")}`,
+          t`          ${fg(colors.fg)("Show this help")}`,
+        ],
+        [
+          t`  ${fg(colors.aqua)("/quit")}`,
+          t`          ${fg(colors.fg)("Quit")}`,
+        ],
         ["", ""],
         [t`  ${fg(colors.gray)("Press Esc to close")}`, ""],
       ];
