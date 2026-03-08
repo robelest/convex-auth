@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.0.4-preview.11
+## 0.0.4-preview.12
 
 - Add multi-tenant group helpers under `auth.user.group.*`:
   - `switch(ctx, { userId, groupId })` — set or clear a user's active group.
