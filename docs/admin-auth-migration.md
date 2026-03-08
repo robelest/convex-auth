@@ -1,6 +1,7 @@
 # Migrate Access Checks: Email -> User ID
 
-This guide migrates privileged access checks from email-based checks to userId-based checks when using `@robelest/convex-auth`.
+This guide migrates privileged access checks from email-based checks to
+userId-based checks when using `@robelest/convex-auth`.
 
 ## Why migrate
 
@@ -136,5 +137,7 @@ After backfill + verification:
 
 ## Notes
 
-- Do not parse JWT `subject` manually unless you have to. Prefer `auth.user.require(ctx)` or `auth.user.viewer(ctx)`.
-- `Account` is many-to-one with `User`; authorization should follow user identity.
+- Do not parse JWT `subject` manually unless you have to. Prefer
+  `auth.user.require(ctx)` or `auth.user.viewer(ctx)`.
+- `Account` is many-to-one with `User`; authorization should follow user
+  identity.

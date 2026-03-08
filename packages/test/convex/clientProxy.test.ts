@@ -1,5 +1,6 @@
-import { client, parseAuthError } from "../../auth/src/client/index";
 import { afterEach, expect, test, vi } from "vitest";
+
+import { client, parseAuthError } from "../../auth/src/client/index";
 
 async function waitForSetAuthCalls(
   convex: ReturnType<typeof createConvexMock>,
@@ -16,7 +17,9 @@ async function waitForSetAuthCalls(
 
 function createConvexMock() {
   const authRegistrations: Array<{
-    fetchToken: (args: { forceRefreshToken: boolean }) => Promise<string | null | undefined>;
+    fetchToken: (args: {
+      forceRefreshToken: boolean;
+    }) => Promise<string | null | undefined>;
     onChange?: (isAuthenticated: boolean) => void;
   }> = [];
   let authConfirmed = false;
@@ -36,7 +39,9 @@ function createConvexMock() {
     authRegistrations,
     triggerAuthChange(isAuthenticated: boolean) {
       authConfirmed = isAuthenticated;
-      authRegistrations[authRegistrations.length - 1]?.onChange?.(isAuthenticated);
+      authRegistrations[authRegistrations.length - 1]?.onChange?.(
+        isAuthenticated,
+      );
     },
   };
 }
@@ -87,9 +92,9 @@ test("proxy mode re-syncs convex auth after sign in", async () => {
     | ((args: { forceRefreshToken: boolean }) => Promise<string | null>)
     | undefined;
   expect(latestFetchAccessToken).toBeDefined();
-  expect(
-    await latestFetchAccessToken!({ forceRefreshToken: false }),
-  ).toBe("fresh-token");
+  expect(await latestFetchAccessToken!({ forceRefreshToken: false })).toBe(
+    "fresh-token",
+  );
 
   expect(fetchMock).toHaveBeenCalledWith(
     "/api/auth",
@@ -128,19 +133,20 @@ test("proxy signIn waits for Convex auth confirmation", async () => {
 
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          tokens: {
-            token: "fresh-token",
-            refreshToken: "dummy",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            tokens: {
+              token: "fresh-token",
+              refreshToken: "dummy",
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
           },
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      ),
+        ),
     ),
   );
 
@@ -176,19 +182,20 @@ test("proxy signIn tolerates transient auth false before confirmation", async ()
 
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          tokens: {
-            token: "fresh-token",
-            refreshToken: "dummy",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            tokens: {
+              token: "fresh-token",
+              refreshToken: "dummy",
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
           },
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      ),
+        ),
     ),
   );
 
@@ -227,19 +234,20 @@ test("proxy signIn times out after rejection signal with no later confirmation",
 
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          tokens: {
-            token: "fresh-token",
-            refreshToken: "dummy",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            tokens: {
+              token: "fresh-token",
+              refreshToken: "dummy",
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
           },
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      ),
+        ),
     ),
   );
 
@@ -253,9 +261,12 @@ test("proxy signIn times out after rejection signal with no later confirmation",
   await Promise.resolve();
   convex.triggerAuthChange(false);
 
-  const rejection = expect(signInPromise).rejects.toSatisfy((error: unknown) => {
-    return parseAuthError(error)?.code === "AUTH_HANDSHAKE_TIMEOUT";
-  });
+  // eslint-disable-next-line jest/valid-expect -- rejection handler must be registered before advancing timers
+  const rejection = expect(signInPromise).rejects.toSatisfy(
+    (error: unknown) => {
+      return parseAuthError(error)?.code === "AUTH_HANDSHAKE_TIMEOUT";
+    },
+  );
   await vi.advanceTimersByTimeAsync(5001);
   await rejection;
 
@@ -274,19 +285,20 @@ test("proxy signIn times out when auth confirmation never arrives", async () => 
 
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          tokens: {
-            token: "fresh-token",
-            refreshToken: "dummy",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            tokens: {
+              token: "fresh-token",
+              refreshToken: "dummy",
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
           },
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      ),
+        ),
     ),
   );
 
@@ -296,11 +308,14 @@ test("proxy signIn times out when auth confirmation never arrives", async () => 
     flow: "signIn",
   });
 
-  const rejection = expect(signInPromise).rejects.toSatisfy((error: unknown) => {
-    return parseAuthError(error)?.code === "AUTH_HANDSHAKE_TIMEOUT";
-  });
+  // eslint-disable-next-line jest/valid-expect -- rejection handler must be registered before advancing timers
+  const rejection2 = expect(signInPromise).rejects.toSatisfy(
+    (error: unknown) => {
+      return parseAuthError(error)?.code === "AUTH_HANDSHAKE_TIMEOUT";
+    },
+  );
   await vi.advanceTimersByTimeAsync(5001);
-  await rejection;
+  await rejection2;
 
   auth.destroy();
   vi.useRealTimers();
@@ -316,19 +331,20 @@ test("proxy refresh does not re-register Convex auth", async () => {
 
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          tokens: {
-            token: "fresh-token",
-            refreshToken: "dummy",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            tokens: {
+              token: "fresh-token",
+              refreshToken: "dummy",
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
           },
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      ),
+        ),
     ),
   );
 
@@ -395,19 +411,20 @@ test("ledger-like flow can call protected mutation immediately after signIn", as
 
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          tokens: {
-            token: "fresh-token",
-            refreshToken: "dummy",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            tokens: {
+              token: "fresh-token",
+              refreshToken: "dummy",
+            },
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
           },
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      ),
+        ),
     ),
   );
 
@@ -459,11 +476,12 @@ test("proxy refresh skips relative URL in server runtime", async () => {
 test("empty SSR token is treated as signed out", () => {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () =>
-      new Response(JSON.stringify({ tokens: null }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ tokens: null }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
     ),
   );
 

@@ -40,18 +40,19 @@ export const listMessagesInput = z
   })
   .strict();
 
-const inviteTokenInput = z
-  .string()
-  .trim()
-  .min(16)
-  .max(MAX_INVITE_TOKEN_LENGTH);
+const inviteTokenInput = z.string().trim().min(16).max(MAX_INVITE_TOKEN_LENGTH);
 
 export const createInviteInput = z
   .object({
     groupId: nonEmptyId,
     email: z.string().trim().email(),
     role: z.string().trim().min(1).max(MAX_GROUP_NAME_LENGTH).optional(),
-    expiresInHours: z.number().int().positive().max(24 * 30).optional(),
+    expiresInHours: z
+      .number()
+      .int()
+      .positive()
+      .max(24 * 30)
+      .optional(),
   })
   .strict();
 
@@ -72,5 +73,31 @@ export const revokeKeyInput = z.object({ keyId: nonEmptyId }).strict();
 export const resetInput = z
   .object({
     forReal: z.literal("I know what I'm doing"),
+  })
+  .strict();
+
+export const nullOutput = z.null();
+
+export const unknownRecordOutput = z.record(z.string(), z.unknown());
+
+export const unknownRecordListOutput = z.array(unknownRecordOutput);
+
+export const nullableUnknownRecordOutput = unknownRecordOutput.nullable();
+
+export const inviteEmailOutput = z
+  .object({
+    inviteId: nonEmptyId,
+    email: z.string().email(),
+    expiresTime: z.number().nullable(),
+  })
+  .strict();
+
+export const acceptInviteOutput = z
+  .object({
+    inviteId: nonEmptyId,
+    groupId: nonEmptyId.nullable(),
+    memberId: nonEmptyId.nullable(),
+    inviteStatus: z.string().optional(),
+    membershipStatus: z.string().optional(),
   })
   .strict();

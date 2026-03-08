@@ -1,6 +1,8 @@
-import { convexTest } from "../convex-test";
-import { expect, test } from "vitest";
 import { api } from "@convex/_generated/api";
+import { decodeJwt } from "jose";
+import { expect, test } from "vitest";
+
+import { convexTest } from "../convex-test";
 import schema from "./schema";
 import {
   CONVEX_SITE_URL,
@@ -9,7 +11,6 @@ import {
   RESEND_API_KEY,
   signInViaMagicLink,
 } from "./test.helpers";
-import { decodeJwt } from "jose";
 
 test("sign in anonymously", async () => {
   setupEnv();
@@ -38,16 +39,14 @@ test("anonymous sign-in is not auto-converted during email sign-in", async () =>
   const newClaims = decodeJwt(newTokens!.token);
   expect(newClaims.sub).not.toEqual(claims.sub);
 
-  const oldViewer = await t.withIdentity({ subject: claims.sub }).query(
-    api.users.viewer,
-    {},
-  );
+  const oldViewer = await t
+    .withIdentity({ subject: claims.sub })
+    .query(api.users.viewer, {});
   expect(oldViewer?.isAnonymous).toEqual(true);
 
-  const viewer = await t.withIdentity({ subject: newClaims.sub }).query(
-    api.users.viewer,
-    {},
-  );
+  const viewer = await t
+    .withIdentity({ subject: newClaims.sub })
+    .query(api.users.viewer, {});
   expect(viewer).toMatchObject({ email: "mike@gmail.com" });
   expect(viewer?.isAnonymous).not.toEqual(true);
 });

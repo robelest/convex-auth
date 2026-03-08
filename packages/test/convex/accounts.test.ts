@@ -1,7 +1,8 @@
-import { convexTest } from "../convex-test";
+import { api } from "@convex/_generated/api";
 import { decodeJwt } from "jose";
 import { expect, test } from "vitest";
-import { api } from "@convex/_generated/api";
+
+import { convexTest } from "../convex-test";
 import schema from "./schema";
 import {
   CONVEX_SITE_URL,
@@ -36,10 +37,13 @@ test("sign in with email signs out existing user with different email", async ()
     getUserIdFromToken(tokens!.token),
   );
 
-  const { tokens: refreshedOldSession } = await t.action(api.auth.session.start, {
-    refreshToken: tokens!.refreshToken,
-    params: {},
-  });
+  const { tokens: refreshedOldSession } = await t.action(
+    api.auth.session.start,
+    {
+      refreshToken: tokens!.refreshToken,
+      params: {},
+    },
+  );
   expect(refreshedOldSession).toBeNull();
 });
 
@@ -55,7 +59,11 @@ test("unverified password accounts are not auto-linked to email sign-in", async 
   const claims = decodeJwt(tokens!.token);
   const asUser = t.withIdentity({ subject: claims.sub });
 
-  const newTokens = await signInViaMagicLink(asUser, "email", "linkme@gmail.com");
+  const newTokens = await signInViaMagicLink(
+    asUser,
+    "email",
+    "linkme@gmail.com",
+  );
   expect(newTokens).not.toBeNull();
   expect(getUserIdFromToken(newTokens!.token)).not.toEqual(
     getUserIdFromToken(tokens!.token),

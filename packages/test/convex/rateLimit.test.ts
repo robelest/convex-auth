@@ -1,12 +1,9 @@
-import { convexTest } from "../convex-test";
-import { expect, test, vi } from "vitest";
 import { api } from "@convex/_generated/api";
+import { expect, test, vi } from "vitest";
+
+import { convexTest } from "../convex-test";
 import schema from "./schema";
-import {
-  CONVEX_SITE_URL,
-  JWKS,
-  JWT_PRIVATE_KEY,
-} from "./test.helpers";
+import { CONVEX_SITE_URL, JWKS, JWT_PRIVATE_KEY } from "./test.helpers";
 
 test("rate limit on password", async () => {
   vi.useFakeTimers();
@@ -34,7 +31,7 @@ test("rate limit on password", async () => {
             flow: "signIn",
           },
         }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/ACCOUNT_NOT_FOUND/);
   }
 
   // Now we can't succeed, even with the right password
@@ -48,7 +45,7 @@ test("rate limit on password", async () => {
           flow: "signIn",
         },
       }),
-  ).rejects.toThrow();
+  ).rejects.toThrow(/ACCOUNT_NOT_FOUND/);
 
   // But if we wait a little bit, we can try again
   vi.advanceTimersByTime(8 * MINUTE_MS);

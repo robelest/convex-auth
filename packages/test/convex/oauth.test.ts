@@ -1,6 +1,7 @@
-import { convexTest } from "../convex-test";
-import { expect, test } from "vitest";
 import { api } from "@convex/_generated/api";
+import { expect, test } from "vitest";
+
+import { convexTest } from "../convex-test";
 import schema from "./schema";
 import {
   CONVEX_SITE_URL,

@@ -1,4 +1,5 @@
 import path from "node:path";
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -9,7 +10,10 @@ export default defineConfig({
         __dirname,
         "../../packages/auth/src/test.ts",
       ),
-      "@robelest/convex-auth": path.resolve(__dirname, "../../packages/auth/src"),
+      "@robelest/convex-auth": path.resolve(
+        __dirname,
+        "../../packages/auth/src",
+      ),
     },
   },
   test: {

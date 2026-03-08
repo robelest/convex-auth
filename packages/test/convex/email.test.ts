@@ -1,6 +1,7 @@
-import { convexTest } from "../convex-test";
-import { expect, test, vi } from "vitest";
 import { api } from "@convex/_generated/api";
+import { expect, test, vi } from "vitest";
+
+import { convexTest } from "../convex-test";
 import schema from "./schema";
 import {
   RESEND_API_KEY,
@@ -14,6 +15,7 @@ test("sign in with email", async () => {
   const t = convexTest(schema);
 
   let code;
+  let capturedInit: any = null;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input, init) => {
@@ -21,10 +23,7 @@ test("sign in with email", async () => {
         typeof input === "string" &&
         input === "https://api.resend.com/emails"
       ) {
-        expect(init.headers.Authorization).toBe(
-          `Bearer ${process.env.RESEND_API_KEY}`,
-        );
-        expect(init.body).toBeTypeOf("string");
+        capturedInit = init;
 
         // Find the code after ${process.env.SITE_URL}?code=
         code = init.body.match(/\?code=([^\s\\]+)/)?.[1];
@@ -42,6 +41,12 @@ test("sign in with email", async () => {
   });
   vi.unstubAllGlobals();
 
+  expect(capturedInit).not.toBeNull();
+  expect(capturedInit.headers.Authorization).toBe(
+    `Bearer ${process.env.RESEND_API_KEY}`,
+  );
+  expect(capturedInit.body).toBeTypeOf("string");
+
   const { tokens } = await t.action(api.auth.session.start, {
     params: { code },
   });
@@ -53,6 +58,7 @@ test("redirectTo with email", async () => {
   setupEnv();
   const t = convexTest(schema);
 
+  let capturedInit: any = null;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input, init) => {
@@ -60,16 +66,7 @@ test("redirectTo with email", async () => {
         typeof input === "string" &&
         input === "https://api.resend.com/emails"
       ) {
-        expect(init.headers.Authorization).toBe(
-          `Bearer ${process.env.RESEND_API_KEY}`,
-        );
-        expect(init.body).toBeTypeOf("string");
-
-        // Custom URL via redirectTo
-        const code = init.body.match(
-          /http:\/\/localhost:5173\/dashboard\?code=([^\s\\]+)/,
-        )?.[1];
-        expect(code).toBeTypeOf("string");
+        capturedInit = init;
         return new Response(JSON.stringify({ id: "email_123" }), {
           status: 200,
         });
@@ -83,6 +80,18 @@ test("redirectTo with email", async () => {
     params: { email: "tom@gmail.com", redirectTo: "/dashboard" },
   });
   vi.unstubAllGlobals();
+
+  expect(capturedInit).not.toBeNull();
+  expect(capturedInit.headers.Authorization).toBe(
+    `Bearer ${process.env.RESEND_API_KEY}`,
+  );
+  expect(capturedInit.body).toBeTypeOf("string");
+
+  // Custom URL via redirectTo
+  const code = capturedInit.body.match(
+    /http:\/\/localhost:5173\/dashboard\?code=([^\s\\]+)/,
+  )?.[1];
+  expect(code).toBeTypeOf("string");
 });
 
 function setupEnv() {

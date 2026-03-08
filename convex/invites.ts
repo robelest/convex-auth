@@ -1,15 +1,22 @@
 import { Resend } from "@convex-dev/resend";
 import { ConvexError } from "convex/values";
+
 import { components } from "./_generated/api";
 import { auth } from "./auth";
 import { authMutation } from "./functions";
-import { acceptInviteInput, createInviteInput } from "./validation";
+import {
+  acceptInviteInput,
+  acceptInviteOutput,
+  createInviteInput,
+  inviteEmailOutput,
+} from "./validation";
 
 const resend = new Resend(components.resend, { testMode: false });
 const DEFAULT_FROM = process.env.AUTH_EMAIL ?? "My App <onboarding@resend.dev>";
 
 export const sendEmail = authMutation
   .input(createInviteInput)
+  .returns(inviteEmailOutput)
   .handler(async (ctx, args) => {
     const membership = await auth.user.group.get(ctx, {
       userId: ctx.auth.userId,
@@ -89,6 +96,7 @@ export const sendEmail = authMutation
 
 export const acceptToken = authMutation
   .input(acceptInviteInput)
+  .returns(acceptInviteOutput)
   .handler(async (ctx, { token }) => {
     const result = await auth.invite.token.accept(ctx, {
       token,
@@ -106,7 +114,8 @@ export const acceptToken = authMutation
   .public();
 
 function appUrl() {
-  const base = process.env.SITE_URL ?? process.env.APP_URL ?? "http://localhost:3000";
+  const base =
+    process.env.SITE_URL ?? process.env.APP_URL ?? "http://localhost:3000";
   return base.replace(/\/$/, "");
 }
 

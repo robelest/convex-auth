@@ -27,6 +27,7 @@
   `x-forwarded-proto` in SSR helper checks.
 
 Migration note:
+
 - Most SSR proxy-mode apps need no changes after upgrading.
 - If you use a custom JWT issuer, set `accepted_issuers` explicitly in
   `server({...})`.
@@ -41,8 +42,8 @@ Migration note:
   propagated the new names through component/server types and queries.
 - Breaking preview update: provider API continues to use `OAuth(...)` and
   class-based providers (`new Password()`, `new Passkey()`, `new Totp()`,
-  `new Device()`, `new Anonymous()`) without deprecated default-export
-  provider helpers.
+  `new Device()`, `new Anonymous()`) without deprecated default-export provider
+  helpers.
 
 ## 0.0.4-preview.7
 
@@ -56,9 +57,9 @@ Migration note:
 
 ## 0.0.4-preview.6
 
-- Harden proxy-mode client handshake confirmation by keeping in-flight handshakes
-  pending across transient Convex `onAuthChange(false)` callbacks, instead of
-  immediately rejecting with `AUTH_HANDSHAKE_REJECTED`.
+- Harden proxy-mode client handshake confirmation by keeping in-flight
+  handshakes pending across transient Convex `onAuthChange(false)` callbacks,
+  instead of immediately rejecting with `AUTH_HANDSHAKE_REJECTED`.
 - Add a unique JWT `jti` claim to issued access tokens so rapid refresh/sign-in
   cycles always produce distinct tokens for Convex auth confirmation.
 - Add regression coverage for handshake race conditions and a ledger-style
@@ -70,17 +71,17 @@ Migration note:
   server-confirmed auth state instead of local token presence. Sign-in flows now
   wait for Convex auth confirmation and throw structured handshake errors on
   rejection/timeout.
-- Invite APIs now support token-first acceptance flows: create returns raw invite
-  token, acceptance can be performed by token, invite expiration is enforced, and
-  group membership is ensured atomically during acceptance.
+- Invite APIs now support token-first acceptance flows: create returns raw
+  invite token, acceptance can be performed by token, invite expiration is
+  enforced, and group membership is ensured atomically during acceptance.
 - Breaking preview API update: removed `auth.invite.getByToken(...)` and
   `auth.invite.acceptByToken(...)`. Use `auth.invite.token.get(...)` and
   `auth.invite.token.accept(...)` instead.
 - Token invite acceptance now requires matching invite email, but no longer
   requires the accepting user email to already be verified.
 - Server refresh/proxy behavior is more resilient: transient OAuth code exchange
-  and token refresh failures preserve active sessions instead of eagerly clearing
-  cookies; terminal failures still clear verifier state.
+  and token refresh failures preserve active sessions instead of eagerly
+  clearing cookies; terminal failures still clear verifier state.
 
 ## 0.0.91
 
@@ -222,7 +223,8 @@ Migration note:
 
 ## 0.0.72
 
-- Upgrade + pin legacy OAuth internals to 0.36.0 to avoid issues with mismatched types
+- Upgrade + pin legacy OAuth internals to 0.36.0 to avoid issues with mismatched
+  types
 
 ## 0.0.71
 

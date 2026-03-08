@@ -1,4 +1,5 @@
 import { httpRouter } from "convex/server";
+
 import { internal } from "./_generated/api";
 import { auth } from "./auth";
 
@@ -29,10 +30,9 @@ auth.http.route(http, {
         );
       }
     } catch {
-      return new Response(
-        JSON.stringify({ error: "Invalid JSON body" }),
-        { status: 400 },
-      );
+      return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+        status: 400,
+      });
     }
 
     await ctx.runMutation(internal.messages.sendAsUser, {

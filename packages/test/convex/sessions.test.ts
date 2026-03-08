@@ -1,7 +1,8 @@
-import { convexTest, TestConvex } from "../convex-test";
+import { api } from "@convex/_generated/api";
 import { decodeJwt } from "jose";
 import { expect, test, vi } from "vitest";
-import { api } from "@convex/_generated/api";
+
+import { convexTest, TestConvex } from "../convex-test";
 import schema from "./schema";
 import { CONVEX_SITE_URL, JWKS, JWT_PRIVATE_KEY } from "./test.helpers";
 

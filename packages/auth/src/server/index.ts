@@ -1,20 +1,16 @@
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { ConvexError } from "convex/values";
-import { jwtDecode } from "jwt-decode";
 import { parse, serialize } from "cookie";
-import type {
-  SignInAction,
-  SignOutAction,
-} from "./implementation/index";
+import { jwtDecode } from "jwt-decode";
+
+import type { SignInAction, SignOutAction } from "./implementation/index";
 import { isLocalHost } from "./utils";
 
-const signInActionRef: SignInAction = makeFunctionReference(
-  "auth/session:start",
-);
-const signOutActionRef: SignOutAction = makeFunctionReference(
-  "auth/session:stop",
-);
+const signInActionRef: SignInAction =
+  makeFunctionReference("auth/session:start");
+const signOutActionRef: SignOutAction =
+  makeFunctionReference("auth/session:stop");
 
 /** Cookie lifetime configuration for auth tokens. */
 export type AuthCookieConfig = {
@@ -111,7 +107,10 @@ const DERIVED_COOKIE_NAMESPACE_FALLBACK = "convexauth";
  * @param cookieNamespace - Optional namespace suffix for cookie isolation.
  * @returns An object with `token`, `refreshToken`, and `verifier` cookie names.
  */
-export function auth_cookie_names(host?: string, cookieNamespace?: string | null) {
+export function auth_cookie_names(
+  host?: string,
+  cookieNamespace?: string | null,
+) {
   const prefix = isLocalHost(host) ? "" : "__Host-";
   const namespace = normalizeCookieNamespace(cookieNamespace);
   const suffix = namespace === null ? "" : `_${namespace}`;
@@ -359,7 +358,8 @@ function deriveCookieNamespaceFromUrl(url: string) {
 function normalizeIssuer(value: string) {
   try {
     const parsed = new URL(value);
-    const pathname = parsed.pathname === "/" ? "" : parsed.pathname.replace(/\/+$/, "");
+    const pathname =
+      parsed.pathname === "/" ? "" : parsed.pathname.replace(/\/+$/, "");
     return `${parsed.protocol}//${parsed.host}${pathname}`;
   } catch {
     return value.replace(/\/+$/, "");
@@ -507,10 +507,7 @@ export function server(options: ServerOptions) {
     } catch {
       return true;
     }
-    return (
-      originUrl.host !== host ||
-      originUrl.protocol !== protocol
-    );
+    return originUrl.host !== host || originUrl.protocol !== protocol;
   };
 
   const authErrorCode = (error: unknown): string | null => {
@@ -580,10 +577,7 @@ export function server(options: ServerOptions) {
     }
 
     const decodedToken = token === null ? null : decodeToken(token);
-    if (
-      decodedToken?.iss !== undefined &&
-      !issuerMatches(decodedToken.iss)
-    ) {
+    if (decodedToken?.iss !== undefined && !issuerMatches(decodedToken.iss)) {
       logVerbose("Access token issuer mismatch, clearing auth cookies");
       return null;
     }
@@ -592,12 +586,9 @@ export function server(options: ServerOptions) {
       refreshTokenValue: string,
     ): Promise<{ token: string; refreshToken: string } | null | undefined> => {
       try {
-        const result = await convexClient().action(
-          signInActionRef,
-          {
-            refreshToken: refreshTokenValue,
-          },
-        );
+        const result = await convexClient().action(signInActionRef, {
+          refreshToken: refreshTokenValue,
+        });
         if (result.tokens === undefined) {
           throw new Error(
             "Invalid `auth/session:start` result for token refresh",
@@ -622,7 +613,9 @@ export function server(options: ServerOptions) {
     }
 
     if (refreshToken !== null && token === null) {
-      logVerbose("Access token cookie missing, attempting refresh-token recovery");
+      logVerbose(
+        "Access token cookie missing, attempting refresh-token recovery",
+      );
       return await attemptRefreshWithToken(refreshToken);
     }
 
@@ -636,7 +629,9 @@ export function server(options: ServerOptions) {
         logVerbose("Refresh token cookie missing but access token still valid");
         return undefined;
       }
-      logVerbose("Refresh token cookie missing and access token invalid, clearing");
+      logVerbose(
+        "Refresh token cookie missing and access token invalid, clearing",
+      );
       return null;
     }
 
@@ -645,10 +640,13 @@ export function server(options: ServerOptions) {
     }
 
     if (decodedToken?.exp === undefined || decodedToken.iat === undefined) {
-      logVerbose("Failed to decode access token, attempting refresh-token recovery");
+      logVerbose(
+        "Failed to decode access token, attempting refresh-token recovery",
+      );
       return await attemptRefreshWithToken(refreshToken);
     }
-    const totalTokenLifetimeMs = decodedToken.exp * 1000 - decodedToken.iat * 1000;
+    const totalTokenLifetimeMs =
+      decodedToken.exp * 1000 - decodedToken.iat * 1000;
     const minimumExpiration =
       Date.now() +
       Math.min(
@@ -777,10 +775,7 @@ export function server(options: ServerOptions) {
         );
 
         try {
-          const result = await client.action(
-            signInActionRef,
-            args,
-          );
+          const result = await client.action(signInActionRef, args);
           if (result.redirect !== undefined) {
             const response = jsonResponse({ redirect: result.redirect });
             return attachCookies(
@@ -825,8 +820,15 @@ export function server(options: ServerOptions) {
             typeof error.data === "object" &&
             error.data !== null &&
             "code" in error.data
-              ? { error: (error.data as { message?: string }).message ?? String(error), authError: error.data }
-              : { error: error instanceof Error ? error.message : String(error) };
+              ? {
+                  error:
+                    (error.data as { message?: string }).message ??
+                    String(error),
+                  authError: error.data,
+                }
+              : {
+                  error: error instanceof Error ? error.message : String(error),
+                };
           const response = jsonResponse(errorBody, 400);
           const clearSession =
             args.refreshToken !== undefined &&
@@ -836,9 +838,7 @@ export function server(options: ServerOptions) {
             serialize_auth_cookies(
               {
                 token: clearSession ? null : currentCookies.token,
-                refreshToken: clearSession
-                  ? null
-                  : currentCookies.refreshToken,
+                refreshToken: clearSession ? null : currentCookies.refreshToken,
                 verifier: null,
               },
               host,
@@ -850,9 +850,7 @@ export function server(options: ServerOptions) {
       }
 
       try {
-        await convexClient(currentCookies.token).action(
-          signOutActionRef,
-        );
+        await convexClient(currentCookies.token).action(signOutActionRef);
       } catch (error) {
         console.error(error);
         if (currentCookies.refreshToken !== null) {
@@ -861,7 +859,9 @@ export function server(options: ServerOptions) {
               refreshToken: currentCookies.refreshToken,
             });
             if (refreshed.tokens !== undefined && refreshed.tokens !== null) {
-              await convexClient(refreshed.tokens.token).action(signOutActionRef);
+              await convexClient(refreshed.tokens.token).action(
+                signOutActionRef,
+              );
             }
           } catch (fallbackError) {
             console.error(fallbackError);
@@ -927,13 +927,10 @@ export function server(options: ServerOptions) {
       ) {
         const redirectUrl = new URL(requestUrl);
         try {
-          const result = await convexClient().action(
-            signInActionRef,
-            {
-              params: { code },
-              verifier: currentCookies.verifier ?? undefined,
-            },
-          );
+          const result = await convexClient().action(signInActionRef, {
+            params: { code },
+            verifier: currentCookies.verifier ?? undefined,
+          });
           if (result.tokens === undefined) {
             throw new Error(
               "Invalid `auth/session:start` result for code exchange",

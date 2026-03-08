@@ -1,8 +1,8 @@
 /// <reference types="vite/client" />
 
-import { convexTest as baseConvexTest } from "convex-test";
-import authTest from "@robelest/convex-auth/test";
 import resendTest from "@convex-dev/resend/test";
+import authTest from "@robelest/convex-auth/test";
+import { convexTest as baseConvexTest } from "convex-test";
 
 export * from "convex-test";
 

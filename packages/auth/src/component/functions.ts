@@ -1,10 +1,11 @@
-import { createBuilder } from "fluent-convex";
 import type {
   GenericValidator,
   Infer,
   ObjectType,
   PropertyValidators,
 } from "convex/values";
+import { createBuilder } from "fluent-convex";
+
 import type { DataModel } from "./_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
 
@@ -51,9 +52,7 @@ function withValidation(
 export function query<
   TArgs extends ArgsValidator | undefined,
   TReturns extends GenericValidator | undefined = undefined,
->(
-  config: BaseFunctionConfig<QueryCtx, TArgs, TReturns>,
-) {
+>(config: BaseFunctionConfig<QueryCtx, TArgs, TReturns>) {
   return withValidation(convex.query(), config)
     .handler(config.handler)
     .public();
@@ -62,9 +61,7 @@ export function query<
 export function mutation<
   TArgs extends ArgsValidator | undefined,
   TReturns extends GenericValidator | undefined = undefined,
->(
-  config: BaseFunctionConfig<MutationCtx, TArgs, TReturns>,
-) {
+>(config: BaseFunctionConfig<MutationCtx, TArgs, TReturns>) {
   return withValidation(convex.mutation(), config)
     .handler(config.handler)
     .public();
@@ -73,9 +70,7 @@ export function mutation<
 export function internalQuery<
   TArgs extends ArgsValidator | undefined,
   TReturns extends GenericValidator | undefined = undefined,
->(
-  config: BaseFunctionConfig<QueryCtx, TArgs, TReturns>,
-) {
+>(config: BaseFunctionConfig<QueryCtx, TArgs, TReturns>) {
   return withValidation(convex.query(), config)
     .handler(config.handler)
     .internal();
@@ -84,9 +79,7 @@ export function internalQuery<
 export function internalMutation<
   TArgs extends ArgsValidator | undefined,
   TReturns extends GenericValidator | undefined = undefined,
->(
-  config: BaseFunctionConfig<MutationCtx, TArgs, TReturns>,
-) {
+>(config: BaseFunctionConfig<MutationCtx, TArgs, TReturns>) {
   return withValidation(convex.mutation(), config)
     .handler(config.handler)
     .internal();
@@ -95,9 +88,7 @@ export function internalMutation<
 export function action<
   TArgs extends ArgsValidator | undefined,
   TReturns extends GenericValidator | undefined = undefined,
->(
-  config: BaseFunctionConfig<ActionCtx, TArgs, TReturns>,
-) {
+>(config: BaseFunctionConfig<ActionCtx, TArgs, TReturns>) {
   return withValidation(convex.action(), config)
     .handler(config.handler)
     .public();
@@ -106,9 +97,7 @@ export function action<
 export function internalAction<
   TArgs extends ArgsValidator | undefined,
   TReturns extends GenericValidator | undefined = undefined,
->(
-  config: BaseFunctionConfig<ActionCtx, TArgs, TReturns>,
-) {
+>(config: BaseFunctionConfig<ActionCtx, TArgs, TReturns>) {
   return withValidation(convex.action(), config)
     .handler(config.handler)
     .internal();

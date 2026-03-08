@@ -1,8 +1,9 @@
-import { load as cheerio } from "cheerio";
-import { TestConvexForDataModel } from "../convex-test";
-import { expect, vi } from "vitest";
 import { api } from "@convex/_generated/api";
 import { DataModel } from "@convex/_generated/dataModel";
+import { load as cheerio } from "cheerio";
+import { expect, vi } from "vitest";
+
+import { TestConvexForDataModel } from "../convex-test";
 
 export const CONVEX_SITE_URL = "https://test-123.convex.site";
 export const JWT_PRIVATE_KEY =
@@ -74,7 +75,9 @@ export async function mockResendOTP<T>(send: () => Promise<T>) {
         input === "https://api.resend.com/emails"
       ) {
         const body = String(init.body ?? "");
-        const byHtmlSelector = cheerio(body)('p[style*="font-size:2.25rem"]').text();
+        const byHtmlSelector = cheerio(body)(
+          'p[style*="font-size:2.25rem"]',
+        ).text();
         const byRegex = body.match(/\b(\d{6,8})\b/)?.[1] ?? "";
         code = byHtmlSelector || byRegex;
         expect(code).not.toEqual("");

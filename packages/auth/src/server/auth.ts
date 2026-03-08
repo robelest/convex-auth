@@ -32,13 +32,14 @@
 
 import type { UserIdentity } from "convex/server";
 import type { GenericId } from "convex/values";
-import type { Doc } from "./implementation/types";
+
 import type { ComponentApi as AuthComponentApi } from "../component/_generated/component";
-import { Auth as AuthFactory } from "./implementation/index";
-import type { ConvexAuthConfig } from "./types";
-import { defaultMagicLinkEmail } from "./templates";
 import { email as emailProvider } from "../providers/email";
 import { throwAuthError } from "./errors";
+import { Auth as AuthFactory } from "./implementation/index";
+import type { Doc } from "./implementation/types";
+import { defaultMagicLinkEmail } from "./templates";
+import type { ConvexAuthConfig } from "./types";
 
 // ============================================================================
 // Types
@@ -83,24 +84,42 @@ export class Auth {
   public readonly store: ReturnType<typeof AuthFactory>["store"];
 
   // ---- Proxied auth helper sub-objects ----
-  /** User helpers: `.current(ctx)`, `.require(ctx)`, `.get(ctx, userId)`, `.patch(ctx, userId, data)`, `.viewer(ctx)`, `.group.list(ctx, ...)`, `.group.get(ctx, ...)` */
-  get user() { return this._auth.user; }
+  /** User helpers: `.current(ctx)`, `.require(ctx)`, `.get(ctx, userId)`, `.patch(ctx, userId, data)`, `.setActiveGroup(ctx, { userId, groupId })`, `.active(ctx, { userId })`, `.viewer(ctx)`, `.group.list(ctx, ...)`, `.group.get(ctx, ...)`, `.group.getInherited(ctx, ...)`, `.group.require(ctx, ...)` */
+  get user() {
+    return this._auth.user;
+  }
   /** Session helpers: `.current(ctx)`, `.invalidate(ctx, { userId, except? })` */
-  get session() { return this._auth.session; }
+  get session() {
+    return this._auth.session;
+  }
   /** Provider helpers: `.signIn(ctx, provider, args)` */
-  get provider() { return this._auth.provider; }
+  get provider() {
+    return this._auth.provider;
+  }
   /** Account helpers: `.create(ctx, args)`, `.get(ctx, args)`, `.update(ctx, args)` */
-  get account() { return this._auth.account; }
-  /** Group helpers: `.create(ctx, ...)`, `.get(ctx, id)`, `.list(ctx, ...)`, `.update(ctx, ...)`, `.delete(ctx, id)`, `.member.*` */
-  get group() { return this._auth.group; }
+  get account() {
+    return this._auth.account;
+  }
+  /** Group helpers: `.create(ctx, ...)`, `.get(ctx, id)`, `.list(ctx, ...)`, `.update(ctx, ...)`, `.delete(ctx, id)`, `.ancestors(ctx, { groupId, ... })`, `.member.*` */
+  get group() {
+    return this._auth.group;
+  }
   /** Invite helpers: `.create(ctx, ...)`, `.get(ctx, id)`, `.token.get(ctx, token)`, `.token.accept(ctx, ...)`, `.list(ctx, ...)`, `.accept(ctx, ...)`, `.revoke(ctx, id)` */
-  get invite() { return this._auth.invite; }
+  get invite() {
+    return this._auth.invite;
+  }
   /** Passkey helpers: `.list(ctx, { userId })`, `.rename(ctx, id, name)`, `.remove(ctx, id)` */
-  get passkey() { return this._auth.passkey; }
+  get passkey() {
+    return this._auth.passkey;
+  }
   /** TOTP helpers: `.list(ctx, { userId })`, `.remove(ctx, id)` */
-  get totp() { return this._auth.totp; }
+  get totp() {
+    return this._auth.totp;
+  }
   /** API key helpers: `.create(ctx, ...)`, `.verify(ctx, rawKey)`, `.list(ctx, ...)`, `.get(ctx, id)`, `.update(ctx, ...)`, `.revoke(ctx, id)`, `.remove(ctx, id)` */
-  get key() { return this._auth.key; }
+  get key() {
+    return this._auth.key;
+  }
 
   /**
    * @param component - The auth component reference from `components.auth`.
@@ -149,7 +168,6 @@ export class Auth {
     this.signIn = authResult.signIn;
     this.signOut = authResult.signOut;
     this.store = authResult.store;
-
   }
 
   /** HTTP namespace — route registration and Bearer-authenticated endpoints. */
@@ -191,10 +209,7 @@ export type AuthCtxConfig<
    * group/role for multi-tenant apps). The returned object is spread
    * into `ctx.auth`.
    */
-  resolve?: (
-    ctx: any,
-    user: UserDoc,
-  ) => Promise<TResolve> | TResolve;
+  resolve?: (ctx: any, user: UserDoc) => Promise<TResolve> | TResolve;
 };
 
 /**
@@ -336,9 +351,7 @@ export function AuthCtx(auth: Auth, config?: AuthCtxConfig<any>) {
           };
         }
         const user = await authHelper.user.get(ctx, userId);
-        const extra = config.resolve
-          ? await config.resolve(ctx, user)
-          : {};
+        const extra = config.resolve ? await config.resolve(ctx, user) : {};
         return {
           ctx: {
             auth: {
@@ -355,9 +368,7 @@ export function AuthCtx(auth: Auth, config?: AuthCtxConfig<any>) {
       // Required mode (default): throws NOT_SIGNED_IN
       const userId = await authHelper.user.require(ctx);
       const user = await authHelper.user.get(ctx, userId);
-      const extra = config?.resolve
-        ? await config.resolve(ctx, user)
-        : {};
+      const extra = config?.resolve ? await config.resolve(ctx, user) : {};
 
       return {
         ctx: {

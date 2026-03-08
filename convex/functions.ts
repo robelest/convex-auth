@@ -1,7 +1,8 @@
+import type { Auth as ConvexNativeAuth } from "convex/server";
 import { ConvexError } from "convex/values";
 import { createBuilder } from "fluent-convex";
 import { WithZod } from "fluent-convex/zod";
-import type { Auth as ConvexNativeAuth } from "convex/server";
+
 import type { DataModel } from "./_generated/dataModel";
 import { auth } from "./auth";
 

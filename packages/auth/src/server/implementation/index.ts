@@ -8,15 +8,16 @@ import {
   internalMutationGeneric,
 } from "convex/server";
 import { ConvexError, GenericId, v } from "convex/values";
-import { throwAuthError, isAuthError } from "../errors";
 import { parse as parseCookies, serialize as serializeCookie } from "cookie";
+
 import { redirectToParamCookie, useRedirectToParam } from "../cookies";
-import type { FunctionReferenceFromExport } from "../types";
+import { throwAuthError, isAuthError } from "../errors";
 import {
   configDefaults,
   listAvailableProviders,
   materializeProvider,
 } from "../providers";
+import type { FunctionReferenceFromExport } from "../types";
 import {
   AuthProviderConfig,
   ConvexAuthConfig,
@@ -26,21 +27,18 @@ import {
   UserWhere,
 } from "../types";
 import { requireEnv } from "../utils";
-import {
-  MutationCtx,
-  KeyDoc,
-} from "./types";
+import { MutationCtx, KeyDoc } from "./types";
 import type { Tokens } from "./types";
 export type { Doc, Tokens } from "./types";
+import { createOAuthAuthorizationURL, handleOAuthCallback } from "../oauth";
+import type { OAuthMaterializedConfig } from "../types";
 import {
-  generateRandomString,
-  LOG_LEVELS,
-  TOKEN_SUB_CLAIM_DIVIDER,
-  logError,
-  logWithLevel,
-  sha256,
-} from "./utils";
-import { GetProviderOrThrowFunc } from "./provider";
+  generateApiKey,
+  hashApiKey,
+  buildScopeChecker,
+  validateScopes,
+  checkKeyRateLimit,
+} from "./keys";
 import {
   callCreateAccountFromCredentials,
   callInvalidateSessions,
@@ -52,20 +50,17 @@ import {
   storeArgs,
   storeImpl,
 } from "./mutations/index";
-import { signInImpl } from "./signin";
+import { GetProviderOrThrowFunc } from "./provider";
 import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects";
+import { signInImpl } from "./signin";
 import {
-  generateApiKey,
-  hashApiKey,
-  buildScopeChecker,
-  validateScopes,
-  checkKeyRateLimit,
-} from "./keys";
-import {
-  createOAuthAuthorizationURL,
-  handleOAuthCallback,
-} from "../oauth";
-import type { OAuthMaterializedConfig } from "../types";
+  generateRandomString,
+  LOG_LEVELS,
+  TOKEN_SUB_CLAIM_DIVIDER,
+  logError,
+  logWithLevel,
+  sha256,
+} from "./utils";
 
 /**
  * The type of the signIn Convex Action returned from the auth() helper.
@@ -195,7 +190,9 @@ export function Auth(config_: ConvexAuthConfig) {
        * @returns The user document, or `null` if not found.
        */
       get: async (ctx: ComponentReadCtx, userId: string) => {
-        return await ctx.runQuery(config.component.public.userGetById, { userId });
+        return await ctx.runQuery(config.component.public.userGetById, {
+          userId,
+        });
       },
       /**
        * List users with optional filters, sorting, and pagination.
@@ -231,7 +228,9 @@ export function Auth(config_: ConvexAuthConfig) {
         if (userId === null) {
           return null;
         }
-        return await ctx.runQuery(config.component.public.userGetById, { userId });
+        return await ctx.runQuery(config.component.public.userGetById, {
+          userId,
+        });
       },
       /**
        * Update a user document with partial data.
@@ -251,6 +250,60 @@ export function Auth(config_: ConvexAuthConfig) {
         });
       },
       /**
+       * Set or clear a user's active group in `user.extend.lastActiveGroup`.
+       *
+       * This helper preserves other keys under `user.extend`.
+       * Pass `groupId: null` to clear `lastActiveGroup`.
+       */
+      setActiveGroup: async (
+        ctx: ComponentCtx,
+        opts: { userId: string; groupId: string | null },
+      ) => {
+        const user = await auth.user.get(ctx, opts.userId);
+        const existingExtend =
+          user !== null &&
+          user.extend !== null &&
+          typeof user.extend === "object" &&
+          !Array.isArray(user.extend)
+            ? { ...(user.extend as Record<string, unknown>) }
+            : {};
+
+        if (opts.groupId === null) {
+          const { lastActiveGroup: _omit, ...rest } = existingExtend;
+          await auth.user.patch(ctx, opts.userId, { extend: rest });
+          return;
+        }
+
+        await auth.user.patch(ctx, opts.userId, {
+          extend: { ...existingExtend, lastActiveGroup: opts.groupId },
+        });
+      },
+      /**
+       * Get the user's active group ID from `user.extend.lastActiveGroup`.
+       *
+       * @param ctx - Convex context with `runQuery`.
+       * @param opts.userId - The user document ID.
+       * @returns The active group ID, or `null` if none is set.
+       */
+      active: async (
+        ctx: ComponentReadCtx,
+        opts: { userId: string },
+      ): Promise<string | null> => {
+        const user = await auth.user.get(ctx, opts.userId);
+        if (
+          user !== null &&
+          user.extend !== null &&
+          typeof user.extend === "object" &&
+          !Array.isArray(user.extend)
+        ) {
+          const val = (user.extend as Record<string, unknown>).lastActiveGroup;
+          if (typeof val === "string") {
+            return val;
+          }
+        }
+        return null;
+      },
+      /**
        * Query a user's group memberships.
        */
       group: {
@@ -268,14 +321,31 @@ export function Auth(config_: ConvexAuthConfig) {
             limit?: number;
             cursor?: string | null;
             order?: "asc" | "desc";
+            includeGroup?: boolean;
           },
         ) => {
-          return await ctx.runQuery(config.component.public.memberList, {
-            where: { userId: opts.userId },
-            limit: opts.limit,
-            cursor: opts.cursor,
-            order: opts.order,
-          });
+          const result = await ctx.runQuery(
+            config.component.public.memberList,
+            {
+              where: { userId: opts.userId },
+              limit: opts.limit,
+              cursor: opts.cursor,
+              order: opts.order,
+            },
+          );
+          if (!opts.includeGroup) {
+            return result;
+          }
+          const groups = await Promise.all(
+            result.items.map((item: any) => auth.group.get(ctx, item.groupId)),
+          );
+          return {
+            items: result.items.map((item: any, i: number) => ({
+              ...item,
+              group: groups[i] ?? null,
+            })),
+            nextCursor: result.nextCursor,
+          };
         },
         /**
          * Look up a user's membership in a specific group. Returns the member
@@ -290,6 +360,129 @@ export function Auth(config_: ConvexAuthConfig) {
             config.component.public.memberGetByGroupAndUser,
             opts,
           );
+        },
+        /**
+         * Resolve membership for a group, including inherited membership
+         * from ancestor groups (`parentGroupId` chain).
+         *
+         * Returns direct membership when found on `opts.groupId`, otherwise
+         * returns the nearest ancestor membership. Use `roles` to only match
+         * specific roles (for example `admin`/`lead`).
+         */
+        getInherited: async (
+          ctx: ComponentReadCtx,
+          opts: {
+            userId: string;
+            groupId: string;
+            roles?: string[];
+            maxDepth?: number;
+          },
+        ) => {
+          const roleFilter =
+            opts.roles !== undefined && opts.roles.length > 0
+              ? new Set(opts.roles)
+              : null;
+          const maxDepth = Math.max(0, Math.floor(opts.maxDepth ?? 32));
+          const visited = new Set<string>();
+          const traversedGroupIds: string[] = [];
+
+          let currentGroupId: string | undefined = opts.groupId;
+          let depth = 0;
+          let cycleDetected = false;
+          let maxDepthReached = false;
+
+          while (currentGroupId !== undefined) {
+            if (depth > maxDepth) {
+              maxDepthReached = true;
+              break;
+            }
+
+            if (visited.has(currentGroupId)) {
+              cycleDetected = true;
+              break;
+            }
+            visited.add(currentGroupId);
+            traversedGroupIds.push(currentGroupId);
+
+            const membership = await auth.user.group.get(ctx, {
+              userId: opts.userId,
+              groupId: currentGroupId,
+            });
+            if (
+              membership !== null &&
+              (roleFilter === null || roleFilter.has(membership.role))
+            ) {
+              return {
+                requestedGroupId: opts.groupId,
+                matchedGroupId: currentGroupId,
+                membership,
+                depth,
+                isDirect: depth === 0,
+                isInherited: depth > 0,
+                traversedGroupIds,
+                cycleDetected: false,
+                maxDepthReached: false,
+              };
+            }
+
+            const group = await auth.group.get(ctx, currentGroupId);
+            if (group === null || group.parentGroupId === undefined) {
+              break;
+            }
+
+            currentGroupId = group.parentGroupId;
+            depth += 1;
+          }
+
+          return {
+            requestedGroupId: opts.groupId,
+            matchedGroupId: null,
+            membership: null,
+            depth: null,
+            isDirect: false,
+            isInherited: false,
+            traversedGroupIds,
+            cycleDetected,
+            maxDepthReached,
+          };
+        },
+        /**
+         * Require membership on a group, checking inherited membership
+         * from ancestor groups when no direct membership exists.
+         *
+         * Throws `FORBIDDEN` if no matching membership is found.
+         *
+         * @param ctx - Convex context with `runQuery`.
+         * @param opts.userId - The user to check.
+         * @param opts.groupId - The target group.
+         * @param opts.roles - Optional role filter (e.g. `["lead", "admin"]`).
+         * @param opts.maxDepth - Maximum ancestor depth (default 32).
+         * @returns The matched membership with metadata.
+         * @throws ConvexError with code `FORBIDDEN`.
+         */
+        require: async (
+          ctx: ComponentReadCtx,
+          opts: {
+            userId: string;
+            groupId: string;
+            roles?: string[];
+            maxDepth?: number;
+          },
+        ) => {
+          const result = await auth.user.group.getInherited(ctx, opts);
+          if (result.membership === null) {
+            throwAuthError(
+              "FORBIDDEN",
+              `User ${opts.userId} has no membership on group ${opts.groupId} or its ancestors.`,
+            );
+          }
+          return {
+            membership: result.membership,
+            matchedGroupId: result.matchedGroupId,
+            isDirect: result.isDirect,
+            isInherited: result.isInherited,
+            depth: result.depth,
+          };
         },
       },
     },
@@ -392,7 +585,10 @@ export function Auth(config_: ConvexAuthConfig) {
           enrichCtx(ctx),
           materializeProvider(provider),
           // params type widened: Record<string, unknown> → Record<string, any>
-          args as { accountId?: GenericId<"Account">; params?: Record<string, any> },
+          args as {
+            accountId?: GenericId<"Account">;
+            params?: Record<string, any>;
+          },
           {
             generateTokens: false,
             allowExtraProviders: true,
@@ -400,7 +596,10 @@ export function Auth(config_: ConvexAuthConfig) {
         );
         return result.kind === "signedIn"
           ? result.signedIn !== null
-            ? { userId: result.signedIn.userId, sessionId: result.signedIn.sessionId }
+            ? {
+                userId: result.signedIn.userId,
+                sessionId: result.signedIn.sessionId,
+              }
             : null
           : null;
       },
@@ -444,7 +643,9 @@ export function Auth(config_: ConvexAuthConfig) {
        * Retrieve a group by its ID. Returns `null` if not found.
        */
       get: async (ctx: ComponentReadCtx, groupId: string) => {
-        return await ctx.runQuery(config.component.public.groupGet, { groupId });
+        return await ctx.runQuery(config.component.public.groupGet, {
+          groupId,
+        });
       },
       /**
        * List groups with optional filtering, sorting, and pagination.
@@ -494,7 +695,10 @@ export function Auth(config_: ConvexAuthConfig) {
         groupId: string,
         data: Record<string, unknown>,
       ) => {
-        await ctx.runMutation(config.component.public.groupUpdate, { groupId, data });
+        await ctx.runMutation(config.component.public.groupUpdate, {
+          groupId,
+          data,
+        });
       },
       /**
        * Delete a group and cascade to all descendants. Deletes child groups
@@ -503,6 +707,74 @@ export function Auth(config_: ConvexAuthConfig) {
        */
       delete: async (ctx: ComponentCtx, groupId: string) => {
         await ctx.runMutation(config.component.public.groupDelete, { groupId });
+      },
+      /**
+       * Retrieve the ancestor chain for a group by walking `parentGroupId`
+       * upward toward the root.
+       *
+       * Useful for breadcrumbs, permission inheritance visualization, and
+       * operations that need the full hierarchy path.
+       *
+       * @param ctx - Convex context with `runQuery`.
+       * @param opts.groupId - The starting group.
+       * @param opts.maxDepth - Maximum traversal depth (default 32).
+       * @param opts.includeSelf - Include the starting group as the first
+       *   element (default `false`).
+       * @returns Ancestors ordered from immediate parent to root, plus
+       *   diagnostic flags.
+       */
+      ancestors: async (
+        ctx: ComponentReadCtx,
+        opts: {
+          groupId: string;
+          maxDepth?: number;
+          includeSelf?: boolean;
+        },
+      ) => {
+        const maxDepth = Math.max(0, Math.floor(opts.maxDepth ?? 32));
+        const visited = new Set<string>();
+        const ancestors: NonNullable<
+          Awaited<ReturnType<typeof auth.group.get>>
+        >[] = [];
+        let cycleDetected = false;
+        let maxDepthReached = false;
+
+        let currentGroupId: string | undefined = opts.groupId;
+        let depth = 0;
+        let isFirst = true;
+
+        while (currentGroupId !== undefined) {
+          if (depth > maxDepth) {
+            maxDepthReached = true;
+            break;
+          }
+          if (visited.has(currentGroupId)) {
+            cycleDetected = true;
+            break;
+          }
+          visited.add(currentGroupId);
+
+          const group = await auth.group.get(ctx, currentGroupId);
+          if (group === null) {
+            break;
+          }
+
+          if (isFirst) {
+            isFirst = false;
+            if (opts.includeSelf) {
+              ancestors.push(group);
+            }
+            currentGroupId = group.parentGroupId;
+            depth += 1;
+            continue;
+          }
+
+          ancestors.push(group);
+          currentGroupId = group.parentGroupId;
+          depth += 1;
+        }
+
+        return { ancestors, cycleDetected, maxDepthReached };
       },
 
       /**
@@ -544,7 +816,9 @@ export function Auth(config_: ConvexAuthConfig) {
          * Retrieve a member record by its ID. Returns `null` if not found.
          */
         get: async (ctx: ComponentReadCtx, memberId: string) => {
-          return await ctx.runQuery(config.component.public.memberGet, { memberId });
+          return await ctx.runQuery(config.component.public.memberGet, {
+            memberId,
+          });
         },
         /**
          * List members with optional filtering, sorting, and pagination.
@@ -584,7 +858,9 @@ export function Auth(config_: ConvexAuthConfig) {
          * Remove a member from a group by deleting the member record.
          */
         remove: async (ctx: ComponentCtx, memberId: string) => {
-          await ctx.runMutation(config.component.public.memberRemove, { memberId });
+          await ctx.runMutation(config.component.public.memberRemove, {
+            memberId,
+          });
         },
         /**
          * Update a member's fields (role, status, extend).
@@ -604,7 +880,6 @@ export function Auth(config_: ConvexAuthConfig) {
           });
         },
       },
-
     },
     /**
      * Manage platform-level invitations.
@@ -659,7 +934,9 @@ export function Auth(config_: ConvexAuthConfig) {
        * Retrieve an invite by its ID. Returns `null` if not found.
        */
       get: async (ctx: ComponentReadCtx, inviteId: string) => {
-        return await ctx.runQuery(config.component.public.inviteGet, { inviteId });
+        return await ctx.runQuery(config.component.public.inviteGet, {
+          inviteId,
+        });
       },
       /**
        * Token-based invite helpers.
@@ -670,9 +947,12 @@ export function Auth(config_: ConvexAuthConfig) {
          */
         get: async (ctx: ComponentReadCtx, token: string) => {
           const tokenHash = await sha256(token);
-          return await ctx.runQuery(config.component.public.inviteGetByTokenHash, {
-            tokenHash,
-          });
+          return await ctx.runQuery(
+            config.component.public.inviteGetByTokenHash,
+            {
+              tokenHash,
+            },
+          );
         },
         /**
          * Accept an invitation by raw token and atomically add group membership
@@ -683,10 +963,13 @@ export function Auth(config_: ConvexAuthConfig) {
           args: { token: string; acceptedByUserId: string },
         ) => {
           const tokenHash = await sha256(args.token);
-          return await ctx.runMutation(config.component.public.inviteAcceptByToken, {
-            tokenHash,
-            acceptedByUserId: args.acceptedByUserId,
-          });
+          return await ctx.runMutation(
+            config.component.public.inviteAcceptByToken,
+            {
+              tokenHash,
+              acceptedByUserId: args.acceptedByUserId,
+            },
+          );
         },
       },
       /**
@@ -711,7 +994,12 @@ export function Auth(config_: ConvexAuthConfig) {
           };
           limit?: number;
           cursor?: string | null;
-          orderBy?: "_creationTime" | "status" | "email" | "expiresTime" | "acceptedTime";
+          orderBy?:
+            | "_creationTime"
+            | "status"
+            | "email"
+            | "expiresTime"
+            | "acceptedTime";
           order?: "asc" | "desc";
         },
       ) => {
@@ -756,7 +1044,11 @@ export function Auth(config_: ConvexAuthConfig) {
        * });
        * ```
        */
-      accept: async (ctx: ComponentCtx, inviteId: string, acceptedByUserId?: string) => {
+      accept: async (
+        ctx: ComponentCtx,
+        inviteId: string,
+        acceptedByUserId?: string,
+      ) => {
         await ctx.runMutation(config.component.public.inviteAccept, {
           inviteId,
           ...(acceptedByUserId ? { acceptedByUserId } : {}),
@@ -771,7 +1063,9 @@ export function Auth(config_: ConvexAuthConfig) {
        * @throws `ConvexError` with code `INVITE_NOT_PENDING` when the invite is not in `pending` status.
        */
       revoke: async (ctx: ComponentCtx, inviteId: string) => {
-        await ctx.runMutation(config.component.public.inviteRevoke, { inviteId });
+        await ctx.runMutation(config.component.public.inviteRevoke, {
+          inviteId,
+        });
       },
     },
     /**
@@ -804,10 +1098,10 @@ export function Auth(config_: ConvexAuthConfig) {
        * @param name - New display name (e.g. "MacBook Touch ID").
        */
       rename: async (ctx: ComponentCtx, passkeyId: string, name: string) => {
-        await ctx.runMutation(
-          config.component.public.passkeyUpdateMeta,
-          { passkeyId, data: { name } },
-        );
+        await ctx.runMutation(config.component.public.passkeyUpdateMeta, {
+          passkeyId,
+          data: { name },
+        });
       },
       /**
        * Delete a passkey credential.
@@ -815,10 +1109,9 @@ export function Auth(config_: ConvexAuthConfig) {
        * @param passkeyId - The passkey document ID to remove.
        */
       remove: async (ctx: ComponentCtx, passkeyId: string) => {
-        await ctx.runMutation(
-          config.component.public.passkeyDelete,
-          { passkeyId },
-        );
+        await ctx.runMutation(config.component.public.passkeyDelete, {
+          passkeyId,
+        });
       },
     },
     /**
@@ -848,10 +1141,7 @@ export function Auth(config_: ConvexAuthConfig) {
        * @param totpId - The TOTP document ID to remove.
        */
       remove: async (ctx: ComponentCtx, totpId: string) => {
-        await ctx.runMutation(
-          config.component.public.totpDelete,
-          { totpId },
-        );
+        await ctx.runMutation(config.component.public.totpDelete, { totpId });
       },
     },
     /**
@@ -999,7 +1289,12 @@ export function Auth(config_: ConvexAuthConfig) {
           };
           limit?: number;
           cursor?: string | null;
-          orderBy?: "_creationTime" | "name" | "lastUsedAt" | "expiresAt" | "revoked";
+          orderBy?:
+            | "_creationTime"
+            | "name"
+            | "lastUsedAt"
+            | "expiresAt"
+            | "revoked";
           order?: "asc" | "desc";
         },
       ) => {
@@ -1016,11 +1311,13 @@ export function Auth(config_: ConvexAuthConfig) {
        * Get a single API key by its document ID.
        * Returns `null` if not found.
        */
-      get: async (ctx: ComponentReadCtx, keyId: string): Promise<KeyDoc | null> => {
-        return (await ctx.runQuery(
-          config.component.public.keyGetById,
-          { keyId },
-        )) as KeyDoc | null;
+      get: async (
+        ctx: ComponentReadCtx,
+        keyId: string,
+      ): Promise<KeyDoc | null> => {
+        return (await ctx.runQuery(config.component.public.keyGetById, {
+          keyId,
+        })) as KeyDoc | null;
       },
 
       /**
@@ -1095,96 +1392,95 @@ export function Auth(config_: ConvexAuthConfig) {
        * @param http your HTTP router
        */
       add: (http: HttpRouter) => {
-      http.route({
-        path: "/.well-known/openid-configuration",
-        method: "GET",
-        handler: httpActionGeneric(async () => {
-          return new Response(
-            JSON.stringify({
-              issuer: requireEnv("CONVEX_SITE_URL"),
-              jwks_uri:
-                requireEnv("CONVEX_SITE_URL") + "/.well-known/jwks.json",
-              authorization_endpoint:
-                requireEnv("CONVEX_SITE_URL") + "/oauth/authorize",
-            }),
-            {
+        http.route({
+          path: "/.well-known/openid-configuration",
+          method: "GET",
+          handler: httpActionGeneric(async () => {
+            return new Response(
+              JSON.stringify({
+                issuer: requireEnv("CONVEX_SITE_URL"),
+                jwks_uri:
+                  requireEnv("CONVEX_SITE_URL") + "/.well-known/jwks.json",
+                authorization_endpoint:
+                  requireEnv("CONVEX_SITE_URL") + "/oauth/authorize",
+              }),
+              {
+                status: 200,
+                headers: {
+                  "Content-Type": "application/json",
+                  "Cache-Control":
+                    "public, max-age=15, stale-while-revalidate=15, stale-if-error=86400",
+                },
+              },
+            );
+          }),
+        });
+
+        http.route({
+          path: "/.well-known/jwks.json",
+          method: "GET",
+          handler: httpActionGeneric(async () => {
+            return new Response(requireEnv("JWKS"), {
               status: 200,
               headers: {
                 "Content-Type": "application/json",
                 "Cache-Control":
                   "public, max-age=15, stale-while-revalidate=15, stale-if-error=86400",
               },
-            },
-          );
-        }),
-      });
-
-      http.route({
-        path: "/.well-known/jwks.json",
-        method: "GET",
-        handler: httpActionGeneric(async () => {
-          return new Response(requireEnv("JWKS"), {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-              "Cache-Control":
-                "public, max-age=15, stale-while-revalidate=15, stale-if-error=86400",
-            },
-          });
-        }),
-      });
-
-      if (hasOAuth) {
-        http.route({
-          pathPrefix: "/api/auth/signin/",
-          method: "GET",
-          handler: httpActionGeneric(
-            convertErrorsToResponse(400, async (ctx, request) => {
-              const url = new URL(request.url);
-              const pathParts = url.pathname.split("/");
-              const providerId = pathParts.at(-1)!;
-              if (providerId === null) {
-                throwAuthError("OAUTH_MISSING_PROVIDER");
-              }
-              const verifier = url.searchParams.get("code");
-              if (verifier === null) {
-                throwAuthError("OAUTH_MISSING_VERIFIER");
-              }
-              const provider = getProviderOrThrow(providerId);
-
-              const oauthConfig = provider as OAuthMaterializedConfig;
-              const { redirect, cookies, signature } =
-                await createOAuthAuthorizationURL(
-                  providerId,
-                  oauthConfig.provider,
-                  oauthConfig,
-                );
-
-              await callVerifierSignature(ctx, {
-                verifier,
-                signature,
-              });
-
-              const redirectTo = url.searchParams.get("redirectTo");
-              if (redirectTo !== null) {
-                cookies.push(redirectToParamCookie(providerId, redirectTo));
-              }
-
-              const headers = new Headers({ Location: redirect });
-              for (const { name, value, options } of cookies) {
-                headers.append(
-                  "Set-Cookie",
-                  serializeCookie(name, value, options as any),
-                );
-              }
-
-              return new Response(null, { status: 302, headers });
-            }),
-          ),
+            });
+          }),
         });
 
-        const callbackAction = httpActionGeneric(
-          async (ctx, request) => {
+        if (hasOAuth) {
+          http.route({
+            pathPrefix: "/api/auth/signin/",
+            method: "GET",
+            handler: httpActionGeneric(
+              convertErrorsToResponse(400, async (ctx, request) => {
+                const url = new URL(request.url);
+                const pathParts = url.pathname.split("/");
+                const providerId = pathParts.at(-1)!;
+                if (providerId === null) {
+                  throwAuthError("OAUTH_MISSING_PROVIDER");
+                }
+                const verifier = url.searchParams.get("code");
+                if (verifier === null) {
+                  throwAuthError("OAUTH_MISSING_VERIFIER");
+                }
+                const provider = getProviderOrThrow(providerId);
+
+                const oauthConfig = provider as OAuthMaterializedConfig;
+                const { redirect, cookies, signature } =
+                  await createOAuthAuthorizationURL(
+                    providerId,
+                    oauthConfig.provider,
+                    oauthConfig,
+                  );
+
+                await callVerifierSignature(ctx, {
+                  verifier,
+                  signature,
+                });
+
+                const redirectTo = url.searchParams.get("redirectTo");
+                if (redirectTo !== null) {
+                  cookies.push(redirectToParamCookie(providerId, redirectTo));
+                }
+
+                const headers = new Headers({ Location: redirect });
+                for (const { name, value, options } of cookies) {
+                  headers.append(
+                    "Set-Cookie",
+                    serializeCookie(name, value, options as any),
+                  );
+                }
+
+                return new Response(null, { status: 302, headers });
+              }),
+            ),
+          });
+
+          const callbackAction = httpActionGeneric(async (ctx, request) => {
             const url = new URL(request.url);
             const pathParts = url.pathname.split("/");
             const providerId = pathParts.at(-1)!;
@@ -1282,22 +1578,21 @@ export function Auth(config_: ConvexAuthConfig) {
               }
               return new Response(null, { status: 302, headers });
             }
-          },
-        );
+          });
 
-        http.route({
-          pathPrefix: "/api/auth/callback/",
-          method: "GET",
-          handler: callbackAction,
-        });
+          http.route({
+            pathPrefix: "/api/auth/callback/",
+            method: "GET",
+            handler: callbackAction,
+          });
 
-        http.route({
-          pathPrefix: "/api/auth/callback/",
-          method: "POST",
-          handler: callbackAction,
-        });
-      }
-    },
+          http.route({
+            pathPrefix: "/api/auth/callback/",
+            method: "POST",
+            handler: callbackAction,
+          });
+        }
+      },
 
       /**
        * Wrap an HTTP action handler with Bearer token authentication.
@@ -1342,11 +1637,7 @@ export function Auth(config_: ConvexAuthConfig) {
             corsConfig.headers ?? "Content-Type,Authorization",
         };
 
-        const jsonError = (
-          status: number,
-          code: string,
-          message: string,
-        ) =>
+        const jsonError = (status: number, code: string, message: string) =>
           new Response(JSON.stringify({ error: message, code }), {
             status,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -1366,12 +1657,19 @@ export function Auth(config_: ConvexAuthConfig) {
             const rawKey = authHeader.slice(7);
 
             // 2. Verify API key
-            let keyResult: { userId: string; keyId: string; scopes: import("../types.js").ScopeChecker };
+            let keyResult: {
+              userId: string;
+              keyId: string;
+              scopes: import("../types.js").ScopeChecker;
+            };
             try {
               keyResult = await auth.key.verify(genericCtx, rawKey);
             } catch (error: unknown) {
               if (isAuthError(error)) {
-                const { code, message } = error.data as { code: string; message: string };
+                const { code, message } = error.data as {
+                  code: string;
+                  message: string;
+                };
                 return jsonError(403, code, message);
               }
               throw error;
@@ -1379,7 +1677,12 @@ export function Auth(config_: ConvexAuthConfig) {
 
             // 3. Optional scope check
             if (options?.scope) {
-              if (!keyResult.scopes.can(options.scope.resource, options.scope.action)) {
+              if (
+                !keyResult.scopes.can(
+                  options.scope.resource,
+                  options.scope.action,
+                )
+              ) {
                 return jsonError(
                   403,
                   "SCOPE_CHECK_FAILED",
@@ -1420,7 +1723,11 @@ export function Auth(config_: ConvexAuthConfig) {
             });
           } catch (error: unknown) {
             logError(error);
-            return jsonError(500, "INTERNAL_ERROR", "An unexpected error occurred.");
+            return jsonError(
+              500,
+              "INTERNAL_ERROR",
+              "An unexpected error occurred.",
+            );
           }
         });
       },
@@ -1546,7 +1853,10 @@ export function Auth(config_: ConvexAuthConfig) {
         };
       }> => {
         if (args.calledBy !== undefined) {
-          logWithLevel("INFO", `\`auth/session:start\` called by ${args.calledBy}`);
+          logWithLevel(
+            "INFO",
+            `\`auth/session:start\` called by ${args.calledBy}`,
+          );
         }
         const provider =
           args.provider !== undefined
@@ -1569,7 +1879,14 @@ export function Auth(config_: ConvexAuthConfig) {
           case "totpRequired":
             return { totpRequired: true, verifier: result.verifier };
           case "totpSetup":
-            return { totpSetup: { uri: result.uri, secret: result.secret, totpId: result.totpId }, verifier: result.verifier };
+            return {
+              totpSetup: {
+                uri: result.uri,
+                secret: result.secret,
+                totpId: result.totpId,
+              },
+              verifier: result.verifier,
+            };
           case "deviceCode":
             return {
               deviceCode: {
@@ -1583,7 +1900,10 @@ export function Auth(config_: ConvexAuthConfig) {
             };
           default: {
             const _typecheck: never = result;
-            throwAuthError("INTERNAL_ERROR", `Unexpected result from signIn, ${String(result)}`);
+            throwAuthError(
+              "INTERNAL_ERROR",
+              `Unexpected result from signIn, ${String(result)}`,
+            );
           }
         }
       },
@@ -1608,7 +1928,6 @@ export function Auth(config_: ConvexAuthConfig) {
         return storeImpl(ctx, args, getProviderOrThrow, config);
       },
     }),
-
   };
 }
 
@@ -1622,7 +1941,10 @@ function convertErrorsToResponse(
     } catch (error) {
       if (isAuthError(error)) {
         return new Response(
-          JSON.stringify({ code: error.data.code, message: error.data.message }),
+          JSON.stringify({
+            code: error.data.code,
+            message: error.data.message,
+          }),
           {
             status: errorStatusCode,
             headers: { "Content-Type": "application/json" },

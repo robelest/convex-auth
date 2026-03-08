@@ -3,51 +3,28 @@
   "version": "0.0.4-preview.10",
   "description": "Authentication for Convex",
   "keywords": [
+    "auth",
     "authentication",
     "authorization",
-    "auth",
+    "convex",
     "login",
-    "sign",
-    "convex"
+    "sign"
   ],
   "homepage": "https://labs.convex.dev/auth",
   "bugs": "https://github.com/robelest/convex-auth/issues",
+  "license": "Apache-2.0",
+  "author": "xixixao",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/robelest/convex-auth.git"
   },
-  "license": "Apache-2.0",
-  "author": "xixixao",
+  "bin": "./dist/bin.cjs",
   "files": [
     "dist",
     "src"
   ],
   "type": "module",
-  "bin": "./dist/bin.cjs",
   "sideEffects": false,
-  "scripts": {
-    "build:version": "node ../../scripts/generate-version.js",
-    "build:lib": "tsdown",
-    "build:component:dts": "node ../../scripts/fix-component-entrypoint-dts.js",
-    "build:bin": "esbuild src/cli/index.ts --bundle --platform=node --format=cjs --outfile=dist/bin.cjs",
-    "build": "rm -rf dist && bun run build:version && bun run build:lib && bun run build:component:dts && bun run build:bin",
-    "typecheck:consumer": "tsc --project tsconfig.consumer.json --noEmit",
-    "check:attw": "attw --pack . --profile esm-only --exclude-entrypoints ./test ./_generated/component.js",
-    "check:publint": "publint --strict",
-    "check:packaging": "bun run check:attw && bun run check:publint",
-    "docs": "bun run --cwd ../../docs dev",
-    "lint": "tsc --project tsconfig.server.json --noEmit && tsc --project tsconfig.client.json --noEmit && tsc --project tsconfig.component.json --noEmit && bun run --cwd ../.. lint",
-    "spellcheck": "cspell \"docs/pages/**/*.md*\"",
-    "prepare": "bun run build",
-    "prepublishOnly": "bun run lint && bun run build && bun run typecheck:consumer && bun run check:packaging && bun run test:once",
-    "test": "bun run --cwd ../../packages/test test",
-    "test:once": "bun run --cwd ../../packages/test test:once",
-    "convex:dev": "bun run --cwd ../.. dev:convex",
-    "convex:codegen": "bun run --cwd ../.. codegen:convex",
-    "convex:codegen:component": "bun run --cwd ../.. codegen:convex:component",
-    "convex:dashboard": "bunx convex dashboard",
-    "convex:run": "bunx convex run"
-  },
   "exports": {
     "./_generated/component.js": {
       "types": "./dist/component/_generated/component.d.ts"
@@ -86,6 +63,29 @@
       "import": "./dist/providers/*.js"
     }
   },
+  "scripts": {
+    "build:version": "node ../../scripts/generate-version.js",
+    "build:lib": "tsdown",
+    "build:component:dts": "node ../../scripts/fix-component-entrypoint-dts.js",
+    "build:bin": "esbuild src/cli/index.ts --bundle --platform=node --format=cjs --outfile=dist/bin.cjs",
+    "build": "rm -rf dist && bun run build:version && bun run build:lib && bun run build:component:dts && bun run build:bin",
+    "typecheck:consumer": "tsc --project tsconfig.consumer.json --noEmit",
+    "check:attw": "attw --pack . --profile esm-only --exclude-entrypoints ./test ./_generated/component.js",
+    "check:publint": "publint --strict",
+    "check:packaging": "bun run check:attw && bun run check:publint",
+    "docs": "bun run --cwd ../../docs dev",
+    "lint": "tsc --project tsconfig.server.json --noEmit && tsc --project tsconfig.client.json --noEmit && tsc --project tsconfig.component.json --noEmit && bun run --cwd ../.. lint",
+    "spellcheck": "cspell \"docs/pages/**/*.md*\"",
+    "prepare": "bun run build",
+    "prepublishOnly": "bun run lint && bun run build && bun run typecheck:consumer && bun run check:packaging && bun run test:once",
+    "test": "bun run --cwd ../../packages/test test",
+    "test:once": "bun run --cwd ../../packages/test test:once",
+    "convex:dev": "bun run --cwd ../.. dev:convex",
+    "convex:codegen": "bun run --cwd ../.. codegen:convex",
+    "convex:codegen:component": "bun run --cwd ../.. codegen:convex:component",
+    "convex:dashboard": "bunx convex dashboard",
+    "convex:run": "bunx convex run"
+  },
   "dependencies": {
     "@oslojs/crypto": "^1.0.1",
     "@oslojs/encoding": "^1.1.0",
@@ -98,13 +98,6 @@
     "jwt-decode": "^4.0.0",
     "lucia": "^3.2.2"
   },
-  "peerDependencies": {
-    "convex": "^1.32.0"
-  },
-  "@comment devDependencies": [
-    "The dependencies of the CLI are also in devDependencies, built into",
-    "a bundle."
-  ],
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",
     "@commander-js/extra-typings": "^14.0.0",
@@ -122,5 +115,12 @@
     "tsdown": "0.20.0-beta.3",
     "typescript": "^5.9.3",
     "valibot": "^1.2.0"
-  }
+  },
+  "peerDependencies": {
+    "convex": "^1.32.0"
+  },
+  "@comment devDependencies": [
+    "The dependencies of the CLI are also in devDependencies, built into",
+    "a bundle."
+  ]
 }

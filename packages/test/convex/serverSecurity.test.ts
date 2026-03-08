@@ -1,15 +1,16 @@
 import { ConvexHttpClient } from "convex/browser";
 import { afterEach, expect, test, vi } from "vitest";
-import {
-  createOAuthAuthorizationURL,
-  handleOAuthCallback,
-} from "../../auth/src/server/oauth";
+
 import { parseAuthError } from "../../auth/src/server/errors";
 import {
   auth_cookie_names,
   parse_auth_cookies,
   server,
 } from "../../auth/src/server/index";
+import {
+  createOAuthAuthorizationURL,
+  handleOAuthCallback,
+} from "../../auth/src/server/oauth";
 import { isLocalHost } from "../../auth/src/server/utils";
 
 const TEST_COOKIE_NAMESPACE = "server_security_tests";
@@ -60,17 +61,17 @@ test("parse_auth_cookies prefers namespaced cookies over legacy names", () => {
 
 test("OAuth callback rejects PKCE provider when verifier cookie is missing", async () => {
   const provider = {
-    createAuthorizationURL(_state: string, _codeVerifier: string, _scopes: string[]) {
+    createAuthorizationURL(
+      _state: string,
+      _codeVerifier: string,
+      _scopes: string[],
+    ) {
       return new URL("https://accounts.example.com/oauth");
     },
     validateAuthorizationCode: vi.fn(),
   };
 
-  const authResult = await createOAuthAuthorizationURL(
-    "google",
-    provider,
-    {},
-  );
+  const authResult = await createOAuthAuthorizationURL("google", provider, {});
   const stateCookie = authResult.cookies.find((cookie) =>
     cookie.name.endsWith("OAuthstate"),
   );
@@ -380,8 +381,13 @@ test("refresh clears foreign issuer token before expiry checks", async () => {
 
   const result = await auth.refresh(request);
   expect(result.token).toBeNull();
-  expect(result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value).toBe("");
-  expect(result.cookies.find((cookie) => cookie.name === cookieNames.refreshToken)?.value).toBe("");
+  expect(
+    result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value,
+  ).toBe("");
+  expect(
+    result.cookies.find((cookie) => cookie.name === cookieNames.refreshToken)
+      ?.value,
+  ).toBe("");
 });
 
 test("refresh clears malformed refresh token values", async () => {
@@ -408,8 +414,13 @@ test("refresh clears malformed refresh token values", async () => {
 
   const result = await auth.refresh(request);
   expect(result.token).toBeNull();
-  expect(result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value).toBe("");
-  expect(result.cookies.find((cookie) => cookie.name === cookieNames.refreshToken)?.value).toBe("");
+  expect(
+    result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value,
+  ).toBe("");
+  expect(
+    result.cookies.find((cookie) => cookie.name === cookieNames.refreshToken)
+      ?.value,
+  ).toBe("");
 });
 
 test("proxy refresh keeps valid access token when refresh cookie is missing", async () => {
@@ -534,11 +545,7 @@ test("proxy signOut retries revocation via refresh token", async () => {
   let signOutCalls = 0;
   vi.spyOn(ConvexHttpClient.prototype, "action").mockImplementation(
     async (_reference: unknown, args: any) => {
-      if (
-        typeof args === "object" &&
-        args !== null &&
-        "refreshToken" in args
-      ) {
+      if (typeof args === "object" && args !== null && "refreshToken" in args) {
         return {
           tokens: {
             token: "fresh-jwt-token",

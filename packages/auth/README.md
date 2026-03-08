@@ -1,17 +1,25 @@
 # @robelest/convex-auth
 
-Component-first authentication for [Convex](https://convex.dev). One component, one class, full TypeScript support.
+Component-first authentication for [Convex](https://convex.dev). One component,
+one class, full TypeScript support.
 
 ## Features
 
-- **Class-based API** — `new Auth(components.auth, { providers })` gives you everything.
-- **OAuth via Arctic** — 50+ providers through [Arctic](https://arcticjs.dev), zero-dependency OAuth 2.0.
-- **Fluent Convex builders (recommended)** — cleaner auth-aware API handling with middleware and explicit `.public()` / `.internal()` exports.
-- **Password, passkeys, TOTP, magic links, OTP, phone, anonymous** — all built in.
-- **Device Authorization (RFC 8628)** — authenticate CLIs, smart TVs, and IoT devices.
-- **API keys** — scoped permissions, SHA-256 hashed storage, optional rate limiting.
+- **Class-based API** — `new Auth(components.auth, { providers })` gives you
+  everything.
+- **OAuth via Arctic** — 50+ providers through [Arctic](https://arcticjs.dev),
+  zero-dependency OAuth 2.0.
+- **Fluent Convex builders (recommended)** — cleaner auth-aware API handling
+  with middleware and explicit `.public()` / `.internal()` exports.
+- **Password, passkeys, TOTP, magic links, OTP, phone, anonymous** — all built
+  in.
+- **Device Authorization (RFC 8628)** — authenticate CLIs, smart TVs, and IoT
+  devices.
+- **API keys** — scoped permissions, SHA-256 hashed storage, optional rate
+  limiting.
 - **Groups, memberships, invites** — hierarchical multi-tenancy with roles.
-- **SSR support** — framework-agnostic httpOnly cookie API (SvelteKit, TanStack Start, Next.js).
+- **SSR support** — framework-agnostic httpOnly cookie API (SvelteKit, TanStack
+  Start, Next.js).
 - **Context enrichment** — zero-boilerplate `ctx.auth.userId` via `AuthCtx`.
 
 ## Install
@@ -36,7 +44,8 @@ Before running setup:
 bunx @robelest/convex-auth
 ```
 
-The interactive CLI sets up your Convex component, auth config, and HTTP routes in under a minute.
+The interactive CLI sets up your Convex component, auth config, and HTTP routes
+in under a minute.
 
 ## Manual Setup
 
@@ -59,7 +68,9 @@ import { OAuth } from "@robelest/convex-auth/providers";
 
 const auth = new Auth(components.auth, {
   providers: [
-    OAuth(new GitHub(process.env.AUTH_GITHUB_ID!, process.env.AUTH_GITHUB_SECRET!)),
+    OAuth(
+      new GitHub(process.env.AUTH_GITHUB_ID!, process.env.AUTH_GITHUB_SECRET!),
+    ),
   ],
 });
 
@@ -79,7 +90,8 @@ export default http;
 
 ## Recommended Convex API Handling (`fluent-convex`)
 
-For new projects, we recommend `fluent-convex` for auth middleware composition and cleaner API exports.
+For new projects, we recommend `fluent-convex` for auth middleware composition
+and cleaner API exports.
 
 ```ts
 // convex/functions.ts
@@ -102,20 +114,22 @@ export const query = convex.query().use(withRequiredAuth).extend(WithZod);
 export const mutation = convex.mutation().use(withRequiredAuth).extend(WithZod);
 ```
 
-`AuthCtx` from `@robelest/convex-auth/component` remains supported if your project already uses `convex-helpers`.
+`AuthCtx` from `@robelest/convex-auth/component` remains supported if your
+project already uses `convex-helpers`.
 
 ## Providers
 
-| Provider | Import |
-|----------|--------|
-| OAuth (Arctic) | `import { OAuth } from "@robelest/convex-auth/providers"` |
-| Password | `import password from "@robelest/convex-auth/providers/password"` |
-| Passkey | `import passkey from "@robelest/convex-auth/providers/passkey"` |
-| TOTP | `import totp from "@robelest/convex-auth/providers/totp"` |
-| Phone/SMS | `import phone from "@robelest/convex-auth/providers/phone"` |
-| Anonymous | `import anonymous from "@robelest/convex-auth/providers/anonymous"` |
-| Device (RFC 8628) | `import { Device } from "@robelest/convex-auth/providers"` |
+| Provider          | Import                                                              |
+| ----------------- | ------------------------------------------------------------------- |
+| OAuth (Arctic)    | `import { OAuth } from "@robelest/convex-auth/providers"`           |
+| Password          | `import password from "@robelest/convex-auth/providers/password"`   |
+| Passkey           | `import passkey from "@robelest/convex-auth/providers/passkey"`     |
+| TOTP              | `import totp from "@robelest/convex-auth/providers/totp"`           |
+| Phone/SMS         | `import phone from "@robelest/convex-auth/providers/phone"`         |
+| Anonymous         | `import anonymous from "@robelest/convex-auth/providers/anonymous"` |
+| Device (RFC 8628) | `import { Device } from "@robelest/convex-auth/providers"`          |
 
 ## Documentation
 
-See the full [README](https://github.com/robelest/convex-auth#readme) for detailed usage, API reference, SSR integration, and more.
+See the full [README](https://github.com/robelest/convex-auth#readme) for
+detailed usage, API reference, SSR integration, and more.

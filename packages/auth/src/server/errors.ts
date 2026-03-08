@@ -28,176 +28,119 @@ import { ConvexError } from "convex/values";
  */
 export const AUTH_ERRORS = {
   // ---- Configuration ----
-  PROVIDER_NOT_CONFIGURED:
-    "This sign-in method is not available.",
+  PROVIDER_NOT_CONFIGURED: "This sign-in method is not available.",
   EMAIL_CONFIG_REQUIRED:
     "Email transport is not configured. Configure email in your Auth constructor.",
-  MISSING_ENV_VAR:
-    "A required server environment variable is missing.",
-  MISSING_ACTION_CONTEXT:
-    "Action context is required for this operation.",
+  MISSING_ENV_VAR: "A required server environment variable is missing.",
+  MISSING_ACTION_CONTEXT: "Action context is required for this operation.",
 
   // ---- Authentication ----
-  NOT_SIGNED_IN:
-    "You must be signed in to perform this action.",
-  INVALID_VERIFICATION_CODE:
-    "Invalid or expired verification code.",
-  INVALID_REFRESH_TOKEN:
-    "Your session has expired. Please sign in again.",
+  NOT_SIGNED_IN: "You must be signed in to perform this action.",
+  INVALID_VERIFICATION_CODE: "Invalid or expired verification code.",
+  INVALID_REFRESH_TOKEN: "Your session has expired. Please sign in again.",
   AUTH_HANDSHAKE_TIMEOUT:
     "Sign-in succeeded but authentication confirmation timed out.",
   AUTH_HANDSHAKE_REJECTED:
     "Authentication was rejected while confirming the session.",
   SIGN_IN_MISSING_PARAMS:
     "Cannot sign in: missing provider, code, or refresh token.",
-  UNSUPPORTED_PROVIDER_TYPE:
-    "This provider type is not supported.",
-  INVALID_REDIRECT:
-    "Invalid redirect URL.",
+  UNSUPPORTED_PROVIDER_TYPE: "This provider type is not supported.",
+  INVALID_REDIRECT: "Invalid redirect URL.",
 
   // ---- Email / Phone ----
-  EMAIL_SEND_FAILED:
-    "Failed to send verification email. Please try again.",
+  EMAIL_SEND_FAILED: "Failed to send verification email. Please try again.",
 
   // ---- API Keys ----
-  INVALID_API_KEY:
-    "Invalid API key.",
-  API_KEY_REVOKED:
-    "This API key has been revoked.",
-  API_KEY_EXPIRED:
-    "This API key has expired.",
-  API_KEY_RATE_LIMITED:
-    "API key rate limit exceeded. Please try again later.",
-  API_KEY_INVALID_SCOPE:
-    "Invalid scope requested for API key.",
+  INVALID_API_KEY: "Invalid API key.",
+  API_KEY_REVOKED: "This API key has been revoked.",
+  API_KEY_EXPIRED: "This API key has expired.",
+  API_KEY_RATE_LIMITED: "API key rate limit exceeded. Please try again later.",
+  API_KEY_INVALID_SCOPE: "Invalid scope requested for API key.",
 
   // ---- HTTP Bearer Auth ----
-  MISSING_BEARER_TOKEN:
-    "Missing or malformed Authorization: Bearer header.",
-  SCOPE_CHECK_FAILED:
-    "This API key does not have the required permissions.",
+  MISSING_BEARER_TOKEN: "Missing or malformed Authorization: Bearer header.",
+  SCOPE_CHECK_FAILED: "This API key does not have the required permissions.",
 
   // ---- OAuth ----
-  OAUTH_MISSING_PROVIDER:
-    "Missing OAuth provider ID.",
-  OAUTH_MISSING_VERIFIER:
-    "Missing sign-in verifier.",
-  OAUTH_INVALID_STATE:
-    "Invalid OAuth state. Please try signing in again.",
-  OAUTH_PROVIDER_ERROR:
-    "The sign-in provider returned an error.",
+  OAUTH_MISSING_PROVIDER: "Missing OAuth provider ID.",
+  OAUTH_MISSING_VERIFIER: "Missing sign-in verifier.",
+  OAUTH_INVALID_STATE: "Invalid OAuth state. Please try signing in again.",
+  OAUTH_PROVIDER_ERROR: "The sign-in provider returned an error.",
   OAUTH_MISSING_ID_TOKEN:
     "ID token claims are missing from the provider response.",
-  OAUTH_INVALID_PROFILE:
-    "The sign-in provider returned an invalid profile.",
+  OAUTH_INVALID_PROFILE: "The sign-in provider returned an invalid profile.",
   OAUTH_UNSUPPORTED_AUTH_METHOD:
     "Unsupported OAuth client authentication method.",
-  OAUTH_NO_USERINFO:
-    "No userinfo endpoint configured for this provider.",
+  OAUTH_NO_USERINFO: "No userinfo endpoint configured for this provider.",
 
   // ---- Credentials ----
-  ACCOUNT_ALREADY_EXISTS:
-    "An account with these credentials already exists.",
-  ACCOUNT_NOT_FOUND:
-    "Account not found.",
+  ACCOUNT_ALREADY_EXISTS: "An account with these credentials already exists.",
+  ACCOUNT_NOT_FOUND: "Account not found.",
   INVALID_CREDENTIALS_PROVIDER:
     "This provider does not support credential operations.",
   MISSING_CRYPTO_FUNCTION:
     "This provider is missing a required cryptographic function.",
-  USER_UPDATE_FAILED:
-    "Could not update the user record.",
+  USER_UPDATE_FAILED: "Could not update the user record.",
 
   // ---- Verifier ----
-  INVALID_VERIFIER:
-    "Invalid or expired verifier.",
+  INVALID_VERIFIER: "Invalid or expired verifier.",
 
   // ---- Passkey ----
   PASSKEY_MISSING_CONFIG:
     "Passkey provider requires SITE_URL or explicit rpId configuration.",
-  PASSKEY_AUTH_REQUIRED:
-    "Sign in first, then add a passkey to your account.",
-  PASSKEY_MISSING_VERIFIER:
-    "Missing verifier for passkey operation.",
-  PASSKEY_INVALID_CLIENT_DATA:
-    "Invalid passkey client data.",
-  PASSKEY_INVALID_ORIGIN:
-    "Passkey origin does not match the expected value.",
-  PASSKEY_INVALID_CHALLENGE:
-    "Invalid or expired passkey challenge.",
-  PASSKEY_RP_MISMATCH:
-    "Relying party ID mismatch.",
-  PASSKEY_USER_PRESENCE:
-    "User presence flag not set.",
-  PASSKEY_USER_VERIFICATION:
-    "User verification required but not performed.",
-  PASSKEY_NO_CREDENTIAL:
-    "No credential in attestation.",
-  PASSKEY_UNSUPPORTED_ALGORITHM:
-    "Unsupported passkey algorithm.",
-  PASSKEY_INVALID_SIGNATURE:
-    "Invalid passkey signature.",
-  PASSKEY_UNKNOWN_CREDENTIAL:
-    "Unknown passkey credential.",
+  PASSKEY_AUTH_REQUIRED: "Sign in first, then add a passkey to your account.",
+  PASSKEY_MISSING_VERIFIER: "Missing verifier for passkey operation.",
+  PASSKEY_INVALID_CLIENT_DATA: "Invalid passkey client data.",
+  PASSKEY_INVALID_ORIGIN: "Passkey origin does not match the expected value.",
+  PASSKEY_INVALID_CHALLENGE: "Invalid or expired passkey challenge.",
+  PASSKEY_RP_MISMATCH: "Relying party ID mismatch.",
+  PASSKEY_USER_PRESENCE: "User presence flag not set.",
+  PASSKEY_USER_VERIFICATION: "User verification required but not performed.",
+  PASSKEY_NO_CREDENTIAL: "No credential in attestation.",
+  PASSKEY_UNSUPPORTED_ALGORITHM: "Unsupported passkey algorithm.",
+  PASSKEY_INVALID_SIGNATURE: "Invalid passkey signature.",
+  PASSKEY_UNKNOWN_CREDENTIAL: "Unknown passkey credential.",
   PASSKEY_COUNTER_ERROR:
     "Authenticator counter did not increase — possible credential cloning detected.",
-  PASSKEY_MISSING_FLOW:
-    "Missing passkey flow parameter.",
-  PASSKEY_UNKNOWN_FLOW:
-    "Unknown passkey flow.",
+  PASSKEY_MISSING_FLOW: "Missing passkey flow parameter.",
+  PASSKEY_UNKNOWN_FLOW: "Unknown passkey flow.",
 
   // ---- TOTP ----
-  TOTP_AUTH_REQUIRED:
-    "Sign in first, then set up two-factor authentication.",
-  TOTP_MISSING_VERIFIER:
-    "Missing verifier for TOTP operation.",
-  TOTP_MISSING_CODE:
-    "Missing TOTP code.",
-  TOTP_MISSING_ID:
-    "Missing TOTP enrollment ID.",
-  TOTP_NOT_FOUND:
-    "TOTP enrollment not found.",
-  TOTP_ALREADY_VERIFIED:
-    "TOTP enrollment is already verified.",
-  TOTP_INVALID_CODE:
-    "Invalid TOTP code.",
-  TOTP_INVALID_VERIFIER:
-    "Invalid or expired TOTP verifier.",
-  TOTP_NO_ENROLLMENT:
-    "No verified TOTP enrollment found.",
-  TOTP_MISSING_FLOW:
-    "Missing TOTP flow parameter.",
-  TOTP_UNKNOWN_FLOW:
-    "Unknown TOTP flow.",
+  TOTP_AUTH_REQUIRED: "Sign in first, then set up two-factor authentication.",
+  TOTP_MISSING_VERIFIER: "Missing verifier for TOTP operation.",
+  TOTP_MISSING_CODE: "Missing TOTP code.",
+  TOTP_MISSING_ID: "Missing TOTP enrollment ID.",
+  TOTP_NOT_FOUND: "TOTP enrollment not found.",
+  TOTP_ALREADY_VERIFIED: "TOTP enrollment is already verified.",
+  TOTP_INVALID_CODE: "Invalid TOTP code.",
+  TOTP_INVALID_VERIFIER: "Invalid or expired TOTP verifier.",
+  TOTP_NO_ENROLLMENT: "No verified TOTP enrollment found.",
+  TOTP_MISSING_FLOW: "Missing TOTP flow parameter.",
+  TOTP_UNKNOWN_FLOW: "Unknown TOTP flow.",
 
   // ---- Device Authorization (RFC 8628) ----
   DEVICE_CODE_EXPIRED:
     "The device code has expired. Please start a new authorization request.",
-  DEVICE_CODE_DENIED:
-    "The authorization request was denied.",
-  DEVICE_AUTHORIZATION_PENDING:
-    "The user has not yet authorized this device.",
+  DEVICE_CODE_DENIED: "The authorization request was denied.",
+  DEVICE_AUTHORIZATION_PENDING: "The user has not yet authorized this device.",
   DEVICE_SLOW_DOWN:
     "Polling too frequently. Increase the interval between requests.",
-  DEVICE_INVALID_USER_CODE:
-    "Invalid or expired user code.",
-  DEVICE_ALREADY_AUTHORIZED:
-    "This device code has already been authorized.",
-  DEVICE_MISSING_FLOW:
-    "Missing device flow parameter.",
-  DEVICE_UNKNOWN_FLOW:
-    "Unknown device flow.",
+  DEVICE_INVALID_USER_CODE: "Invalid or expired user code.",
+  DEVICE_ALREADY_AUTHORIZED: "This device code has already been authorized.",
+  DEVICE_MISSING_FLOW: "Missing device flow parameter.",
+  DEVICE_UNKNOWN_FLOW: "Unknown device flow.",
 
   // ---- Invites ----
-  INVITE_EXPIRED:
-    "This invitation has expired.",
-  INVITE_EMAIL_MISMATCH:
-    "This invitation is for a different email.",
-  INVITE_ALREADY_ACCEPTED:
-    "This invitation has already been accepted.",
+  INVITE_EXPIRED: "This invitation has expired.",
+  INVITE_EMAIL_MISMATCH: "This invitation is for a different email.",
+  INVITE_ALREADY_ACCEPTED: "This invitation has already been accepted.",
+
+  // ---- Groups ----
+  FORBIDDEN: "Access denied.",
+  NO_ACTIVE_GROUP: "User has no active group set.",
 
   // ---- Internal (should never reach user) ----
-  INTERNAL_ERROR:
-    "An unexpected error occurred.",
+  INTERNAL_ERROR: "An unexpected error occurred.",
 } as const satisfies Record<string, string>;
 
 /** Union of all recognized auth error code strings (keys of {@link AUTH_ERRORS}). */
@@ -276,9 +219,15 @@ export function isAuthError(
  */
 export function parseAuthError(
   error: unknown,
-): { code: AuthErrorCode; message: string } | { code: null; message: string } | null {
+):
+  | { code: AuthErrorCode; message: string }
+  | { code: null; message: string }
+  | null {
   if (isAuthError(error)) {
-    const { code, message } = error.data as { code: AuthErrorCode; message: string };
+    const { code, message } = error.data as {
+      code: AuthErrorCode;
+      message: string;
+    };
     return { code, message };
   }
   if (error instanceof ConvexError && typeof error.data === "string") {

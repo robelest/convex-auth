@@ -8,12 +8,12 @@
   },
   "devDependencies": {
     "@convex-dev/resend": "^0.2.3",
-    "@robelest/convex-auth": "workspace:*",
     "@edge-runtime/vm": "^3.2.0",
+    "@robelest/convex-auth": "workspace:*",
+    "cheerio": "^1.0.0-rc.12",
     "convex": "catalog:",
     "convex-test": "catalog:",
     "jose": "^5.10.0",
-    "cheerio": "^1.0.0-rc.12",
     "typescript": "^5.6.3",
     "vite": "catalog:",
     "vitest": "^3.2.4"

@@ -1,7 +1,8 @@
-import { decodeJwt } from "jose";
-import { afterEach, expect, test, vi } from "vitest";
 import { api, components } from "@convex/_generated/api";
 import type { DataModel } from "@convex/_generated/dataModel";
+import { decodeJwt } from "jose";
+import { afterEach, expect, test, vi } from "vitest";
+
 import { client } from "../../auth/src/client/index";
 import { convexTest, type TestConvexForDataModel } from "../convex-test";
 import schema from "./schema";
@@ -37,10 +38,9 @@ test("token invite acceptance allows matching unverified email", async () => {
     email: inviteEmail,
   });
 
-  const result = await t.withIdentity({ subject: claims.sub }).mutation(
-    api.invites.acceptToken,
-    { token },
-  );
+  const result = await t
+    .withIdentity({ subject: claims.sub })
+    .mutation(api.invites.acceptToken, { token });
 
   expect(result.inviteId).toBe(inviteId);
   expect(result.inviteStatus).toBe("accepted");
@@ -74,9 +74,11 @@ test("token invite acceptance still rejects mismatched email", async () => {
   });
 
   await expect(async () => {
-    await t.withIdentity({ subject: claims.sub }).mutation(api.invites.acceptToken, {
-      token,
-    });
+    await t
+      .withIdentity({ subject: claims.sub })
+      .mutation(api.invites.acceptToken, {
+        token,
+      });
   }).rejects.toThrow("Invite email does not match accepting user's email");
 });
 
@@ -142,10 +144,9 @@ test("ledger-style proxy sign up can immediately accept invite", async () => {
 
   const claims = decodeJwt(auth.state.token!);
   expect(typeof claims.sub).toBe("string");
-  const acceptResult = await t.withIdentity({ subject: claims.sub as string }).mutation(
-    api.invites.acceptToken,
-    { token: inviteToken },
-  );
+  const acceptResult = await t
+    .withIdentity({ subject: claims.sub as string })
+    .mutation(api.invites.acceptToken, { token: inviteToken });
   expect(acceptResult.inviteStatus).toBe("accepted");
   expect(acceptResult.membershipStatus).toBe("not_applicable");
 
@@ -154,7 +155,9 @@ test("ledger-style proxy sign up can immediately accept invite", async () => {
 
 function createConvexTransportMock() {
   const authRegistrations: Array<{
-    fetchToken: (args: { forceRefreshToken: boolean }) => Promise<string | null | undefined>;
+    fetchToken: (args: {
+      forceRefreshToken: boolean;
+    }) => Promise<string | null | undefined>;
     onChange?: (isAuthenticated: boolean) => void;
   }> = [];
 
@@ -165,7 +168,9 @@ function createConvexTransportMock() {
     }),
     clearAuth: vi.fn(),
     triggerAuthChange(isAuthenticated: boolean) {
-      authRegistrations[authRegistrations.length - 1]?.onChange?.(isAuthenticated);
+      authRegistrations[authRegistrations.length - 1]?.onChange?.(
+        isAuthenticated,
+      );
     },
     setAuthCallCount() {
       return authRegistrations.length;

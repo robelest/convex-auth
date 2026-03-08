@@ -1,7 +1,8 @@
-import { convexTest } from "../convex-test";
+import { api } from "@convex/_generated/api";
 import { decodeJwt } from "jose";
 import { expect, test } from "vitest";
-import { api } from "@convex/_generated/api";
+
+import { convexTest } from "../convex-test";
 import schema from "./schema";
 import {
   RESEND_API_KEY,
@@ -41,25 +42,34 @@ test("sign up with password", async () => {
   const claims = decodeJwt(tokens!.token);
   await t.withIdentity({ subject: claims.sub }).action(api.auth.session.stop);
 
-  const { tokens: refreshedFromFirstSession } = await t.action(api.auth.session.start, {
-    refreshToken: tokens!.refreshToken,
-    params: {},
-  });
+  const { tokens: refreshedFromFirstSession } = await t.action(
+    api.auth.session.start,
+    {
+      refreshToken: tokens!.refreshToken,
+      params: {},
+    },
+  );
   expect(refreshedFromFirstSession).toBeNull();
 
-  const { tokens: refreshedFromSecondSession } = await t.action(api.auth.session.start, {
-    refreshToken: tokens2!.refreshToken,
-    params: {},
-  });
+  const { tokens: refreshedFromSecondSession } = await t.action(
+    api.auth.session.start,
+    {
+      refreshToken: tokens2!.refreshToken,
+      params: {},
+    },
+  );
   expect(refreshedFromSecondSession).not.toBeNull();
 
   const claims2 = decodeJwt(tokens2!.token);
   await t.withIdentity({ subject: claims2.sub }).action(api.auth.session.stop);
 
-  const { tokens: refreshedAfterSecondSignOut } = await t.action(api.auth.session.start, {
-    refreshToken: tokens2!.refreshToken,
-    params: {},
-  });
+  const { tokens: refreshedAfterSecondSignOut } = await t.action(
+    api.auth.session.start,
+    {
+      refreshToken: tokens2!.refreshToken,
+      params: {},
+    },
+  );
   expect(refreshedAfterSecondSignOut).toBeNull();
 });
 
@@ -76,10 +86,9 @@ test("sign up with password keeps email unverified by default", async () => {
   });
 
   const claims = decodeJwt(tokens!.token);
-  const viewer = await t.withIdentity({ subject: claims.sub }).query(
-    api.users.viewer,
-    {},
-  );
+  const viewer = await t
+    .withIdentity({ subject: claims.sub })
+    .query(api.users.viewer, {});
 
   expect(viewer?.email).toBe("unverified@gmail.com");
   expect(viewer?.emailVerificationTime).toBeUndefined();

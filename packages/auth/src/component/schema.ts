@@ -148,8 +148,7 @@ export default defineSchema({
     name: v.optional(v.string()),
     createdAt: v.number(),
     lastUsedAt: v.optional(v.number()),
-  })
-    .index("user_id", ["userId"]),
+  }).index("user_id", ["userId"]),
 
   /**
    * Device authorization codes (RFC 8628). Each record tracks a pending
@@ -201,9 +200,7 @@ export default defineSchema({
     type: v.optional(v.string()),
     parentGroupId: v.optional(v.id("Group")),
     /** Faceted classification tags. Normalized at write time (trimmed, lowercased). */
-    tags: v.optional(
-      v.array(v.object({ key: v.string(), value: v.string() })),
-    ),
+    tags: v.optional(v.array(v.object({ key: v.string(), value: v.string() }))),
     extend: v.optional(v.any()),
   })
     .index("slug", ["slug"])

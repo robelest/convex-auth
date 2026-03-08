@@ -1,13 +1,23 @@
 import { ConvexError } from "convex/values";
+
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { auth } from "./auth";
 import { internalMutation, mutation, query } from "./functions";
 import {
+  nullOutput,
   listMessagesInput,
   messageInput,
   sendAsUserInput,
+  unknownRecordListOutput,
 } from "./validation";
 
-async function assertGroupMembership(ctx: any, groupId: string) {
+type AuthMessageContext = (QueryCtx | MutationCtx) & {
+  auth: {
+    userId: string;
+  };
+};
+
+async function assertGroupMembership(ctx: AuthMessageContext, groupId: string) {
   const membership = await auth.user.group.get(ctx, {
     userId: ctx.auth.userId,
     groupId,
@@ -22,6 +32,7 @@ async function assertGroupMembership(ctx: any, groupId: string) {
 
 export const list = query
   .input(listMessagesInput)
+  .returns(unknownRecordListOutput)
   .handler(async (ctx, { groupId }) => {
     if (groupId) {
       await assertGroupMembership(ctx, groupId);
@@ -46,6 +57,7 @@ export const list = query
 
 export const send = mutation
   .input(messageInput)
+  .returns(nullOutput)
   .handler(async (ctx, { body, groupId }) => {
     if (groupId) {
       await assertGroupMembership(ctx, groupId);
@@ -63,6 +75,7 @@ export const send = mutation
 /** Insert a message on behalf of a user (API key auth, no session). */
 export const sendAsUser = internalMutation
   .input(sendAsUserInput)
+  .returns(nullOutput)
   .handler(async (ctx, { userId, body }) => {
     await ctx.db.insert("messages", { body, userId });
     return null;

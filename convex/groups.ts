@@ -1,9 +1,13 @@
-import { mutation, query } from "./functions";
 import { auth } from "./auth";
+import { mutation, query } from "./functions";
 import {
   createGroupInput,
   emptyInput,
   groupIdInput,
+  nonEmptyId,
+  nullableUnknownRecordOutput,
+  nullOutput,
+  unknownRecordListOutput,
 } from "./validation";
 
 /**
@@ -11,15 +15,18 @@ import {
  */
 export const list = query
   .input(emptyInput)
+  .returns(unknownRecordListOutput)
   .handler(async (ctx) => {
     const { items: memberships } = await auth.user.group.list(ctx, {
       userId: ctx.auth.userId,
     });
     const groups = await Promise.all(
-      memberships.map(async (membership: { groupId: string; role?: string }) => {
-        const group = await auth.group.get(ctx, membership.groupId);
-        return group ? { ...group, role: membership.role } : null;
-      }),
+      memberships.map(
+        async (membership: { groupId: string; role?: string }) => {
+          const group = await auth.group.get(ctx, membership.groupId);
+          return group ? { ...group, role: membership.role } : null;
+        },
+      ),
     );
     return groups.filter((group) => group !== null);
   })
@@ -30,6 +37,7 @@ export const list = query
  */
 export const get = query
   .input(groupIdInput)
+  .returns(nullableUnknownRecordOutput)
   .handler(async (ctx, { groupId }) => {
     return await auth.group.get(ctx, groupId);
   })
@@ -40,6 +48,7 @@ export const get = query
  */
 export const create = mutation
   .input(createGroupInput)
+  .returns(nonEmptyId)
   .handler(async (ctx, { name, description }) => {
     const groupId = await auth.group.create(ctx, {
       name,
@@ -60,6 +69,7 @@ export const create = mutation
  */
 export const members = query
   .input(groupIdInput)
+  .returns(unknownRecordListOutput)
   .handler(async (ctx, { groupId }) => {
     const { items: membersList } = await auth.group.member.list(ctx, {
       where: { groupId },
@@ -81,6 +91,7 @@ export const members = query
  */
 export const join = mutation
   .input(groupIdInput)
+  .returns(nullOutput)
   .handler(async (ctx, { groupId }) => {
     await auth.group.member.add(ctx, {
       groupId,
@@ -96,8 +107,11 @@ export const join = mutation
  */
 export const listAll = query
   .input(emptyInput)
+  .returns(unknownRecordListOutput)
   .handler(async (ctx) => {
-    const { items } = await auth.group.list(ctx, { where: { type: "channel" } });
+    const { items } = await auth.group.list(ctx, {
+      where: { type: "channel" },
+    });
     return items;
   })
   .public();

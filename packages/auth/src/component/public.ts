@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+
 import type { Id } from "./_generated/dataModel";
 import { mutation, query } from "./functions";
 
@@ -66,7 +67,9 @@ const vApiKeyRateLimitState = v.object({
   lastAttemptTime: v.number(),
 });
 
-function vDocMeta<T extends (typeof TABLES)[keyof typeof TABLES]>(tableName: T) {
+function vDocMeta<T extends (typeof TABLES)[keyof typeof TABLES]>(
+  tableName: T,
+) {
   return {
     _id: v.id(tableName),
     _creationTime: v.number(),
@@ -153,7 +156,7 @@ const vTotpFactorDoc = v.object({
   lastUsedAt: v.optional(v.number()),
 });
 
-const vRateLimitDoc = v.object({
+const _vRateLimitDoc = v.object({
   ...vDocMeta(TABLES.RateLimit),
   identifier: v.string(),
   last_attempt_time: v.number(),
@@ -359,7 +362,7 @@ export const userGetById = query({
   args: { userId: v.id("User") },
   returns: v.union(vUserDoc, v.null()),
   handler: async (ctx, { userId }) => {
-    return await ctx.db.get(userId);
+    return await ctx.db.get("User", userId);
   },
 });
 
@@ -414,7 +417,7 @@ export const userUpsert = mutation({
   returns: v.id("User"),
   handler: async (ctx, { userId, data }) => {
     if (userId !== undefined) {
-      await ctx.db.patch(userId, data);
+      await ctx.db.patch("User", userId, data);
       return userId;
     }
     return await ctx.db.insert("User", data);
@@ -426,7 +429,7 @@ export const userPatch = mutation({
   args: { userId: v.id("User"), data: v.any() },
   returns: v.null(),
   handler: async (ctx, { userId, data }) => {
-    await ctx.db.patch(userId, data);
+    await ctx.db.patch("User", userId, data);
     return null;
   },
 });
@@ -466,7 +469,7 @@ export const accountGetById = query({
   args: { accountId: v.id("Account") },
   returns: v.union(vAccountDoc, v.null()),
   handler: async (ctx, { accountId }) => {
-    return await ctx.db.get(accountId);
+    return await ctx.db.get("Account", accountId);
   },
 });
 
@@ -489,7 +492,7 @@ export const accountPatch = mutation({
   args: { accountId: v.id("Account"), data: v.any() },
   returns: v.null(),
   handler: async (ctx, { accountId, data }) => {
-    await ctx.db.patch(accountId, data);
+    await ctx.db.patch("Account", accountId, data);
     return null;
   },
 });
@@ -499,7 +502,7 @@ export const accountDelete = mutation({
   args: { accountId: v.id("Account") },
   returns: v.null(),
   handler: async (ctx, { accountId }) => {
-    await ctx.db.delete(accountId);
+    await ctx.db.delete("Account", accountId);
     return null;
   },
 });
@@ -574,7 +577,7 @@ export const sessionGetById = query({
   args: { sessionId: v.id("Session") },
   returns: v.union(vSessionDoc, v.null()),
   handler: async (ctx, { sessionId }) => {
-    return await ctx.db.get(sessionId);
+    return await ctx.db.get("Session", sessionId);
   },
 });
 
@@ -583,8 +586,8 @@ export const sessionDelete = mutation({
   args: { sessionId: v.id("Session") },
   returns: v.null(),
   handler: async (ctx, { sessionId }) => {
-    if ((await ctx.db.get(sessionId)) !== null) {
-      await ctx.db.delete(sessionId);
+    if ((await ctx.db.get("Session", sessionId)) !== null) {
+      await ctx.db.delete("Session", sessionId);
     }
     return null;
   },
@@ -620,7 +623,7 @@ export const verifierGetById = query({
   args: { verifierId: v.id("AuthVerifier") },
   returns: v.union(vAuthVerifierDoc, v.null()),
   handler: async (ctx, { verifierId }) => {
-    return await ctx.db.get(verifierId);
+    return await ctx.db.get("AuthVerifier", verifierId);
   },
 });
 
@@ -641,7 +644,7 @@ export const verifierPatch = mutation({
   args: { verifierId: v.id("AuthVerifier"), data: v.any() },
   returns: v.null(),
   handler: async (ctx, { verifierId, data }) => {
-    await ctx.db.patch(verifierId, data);
+    await ctx.db.patch("AuthVerifier", verifierId, data);
     return null;
   },
 });
@@ -651,7 +654,7 @@ export const verifierDelete = mutation({
   args: { verifierId: v.id("AuthVerifier") },
   returns: v.null(),
   handler: async (ctx, { verifierId }) => {
-    await ctx.db.delete(verifierId);
+    await ctx.db.delete("AuthVerifier", verifierId);
     return null;
   },
 });
@@ -706,7 +709,7 @@ export const verificationCodeDelete = mutation({
   args: { verificationCodeId: v.id("VerificationCode") },
   returns: v.null(),
   handler: async (ctx, { verificationCodeId }) => {
-    await ctx.db.delete(verificationCodeId);
+    await ctx.db.delete("VerificationCode", verificationCodeId);
     return null;
   },
 });
@@ -733,7 +736,7 @@ export const refreshTokenGetById = query({
   args: { refreshTokenId: v.id("RefreshToken") },
   returns: v.union(vRefreshTokenDoc, v.null()),
   handler: async (ctx, { refreshTokenId }) => {
-    return await ctx.db.get(refreshTokenId);
+    return await ctx.db.get("RefreshToken", refreshTokenId);
   },
 });
 
@@ -742,7 +745,7 @@ export const refreshTokenPatch = mutation({
   args: { refreshTokenId: v.id("RefreshToken"), data: v.any() },
   returns: v.null(),
   handler: async (ctx, { refreshTokenId, data }) => {
-    await ctx.db.patch(refreshTokenId, data);
+    await ctx.db.patch("RefreshToken", refreshTokenId, data);
     return null;
   },
 });
@@ -791,7 +794,9 @@ export const refreshTokenDeleteAll = mutation({
         q.eq("sessionId", sessionId as any),
       )
       .collect();
-    await Promise.all(tokens.map((token) => ctx.db.delete(token._id)));
+    await Promise.all(
+      tokens.map((token) => ctx.db.delete("RefreshToken", token._id)),
+    );
     return null;
   },
 });
@@ -860,10 +865,14 @@ export const passkeyListByUserId = query({
 
 /** Update a passkey's counter and last used timestamp after authentication. */
 export const passkeyUpdateCounter = mutation({
-  args: { passkeyId: v.id("Passkey"), counter: v.number(), lastUsedAt: v.number() },
+  args: {
+    passkeyId: v.id("Passkey"),
+    counter: v.number(),
+    lastUsedAt: v.number(),
+  },
   returns: v.null(),
   handler: async (ctx, { passkeyId, counter, lastUsedAt }) => {
-    await ctx.db.patch(passkeyId, { counter, lastUsedAt });
+    await ctx.db.patch("Passkey", passkeyId, { counter, lastUsedAt });
     return null;
   },
 });
@@ -873,7 +882,7 @@ export const passkeyUpdateMeta = mutation({
   args: { passkeyId: v.id("Passkey"), data: v.any() },
   returns: v.null(),
   handler: async (ctx, { passkeyId, data }) => {
-    await ctx.db.patch(passkeyId, data);
+    await ctx.db.patch("Passkey", passkeyId, data);
     return null;
   },
 });
@@ -883,7 +892,7 @@ export const passkeyDelete = mutation({
   args: { passkeyId: v.id("Passkey") },
   returns: v.null(),
   handler: async (ctx, { passkeyId }) => {
-    await ctx.db.delete(passkeyId);
+    await ctx.db.delete("Passkey", passkeyId);
     return null;
   },
 });
@@ -939,7 +948,7 @@ export const totpGetById = query({
   args: { totpId: v.id("TotpFactor") },
   returns: v.union(vTotpFactorDoc, v.null()),
   handler: async (ctx, { totpId }) => {
-    return await ctx.db.get(totpId);
+    return await ctx.db.get("TotpFactor", totpId);
   },
 });
 
@@ -948,7 +957,7 @@ export const totpMarkVerified = mutation({
   args: { totpId: v.id("TotpFactor"), lastUsedAt: v.number() },
   returns: v.null(),
   handler: async (ctx, { totpId, lastUsedAt }) => {
-    await ctx.db.patch(totpId, { verified: true, lastUsedAt });
+    await ctx.db.patch("TotpFactor", totpId, { verified: true, lastUsedAt });
     return null;
   },
 });
@@ -958,7 +967,7 @@ export const totpUpdateLastUsed = mutation({
   args: { totpId: v.id("TotpFactor"), lastUsedAt: v.number() },
   returns: v.null(),
   handler: async (ctx, { totpId, lastUsedAt }) => {
-    await ctx.db.patch(totpId, { lastUsedAt });
+    await ctx.db.patch("TotpFactor", totpId, { lastUsedAt });
     return null;
   },
 });
@@ -968,7 +977,7 @@ export const totpDelete = mutation({
   args: { totpId: v.id("TotpFactor") },
   returns: v.null(),
   handler: async (ctx, { totpId }) => {
-    await ctx.db.delete(totpId);
+    await ctx.db.delete("TotpFactor", totpId);
     return null;
   },
 });
@@ -1028,7 +1037,7 @@ export const rateLimitPatch = mutation({
       nextData.last_attempt_time = nextData.lastAttemptTime;
       delete nextData.lastAttemptTime;
     }
-    await ctx.db.patch(rateLimitId, nextData);
+    await ctx.db.patch("RateLimit", rateLimitId, nextData);
     return null;
   },
 });
@@ -1038,7 +1047,7 @@ export const rateLimitDelete = mutation({
   args: { rateLimitId: v.id("RateLimit") },
   returns: v.null(),
   handler: async (ctx, { rateLimitId }) => {
-    await ctx.db.delete(rateLimitId);
+    await ctx.db.delete("RateLimit", rateLimitId);
     return null;
   },
 });
@@ -1089,7 +1098,7 @@ export const groupGet = query({
   args: { groupId: v.id("Group") },
   returns: v.union(vGroupDoc, v.null()),
   handler: async (ctx, { groupId }) => {
-    return await ctx.db.get(groupId);
+    return await ctx.db.get("Group", groupId);
   },
 });
 
@@ -1264,7 +1273,7 @@ export const groupUpdate = mutation({
         .withIndex("by_group", (idx) => idx.eq("group_id", groupId))
         .collect();
       for (const existing of existingTags) {
-        await ctx.db.delete(existing._id);
+        await ctx.db.delete("GroupTag", existing._id);
       }
       // Insert new normalized group_tag rows
       for (const tag of normalizedTags) {
@@ -1275,12 +1284,12 @@ export const groupUpdate = mutation({
         });
       }
       // Patch group with normalized tags (empty array = clear all)
-      await ctx.db.patch(groupId, {
+      await ctx.db.patch("Group", groupId, {
         ...data,
         tags: normalizedTags.length > 0 ? normalizedTags : undefined,
       });
     } else {
-      await ctx.db.patch(groupId, data);
+      await ctx.db.patch("Group", groupId, data);
     }
     return null;
   },
@@ -1310,7 +1319,7 @@ export const groupDelete = mutation({
         .withIndex("group_id", (q) => q.eq("groupId", id))
         .collect();
       for (const member of members) {
-        await ctx.db.delete(member._id);
+        await ctx.db.delete("GroupMember", member._id);
       }
 
       const invites = await ctx.db
@@ -1318,7 +1327,7 @@ export const groupDelete = mutation({
         .withIndex("group_id", (q) => q.eq("groupId", id))
         .collect();
       for (const invite of invites) {
-        await ctx.db.delete(invite._id);
+        await ctx.db.delete("GroupInvite", invite._id);
       }
 
       // Delete companion group_tag rows
@@ -1327,10 +1336,10 @@ export const groupDelete = mutation({
         .withIndex("by_group", (q) => q.eq("group_id", id))
         .collect();
       for (const tag of tags) {
-        await ctx.db.delete(tag._id);
+        await ctx.db.delete("GroupTag", tag._id);
       }
 
-      await ctx.db.delete(id);
+      await ctx.db.delete("Group", id);
     };
 
     await deleteGroup(groupId);
@@ -1388,7 +1397,7 @@ export const memberGet = query({
   args: { memberId: v.id("GroupMember") },
   returns: v.union(vGroupMemberDoc, v.null()),
   handler: async (ctx, { memberId }) => {
-    return await ctx.db.get(memberId);
+    return await ctx.db.get("GroupMember", memberId);
   },
 });
 
@@ -1506,7 +1515,7 @@ export const memberRemove = mutation({
   args: { memberId: v.id("GroupMember") },
   returns: v.null(),
   handler: async (ctx, { memberId }) => {
-    await ctx.db.delete(memberId);
+    await ctx.db.delete("GroupMember", memberId);
     return null;
   },
 });
@@ -1520,7 +1529,7 @@ export const memberUpdate = mutation({
   args: { memberId: v.id("GroupMember"), data: v.any() },
   returns: v.null(),
   handler: async (ctx, { memberId, data }) => {
-    await ctx.db.patch(memberId, data);
+    await ctx.db.patch("GroupMember", memberId, data);
     return null;
   },
 });
@@ -1573,7 +1582,9 @@ export const inviteCreate = mutation({
             existingGroupInvite.expiresTime !== undefined &&
             existingGroupInvite.expiresTime <= now;
           if (isExpired) {
-            await ctx.db.patch(existingGroupInvite._id, { status: "expired" });
+            await ctx.db.patch("GroupInvite", existingGroupInvite._id, {
+              status: "expired",
+            });
             continue;
           }
           throw new ConvexError({
@@ -1599,13 +1610,14 @@ export const inviteCreate = mutation({
             existingPlatformInvite.expiresTime !== undefined &&
             existingPlatformInvite.expiresTime <= now;
           if (isExpired) {
-            await ctx.db.patch(existingPlatformInvite._id, { status: "expired" });
+            await ctx.db.patch("GroupInvite", existingPlatformInvite._id, {
+              status: "expired",
+            });
             continue;
           }
           throw new ConvexError({
             code: "DUPLICATE_INVITE",
-            message:
-              "A pending platform invite already exists for this email",
+            message: "A pending platform invite already exists for this email",
             email: args.email,
             existingInviteId: existingPlatformInvite._id,
           });
@@ -1621,7 +1633,7 @@ export const inviteGet = query({
   args: { inviteId: v.id("GroupInvite") },
   returns: v.union(vGroupInviteDoc, v.null()),
   handler: async (ctx, { inviteId }) => {
-    return await ctx.db.get(inviteId);
+    return await ctx.db.get("GroupInvite", inviteId);
   },
 });
 
@@ -1680,7 +1692,9 @@ export const inviteList = query({
     if (where.tokenHash !== undefined) {
       q = ctx.db
         .query("GroupInvite")
-        .withIndex("token_hash", (idx) => idx.eq("tokenHash", where.tokenHash!));
+        .withIndex("token_hash", (idx) =>
+          idx.eq("tokenHash", where.tokenHash!),
+        );
     } else if (
       where.role !== undefined &&
       where.status !== undefined &&
@@ -1706,7 +1720,10 @@ export const inviteList = query({
         .withIndex("email_status", (idx) =>
           idx.eq("email", where.email!).eq("status", where.status!),
         );
-    } else if (where.invitedByUserId !== undefined && where.status !== undefined) {
+    } else if (
+      where.invitedByUserId !== undefined &&
+      where.status !== undefined
+    ) {
       q = ctx.db
         .query("GroupInvite")
         .withIndex("invited_by_user_id_status", (idx) =>
@@ -1787,7 +1804,7 @@ export const inviteAccept = mutation({
   },
   returns: v.null(),
   handler: async (ctx, { inviteId, acceptedByUserId }) => {
-    const invite = await ctx.db.get(inviteId);
+    const invite = await ctx.db.get("GroupInvite", inviteId);
     if (invite === null) {
       throw new ConvexError({
         code: "INVITE_NOT_FOUND",
@@ -1804,7 +1821,7 @@ export const inviteAccept = mutation({
       });
     }
     if (invite.expiresTime !== undefined && invite.expiresTime <= Date.now()) {
-      await ctx.db.patch(inviteId, {
+      await ctx.db.patch("GroupInvite", inviteId, {
         status: "expired",
       });
       throw new ConvexError({
@@ -1813,7 +1830,7 @@ export const inviteAccept = mutation({
         inviteId,
       });
     }
-    await ctx.db.patch(inviteId, {
+    await ctx.db.patch("GroupInvite", inviteId, {
       status: "accepted",
       acceptedTime: Date.now(),
       ...(acceptedByUserId ? { acceptedByUserId } : {}),
@@ -1850,7 +1867,7 @@ export const inviteAcceptByToken = mutation({
     const now = Date.now();
     if (invite.status === "pending") {
       if (invite.expiresTime !== undefined && invite.expiresTime <= now) {
-        await ctx.db.patch(invite._id, { status: "expired" });
+        await ctx.db.patch("GroupInvite", invite._id, { status: "expired" });
         throw new ConvexError({
           code: "INVITE_EXPIRED",
           message: "Invite has expired",
@@ -1875,7 +1892,7 @@ export const inviteAcceptByToken = mutation({
     }
 
     if (invite.email !== undefined) {
-      const user = await ctx.db.get(acceptedByUserId);
+      const user = await ctx.db.get("User", acceptedByUserId);
       const normalizedInviteEmail = invite.email.trim().toLowerCase();
       const normalizedUserEmail = user?.email?.trim().toLowerCase();
 
@@ -1918,7 +1935,7 @@ export const inviteAcceptByToken = mutation({
     }
 
     if (invite.status === "pending") {
-      await ctx.db.patch(invite._id, {
+      await ctx.db.patch("GroupInvite", invite._id, {
         status: "accepted",
         acceptedByUserId,
         acceptedTime: now,
@@ -1948,7 +1965,7 @@ export const inviteRevoke = mutation({
   args: { inviteId: v.id("GroupInvite") },
   returns: v.null(),
   handler: async (ctx, { inviteId }) => {
-    const invite = await ctx.db.get(inviteId);
+    const invite = await ctx.db.get("GroupInvite", inviteId);
     if (invite === null) {
       throw new ConvexError({
         code: "INVITE_NOT_FOUND",
@@ -1964,7 +1981,7 @@ export const inviteRevoke = mutation({
         currentStatus: invite.status,
       });
     }
-    await ctx.db.patch(inviteId, { status: "revoked" });
+    await ctx.db.patch("GroupInvite", inviteId, { status: "revoked" });
     return null;
   },
 });
@@ -1991,9 +2008,7 @@ export const keyInsert = mutation({
         actions: v.array(v.string()),
       }),
     ),
-    rateLimit: v.optional(
-      vApiKeyRateLimit,
-    ),
+    rateLimit: v.optional(vApiKeyRateLimit),
     expiresAt: v.optional(v.number()),
   },
   returns: v.id("ApiKey"),
@@ -2115,7 +2130,7 @@ export const keyGetById = query({
   args: { keyId: v.id("ApiKey") },
   returns: v.union(vApiKeyDoc, v.null()),
   handler: async (ctx, { keyId }) => {
-    return await ctx.db.get(keyId);
+    return await ctx.db.get("ApiKey", keyId);
   },
 });
 
@@ -2128,9 +2143,7 @@ export const keyPatch = mutation({
     keyId: v.id("ApiKey"),
     data: v.object({
       name: v.optional(v.string()),
-      scopes: v.optional(
-        v.array(vApiKeyScope),
-      ),
+      scopes: v.optional(v.array(vApiKeyScope)),
       rateLimit: v.optional(vApiKeyRateLimit),
       rateLimitState: v.optional(vApiKeyRateLimitState),
       revoked: v.optional(v.boolean()),
@@ -2139,7 +2152,7 @@ export const keyPatch = mutation({
   },
   returns: v.null(),
   handler: async (ctx, { keyId, data }) => {
-    const key = await ctx.db.get(keyId);
+    const key = await ctx.db.get("ApiKey", keyId);
     if (key === null) {
       throw new ConvexError({
         code: "KEY_NOT_FOUND",
@@ -2147,7 +2160,7 @@ export const keyPatch = mutation({
         keyId,
       });
     }
-    await ctx.db.patch(keyId, data);
+    await ctx.db.patch("ApiKey", keyId, data);
     return null;
   },
 });
@@ -2157,7 +2170,7 @@ export const keyDelete = mutation({
   args: { keyId: v.id("ApiKey") },
   returns: v.null(),
   handler: async (ctx, { keyId }) => {
-    const key = await ctx.db.get(keyId);
+    const key = await ctx.db.get("ApiKey", keyId);
     if (key === null) {
       throw new ConvexError({
         code: "KEY_NOT_FOUND",
@@ -2165,7 +2178,7 @@ export const keyDelete = mutation({
         keyId,
       });
     }
-    await ctx.db.delete(keyId);
+    await ctx.db.delete("ApiKey", keyId);
     return null;
   },
 });
@@ -2196,7 +2209,9 @@ export const deviceGetByCodeHash = query({
   handler: async (ctx, { deviceCodeHash }) => {
     return await ctx.db
       .query("DeviceCode")
-      .withIndex("device_code_hash", (q) => q.eq("deviceCodeHash", deviceCodeHash))
+      .withIndex("device_code_hash", (q) =>
+        q.eq("deviceCodeHash", deviceCodeHash),
+      )
       .first();
   },
 });
@@ -2224,7 +2239,7 @@ export const deviceAuthorize = mutation({
   },
   returns: v.null(),
   handler: async (ctx, { deviceId, userId, sessionId }) => {
-    await ctx.db.patch(deviceId, {
+    await ctx.db.patch("DeviceCode", deviceId, {
       status: "authorized",
       userId,
       sessionId,
@@ -2238,7 +2253,7 @@ export const deviceUpdateLastPolled = mutation({
   args: { deviceId: v.id("DeviceCode"), lastPolledAt: v.number() },
   returns: v.null(),
   handler: async (ctx, { deviceId, lastPolledAt }) => {
-    await ctx.db.patch(deviceId, { lastPolledAt });
+    await ctx.db.patch("DeviceCode", deviceId, { lastPolledAt });
     return null;
   },
 });
@@ -2248,7 +2263,7 @@ export const deviceDelete = mutation({
   args: { deviceId: v.id("DeviceCode") },
   returns: v.null(),
   handler: async (ctx, { deviceId }) => {
-    await ctx.db.delete(deviceId);
+    await ctx.db.delete("DeviceCode", deviceId);
     return null;
   },
 });

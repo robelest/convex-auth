@@ -1,7 +1,8 @@
+import { components } from "@convex/_generated/api";
 import { describe, expect, test } from "vitest";
+
 import { convexTest } from "../convex-test";
 import schema from "./schema";
-import { components } from "@convex/_generated/api";
 
 describe("auth component", () => {
   test("registers and serves public core functions", async () => {

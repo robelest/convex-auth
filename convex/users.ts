@@ -1,8 +1,9 @@
 import { query } from "./functions";
-import { emptyInput } from "./validation";
+import { emptyInput, nullableUnknownRecordOutput } from "./validation";
 
 export const viewer = query
   .input(emptyInput)
+  .returns(nullableUnknownRecordOutput)
   .handler(async (ctx) => {
     return ctx.auth.user;
   })

@@ -6,8 +6,9 @@ import {
   TableNamesInDataModel,
 } from "convex/server";
 import { GenericId } from "convex/values";
-import { GenericDoc } from "../types";
+
 import schema from "../../component/schema";
+import { GenericDoc } from "../types";
 import { AuthComponentApi } from "../types";
 
 /** Data model derived from the component schema. */
@@ -143,10 +144,9 @@ export async function queryUserById(
   ctx: ComponentCallCtx,
   userId: string,
 ): Promise<UserDoc | null> {
-  return (await ctx.runQuery(
-    ctx.auth.config.component.public.userGetById,
-    { userId },
-  )) as UserDoc | null;
+  return (await ctx.runQuery(ctx.auth.config.component.public.userGetById, {
+    userId,
+  })) as UserDoc | null;
 }
 
 export async function queryUserByVerifiedEmail(
@@ -165,20 +165,18 @@ export async function queryVerifierById(
   ctx: ComponentCallCtx,
   verifierId: string,
 ): Promise<VerifierDoc | null> {
-  return (await ctx.runQuery(
-    ctx.auth.config.component.public.verifierGetById,
-    { verifierId },
-  )) as VerifierDoc | null;
+  return (await ctx.runQuery(ctx.auth.config.component.public.verifierGetById, {
+    verifierId,
+  })) as VerifierDoc | null;
 }
 
 export async function mutateVerifierDelete(
   ctx: ComponentCallCtx,
   verifierId: string,
 ): Promise<void> {
-  await ctx.runMutation(
-    ctx.auth.config.component.public.verifierDelete,
-    { verifierId },
-  );
+  await ctx.runMutation(ctx.auth.config.component.public.verifierDelete, {
+    verifierId,
+  });
 }
 
 // -- TOTP queries / mutations --
@@ -187,10 +185,9 @@ export async function queryTotpById(
   ctx: ComponentCallCtx,
   totpId: string,
 ): Promise<TotpDoc | null> {
-  return (await ctx.runQuery(
-    ctx.auth.config.component.public.totpGetById,
-    { totpId },
-  )) as TotpDoc | null;
+  return (await ctx.runQuery(ctx.auth.config.component.public.totpGetById, {
+    totpId,
+  })) as TotpDoc | null;
 }
 
 export async function queryTotpVerifiedByUserId(
@@ -226,10 +223,10 @@ export async function mutateTotpMarkVerified(
   totpId: string,
   lastUsedAt: number,
 ): Promise<void> {
-  await ctx.runMutation(
-    ctx.auth.config.component.public.totpMarkVerified,
-    { totpId, lastUsedAt },
-  );
+  await ctx.runMutation(ctx.auth.config.component.public.totpMarkVerified, {
+    totpId,
+    lastUsedAt,
+  });
 }
 
 export async function mutateTotpUpdateLastUsed(
@@ -237,10 +234,10 @@ export async function mutateTotpUpdateLastUsed(
   totpId: string,
   lastUsedAt: number,
 ): Promise<void> {
-  await ctx.runMutation(
-    ctx.auth.config.component.public.totpUpdateLastUsed,
-    { totpId, lastUsedAt },
-  );
+  await ctx.runMutation(ctx.auth.config.component.public.totpUpdateLastUsed, {
+    totpId,
+    lastUsedAt,
+  });
 }
 
 // -- Passkey queries / mutations --
@@ -292,10 +289,11 @@ export async function mutatePasskeyUpdateCounter(
   counter: number,
   lastUsedAt: number,
 ): Promise<void> {
-  await ctx.runMutation(
-    ctx.auth.config.component.public.passkeyUpdateCounter,
-    { passkeyId, counter, lastUsedAt },
-  );
+  await ctx.runMutation(ctx.auth.config.component.public.passkeyUpdateCounter, {
+    passkeyId,
+    counter,
+    lastUsedAt,
+  });
 }
 
 // -- Key queries / mutations --
@@ -322,20 +320,18 @@ export async function queryKeysByUserId(
   ctx: ComponentCallCtx,
   userId: string,
 ): Promise<KeyDoc[]> {
-  return (await ctx.runQuery(
-    ctx.auth.config.component.public.keyListByUserId,
-    { userId },
-  )) as KeyDoc[];
+  return (await ctx.runQuery(ctx.auth.config.component.public.keyListByUserId, {
+    userId,
+  })) as KeyDoc[];
 }
 
 export async function queryKeyById(
   ctx: ComponentCallCtx,
   keyId: string,
 ): Promise<KeyDoc | null> {
-  return (await ctx.runQuery(
-    ctx.auth.config.component.public.keyGetById,
-    { keyId },
-  )) as KeyDoc | null;
+  return (await ctx.runQuery(ctx.auth.config.component.public.keyGetById, {
+    keyId,
+  })) as KeyDoc | null;
 }
 
 export async function mutateKeyPatch(
@@ -343,20 +339,17 @@ export async function mutateKeyPatch(
   keyId: string,
   data: Record<string, unknown>,
 ): Promise<void> {
-  await ctx.runMutation(
-    ctx.auth.config.component.public.keyPatch,
-    { keyId, data },
-  );
+  await ctx.runMutation(ctx.auth.config.component.public.keyPatch, {
+    keyId,
+    data,
+  });
 }
 
 export async function mutateKeyDelete(
   ctx: ComponentCallCtx,
   keyId: string,
 ): Promise<void> {
-  await ctx.runMutation(
-    ctx.auth.config.component.public.keyDelete,
-    { keyId },
-  );
+  await ctx.runMutation(ctx.auth.config.component.public.keyDelete, { keyId });
 }
 
 // -- Device authorization queries / mutations --
@@ -416,10 +409,11 @@ export async function mutateDeviceAuthorize(
   userId: string,
   sessionId: string,
 ): Promise<void> {
-  await ctx.runMutation(
-    ctx.auth.config.component.public.deviceAuthorize,
-    { deviceId, userId, sessionId },
-  );
+  await ctx.runMutation(ctx.auth.config.component.public.deviceAuthorize, {
+    deviceId,
+    userId,
+    sessionId,
+  });
 }
 
 export async function mutateDeviceUpdateLastPolled(
@@ -437,8 +431,7 @@ export async function mutateDeviceDelete(
   ctx: ComponentCallCtx,
   deviceId: string,
 ): Promise<void> {
-  await ctx.runMutation(
-    ctx.auth.config.component.public.deviceDelete,
-    { deviceId },
-  );
+  await ctx.runMutation(ctx.auth.config.component.public.deviceDelete, {
+    deviceId,
+  });
 }

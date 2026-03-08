@@ -1,5 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { ConvexError, Value } from "convex/values";
+
 import { AUTH_ERRORS } from "../server/errors";
 
 // Re-export error utilities so consumers can import from `@robelest/convex-auth/client`.
@@ -276,7 +277,8 @@ export function client(options: ClientOptions) {
   // If a server-provided token was supplied (SSR hydration), treat it as
   // immediately authenticated to avoid a handshake-only loading screen.
   const serverToken =
-    typeof options.token_seed === "string" && options.token_seed.trim().length > 0
+    typeof options.token_seed === "string" &&
+    options.token_seed.trim().length > 0
       ? options.token_seed
       : null;
   const hasServerToken = serverToken !== null;
@@ -464,7 +466,10 @@ export function client(options: ClientOptions) {
     try {
       return (await storage.getItem(key(name))) ?? null;
     } catch (error) {
-      console.error(`[convex-auth] Failed to read ${name} from storage:`, error);
+      console.error(
+        `[convex-auth] Failed to read ${name} from storage:`,
+        error,
+      );
       return null;
     }
   };
@@ -485,7 +490,10 @@ export function client(options: ClientOptions) {
     try {
       await storage.removeItem(key(name));
     } catch (error) {
-      console.error(`[convex-auth] Failed to remove ${name} from storage:`, error);
+      console.error(
+        `[convex-auth] Failed to remove ${name} from storage:`,
+        error,
+      );
     }
   };
 
@@ -642,7 +650,9 @@ export function client(options: ClientOptions) {
       body: JSON.stringify(body),
     });
     if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({} as Record<string, unknown>));
+      const errorBody = await response
+        .json()
+        .catch(() => ({}) as Record<string, unknown>);
       // Reconstruct ConvexError when the proxy forwards structured auth error data.
       if (
         typeof errorBody === "object" &&
@@ -650,10 +660,12 @@ export function client(options: ClientOptions) {
         "authError" in errorBody &&
         typeof (errorBody as Record<string, unknown>).authError === "object"
       ) {
-        throw new ConvexError((errorBody as Record<string, unknown>).authError as Value);
+        throw new ConvexError(
+          (errorBody as Record<string, unknown>).authError as Value,
+        );
       }
       throw new Error(
-        (errorBody as Record<string, unknown>).error as string ??
+        ((errorBody as Record<string, unknown>).error as string) ??
           `Proxy request failed: ${response.status}`,
       );
     }
@@ -764,7 +776,7 @@ export function client(options: ClientOptions) {
             },
             {} as Record<string, string>,
           )
-        : args ?? {};
+        : (args ?? {});
     const flow =
       typeof params.flow === "string" && params.flow.length > 0
         ? params.flow
@@ -785,7 +797,11 @@ export function client(options: ClientOptions) {
         return { signingIn: false, redirect: redirectUrl };
       }
       if (result.totpRequired) {
-        return { signingIn: false, totpRequired: true, verifier: result.verifier };
+        return {
+          signingIn: false,
+          totpRequired: true,
+          verifier: result.verifier,
+        };
       }
       if (result.deviceCode !== undefined) {
         return {
@@ -825,7 +841,11 @@ export function client(options: ClientOptions) {
       return { signingIn: false, redirect: redirectUrl };
     }
     if (result.totpRequired) {
-      return { signingIn: false, totpRequired: true, verifier: result.verifier };
+      return {
+        signingIn: false,
+        totpRequired: true,
+        verifier: result.verifier,
+      };
     }
     if (result.deviceCode !== undefined) {
       return {
@@ -893,10 +913,7 @@ export function client(options: ClientOptions) {
       // Proxy mode: POST to the proxy to refresh.
       // The proxy reads the real refresh token from the httpOnly cookie.
       const resolvedProxyUrl = resolveProxyUrl();
-      if (
-        typeof window === "undefined" &&
-        !isAbsoluteUrl(resolvedProxyUrl)
-      ) {
+      if (typeof window === "undefined" && !isAbsoluteUrl(resolvedProxyUrl)) {
         finalizeLoadingState();
         return token;
       }
@@ -922,7 +939,8 @@ export function client(options: ClientOptions) {
                 ) {
                   throw error;
                 }
-                const wait = RETRY_BACKOFF[retry]! + RETRY_JITTER * Math.random();
+                const wait =
+                  RETRY_BACKOFF[retry]! + RETRY_JITTER * Math.random();
                 await new Promise((resolve) => setTimeout(resolve, wait));
               }
             }
@@ -1046,8 +1064,7 @@ export function client(options: ClientOptions) {
         if (event.key !== key(JWT_STORAGE_KEY)) return;
         await setToken({
           shouldStore: false,
-          tokens:
-            event.newValue === null ? null : { token: event.newValue },
+          tokens: event.newValue === null ? null : { token: event.newValue },
         });
       })();
     };
@@ -1106,7 +1123,10 @@ export function client(options: ClientOptions) {
     for (let i = 0; i < bytes.byteLength; i++) {
       binary += String.fromCharCode(bytes[i]!);
     }
-    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return btoa(binary)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
   };
 
   const base64urlDecode = (str: string): Uint8Array => {
@@ -1143,9 +1163,8 @@ export function client(options: ClientOptions) {
       if (typeof window === "undefined") return false;
       if (typeof window.PublicKeyCredential === "undefined") return false;
       if (
-        typeof (
-          window.PublicKeyCredential as any
-        ).isConditionalMediationAvailable !== "function"
+        typeof (window.PublicKeyCredential as any)
+          .isConditionalMediationAvailable !== "function"
       ) {
         return false;
       }
@@ -1175,14 +1194,12 @@ export function client(options: ClientOptions) {
      * @param opts.userDisplayName - Display name for the credential
      * @returns `{ signingIn: true }` on success
      */
-    register: async (
-      opts?: {
-        name?: string;
-        email?: string;
-        userName?: string;
-        userDisplayName?: string;
-      },
-    ): Promise<SignInResult> => {
+    register: async (opts?: {
+      name?: string;
+      email?: string;
+      userName?: string;
+      userDisplayName?: string;
+    }): Promise<SignInResult> => {
       const phase1Params = {
         flow: "register-options",
         email: opts?.email,
@@ -1242,8 +1259,7 @@ export function client(options: ClientOptions) {
         throw new Error("Passkey registration was cancelled");
       }
 
-      const response =
-        credential.response as AuthenticatorAttestationResponse;
+      const response = credential.response as AuthenticatorAttestationResponse;
 
       // Extract transports if available
       const transports =
@@ -1331,9 +1347,10 @@ export function client(options: ClientOptions) {
      * @param opts.autofill - Use conditional mediation (autofill UI)
      * @returns `{ signingIn: true }` on success
      */
-    authenticate: async (
-      opts?: { email?: string; autofill?: boolean },
-    ): Promise<SignInResult> => {
+    authenticate: async (opts?: {
+      email?: string;
+      autofill?: boolean;
+    }): Promise<SignInResult> => {
       const phase1Params = {
         flow: "auth-options",
         email: opts?.email,
@@ -1385,8 +1402,7 @@ export function client(options: ClientOptions) {
         throw new Error("Passkey authentication was cancelled");
       }
 
-      const response =
-        credential.response as AuthenticatorAssertionResponse;
+      const response = credential.response as AuthenticatorAssertionResponse;
 
       const phase2Params = {
         flow: "auth-verify",
@@ -1452,9 +1468,15 @@ export function client(options: ClientOptions) {
      * // Or show setup.secret for manual entry
      * ```
      */
-    setup: async (
-      opts?: { name?: string; accountName?: string },
-    ): Promise<{ uri: string; secret: string; verifier: string; totpId: string }> => {
+    setup: async (opts?: {
+      name?: string;
+      accountName?: string;
+    }): Promise<{
+      uri: string;
+      secret: string;
+      verifier: string;
+      totpId: string;
+    }> => {
       const params: Record<string, any> = { flow: "setup" };
       if (opts?.name) params.name = opts.name;
       if (opts?.accountName) params.accountName = opts.accountName;
@@ -1464,14 +1486,24 @@ export function client(options: ClientOptions) {
           action: "auth/session:start",
           args: { provider: "totp", params },
         });
-        return { uri: result.totpSetup.uri, secret: result.totpSetup.secret, verifier: result.verifier, totpId: result.totpSetup.totpId };
+        return {
+          uri: result.totpSetup.uri,
+          secret: result.totpSetup.secret,
+          verifier: result.verifier,
+          totpId: result.totpSetup.totpId,
+        };
       }
 
       const result = await convex.action("auth/session:start" as any, {
         provider: "totp",
         params,
       });
-      return { uri: result.totpSetup.uri, secret: result.totpSetup.secret, verifier: result.verifier, totpId: result.totpSetup.totpId };
+      return {
+        uri: result.totpSetup.uri,
+        secret: result.totpSetup.secret,
+        verifier: result.verifier,
+        totpId: result.totpSetup.totpId,
+      };
     },
 
     /**
@@ -1500,7 +1532,8 @@ export function client(options: ClientOptions) {
         if (result.tokens) {
           await setTokenAndMaybeWait({
             shouldStore: false,
-            tokens: result.tokens === null ? null : { token: result.tokens.token },
+            tokens:
+              result.tokens === null ? null : { token: result.tokens.token },
             waitForHandshake: true,
             context: { provider: "totp", flow: "confirm" },
           });
@@ -1528,8 +1561,8 @@ export function client(options: ClientOptions) {
      *
      * Called after a credentials sign-in returns `totpRequired: true`.
      *
-      * ```ts
-      * const result = await auth.sign_in("password", { email, password });
+     * ```ts
+     * const result = await auth.sign_in("password", { email, password });
      * if (result.totpRequired) {
      *   await auth.totp.verify({ code: "123456", verifier: result.verifier! });
      * }
@@ -1549,7 +1582,8 @@ export function client(options: ClientOptions) {
         if (result.tokens) {
           await setTokenAndMaybeWait({
             shouldStore: false,
-            tokens: result.tokens === null ? null : { token: result.tokens.token },
+            tokens:
+              result.tokens === null ? null : { token: result.tokens.token },
             waitForHandshake: true,
             context: { provider: "totp", flow: "verify" },
           });
@@ -1577,19 +1611,19 @@ export function client(options: ClientOptions) {
     /**
      * Poll for device authorization status.
      *
-      * The device calls this repeatedly (respecting `interval`) after
-      * initiating a device flow via `sign_in("device")`. Returns when
+     * The device calls this repeatedly (respecting `interval`) after
+     * initiating a device flow via `sign_in("device")`. Returns when
      * the user authorizes, or throws on timeout/denial.
      *
-      * ```ts
-      * const result = await auth.sign_in("device");
+     * ```ts
+     * const result = await auth.sign_in("device");
      * const { deviceCode } = result;
      * // Display deviceCode.userCode to the user, then poll:
      * await auth.device.poll(deviceCode);
      * // User is now signed in
      * ```
-      *
-      * @param code - The {@link DeviceCodeResult} from `sign_in("device")`.
+     *
+     * @param code - The {@link DeviceCodeResult} from `sign_in("device")`.
      * @returns Resolves when the device is authorized and tokens are stored.
      * @throws When the code expires, is denied, or polling encounters an error.
      */
@@ -1651,9 +1685,7 @@ export function client(options: ClientOptions) {
             }
             if (code_ === "DEVICE_SLOW_DOWN") {
               // Back off by adding one interval
-              await new Promise((resolve) =>
-                setTimeout(resolve, intervalMs),
-              );
+              await new Promise((resolve) => setTimeout(resolve, intervalMs));
               continue;
             }
           }
@@ -1744,7 +1776,10 @@ async function browserMutex<T>(
     : await manualMutex(key, callback);
 }
 
-function getStorageListenerRegistry(): Record<string, (event: StorageEvent) => void> {
+function getStorageListenerRegistry(): Record<
+  string,
+  (event: StorageEvent) => void
+> {
   const globalAny = globalThis as any;
   if (globalAny.__convexAuthStorageListeners === undefined) {
     globalAny.__convexAuthStorageListeners = {} as Record<

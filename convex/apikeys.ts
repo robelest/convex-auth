@@ -1,11 +1,20 @@
 import { ConvexError } from "convex/values";
+
 import { auth } from "./auth";
 import { mutation, query } from "./functions";
-import { createKeyInput, emptyInput, revokeKeyInput } from "./validation";
+import {
+  createKeyInput,
+  emptyInput,
+  nullOutput,
+  revokeKeyInput,
+  unknownRecordListOutput,
+  unknownRecordOutput,
+} from "./validation";
 
 /** Create an API key for the authenticated user. Returns the raw key once. */
 export const createMyKey = mutation
   .input(createKeyInput)
+  .returns(unknownRecordOutput)
   .handler(async (ctx, { name }) => {
     return await auth.key.create(ctx, {
       userId: ctx.auth.userId,
@@ -18,6 +27,7 @@ export const createMyKey = mutation
 /** List all API keys for the authenticated user. */
 export const listMyKeys = query
   .input(emptyInput)
+  .returns(unknownRecordListOutput)
   .handler(async (ctx) => {
     const { items } = await auth.key.list(ctx, {
       where: { userId: ctx.auth.userId },
@@ -29,6 +39,7 @@ export const listMyKeys = query
 /** Revoke one of the authenticated user's API keys. */
 export const revokeMyKey = mutation
   .input(revokeKeyInput)
+  .returns(nullOutput)
   .handler(async (ctx, { keyId }) => {
     const key = await auth.key.get(ctx, keyId);
     if (key === null || key.userId !== ctx.auth.userId) {

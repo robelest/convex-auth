@@ -11,6 +11,7 @@ import {
   TableNamesInDataModel,
 } from "convex/server";
 import { GenericId, Value } from "convex/values";
+
 import { CredentialsUserConfig } from "../providers/credentials";
 
 // ============================================================================
@@ -615,9 +616,9 @@ export type AuthServerHelpers = {
     ) => Promise<void>;
   };
   session: {
-    current: (
-      ctx: { auth: GenericActionCtx<GenericDataModel>["auth"] },
-    ) => Promise<GenericId<"Session"> | null>;
+    current: (ctx: {
+      auth: GenericActionCtx<GenericDataModel>["auth"];
+    }) => Promise<GenericId<"Session"> | null>;
     invalidate: (
       ctx: GenericActionCtx<any>,
       args: AuthInvalidateSessionsArgs,
@@ -670,7 +671,9 @@ export interface OAuthMaterializedConfig {
   /** OAuth scopes to request. */
   readonly scopes: string[];
   /** User-provided profile extraction callback. */
-  readonly profile?: (tokens: import("arctic").OAuth2Tokens) => Promise<OAuthProfile>;
+  readonly profile?: (
+    tokens: import("arctic").OAuth2Tokens,
+  ) => Promise<OAuthProfile>;
   /**
    * Allow linking accounts by email even if the email is unverified.
    * Use with caution — only enable for providers you trust.
@@ -761,10 +764,7 @@ export interface EmailTransport {
    * }
    * ```
    */
-  send: (
-    ctx: GenericActionCtx<any>,
-    params: EmailMessage,
-  ) => Promise<void>;
+  send: (ctx: GenericActionCtx<any>, params: EmailMessage) => Promise<void>;
 }
 
 // ============================================================================

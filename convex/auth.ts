@@ -1,12 +1,13 @@
-import { Google } from "arctic";
 import { Resend } from "@convex-dev/resend";
+import { Auth } from "@robelest/convex-auth/component";
 import { OAuth } from "@robelest/convex-auth/providers";
 import { Anonymous } from "@robelest/convex-auth/providers/anonymous";
 import { Device } from "@robelest/convex-auth/providers/device";
 import { Passkey } from "@robelest/convex-auth/providers/passkey";
 import { Password } from "@robelest/convex-auth/providers/password";
 import { Totp } from "@robelest/convex-auth/providers/totp";
-import { Auth } from "@robelest/convex-auth/component";
+import { Google } from "arctic";
+
 import { components } from "./_generated/api";
 
 function requireEnv(name: string): string {
