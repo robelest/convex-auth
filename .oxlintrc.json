@@ -1,0 +1,80 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "jest", "import", "unicorn"],
+  "env": {
+    "browser": true,
+    "node": true
+  },
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/.next/**",
+    "**/coverage/**",
+    "**/node_modules/**",
+    "**/convex/_generated/**",
+    "packages/auth/src/component/_generated/**",
+    "packages/samlify/**",
+    "examples/**/.output/**",
+    "examples/**/src/routeTree.gen.ts",
+    "**/*.d.ts"
+  ],
+  "rules": {
+    "typescript/no-unused-vars": [
+      "warn",
+      { "varsIgnorePattern": "^_", "argsIgnorePattern": "^_" }
+    ],
+    "typescript/ban-ts-comment": "error",
+    "typescript/no-explicit-any": "off",
+    "typescript/no-empty-object-type": "off",
+    "typescript/no-require-imports": "off",
+    "typescript/no-unused-expressions": "off",
+    "jest/no-focused-tests": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["convex/**/*.ts", "packages/auth/src/component/**/*.ts"],
+      "jsPlugins": [
+        {
+          "name": "convex",
+          "specifier": "@trestleinc/convex-oxlint"
+        }
+      ],
+      "rules": {
+        "convex/no-old-registered-function-syntax": "error",
+        "convex/explicit-table-ids": "error",
+        "convex/import-wrong-runtime": "error",
+        "convex/require-args-validator": [
+          "error",
+          { "ignoreUnusedArguments": false }
+        ]
+      }
+    },
+    {
+      "files": [
+        "examples/**/src/**/*.{ts,tsx}",
+        "examples/**/app/**/*.{ts,tsx}",
+        "examples/**/components/**/*.{ts,tsx}"
+      ],
+      "plugins": ["react"],
+      "rules": {
+        "react/rules-of-hooks": "error",
+        "react/exhaustive-deps": "warn"
+      }
+    },
+    {
+      "files": ["examples/tanstack/**/*.{ts,tsx}"],
+      "rules": {
+        "eslint/no-shadow": "warn",
+        "typescript/array-type": ["error", { "default": "generic" }],
+        "typescript/consistent-type-imports": "error",
+        "typescript/no-for-in-array": "error",
+        "typescript/no-unnecessary-type-assertion": "error",
+        "typescript/require-await": "error",
+        "import/no-commonjs": "error",
+        "import/no-duplicates": "error",
+        "import/first": "error",
+        "import/consistent-type-specifier-style": "error",
+        "unicorn/prefer-node-protocol": "error"
+      }
+    }
+  ]
+}

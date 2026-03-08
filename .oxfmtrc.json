@@ -1,0 +1,24 @@
+{
+  "proseWrap": "always",
+  "printWidth": 80,
+  "sortImports": {},
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/_generated/**",
+    "**/node_modules/**",
+    "**/.output/**",
+    "**/routeTree.gen.ts",
+    "packages/samlify/**",
+    "bun.lock"
+  ],
+  "overrides": [
+    {
+      "files": ["examples/tanstack/**/*.{ts,tsx,js,jsx}"],
+      "options": {
+        "semi": false,
+        "singleQuote": true,
+        "trailingComma": "all"
+      }
+    }
+  ]
+}

@@ -1,27 +1,36 @@
 {
   "name": "convex-auth-monorepo",
   "private": true,
-  "type": "module",
-  "scripts": {
-    "dev:convex": "bunx convex dev",
-    "dev:tanstack": "bun run --cwd examples/tanstack dev",
-    "dev:tui": "bun run --cwd examples/cli start",
-    "postinstall": "node scripts/patch-fluent-convex.mjs",
-    "build": "bun run --cwd packages/auth build",
-    "publish": "bun run --cwd packages/auth build && bun publish --cwd packages/auth",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "test": "bun run --cwd packages/test test:once && bun run --cwd packages/samlify test:once && bun run --cwd packages/samlify check:runtime-imports && bun run --cwd packages/samlify report:edge-gaps",
-    "codegen:convex": "bunx convex codegen && bun run codegen:convex:component",
-    "codegen:convex:component": "bunx convex codegen --component-dir ./packages/auth/src/component"
-  },
   "workspaces": {
-    "packages": ["packages/*", "examples/*"],
+    "packages": [
+      "packages/*",
+      "examples/*"
+    ],
     "catalog": {
       "convex": "1.32.0",
       "convex-test": "^0.0.41",
       "vite": "7.3.1"
     }
+  },
+  "type": "module",
+  "scripts": {
+    "dev:convex": "bunx convex dev",
+    "dev:tanstack": "bun run --cwd examples/tanstack dev",
+    "dev:tui": "bun run --cwd examples/cli start",
+    "guard:convex": "bun run guard:convex:returns && bun run guard:convex:api-any",
+    "guard:convex:returns": "bun scripts/guard/check-convex-returns.ts",
+    "guard:convex:api-any": "bun scripts/guard/check-convex-api-any.ts",
+    "postinstall": "node scripts/patch-fluent-convex.mjs",
+    "build": "bun run --cwd packages/auth build",
+    "publish": "bun run --cwd packages/auth build && bun publish --cwd packages/auth",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "fmt": "oxfmt --write .",
+    "fmt:check": "oxfmt --check .",
+    "check": "oxlint && oxfmt --check .",
+    "test": "bun run --cwd packages/test test:once && bun run --cwd packages/samlify test:once && bun run --cwd packages/samlify check:runtime-imports && bun run --cwd packages/samlify report:edge-gaps",
+    "codegen:convex": "bunx convex codegen && bun run codegen:convex:component",
+    "codegen:convex:component": "bunx convex codegen --component-dir ./packages/auth/src/component"
   },
   "dependencies": {
     "@convex-dev/resend": "^0.2.3",
@@ -33,14 +42,11 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
-    "@convex-dev/eslint-plugin": "^1.1.1",
-    "@eslint/js": "^9.37.0",
-    "eslint": "^9.39.0",
-    "eslint-plugin-no-only-tests": "^3.3.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-react-refresh": "^0.4.24",
-    "globals": "^16.4.0",
-    "typescript-eslint": "^8.46.1"
+    "@oxlint/plugins": "^1.51.0",
+    "@trestleinc/convex-oxlint": "^0.2.0",
+    "@typescript/native-preview": "^7.0.0-dev",
+    "oxfmt": "^0.36.0",
+    "oxlint": "^1.51.0"
   },
   "overrides": {
     "vite": "7.3.1"
