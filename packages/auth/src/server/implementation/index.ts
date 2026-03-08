@@ -250,63 +250,64 @@ export function Auth(config_: ConvexAuthConfig) {
         });
       },
       /**
-       * Set or clear a user's active group in `user.extend.lastActiveGroup`.
-       *
-       * This helper preserves other keys under `user.extend`.
-       * Pass `groupId: null` to clear `lastActiveGroup`.
-       */
-      setActiveGroup: async (
-        ctx: ComponentCtx,
-        opts: { userId: string; groupId: string | null },
-      ) => {
-        const user = await auth.user.get(ctx, opts.userId);
-        const existingExtend =
-          user !== null &&
-          user.extend !== null &&
-          typeof user.extend === "object" &&
-          !Array.isArray(user.extend)
-            ? { ...(user.extend as Record<string, unknown>) }
-            : {};
-
-        if (opts.groupId === null) {
-          const { lastActiveGroup: _omit, ...rest } = existingExtend;
-          await auth.user.patch(ctx, opts.userId, { extend: rest });
-          return;
-        }
-
-        await auth.user.patch(ctx, opts.userId, {
-          extend: { ...existingExtend, lastActiveGroup: opts.groupId },
-        });
-      },
-      /**
-       * Get the user's active group ID from `user.extend.lastActiveGroup`.
-       *
-       * @param ctx - Convex context with `runQuery`.
-       * @param opts.userId - The user document ID.
-       * @returns The active group ID, or `null` if none is set.
-       */
-      active: async (
-        ctx: ComponentReadCtx,
-        opts: { userId: string },
-      ): Promise<string | null> => {
-        const user = await auth.user.get(ctx, opts.userId);
-        if (
-          user !== null &&
-          user.extend !== null &&
-          typeof user.extend === "object" &&
-          !Array.isArray(user.extend)
-        ) {
-          const val = (user.extend as Record<string, unknown>).lastActiveGroup;
-          if (typeof val === "string") {
-            return val;
-          }
-        }
-        return null;
-      },
-      /**
        * Query a user's group memberships.
        */
       group: {
+        /**
+         * Set or clear a user's active group in `user.extend.lastActiveGroup`.
+         *
+         * This helper preserves other keys under `user.extend`.
+         * Pass `groupId: null` to clear `lastActiveGroup`.
+         */
+        switch: async (
+          ctx: ComponentCtx,
+          opts: { userId: string; groupId: string | null },
+        ) => {
+          const user = await auth.user.get(ctx, opts.userId);
+          const existingExtend =
+            user !== null &&
+            user.extend !== null &&
+            typeof user.extend === "object" &&
+            !Array.isArray(user.extend)
+              ? { ...(user.extend as Record<string, unknown>) }
+              : {};
+
+          if (opts.groupId === null) {
+            const { lastActiveGroup: _omit, ...rest } = existingExtend;
+            await auth.user.patch(ctx, opts.userId, { extend: rest });
+            return;
+          }
+
+          await auth.user.patch(ctx, opts.userId, {
+            extend: { ...existingExtend, lastActiveGroup: opts.groupId },
+          });
+        },
+        /**
+         * Get the user's active group ID from `user.extend.lastActiveGroup`.
+         *
+         * @param ctx - Convex context with `runQuery`.
+         * @param opts.userId - The user document ID.
+         * @returns The active group ID, or `null` if none is set.
+         */
+        active: async (
+          ctx: ComponentReadCtx,
+          opts: { userId: string },
+        ): Promise<string | null> => {
+          const user = await auth.user.get(ctx, opts.userId);
+          if (
+            user !== null &&
+            user.extend !== null &&
+            typeof user.extend === "object" &&
+            !Array.isArray(user.extend)
+          ) {
+            const val = (user.extend as Record<string, unknown>)
+              .lastActiveGroup;
+            if (typeof val === "string") {
+              return val;
+            }
+          }
+          return null;
+        },
         /**
          * List all groups a user belongs to. Returns member records which
          * include the `groupId`, `role`, `status`, and `extend` for each.
@@ -369,7 +370,7 @@ export function Auth(config_: ConvexAuthConfig) {
          * returns the nearest ancestor membership. Use `roles` to only match
          * specific roles (for example `admin`/`lead`).
          */
-        getInherited: async (
+        inherit: async (
           ctx: ComponentReadCtx,
           opts: {
             userId: string;
@@ -469,7 +470,7 @@ export function Auth(config_: ConvexAuthConfig) {
             maxDepth?: number;
           },
         ) => {
-          const result = await auth.user.group.getInherited(ctx, opts);
+          const result = await auth.user.group.inherit(ctx, opts);
           if (result.membership === null) {
             throwAuthError(
               "FORBIDDEN",

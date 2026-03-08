@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.0.4-preview.11
+
+- Add multi-tenant group helpers under `auth.user.group.*`:
+  - `switch(ctx, { userId, groupId })` — set or clear a user's active group.
+  - `active(ctx, { userId })` — get user's active group ID.
+  - `inherit(ctx, { userId, groupId, roles?, maxDepth? })` — resolve membership
+    through ancestor groups without throwing.
+  - `require(ctx, { userId, groupId, roles?, maxDepth? })` — same as `inherit`
+    but throws `FORBIDDEN` when no membership is found.
+- Add `auth.group.ancestors(ctx, { groupId, maxDepth?, includeSelf? })` for
+  walking group hierarchies toward the root.
+- Extend `auth.user.group.list()` with `includeGroup` option to join group data
+  onto each membership record.
+- Add `FORBIDDEN` and `NO_ACTIVE_GROUP` error codes.
+- Fix all component `ctx.db.get/patch/delete` calls to pass explicit table
+  names.
+- Migrate toolchain from ESLint + Prettier to Oxlint + Oxfmt.
+- Enable tsgo (`convex.json` with `typescriptCompiler: "tsgo"`).
+
 ## 0.0.4-preview.10
 
 - Enforce explicit return validators for all auth component public endpoints so

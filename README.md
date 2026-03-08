@@ -384,19 +384,24 @@ await auth.group.update(ctx, groupId, {
 });
 ```
 
-| API                                                                          | Description                                           |
-| ---------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `auth.group.create(ctx, data)`                                               | Create a group (accepts optional `tags`)              |
-| `auth.group.get(ctx, groupId)`                                               | Get a group                                           |
-| `auth.group.list(ctx, { where?, limit?, cursor?, orderBy?, order? })`        | List groups (supports `tagsAll`/`tagsAny` in `where`) |
-| `auth.group.update(ctx, groupId, data)`                                      | Update a group (include `tags` to replace tag set)    |
-| `auth.group.delete(ctx, groupId)`                                            | Delete group + cascade members/invites/tags           |
-| `auth.group.member.add(ctx, data)`                                           | Add membership                                        |
-| `auth.group.member.list(ctx, { where?, limit?, cursor?, orderBy?, order? })` | List members                                          |
-| `auth.group.member.update(ctx, memberId, data)`                              | Update role/status                                    |
-| `auth.group.member.remove(ctx, memberId)`                                    | Remove membership                                     |
-| `auth.user.group.list(ctx, { userId, limit?, cursor? })`                     | List user's memberships                               |
-| `auth.user.group.get(ctx, { userId, groupId })`                              | Get user's membership in a group                      |
+| API                                                                          | Description                                                    |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `auth.group.create(ctx, data)`                                               | Create a group (accepts optional `tags`)                       |
+| `auth.group.get(ctx, groupId)`                                               | Get a group                                                    |
+| `auth.group.list(ctx, { where?, limit?, cursor?, orderBy?, order? })`        | List groups (supports `tagsAll`/`tagsAny` in `where`)          |
+| `auth.group.update(ctx, groupId, data)`                                      | Update a group (include `tags` to replace tag set)             |
+| `auth.group.delete(ctx, groupId)`                                            | Delete group + cascade members/invites/tags                    |
+| `auth.group.ancestors(ctx, { groupId, maxDepth?, includeSelf? })`            | Walk `parentGroupId` chain toward root                         |
+| `auth.group.member.add(ctx, data)`                                           | Add membership                                                 |
+| `auth.group.member.list(ctx, { where?, limit?, cursor?, orderBy?, order? })` | List members                                                   |
+| `auth.group.member.update(ctx, memberId, data)`                              | Update role/status                                             |
+| `auth.group.member.remove(ctx, memberId)`                                    | Remove membership                                              |
+| `auth.user.group.list(ctx, { userId, limit?, cursor?, includeGroup? })`      | List user's memberships (with optional group data)             |
+| `auth.user.group.get(ctx, { userId, groupId })`                              | Get user's membership in a group                               |
+| `auth.user.group.switch(ctx, { userId, groupId })`                           | Set or clear (`null`) user's active group                      |
+| `auth.user.group.active(ctx, { userId })`                                    | Get user's active group ID (or `null`)                         |
+| `auth.user.group.inherit(ctx, { userId, groupId, roles?, maxDepth? })`       | Resolve membership via ancestor chain (returns `null` on miss) |
+| `auth.user.group.require(ctx, { userId, groupId, roles?, maxDepth? })`       | Like `inherit` but throws `FORBIDDEN` on miss                  |
 
 All list methods return `{ items, nextCursor }`. Pass `nextCursor` back as
 `cursor` for the next page.
@@ -440,7 +445,7 @@ if (invite.groupId) {
 | `auth.invite.revoke(ctx, inviteId)`                                    | Revoke (pending only) |
 
 Error codes: `DUPLICATE_MEMBERSHIP`, `DUPLICATE_INVITE`, `INVITE_NOT_FOUND`,
-`INVITE_NOT_PENDING`.
+`INVITE_NOT_PENDING`, `FORBIDDEN`, `NO_ACTIVE_GROUP`.
 
 ### API Keys
 

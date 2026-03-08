@@ -84,7 +84,7 @@ export class Auth {
   public readonly store: ReturnType<typeof AuthFactory>["store"];
 
   // ---- Proxied auth helper sub-objects ----
-  /** User helpers: `.current(ctx)`, `.require(ctx)`, `.get(ctx, userId)`, `.patch(ctx, userId, data)`, `.setActiveGroup(ctx, { userId, groupId })`, `.active(ctx, { userId })`, `.viewer(ctx)`, `.group.list(ctx, ...)`, `.group.get(ctx, ...)`, `.group.getInherited(ctx, ...)`, `.group.require(ctx, ...)` */
+  /** User helpers: `.current(ctx)`, `.require(ctx)`, `.get(ctx, userId)`, `.patch(ctx, userId, data)`, `.viewer(ctx)`, `.group.list(ctx, ...)`, `.group.get(ctx, ...)`, `.group.switch(ctx, ...)`, `.group.active(ctx, ...)`, `.group.inherit(ctx, ...)`, `.group.require(ctx, ...)` */
   get user() {
     return this._auth.user;
   }
