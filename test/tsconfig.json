@@ -1,31 +1,24 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "target": "ES2022",
     "module": "ESNext",
-    "skipLibCheck": true,
-
-    /* Bundler mode */
     "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "jsx": "react-jsx",
-
-    /* Linting */
     "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-
-    /* Import paths */
-    "baseUrl": ".",
+    "types": ["vite-plus/client", "node"],
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@convex/*": ["../convex/*"],
+      "@robelest/convex-auth/test": ["../packages/auth/src/test.ts"],
+      "@robelest/convex-auth/*": ["../packages/auth/src/*"],
+      "@robelest/samlify": ["../packages/samlify"],
+      "@robelest/samlify/*": ["../packages/samlify/*"],
+      "@robelest/samlify/test/*": ["./samlify/*"]
     }
   },
-  "include": ["src"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules"]
 }

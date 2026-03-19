@@ -1,0 +1,281 @@
+import { api } from "@convex/_generated/api";
+import schema from "@convex/schema";
+import { decodeJwt } from "jose";
+import { afterEach, expect, test, vi } from "vite-plus/test";
+
+import { convexTest, TestConvex } from "./convex.setup";
+import { expectSignedInResult, TEST_EMAIL, TEST_PASSWORD } from "./helpers";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+test("session refresh", async () => {
+  vi.useFakeTimers();
+  const t = convexTest(schema);
+  const initialTokens = expectSignedInResult(
+    await t.action(api.auth.session.start, {
+      provider: "password",
+      params: {
+        email: TEST_EMAIL,
+        password: TEST_PASSWORD,
+        flow: "signUp",
+      },
+    }),
+  );
+  const { refreshToken } = initialTokens!;
+
+  const TWO_HOURS_MS = 1000 * 60 * 60 * 2;
+  vi.advanceTimersByTime(TWO_HOURS_MS);
+
+  const tokens = expectSignedInResult(
+    await t.action(api.auth.session.start, {
+      refreshToken,
+      params: {},
+    }),
+  );
+
+  expect(tokens).not.toBeNull();
+});
+
+test("refreshed access token gets a unique jti", async () => {
+  const t = convexTest(schema);
+
+  const initialTokens = expectSignedInResult(
+    await t.action(api.auth.session.start, {
+      provider: "password",
+      params: {
+        email: TEST_EMAIL,
+        password: TEST_PASSWORD,
+        flow: "signUp",
+      },
+    }),
+  );
+  const { refreshToken } = initialTokens!;
+
+  const refreshedTokens = expectSignedInResult(
+    await t.action(api.auth.session.start, {
+      refreshToken,
+      params: {},
+    }),
+  );
+
+  const firstJti = decodeJwt(initialTokens!.token).jti;
+  const refreshedJti = decodeJwt(refreshedTokens!.token).jti;
+
+  expect(typeof firstJti).toBe("string");
+  expect(typeof refreshedJti).toBe("string");
+  expect(refreshedJti).not.toEqual(firstJti);
+});
+
+test("refresh token expiration", async () => {
+  vi.useFakeTimers();
+  const ONE_DAY_MS = 1000 * 60 * 60 * 24;
+  process.env.AUTH_SESSION_INACTIVE_DURATION_MS = `${ONE_DAY_MS}`;
+  const t = convexTest(schema);
+  const initialTokens = expectSignedInResult(
+    await t.action(api.auth.session.start, {
+      provider: "password",
+      params: {
+        email: TEST_EMAIL,
+        password: TEST_PASSWORD,
+        flow: "signUp",
+      },
+    }),
+  );
+  const { refreshToken } = initialTokens!;
+
+  vi.advanceTimersByTime(2 * ONE_DAY_MS);
+
+  const tokens = expectSignedInResult(
+    await t.action(api.auth.session.start, {
+      refreshToken,
+      params: {},
+    }),
+  );
+
+  expect(tokens).toBeNull();
+});
+
+async function exchangeToken(
+  t: TestConvex<typeof schema>,
+  refreshToken: string,
+) {
+  const newTokens = expectSignedInResult(
+    await t.action(api.auth.session.start, {
+      refreshToken,
+      params: {},
+    }),
+  );
+  return newTokens?.refreshToken ?? null;
+}
+
+test("refresh token reuse detection", async () => {
+  vi.useFakeTimers();
+  const t = convexTest(schema);
+  const initialTokens = expectSignedInResult(
+    await t.action(api.auth.session.start, {
+      provider: "password",
+      params: {
+        email: TEST_EMAIL,
+        password: TEST_PASSWORD,
+        flow: "signUp",
+      },
+    }),
+  );
+  const { refreshToken: refreshTokenA } = initialTokens!;
+
+  const refreshTokenB = await exchangeToken(t, refreshTokenA);
+  expect(refreshTokenB).not.toBeNull();
+
+  // Advance time within the reuse window (10 seconds)
+  vi.advanceTimersByTime(5000);
+
+  const refreshTokenB1 = await exchangeToken(t, refreshTokenA);
+  expect(refreshTokenB1).not.toBeNull();
+  // Token A is the parent of active refresh token B, so the same token should
+  // be returned
+  expect(refreshTokenB1).toEqual(refreshTokenB);
+
+  // Advance time again to be outside of the reuse window
+  vi.advanceTimersByTime(5001);
+
+  const refreshTokenB2 = await exchangeToken(t, refreshTokenA);
+  expect(refreshTokenB2).not.toBeNull();
+  // Even though we're outside of the reuse window, the same refresh token
+  // should be returned because B1 is the active refresh token
+  expect(refreshTokenB2).toEqual(refreshTokenB1);
+
+  const refreshTokenC = await exchangeToken(t, refreshTokenB!);
+  expect(refreshTokenC).not.toBeNull();
+
+  const refreshTokenB3 = await exchangeToken(t, refreshTokenA);
+  // Now that B is no longer the active refresh token, and we're outside of the refresh window
+  // we cannot use token A
+  expect(refreshTokenB3).toBeNull();
+
+  const refreshTokenD = await exchangeToken(t, refreshTokenC!);
+  // Since C descends from A, and A was used outside of the refresh window, we also
+  // cannot use C
+  expect(refreshTokenD).toBeNull();
+});
+
+test("refresh token reuse with racing requests", async () => {
+  vi.useFakeTimers();
+  const t = convexTest(schema);
+  const initialTokens = expectSignedInResult(
+    await t.action(api.auth.session.start, {
+      provider: "password",
+      params: {
+        email: TEST_EMAIL,
+        password: TEST_PASSWORD,
+        flow: "signUp",
+      },
+    }),
+  );
+  const { refreshToken: refreshTokenA } = initialTokens!;
+
+  const refreshTokenB = await exchangeToken(t, refreshTokenA);
+  expect(refreshTokenB).not.toBeNull();
+
+  // Advance time within the reuse window (10 seconds)
+  vi.advanceTimersByTime(5000);
+
+  const refreshTokenB1 = await exchangeToken(t, refreshTokenA);
+  expect(refreshTokenB1).not.toBeNull();
+  // Token A is the parent of active refresh token B, so the same token should
+  // be returned
+  expect(refreshTokenB1).toEqual(refreshTokenB);
+
+  // Regression test: Token B is still usable even after a second request to exchange
+  // token A is made.
+  // In this case, it's because Token B and Token B1 are the same.
+  const refreshTokenC = await exchangeToken(t, refreshTokenB!);
+  expect(refreshTokenC).not.toBeNull();
+
+  const refreshTokenC1 = await exchangeToken(t, refreshTokenB1!);
+  expect(refreshTokenC1).not.toBeNull();
+});
+
+test("refresh token invalidate subtree", async () => {
+  vi.useFakeTimers();
+  const t = convexTest(schema);
+  const initialTokens = expectSignedInResult(
+    await t.action(api.auth.session.start, {
+      provider: "password",
+      params: {
+        email: TEST_EMAIL,
+        password: TEST_PASSWORD,
+        flow: "signUp",
+      },
+    }),
+  );
+  const { refreshToken: refreshTokenA } = initialTokens!;
+
+  const refreshTokenB = await exchangeToken(t, refreshTokenA);
+  expect(refreshTokenB).not.toBeNull();
+
+  const refreshTokenC = await exchangeToken(t, refreshTokenB!);
+  expect(refreshTokenC).not.toBeNull();
+
+  // Advance time within the reuse window (10 seconds)
+  vi.advanceTimersByTime(5000);
+
+  const refreshTokenB1 = await exchangeToken(t, refreshTokenA);
+  expect(refreshTokenB1).not.toBeNull();
+
+  // Still within the reuse window for token A, but token B is no longer the active
+  // refresh token, so we should get a new refresh token
+  expect(refreshTokenB1).not.toEqual(refreshTokenB);
+
+  const refreshTokenC1 = await exchangeToken(t, refreshTokenB1!);
+  expect(refreshTokenC1).not.toBeNull();
+
+  // Advance time again to be outside of the reuse window for token B
+  vi.advanceTimersByTime(5001);
+
+  // Token B is outside of its refresh window. Its subtree should be invalidated.
+  const refreshResultB = await exchangeToken(t, refreshTokenB!);
+  expect(refreshResultB).toBeNull();
+
+  // Token C cannot be used because it descends from B, which is invalid.
+  const refreshResultC = await exchangeToken(t, refreshTokenC!);
+  expect(refreshResultC).toBeNull();
+
+  // Token C1 is still valid because it does not descend from B
+  const refreshTokenD1 = await exchangeToken(t, refreshTokenC1!);
+  expect(refreshTokenD1).not.toBeNull();
+
+  // Token B1 is still valid because it does not descend from B, and is still within the reuse window
+  const refreshTokenC2 = await exchangeToken(t, refreshTokenB1!);
+  expect(refreshTokenC2).not.toBeNull();
+});
+
+test("session expiration", async () => {
+  vi.useFakeTimers();
+  const ONE_DAY_MS = 1000 * 60 * 60 * 24;
+  process.env.AUTH_SESSION_TOTAL_DURATION_MS = `${ONE_DAY_MS}`;
+  const t = convexTest(schema);
+  const initialTokens = expectSignedInResult(
+    await t.action(api.auth.session.start, {
+      provider: "password",
+      params: {
+        email: TEST_EMAIL,
+        password: TEST_PASSWORD,
+        flow: "signUp",
+      },
+    }),
+  );
+  const { refreshToken } = initialTokens!;
+
+  vi.advanceTimersByTime(2 * ONE_DAY_MS);
+
+  const refreshedTokens = expectSignedInResult(
+    await t.action(api.auth.session.start, {
+      refreshToken,
+      params: {},
+    }),
+  );
+
+  expect(refreshedTokens).toBeNull();
+});

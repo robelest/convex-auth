@@ -1,0 +1,134 @@
+import {
+  deploymentTypeFromAdminKey,
+  doesAlreadyMatchTemplate,
+  isPreviewDeployKey,
+  stripDeploymentTypePrefix,
+  templateToSource,
+} from "@robelest/convex-auth/cli/index";
+import { generateKeys } from "@robelest/convex-auth/cli/keys";
+import { expect, test } from "vite-plus/test";
+
+// ---- templateToSource ----
+
+test("templateToSource strips $$ markers", () => {
+  const template = "const config = {$$\n  providers: [$$],$$\n};";
+  const result = templateToSource(template);
+  expect(result).toBe("const config = {\n  providers: [],\n};");
+  expect(result).not.toContain("$$");
+});
+
+test("templateToSource returns unchanged string when no $$ markers", () => {
+  const source = "const x = 1;";
+  expect(templateToSource(source)).toBe(source);
+});
+
+// ---- doesAlreadyMatchTemplate ----
+
+test("doesAlreadyMatchTemplate matches exact template", () => {
+  const template = 'import { defineApp } from "convex/server";\n';
+  const existing = 'import { defineApp } from "convex/server";\n';
+  expect(doesAlreadyMatchTemplate(existing, template)).toBe(true);
+});
+
+test("doesAlreadyMatchTemplate matches template with wildcard content", () => {
+  const template =
+    'import { createAuth } from "@robelest/convex-auth/component";\n\nconst auth = createAuth(components.auth, {$$\n  providers: [$$],$$\n});\n';
+  const existing =
+    'import { createAuth } from "@robelest/convex-auth/component";\n\nconst auth = createAuth(components.auth, {\n  providers: [password()],\n});\n';
+  expect(doesAlreadyMatchTemplate(existing, template)).toBe(true);
+});
+
+test("doesAlreadyMatchTemplate returns false for non-matching content", () => {
+  const template =
+    'import { defineApp } from "convex/server";\n\napp.use(auth);\n';
+  const existing = "// completely different file\nconsole.log('hello');\n";
+  expect(doesAlreadyMatchTemplate(existing, template)).toBe(false);
+});
+
+// ---- stripDeploymentTypePrefix ----
+
+test("stripDeploymentTypePrefix strips dev: prefix", () => {
+  expect(stripDeploymentTypePrefix("dev:tall-forest-1234")).toBe(
+    "tall-forest-1234",
+  );
+});
+
+test("stripDeploymentTypePrefix strips prod: prefix", () => {
+  expect(stripDeploymentTypePrefix("prod:happy-animal-5678")).toBe(
+    "happy-animal-5678",
+  );
+});
+
+test("stripDeploymentTypePrefix returns raw string without prefix", () => {
+  expect(stripDeploymentTypePrefix("tall-forest-1234")).toBe(
+    "tall-forest-1234",
+  );
+});
+
+// ---- deploymentTypeFromAdminKey ----
+
+test("deploymentTypeFromAdminKey extracts prod type", () => {
+  expect(deploymentTypeFromAdminKey("prod:deploymentName|secretkey")).toBe(
+    "prod",
+  );
+});
+
+test("deploymentTypeFromAdminKey extracts dev type", () => {
+  expect(deploymentTypeFromAdminKey("dev:deploymentName|secretkey")).toBe(
+    "dev",
+  );
+});
+
+test("deploymentTypeFromAdminKey returns null for legacy keys", () => {
+  expect(deploymentTypeFromAdminKey("legacyKeyWithoutColons")).toBeNull();
+});
+
+// ---- isPreviewDeployKey ----
+
+test("isPreviewDeployKey identifies preview deploy keys", () => {
+  // preview deploy key format: preview:team:project|key
+  expect(isPreviewDeployKey("preview:team-slug:project-slug|secretkey")).toBe(
+    true,
+  );
+});
+
+test("isPreviewDeployKey returns false for concrete preview deployment keys", () => {
+  // concrete preview deployment key format: preview:deploymentName|key
+  expect(isPreviewDeployKey("preview:deploymentName|secretkey")).toBe(false);
+});
+
+test("isPreviewDeployKey returns false for non-preview keys", () => {
+  expect(isPreviewDeployKey("prod:deploymentName|secretkey")).toBe(false);
+  expect(isPreviewDeployKey("dev:deploymentName|secretkey")).toBe(false);
+});
+
+test("isPreviewDeployKey returns false for keys without pipe separator", () => {
+  expect(isPreviewDeployKey("preview:team:project")).toBe(false);
+  expect(isPreviewDeployKey("legacyKey")).toBe(false);
+});
+
+// ---- generateKeys ----
+
+test("generateKeys produces valid JWT_PRIVATE_KEY and JWKS", async () => {
+  const keys = await generateKeys();
+
+  // JWT_PRIVATE_KEY should be a PEM-encoded PKCS8 private key (spaces replace newlines)
+  expect(keys.JWT_PRIVATE_KEY).toContain("-----BEGIN PRIVATE KEY-----");
+  expect(keys.JWT_PRIVATE_KEY).toContain("-----END PRIVATE KEY-----");
+  // The CLI collapses newlines to spaces for env var storage
+  expect(keys.JWT_PRIVATE_KEY).not.toContain("\n");
+
+  // JWKS should be valid JSON with a "keys" array
+  const jwks = JSON.parse(keys.JWKS) as {
+    keys: Array<Record<string, unknown>>;
+  };
+  expect(jwks.keys).toBeInstanceOf(Array);
+  expect(jwks.keys.length).toBe(1);
+
+  const jwk = jwks.keys[0];
+  expect(jwk.use).toBe("sig");
+  expect(jwk.kty).toBe("RSA");
+  // RSA public key components
+  expect(typeof jwk.n).toBe("string");
+  expect(typeof jwk.e).toBe("string");
+});

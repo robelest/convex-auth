@@ -759,7 +759,10 @@ async function checkSourceControl(options: {
     const changedFiles = gitStatus
       .split("\n")
       .filter(
-        (line) => !/\bpackage(-lock)?.json/.test(line) && line.length > 0,
+        (line) =>
+          !/\bpackage(-lock)?.json/.test(line) &&
+          !/\benv\.d\.ts$/.test(line) &&
+          line.length > 0,
       );
     if (changedFiles.length > 0) {
       p.log.error(

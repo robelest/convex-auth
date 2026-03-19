@@ -1,0 +1,117 @@
+import { auth } from "./auth";
+import { mutation, query } from "./functions";
+import {
+  createGroupInput,
+  emptyInput,
+  groupIdInput,
+  nonEmptyId,
+  nullableUnknownRecordOutput,
+  nullOutput,
+  unknownRecordListOutput,
+} from "./validation";
+
+/**
+ * List all groups the current user belongs to.
+ */
+export const list = query
+  .input(emptyInput)
+  .returns(unknownRecordListOutput)
+  .handler(async (ctx) => {
+    const { items: memberships } = await auth.member.list(ctx, {
+      where: { userId: ctx.auth.userId },
+    });
+    const groups = await Promise.all(
+      memberships.map(
+        async (membership: { groupId: string; role?: string }) => {
+          const group = await auth.group.get(ctx, membership.groupId);
+          return group ? { ...group, role: membership.role } : null;
+        },
+      ),
+    );
+    return groups.filter((group) => group !== null);
+  })
+  .public();
+
+/**
+ * Get a single group by ID.
+ */
+export const get = query
+  .input(groupIdInput)
+  .returns(nullableUnknownRecordOutput)
+  .handler(async (ctx, { groupId }) => {
+    return await auth.group.get(ctx, groupId);
+  })
+  .public();
+
+/**
+ * Create a new group (channel). The creator is added as "admin".
+ */
+export const create = mutation
+  .input(createGroupInput)
+  .returns(nonEmptyId)
+  .handler(async (ctx, { name, description }) => {
+    const groupId = await auth.group.create(ctx, {
+      name,
+      type: "channel",
+      extend: description ? { description } : {},
+    });
+    await auth.member.add(ctx, {
+      groupId,
+      userId: ctx.auth.userId,
+      role: "admin",
+    });
+    return groupId;
+  })
+  .public();
+
+/**
+ * List members of a group.
+ */
+export const members = query
+  .input(groupIdInput)
+  .returns(unknownRecordListOutput)
+  .handler(async (ctx, { groupId }) => {
+    const { items: membersList } = await auth.member.list(ctx, {
+      where: { groupId },
+    });
+    return await Promise.all(
+      membersList.map(async (member: { userId: string; role?: string }) => {
+        const user = await auth.user.get(ctx, member.userId);
+        return {
+          ...member,
+          name: user?.name ?? user?.email ?? user?.phone ?? "Anonymous",
+        };
+      }),
+    );
+  })
+  .public();
+
+/**
+ * Join a group. The user is added as "member".
+ */
+export const join = mutation
+  .input(groupIdInput)
+  .returns(nullOutput)
+  .handler(async (ctx, { groupId }) => {
+    await auth.member.add(ctx, {
+      groupId,
+      userId: ctx.auth.userId,
+      role: "member",
+    });
+    return null;
+  })
+  .public();
+
+/**
+ * List all groups (for discovery / joining).
+ */
+export const listAll = query
+  .input(emptyInput)
+  .returns(unknownRecordListOutput)
+  .handler(async (ctx) => {
+    const { items } = await auth.group.list(ctx, {
+      where: { type: "channel" },
+    });
+    return items;
+  })
+  .public();
