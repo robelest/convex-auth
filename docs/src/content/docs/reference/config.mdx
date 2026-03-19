@@ -1,0 +1,66 @@
+---
+title: Configuration
+description: createAuth options reference.
+---
+
+## `createAuth(component, config)`
+
+```ts
+import { createAuth } from "@robelest/convex-auth/component";
+import { components } from "./_generated/api";
+
+const auth = createAuth(components.auth, {
+  providers: [
+    /* ... */
+  ],
+  // All options below are optional
+  session: {
+    totalDurationMs: 30 * 24 * 60 * 60 * 1000, // 30 days
+    inactiveDurationMs: 7 * 24 * 60 * 60 * 1000, // 7 days
+  },
+  jwt: {
+    durationMs: 60 * 1000, // 1 minute
+  },
+  signIn: {
+    max_failed_attempts_per_hour: 10,
+  },
+  callbacks: {
+    afterUserCreatedOrUpdated: async (ctx, { userId, existingUser }) => {
+      /* ... */
+    },
+  },
+});
+```
+
+## Config options
+
+| Option                                | Type                   | Default  | Description                            |
+| ------------------------------------- | ---------------------- | -------- | -------------------------------------- |
+| `providers`                           | `AuthProviderConfig[]` | required | Auth methods to enable                 |
+| `session.totalDurationMs`             | `number`               | 30 days  | Maximum session lifetime               |
+| `session.inactiveDurationMs`          | `number`               | varies   | Inactive session timeout               |
+| `jwt.durationMs`                      | `number`               | 60s      | JWT token lifetime                     |
+| `signIn.max_failed_attempts_per_hour` | `number`               | 10       | Rate limit for failed sign-in attempts |
+| `callbacks.afterUserCreatedOrUpdated` | `function`             | —        | Post-sign-in hook                      |
+
+> **Note:** Email transport is configured via `new Email({ from, send })` in the
+> providers array, not as a top-level config option.
+
+## Return value
+
+`createAuth` returns an object with:
+
+- `signIn` — Action for client sign-in
+- `signOut` — Action for client sign-out
+- `store` — Mutation for session token exchange
+- `auth.user.*` — User helpers
+- `auth.session.*` — Session helpers
+- `auth.account.*` — Account helpers
+- `auth.group.*` — Group helpers
+- `auth.member.*` — Membership helpers
+- `auth.invite.*` — Invite helpers
+- `auth.key.*` — API key helpers
+- `auth.http.*` — HTTP route helpers
+- `auth.sso.*` — SSO helpers (only when `new SSO()` is in providers)
+- `InferClientApi<typeof auth>` — Type-level utility; use as the generic for
+  `client()` on the frontend to get conditional passkey/totp/device helpers

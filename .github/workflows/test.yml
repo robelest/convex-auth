@@ -21,5 +21,8 @@ jobs:
           run-install: |
             args: ['--frozen-lockfile']
 
-      - name: Run lint
-        run: vp run lint
+      - name: Run consumer typecheck
+        run: vp run '@robelest/convex-auth#typecheck:consumer'
+
+      - name: Run packaging checks
+        run: vp run '@robelest/convex-auth#check:packaging'

@@ -1,0 +1,128 @@
+{
+  "name": "@robelest/convex-auth",
+  "version": "0.0.4-preview.13",
+  "description": "Authentication for Convex",
+  "keywords": [
+    "auth",
+    "authentication",
+    "authorization",
+    "convex",
+    "login",
+    "sign"
+  ],
+  "homepage": "https://convex-auth.pages.dev/",
+  "bugs": "https://github.com/robelest/convex-auth/issues",
+  "license": "Apache-2.0",
+  "author": "robelest",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/robelest/convex-auth.git"
+  },
+  "bin": "./dist/bin.cjs",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./_generated/component.js": {
+      "types": "./dist/component/_generated/component.d.ts"
+    },
+    "./test": "./src/test.ts",
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.js"
+    },
+    "./component": {
+      "types": "./dist/component/index.d.ts",
+      "import": "./dist/component/index.js"
+    },
+    "./convex.config": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
+    },
+    "./convex.config.js": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
+    },
+    "./errors": {
+      "types": "./dist/server/errors.d.ts",
+      "import": "./dist/server/errors.js"
+    },
+    "./providers": {
+      "types": "./dist/providers/index.d.ts",
+      "import": "./dist/providers/index.js"
+    },
+    "./providers/*": {
+      "types": "./dist/providers/*.d.ts",
+      "import": "./dist/providers/*.js"
+    }
+  },
+  "scripts": {
+    "build:version": "vp exec node ../../scripts/generate-version.js",
+    "build:lib": "vp exec tsdown",
+    "build:component:dts": "vp exec node ../../scripts/fix-component-entrypoint-dts.js",
+    "build:bin": "vp exec esbuild src/cli/index.ts --bundle --platform=node --format=cjs --outfile=dist/bin.cjs",
+    "build": "rm -rf dist && vp run build:version && vp run build:lib && vp run build:component:dts && vp run build:bin",
+    "typecheck": "vp exec tsc --project tsconfig.server.json --noEmit && vp exec tsc --project tsconfig.client.json --noEmit && vp exec tsc --project tsconfig.component.json --noEmit",
+    "typecheck:consumer": "vp exec tsc --project tsconfig.consumer.json --noEmit",
+    "check:attw": "vp exec attw --pack . --profile esm-only --exclude-entrypoints ./test ./_generated/component.js",
+    "check:publint": "vp exec publint --strict",
+    "check:packaging": "vp run check:attw && vp run check:publint",
+    "docs": "vp run --cwd ../../docs dev",
+    "lint": "vp run typecheck",
+    "spellcheck": "cspell \"docs/pages/**/*.md*\"",
+    "prepublishOnly": "vp run build && vp run typecheck:consumer && vp run check:packaging",
+    "test": "vp test --config ../../vite.config.ts --project convex --project node",
+    "test:once": "vp test --config ../../vite.config.ts --run --project convex --project node",
+    "convex:dev": "vp exec convex dev",
+    "convex:codegen": "vp exec convex codegen",
+    "convex:codegen:component": "vp exec convex codegen --component-dir ./src/component",
+    "convex:dashboard": "vp exec convex dashboard",
+    "convex:run": "vp exec convex run"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.0.1",
+    "@oslojs/crypto": "^1.0.1",
+    "@oslojs/encoding": "^1.1.0",
+    "@oslojs/otp": "^1.1.0",
+    "@oslojs/webauthn": "^1.0.0",
+    "@robelest/fx": "catalog:",
+    "@robelest/samlify": "workspace:*",
+    "arctic": "^3.7.0",
+    "cookie": "^1.1.1",
+    "fluent-convex": "^0.12.3",
+    "jose": "^6.1.3",
+    "jwt-decode": "^4.0.0"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.2",
+    "@clack/prompts": "^1.1.0",
+    "@commander-js/extra-typings": "^14.0.0",
+    "@types/node": "25.2.2",
+    "convex": "catalog:",
+    "convex-test": "catalog:",
+    "cspell": "^9.6.4",
+    "dotenv": "^17.2.4",
+    "esbuild": "^0.27.3",
+    "publint": "^0.3.17",
+    "shelljs": "^0.10.0",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "valibot": "^1.2.0",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "convex": "^1.33.1"
+  },
+  "@comment devDependencies": [
+    "The CLI deps (@clack/prompts, @commander-js/extra-typings, dotenv,",
+    "valibot) are devDependencies because they are bundled into dist/bin.cjs",
+    "via esbuild."
+  ]
+}

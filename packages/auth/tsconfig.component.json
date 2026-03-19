@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "paths": {
+      "@robelest/convex-auth/component": ["./src/component/index"],
+      "@robelest/convex-auth/providers/*": ["./src/providers/*"],
+      "@robelest/convex-auth/client": ["./src/client/index"],
+      "@robelest/convex-auth/server": ["./src/server/index"]
+    }
+  },
+  "include": ["src/component/**/*"]
+}

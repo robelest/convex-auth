@@ -4,6 +4,7 @@
 /distreact
 /distnextjs
 /publish-example
+/convex/_generated
 
 # dependencies
 /node_modules
@@ -14,6 +15,9 @@ docs/dist/
 /.pnp
 .pnp.js
 
+# package build artifacts
+/packages/auth/dist
+/packages/auth/src/server/version.ts
 # testing
 /coverage
 
@@ -35,13 +39,20 @@ yarn-error.log*
 
 # local env files
 .env*.local
+test/infra/docker/.env
+test/infra/docker/.zitadel-*.pat
 
 # vercel
 .vercel
 
+# stray tool caches
+.ruff_cache/
+.wrangler/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+env.d.ts
 
 playwright-report/
 test-results/

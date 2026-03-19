@@ -1,0 +1,127 @@
+import { Auth } from "convex/server";
+import { GenericId } from "convex/values";
+
+import { authDb } from "./db";
+import { createRefreshToken } from "./refresh";
+import { generateToken } from "./tokens";
+import { Doc, MutationCtx, SessionInfo } from "./types";
+import { ConvexAuthConfig } from "./types";
+import {
+  LOG_LEVELS,
+  TOKEN_SUB_CLAIM_DIVIDER,
+  REFRESH_TOKEN_DIVIDER,
+  logWithLevel,
+  maybeRedact,
+} from "./utils";
+
+const DEFAULT_SESSION_TOTAL_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+
+export async function maybeGenerateTokensForSession(
+  ctx: MutationCtx,
+  config: ConvexAuthConfig,
+  userId: GenericId<"User">,
+  sessionId: GenericId<"Session">,
+  generateTokens: boolean,
+): Promise<SessionInfo> {
+  return {
+    userId,
+    sessionId,
+    tokens: generateTokens
+      ? await generateTokensForSession(ctx, config, {
+          userId,
+          sessionId,
+          issuedRefreshTokenId: null,
+          parentRefreshTokenId: null,
+        })
+      : null,
+  };
+}
+
+export async function createNewAndDeleteExistingSession(
+  ctx: MutationCtx,
+  config: ConvexAuthConfig,
+  userId: GenericId<"User">,
+) {
+  const db = authDb(ctx, config);
+  const existingSessionId = await getAuthSessionId(ctx);
+  if (existingSessionId !== null) {
+    const existingSession = await db.sessions.getById(existingSessionId);
+    if (existingSession !== null) {
+      await deleteSession(ctx, existingSession, config);
+    }
+  }
+  return await createSession(ctx, userId, config);
+}
+
+export async function generateTokensForSession(
+  ctx: MutationCtx,
+  config: ConvexAuthConfig,
+  args: {
+    userId: GenericId<"User">;
+    sessionId: GenericId<"Session">;
+    issuedRefreshTokenId: GenericId<"RefreshToken"> | null;
+    parentRefreshTokenId: GenericId<"RefreshToken"> | null;
+  },
+) {
+  const ids = { userId: args.userId, sessionId: args.sessionId };
+  const refreshTokenId =
+    args.issuedRefreshTokenId ??
+    (await createRefreshToken(
+      ctx,
+      config,
+      args.sessionId,
+      args.parentRefreshTokenId,
+    ));
+  const result = {
+    token: await generateToken(ids, config),
+    refreshToken: `${refreshTokenId}${REFRESH_TOKEN_DIVIDER}${args.sessionId}`,
+  };
+  logWithLevel(
+    LOG_LEVELS.DEBUG,
+    `Generated token ${maybeRedact(result.token)} and refresh token ${maybeRedact(refreshTokenId)} for session ${maybeRedact(args.sessionId)}`,
+  );
+  return result;
+}
+
+async function createSession(
+  ctx: MutationCtx,
+  userId: GenericId<"User">,
+  config: ConvexAuthConfig,
+) {
+  const db = authDb(ctx, config);
+  const expirationTime =
+    Date.now() +
+    (config.session?.totalDurationMs ??
+      (process.env.AUTH_SESSION_TOTAL_DURATION_MS !== undefined
+        ? Number(process.env.AUTH_SESSION_TOTAL_DURATION_MS)
+        : undefined) ??
+      DEFAULT_SESSION_TOTAL_DURATION_MS);
+  return (await db.sessions.create(
+    userId,
+    expirationTime,
+  )) as GenericId<"Session">;
+}
+
+export async function deleteSession(
+  ctx: MutationCtx,
+  session: Doc<"Session">,
+  config: ConvexAuthConfig,
+) {
+  const db = authDb(ctx, config);
+  await db.sessions.delete(session._id);
+  await db.refreshTokens.deleteAll(session._id);
+}
+
+/**
+ * Return the current session ID from the auth identity subject.
+ *
+ * Internal helper used by auth runtime internals and `auth.session.current`.
+ */
+export async function getAuthSessionId(ctx: { auth: Auth }) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (identity === null) {
+    return null;
+  }
+  const [, sessionId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
+  return sessionId as GenericId<"Session">;
+}

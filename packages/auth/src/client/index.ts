@@ -1,0 +1,2147 @@
+import { Fx } from "@robelest/fx";
+import { ConvexHttpClient } from "convex/browser";
+import type { FunctionReference } from "convex/server";
+import { ConvexError, Value } from "convex/values";
+
+import { AUTH_ERRORS } from "../server/errors";
+
+// Re-export error utilities so consumers can import from `@robelest/convex-auth/client`.
+export {
+  isAuthError,
+  parseAuthError,
+  AUTH_ERRORS,
+  type AuthErrorCode,
+} from "../server/errors";
+
+/**
+ * Structural interface for any Convex client.
+ * Satisfied by `ConvexClient` (`convex/browser`),
+ * `ConvexReactClient` (`convex/react`), and similar transports.
+ *
+ * `clearAuth` is present on `ConvexReactClient` and `BaseConvexClient`
+ * but not on the simplified `ConvexClient`. When available we call it
+ * during sign-out for a clean deauthentication.
+ */
+interface ConvexTransport {
+  action(action: any, args: any): Promise<any>;
+  setAuth(
+    fetchToken: (args: {
+      forceRefreshToken: boolean;
+    }) => Promise<string | null | undefined>,
+    onChange?: (isAuthenticated: boolean) => void,
+  ): void;
+  clearAuth?(): void;
+}
+
+/** Pluggable key-value storage (defaults to `localStorage`). */
+export interface Storage {
+  getItem(
+    key: string,
+  ): string | null | undefined | Promise<string | null | undefined>;
+  setItem(key: string, value: string): void | Promise<void>;
+  removeItem(key: string): void | Promise<void>;
+}
+
+type AuthSession = {
+  token: string;
+  refreshToken: string;
+};
+
+type SignInActionResult =
+  | { kind: "signedIn"; tokens: AuthSession | null }
+  | { kind: "redirect"; redirect: string; verifier: string }
+  | { kind: "started" }
+  | { kind: "passkeyOptions"; options: Record<string, any>; verifier: string }
+  | { kind: "totpRequired"; verifier: string }
+  | {
+      kind: "totpSetup";
+      totpSetup: { uri: string; secret: string; totpId: string };
+      verifier: string;
+    }
+  | {
+      kind: "deviceCode";
+      deviceCode: {
+        deviceCode: string;
+        userCode: string;
+        verificationUri: string;
+        verificationUriComplete: string;
+        expiresIn: number;
+        interval: number;
+      };
+    };
+
+/**
+ * Device code response returned when signing in with the `"device"` provider.
+ *
+ * The device displays the `userCode` (or `verification_uri_complete`) and
+ * polls via `auth.device.poll()` until the user authorizes.
+ */
+export type DeviceCodeResult = {
+  /** High-entropy device code used for polling (keep secret). */
+  deviceCode: string;
+  /** Short human-readable code the user enters (e.g. "WDJB-MJHT"). */
+  userCode: string;
+  /** Base verification URL (e.g. "https://myapp.com/device"). */
+  verification_uri: string;
+  /** Verification URL with user code pre-filled as `?code=XXXX-XXXX`. */
+  verification_uri_complete: string;
+  /** Lifetime of the codes in seconds. */
+  expiresIn: number;
+  /** Minimum polling interval in seconds. */
+  interval: number;
+};
+
+/**
+ * Result of a `signIn` call.
+ *
+ * - `kind: "signedIn"` — credentials were accepted and the user is authenticated.
+ * - `kind: "redirect"` — OAuth flow initiated; redirect the user to `redirect.toString()`.
+ * - `kind: "totpRequired"` — credentials valid but 2FA is needed; call `auth.totp.verify()`.
+ * - `kind: "deviceCode"` — device flow initiated; display the code and poll via `auth.device.poll()`.
+ * - `kind: "started"` — a non-immediate flow started (for example email/phone verification).
+ */
+export type SignInResult =
+  | { kind: "signedIn" }
+  | { kind: "redirect"; redirect: URL; verifier: string }
+  | { kind: "totpRequired"; verifier: string }
+  | { kind: "deviceCode"; deviceCode: DeviceCodeResult }
+  | { kind: "started" };
+
+/** Reactive auth state snapshot returned by `auth.state` and `auth.onChange`. */
+export type AuthState = {
+  /** High-level auth phase for deterministic UI state handling. */
+  phase: "loading" | "handshake" | "authenticated" | "unauthenticated";
+  /** `true` during initial hydration before the first token is resolved. */
+  isLoading: boolean;
+  /** `true` only after Convex confirms authentication with the backend. */
+  isAuthenticated: boolean;
+  /** The raw JWT string, or `null` when not authenticated. */
+  token: string | null;
+};
+
+/**
+ * Typed Convex API references for the auth functions.
+ * Pass these from your generated `api` object.
+ */
+export type AuthApiRefs<
+  HasPasskey extends boolean = boolean,
+  HasTotp extends boolean = boolean,
+  HasDevice extends boolean = boolean,
+> = {
+  session: {
+    start: FunctionReference<"action", "public", any, any>;
+    stop: FunctionReference<"action", "public", any, any>;
+  };
+  store: {
+    run: FunctionReference<"mutation", "public", any, any>;
+  };
+  /** @internal Set automatically by `createAuth` — do not set manually. */
+  _capabilities?: {
+    passkey: HasPasskey;
+    totp: HasTotp;
+    device: HasDevice;
+  };
+};
+
+/** Passkey (WebAuthn) client-side helpers. */
+export interface PasskeyClient {
+  isSupported(): boolean;
+  isAutofillSupported(): Promise<boolean>;
+  register(opts?: Record<string, any>): Promise<SignInResult>;
+  authenticate(opts?: Record<string, any>): Promise<SignInResult>;
+}
+
+/** TOTP two-factor authentication client-side helpers. */
+export interface TotpClient {
+  setup(opts?: Record<string, any>): Promise<Record<string, any>>;
+  confirm(opts: Record<string, any>): Promise<void>;
+  verify(opts: Record<string, any>): Promise<void>;
+}
+
+/** Device authorization (RFC 8628) client-side helpers. */
+export interface DeviceClient {
+  poll(code: any): Promise<void>;
+  verify(userCode: string): Promise<void>;
+}
+
+/** Extract capability flags from an AuthApiRefs type. */
+type InferCaps<Api extends AuthApiRefs<boolean, boolean, boolean>> =
+  Api extends AuthApiRefs<infer P, infer T, infer D>
+    ? { passkey: P; totp: T; device: D }
+    : { passkey: boolean; totp: boolean; device: boolean };
+
+/** Base auth client — always present. */
+export interface AuthClientBase {
+  readonly state: AuthState;
+  signIn: (
+    provider: string,
+    params?: Record<string, any>,
+  ) => Promise<SignInResult>;
+  signOut: () => Promise<void>;
+  onChange: (callback: () => void) => () => void;
+  destroy: () => void;
+}
+
+/**
+ * Auth client return type — conditionally includes `passkey`, `totp`, and
+ * `device` helpers based on the capabilities in the `AuthApiRefs` type.
+ */
+export type AuthClient<
+  Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs,
+> = AuthClientBase &
+  (InferCaps<Api>["passkey"] extends true ? { passkey: PasskeyClient } : {}) &
+  (InferCaps<Api>["totp"] extends true ? { totp: TotpClient } : {}) &
+  (InferCaps<Api>["device"] extends true ? { device: DeviceClient } : {});
+
+/** Options for {@link client}. */
+export type ClientOptions = {
+  /** Any Convex client (`ConvexClient` or `ConvexReactClient`). */
+  convex: ConvexTransport;
+  /**
+   * Typed Convex API references for the auth functions.
+   * Required in SPA mode. Optional when `proxyPath` is set (proxy mode
+   * routes through the SSR proxy instead of calling Convex directly).
+   *
+   * ```ts
+   * import { api } from "../convex/_generated/api";
+   * client({
+   *   convex,
+   *   api: { session: api.auth.session, store: api.auth.store },
+   * });
+   * ```
+   */
+  api?: AuthApiRefs<boolean, boolean, boolean>;
+  /**
+   * Convex deployment URL. Derived automatically from the client internals
+   * when omitted — pass explicitly only if auto-detection fails.
+   */
+  url?: string;
+  /**
+   * Key-value storage for persisting tokens.
+   *
+   * - Defaults to `localStorage` in SPA mode.
+   * - Defaults to `null` (in-memory only) when `proxyPath` is set,
+   *   since httpOnly cookies handle persistence.
+   */
+  storage?: Storage | null;
+  /** Override how the URL bar is updated after OAuth code exchange. */
+  replaceUrl?: (relativeUrl: string) => void | Promise<void>;
+  /**
+   * SSR proxy endpoint (e.g. `"/api/auth"`).
+   *
+   * When set, `signIn`/`signOut`/token refresh POST to this URL
+   * (with `credentials: "include"`) instead of calling Convex directly.
+   * The server handles httpOnly cookies for token persistence.
+   *
+   * Pair with {@link ClientOptions.tokenSeed} for flash-free SSR hydration.
+   */
+  proxyPath?: string;
+  /**
+   * JWT from server-side hydration.
+   *
+   * In proxy mode the server reads the JWT from an httpOnly cookie
+   * and passes it to the client during SSR. This avoids a loading
+   * flash on first render — the client is immediately authenticated.
+   */
+  tokenSeed?: string | null;
+};
+
+const VERIFIER_STORAGE_KEY = "__convexAuthOAuthVerifier";
+const JWT_STORAGE_KEY = "__convexAuthJWT";
+const REFRESH_TOKEN_STORAGE_KEY = "__convexAuthRefreshToken";
+
+const RETRY_BASE_MS = 500;
+const RETRY_MAX_RETRIES = 2;
+const AUTH_HANDSHAKE_TIMEOUT_MS = 5000;
+const NETWORK_ERROR_PATTERN = /(network|fetch|load failed|failed to fetch)/i;
+
+type AuthHandshakeErrorCode =
+  | "AUTH_HANDSHAKE_TIMEOUT"
+  | "AUTH_HANDSHAKE_REJECTED";
+
+type AuthFlowContext = {
+  provider?: string;
+  flow: string;
+};
+
+type HandshakeWaiter = {
+  epoch: number;
+  context: AuthFlowContext;
+  resolve: () => void;
+  reject: (error: ConvexError<Value>) => void;
+  timeoutId: ReturnType<typeof setTimeout>;
+};
+
+/**
+ * Resolve the Convex deployment URL from the client.
+ *
+ * `ConvexReactClient` exposes `.url` directly.
+ * `ConvexClient` exposes `.client.url` via `BaseConvexClient`.
+ */
+function resolveUrl(convex: ConvexTransport, explicit?: string): string {
+  if (explicit) return explicit;
+  const c = convex as any;
+  const url: unknown = c.url ?? c.client?.url;
+  if (typeof url === "string") return url;
+  throw new Error(
+    "Could not determine Convex deployment URL. Pass `url` explicitly.",
+  );
+}
+
+function isTransientNetworkError(error: unknown): boolean {
+  return (
+    error instanceof TypeError ||
+    (error instanceof Error && NETWORK_ERROR_PATTERN.test(error.message || ""))
+  );
+}
+
+function isRetriableProxyRefreshError(error: unknown): boolean {
+  if (isTransientNetworkError(error)) {
+    return true;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const statusMatch = error.message.match(/Proxy request failed:\s*(\d{3})/);
+  if (statusMatch === null) {
+    return false;
+  }
+  const statusCode = Number(statusMatch[1]);
+  return statusCode >= 500 && statusCode < 600;
+}
+
+/**
+ * Create a framework-agnostic auth client.
+ *
+ * Returns an object with `signIn`, `signOut`, `onChange`, `state`,
+ * `passkey`, and `totp` — everything needed for client-side auth.
+ *
+ * ### SPA mode (default)
+ *
+ * ```ts
+ * import { ConvexClient } from 'convex/browser';
+ * import { client } from '@robelest/convex-auth/client';
+ *
+ * const convex = new ConvexClient(CONVEX_URL);
+ * const auth = client({ convex });
+ * ```
+ *
+ * ### SSR / proxy mode
+ *
+ * ```ts
+ * const auth = client({
+ *   convex,
+ *   proxyPath: '/api/auth',
+ *   tokenSeed: tokenFromServer, // JWT read from httpOnly cookie during SSR
+ * });
+ * ```
+ *
+ * In proxy mode all auth operations go through the proxy URL.
+ * Tokens are stored in httpOnly cookies server-side — the client
+ * holds the JWT in memory only.
+ *
+ * @param options - Client configuration. See {@link ClientOptions}.
+ * @returns Auth client with conditional `passkey`, `totp`, and `device` helpers.
+ */
+export function client<
+  Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs,
+>(options: ClientOptions): AuthClient<Api> {
+  const { convex, proxyPath, api: apiRefs } = options;
+  const proxy = proxyPath;
+
+  function requireApiRefs() {
+    if (!apiRefs) {
+      throw new Error(
+        "The `api` option is required when `proxyPath` is not set. " +
+          "Pass { api: { session: api.auth.session, store: api.auth.store } }.",
+      );
+    }
+    return apiRefs;
+  }
+
+  // In proxy mode, default storage to null (cookies handle persistence).
+  const storage =
+    options.storage !== undefined
+      ? options.storage
+      : proxy
+        ? null
+        : typeof window === "undefined"
+          ? null
+          : window.localStorage;
+
+  const replaceUrl =
+    options.replaceUrl ??
+    ((url: string) => {
+      if (typeof window !== "undefined") {
+        window.history.replaceState({}, "", url);
+      }
+    });
+
+  const url = proxy ? undefined : resolveUrl(convex, options.url);
+  const escapedNamespace = proxy
+    ? proxy.replace(/[^a-zA-Z0-9]/g, "")
+    : url!.replace(/[^a-zA-Z0-9]/g, "");
+  const key = (name: string) => `${name}_${escapedNamespace}`;
+  const subscribers = new Set<() => void>();
+  let disposeStorageListener: (() => void) | null = null;
+
+  // Unauthenticated HTTP client for code verification & OAuth exchange.
+  // Only needed in SPA mode — proxy mode routes everything through the proxy.
+  const httpClient = proxy ? null : new ConvexHttpClient(url!);
+
+  // ---------------------------------------------------------------------------
+  // State
+  // ---------------------------------------------------------------------------
+
+  // If a server-provided token was supplied (SSR hydration), treat it as
+  // immediately authenticated to avoid a handshake-only loading screen.
+  const serverToken =
+    typeof options.tokenSeed === "string" && options.tokenSeed.trim().length > 0
+      ? options.tokenSeed
+      : null;
+  const hasServerToken = serverToken !== null;
+
+  let token: string | null = serverToken;
+  let isLoading = !hasServerToken;
+  let authConfirmed = hasServerToken;
+  let handshakePending = false;
+  let authEpoch = 0;
+  let destroyed = false;
+  const handshakeWaiters = new Set<HandshakeWaiter>();
+  let snapshot: AuthState = {
+    phase: hasServerToken
+      ? "authenticated"
+      : isLoading
+        ? "loading"
+        : "unauthenticated",
+    isLoading,
+    isAuthenticated: hasServerToken,
+    token,
+  };
+  let handlingCodeFlow = false;
+
+  const createHandshakeError = (
+    code: AuthHandshakeErrorCode,
+    context: Record<string, unknown>,
+  ) => {
+    return new ConvexError({
+      code,
+      message: AUTH_ERRORS[code],
+      ...context,
+    } as Value);
+  };
+
+  const settleHandshakeWaiters = (
+    epoch: number,
+    outcome:
+      | { type: "resolve" }
+      | { type: "reject"; error: ConvexError<Value> },
+  ) => {
+    for (const waiter of Array.from(handshakeWaiters)) {
+      if (waiter.epoch !== epoch) {
+        continue;
+      }
+      clearTimeout(waiter.timeoutId);
+      handshakeWaiters.delete(waiter);
+      if (outcome.type === "resolve") {
+        waiter.resolve();
+      } else {
+        waiter.reject(outcome.error);
+      }
+    }
+  };
+
+  const rejectObsoleteHandshakeWaiters = (activeEpoch: number) => {
+    for (const waiter of Array.from(handshakeWaiters)) {
+      if (waiter.epoch >= activeEpoch) {
+        continue;
+      }
+      clearTimeout(waiter.timeoutId);
+      handshakeWaiters.delete(waiter);
+      waiter.reject(
+        createHandshakeError("AUTH_HANDSHAKE_REJECTED", {
+          ...waiter.context,
+          reason: "token_changed",
+        }),
+      );
+    }
+  };
+
+  const waitForAuthHandshake = async (context: AuthFlowContext) => {
+    if (token === null) {
+      return;
+    }
+    if (authConfirmed && !handshakePending) {
+      return;
+    }
+    if (!handshakePending) {
+      throw createHandshakeError("AUTH_HANDSHAKE_REJECTED", {
+        ...context,
+        reason: "auth_rejected",
+      });
+    }
+
+    const epoch = authEpoch;
+    await new Promise<void>((resolve, reject) => {
+      const waiterRef: { current: HandshakeWaiter | null } = { current: null };
+      const timeoutId = setTimeout(() => {
+        if (waiterRef.current !== null) {
+          handshakeWaiters.delete(waiterRef.current);
+        }
+        reject(
+          createHandshakeError("AUTH_HANDSHAKE_TIMEOUT", {
+            ...context,
+            timeoutMs: AUTH_HANDSHAKE_TIMEOUT_MS,
+          }),
+        );
+      }, AUTH_HANDSHAKE_TIMEOUT_MS);
+
+      const waiter: HandshakeWaiter = {
+        epoch,
+        context,
+        resolve,
+        reject,
+        timeoutId,
+      };
+      waiterRef.current = waiter;
+      handshakeWaiters.add(waiter);
+    });
+  };
+
+  const handleConvexAuthChange = (isAuthenticated: boolean) => {
+    if (destroyed) {
+      return;
+    }
+
+    if (isAuthenticated) {
+      authConfirmed = true;
+      handshakePending = false;
+      settleHandshakeWaiters(authEpoch, { type: "resolve" });
+    } else {
+      authConfirmed = false;
+      // Do not reject immediately while a handshake is pending.
+      // Convex can transiently emit `false` while reauth is still in flight,
+      // and a subsequent `true` confirms the same session.
+    }
+
+    if (updateSnapshot()) {
+      notify();
+    }
+  };
+
+  const notify = () => {
+    for (const cb of subscribers) cb();
+  };
+
+  const updateSnapshot = () => {
+    const phaseDispatch = {
+      tag:
+        token !== null && handshakePending
+          ? "handshake"
+          : isLoading
+            ? "loading"
+            : token !== null && authConfirmed
+              ? "authenticated"
+              : "unauthenticated",
+    } as const;
+
+    const phase = {
+      handshake: "handshake",
+      loading: "loading",
+      authenticated: "authenticated",
+      unauthenticated: "unauthenticated",
+    }[phaseDispatch.tag] as AuthState["phase"];
+
+    const next: AuthState = {
+      phase,
+      isLoading: phase === "loading" || phase === "handshake",
+      isAuthenticated: phase === "authenticated",
+      token,
+    };
+    if (
+      snapshot.phase === next.phase &&
+      snapshot.isLoading === next.isLoading &&
+      snapshot.isAuthenticated === next.isAuthenticated &&
+      snapshot.token === next.token
+    ) {
+      return false;
+    }
+    snapshot = next;
+    return true;
+  };
+
+  const finalizeLoadingState = () => {
+    if (!isLoading) {
+      return;
+    }
+    isLoading = false;
+    if (updateSnapshot()) {
+      notify();
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Storage helpers (SPA mode only)
+  // ---------------------------------------------------------------------------
+
+  const storageGet = async (name: string): Promise<string | null> => {
+    if (!storage) {
+      return null;
+    }
+    return Fx.run(
+      Fx.from({
+        ok: async () => (await storage.getItem(key(name))) ?? null,
+        err: (e) => e,
+      }).pipe(
+        Fx.inspect((error) =>
+          Fx.sync(() =>
+            console.error(
+              `[convex-auth] Failed to read ${name} from storage:`,
+              error,
+            ),
+          ),
+        ),
+        Fx.recover(() => Fx.succeed(null)),
+      ),
+    );
+  };
+
+  const storageSet = async (name: string, value: string): Promise<void> => {
+    if (!storage) {
+      return;
+    }
+    await Fx.run(
+      Fx.from({
+        ok: () => storage.setItem(key(name), value),
+        err: (e) => e,
+      }).pipe(
+        Fx.inspect((error) =>
+          Fx.sync(() =>
+            console.error(
+              `[convex-auth] Failed to write ${name} to storage:`,
+              error,
+            ),
+          ),
+        ),
+        Fx.recover(() => Fx.succeed(undefined)),
+      ),
+    );
+  };
+
+  const storageRemove = async (name: string): Promise<void> => {
+    if (!storage) {
+      return;
+    }
+    await Fx.run(
+      Fx.from({
+        ok: () => storage.removeItem(key(name)),
+        err: (e) => e,
+      }).pipe(
+        Fx.inspect((error) =>
+          Fx.sync(() =>
+            console.error(
+              `[convex-auth] Failed to remove ${name} from storage:`,
+              error,
+            ),
+          ),
+        ),
+        Fx.recover(() => Fx.succeed(undefined)),
+      ),
+    );
+  };
+
+  // ---------------------------------------------------------------------------
+  // Token management
+  // ---------------------------------------------------------------------------
+
+  const bindConvexAuth = () => {
+    convex.setAuth(fetchAccessToken, handleConvexAuthChange);
+  };
+
+  const setToken = async (
+    args:
+      | {
+          shouldStore: true;
+          tokens: AuthSession | null;
+          requireHandshake?: boolean;
+          resyncConvexAuth?: boolean;
+        }
+      | {
+          shouldStore: false;
+          tokens: { token: string } | null;
+          requireHandshake?: boolean;
+          resyncConvexAuth?: boolean;
+        },
+  ) => {
+    const previousToken = token;
+
+    if (args.tokens === null) {
+      token = null;
+      if (args.shouldStore) {
+        await storageRemove(JWT_STORAGE_KEY);
+        await storageRemove(REFRESH_TOKEN_STORAGE_KEY);
+      }
+    } else {
+      token = args.tokens.token;
+      if (args.shouldStore && "refreshToken" in args.tokens) {
+        await storageSet(JWT_STORAGE_KEY, args.tokens.token);
+        await storageSet(REFRESH_TOKEN_STORAGE_KEY, args.tokens.refreshToken);
+      }
+    }
+
+    if (token !== previousToken) {
+      authEpoch += 1;
+      rejectObsoleteHandshakeWaiters(authEpoch);
+    }
+
+    if (token === null) {
+      authConfirmed = false;
+      handshakePending = false;
+      settleHandshakeWaiters(authEpoch, {
+        type: "reject",
+        error: createHandshakeError("AUTH_HANDSHAKE_REJECTED", {
+          reason: "token_cleared",
+        }),
+      });
+    } else {
+      const shouldEnterHandshake =
+        args.requireHandshake === true || !authConfirmed;
+      if (shouldEnterHandshake) {
+        authConfirmed = false;
+        handshakePending = true;
+      } else {
+        handshakePending = false;
+      }
+    }
+
+    const hadPendingLoad = isLoading;
+    isLoading = false;
+    const changed = updateSnapshot();
+    if (args.resyncConvexAuth !== false) {
+      bindConvexAuth();
+    }
+    if (hadPendingLoad || changed) {
+      notify();
+    }
+  };
+
+  const setTokenAndMaybeWait = async (
+    args:
+      | {
+          shouldStore: true;
+          tokens: AuthSession | null;
+          waitForHandshake: boolean;
+          context: AuthFlowContext;
+        }
+      | {
+          shouldStore: false;
+          tokens: { token: string } | null;
+          waitForHandshake: boolean;
+          context: AuthFlowContext;
+        },
+  ): Promise<boolean> => {
+    const { waitForHandshake, context, ...tokenArgs } = args;
+    await setToken({
+      ...(tokenArgs as
+        | { shouldStore: true; tokens: AuthSession | null }
+        | { shouldStore: false; tokens: { token: string } | null }),
+      requireHandshake: waitForHandshake,
+    });
+    if (tokenArgs.tokens === null) {
+      return false;
+    }
+    if (waitForHandshake) {
+      await waitForAuthHandshake(context);
+    }
+    return true;
+  };
+
+  // ---------------------------------------------------------------------------
+  // Proxy fetch helper
+  // ---------------------------------------------------------------------------
+
+  const resolveProxyUrl = () => {
+    const origin =
+      typeof window !== "undefined" &&
+      typeof window.location?.origin === "string"
+        ? window.location.origin
+        : typeof location !== "undefined" && typeof location.origin === "string"
+          ? location.origin
+          : null;
+    if (origin !== null) {
+      return new URL(proxy!, origin).toString();
+    }
+    return Fx.run(
+      Fx.from({
+        ok: () => new URL(proxy!).toString(),
+        err: () => proxy! as string,
+      }).pipe(Fx.recover((fallback) => Fx.succeed(fallback))),
+    );
+  };
+
+  const isAbsoluteUrl = (value: string) => {
+    return Fx.run(
+      Fx.from({
+        ok: () => {
+          new URL(value);
+          return true;
+        },
+        err: () => false as const,
+      }).pipe(Fx.recover((v) => Fx.succeed(v))),
+    );
+  };
+
+  const proxyFetch = async (body: Record<string, unknown>) => {
+    const proxyUrl = await resolveProxyUrl();
+    if (typeof window === "undefined" && !(await isAbsoluteUrl(proxyUrl))) {
+      throw new Error(
+        `Cannot call relative proxy URL \`${proxy!}\` without a browser origin. ` +
+          "Pass an absolute proxy URL for server runtimes.",
+      );
+    }
+
+    const response = await fetch(proxyUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const errorBody = await Fx.run(
+        Fx.from({
+          ok: () => response.json() as Promise<Record<string, unknown>>,
+          err: () => ({}) as Record<string, unknown>,
+        }).pipe(Fx.recover((fallback) => Fx.succeed(fallback))),
+      );
+      // Reconstruct ConvexError when the proxy forwards structured auth error data.
+      if (
+        typeof errorBody === "object" &&
+        errorBody !== null &&
+        "authError" in errorBody &&
+        typeof (errorBody as Record<string, unknown>).authError === "object"
+      ) {
+        throw new ConvexError(
+          (errorBody as Record<string, unknown>).authError as Value,
+        );
+      }
+      throw new Error(
+        ((errorBody as Record<string, unknown>).error as string) ??
+          `Proxy request failed: ${response.status}`,
+      );
+    }
+    return Fx.run(
+      Fx.from({
+        ok: () => response.json(),
+        err: () => new Error("Proxy response was not valid JSON"),
+      }).pipe(Fx.recover((e) => Fx.fatal(e))),
+    );
+  };
+
+  // ---------------------------------------------------------------------------
+  // Code verification with retries (SPA mode only)
+  // ---------------------------------------------------------------------------
+
+  const verifyCode = async (
+    args: { code: string; verifier?: string } | { refreshToken: string },
+  ) => {
+    const verifyCodeRetryPolicy = Fx.retry.while(
+      Fx.retry.compose(
+        Fx.retry.jittered(Fx.retry.exponential(RETRY_BASE_MS)),
+        Fx.retry.recurs(RETRY_MAX_RETRIES),
+      ),
+      (meta) => isTransientNetworkError(meta.input),
+    );
+
+    return Fx.run(
+      Fx.from({
+        ok: () =>
+          httpClient!.action(
+            requireApiRefs().session.start,
+            "code" in args
+              ? { params: { code: args.code }, verifier: args.verifier }
+              : args,
+          ),
+        err: (e) => e,
+      }).pipe(
+        Fx.retry(verifyCodeRetryPolicy),
+        Fx.recover((e) => Fx.fatal(e)),
+      ),
+    );
+  };
+
+  const verifyCodeAndSetToken = async (
+    args: { code: string; verifier?: string } | { refreshToken: string },
+    opts?: { resyncConvexAuth?: boolean },
+  ) => {
+    const { tokens } = await verifyCode(args);
+    await setToken({
+      shouldStore: true,
+      tokens: (tokens as AuthSession | null) ?? null,
+      resyncConvexAuth: opts?.resyncConvexAuth,
+    });
+    return tokens !== null;
+  };
+
+  const normalizeDeviceCodeResult = (device_code: any): DeviceCodeResult => {
+    return {
+      deviceCode: device_code.deviceCode,
+      userCode: device_code.userCode,
+      verification_uri:
+        device_code.verification_uri ?? device_code.verificationUri,
+      verification_uri_complete:
+        device_code.verification_uri_complete ??
+        device_code.verificationUriComplete,
+      expiresIn: device_code.expiresIn,
+      interval: device_code.interval,
+    };
+  };
+
+  // ---------------------------------------------------------------------------
+  // signIn
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Sign in with a provider.
+   *
+   * @param provider - Provider ID (e.g. `"email"`, `"password"`, `"google"`).
+   *   Omit when exchanging an OAuth code (the code carries the provider info).
+   * @param args - Provider-specific arguments. Pass a `Record<string, Value>`
+   *   or `FormData`. Common fields: `email`, `password`, `code`, `redirectTo`.
+   * @returns A {@link SignInResult} indicating the outcome.
+   *
+   * @example Email magic link
+   * ```ts
+   * await auth.signIn('email', { email: 'user@example.com' });
+   * ```
+   *
+   * @example Password
+   * ```ts
+   * const result = await auth.signIn('password', { email, password, flow: 'signIn' });
+   * if (result.kind === 'totpRequired') {
+   *   await auth.totp.verify({ code: totpCode, verifier: result.verifier });
+   * }
+   * ```
+   *
+   * @example OAuth (triggers redirect)
+   * ```ts
+   * await auth.signIn('google'); // redirects to Google
+   * ```
+   */
+  const signIn = async (
+    provider?: string,
+    args?: FormData | Record<string, Value>,
+  ): Promise<SignInResult> => {
+    const params =
+      args instanceof FormData
+        ? (() => {
+            const formParams: Record<string, Value> = {};
+            args.forEach((value, key) => {
+              formParams[key] = typeof value === "string" ? value : value.name;
+            });
+            return formParams;
+          })()
+        : (args ?? {});
+    const flow =
+      typeof params.flow === "string" && params.flow.length > 0
+        ? params.flow
+        : "signIn";
+
+    const handleSignInActionResult = async (
+      result: SignInActionResult,
+      options: { shouldStore: boolean; persistVerifier: boolean },
+    ): Promise<SignInResult> =>
+      Fx.run(
+        Fx.match(result, result.kind, {
+          redirect: (redirectResult) =>
+            Fx.from({
+              ok: async () => {
+                const redirectUrl = new URL(redirectResult.redirect);
+                if (options.persistVerifier) {
+                  await storageSet(
+                    VERIFIER_STORAGE_KEY,
+                    redirectResult.verifier,
+                  );
+                }
+                if (typeof window !== "undefined") {
+                  window.location.href = redirectUrl.toString();
+                }
+                return {
+                  kind: "redirect" as const,
+                  redirect: redirectUrl,
+                  verifier: redirectResult.verifier,
+                };
+              },
+              err: (e) => e as never,
+            }),
+          totpRequired: (totpRequiredResult) =>
+            Fx.succeed({
+              kind: "totpRequired" as const,
+              verifier: totpRequiredResult.verifier,
+            }),
+          deviceCode: (deviceCodeResult) =>
+            Fx.succeed({
+              kind: "deviceCode" as const,
+              deviceCode: normalizeDeviceCodeResult(
+                deviceCodeResult.deviceCode,
+              ),
+            }),
+          signedIn: (signedInResult) =>
+            Fx.from({
+              ok: async () => {
+                const signingIn = await setTokenAndMaybeWait(
+                  options.shouldStore
+                    ? {
+                        shouldStore: true as const,
+                        tokens: signedInResult.tokens,
+                        waitForHandshake: true,
+                        context: { provider, flow },
+                      }
+                    : {
+                        shouldStore: false as const,
+                        tokens:
+                          signedInResult.tokens === null
+                            ? null
+                            : { token: signedInResult.tokens.token },
+                        waitForHandshake: true,
+                        context: { provider, flow },
+                      },
+                );
+                return signingIn
+                  ? ({ kind: "signedIn" as const } as SignInResult)
+                  : ({ kind: "started" as const } as SignInResult);
+              },
+              err: (e) => e as never,
+            }),
+          started: (_startedResult) => Fx.succeed({ kind: "started" as const }),
+          passkeyOptions: (_passkeyOptionsResult) =>
+            Fx.succeed({ kind: "started" as const }),
+          totpSetup: (_totpSetupResult) =>
+            Fx.succeed({ kind: "started" as const }),
+        }),
+      );
+
+    if (proxy) {
+      const result = (await proxyFetch({
+        action: "auth/session:start",
+        args: { provider, params },
+      })) as SignInActionResult;
+      return handleSignInActionResult(result, {
+        shouldStore: false,
+        persistVerifier: false,
+      });
+    }
+
+    // SPA mode: call Convex directly.
+    const verifier = (await storageGet(VERIFIER_STORAGE_KEY)) ?? undefined;
+    await storageRemove(VERIFIER_STORAGE_KEY);
+    const result = (await convex.action(requireApiRefs().session.start, {
+      provider,
+      params,
+      verifier,
+    })) as SignInActionResult;
+    return handleSignInActionResult(result, {
+      shouldStore: true,
+      persistVerifier: true,
+    });
+  };
+
+  // ---------------------------------------------------------------------------
+  // signOut
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Sign out the current user.
+   *
+   * Invalidates the server session and clears local token state.
+   * Errors are silently caught — calling `signOut` on an already
+   * signed-out user is a no-op.
+   */
+  const signOut = async () => {
+    if (proxy) {
+      await Fx.run(
+        Fx.from({
+          ok: () => proxyFetch({ action: "auth/session:stop", args: {} }),
+          err: () => undefined,
+        }).pipe(Fx.recover(() => Fx.succeed(undefined))),
+      );
+      await setToken({ shouldStore: false, tokens: null });
+      if (convex.clearAuth) convex.clearAuth();
+      return;
+    }
+
+    // SPA mode.
+    await Fx.run(
+      Fx.from({
+        ok: () => convex.action(requireApiRefs().session.stop, {}),
+        err: () => undefined,
+      }).pipe(Fx.recover(() => Fx.succeed(undefined))),
+    );
+    await setToken({ shouldStore: true, tokens: null });
+    if (convex.clearAuth) convex.clearAuth();
+  };
+
+  // ---------------------------------------------------------------------------
+  // fetchAccessToken — called by convex.setAuth()
+  // ---------------------------------------------------------------------------
+
+  const fetchAccessToken = async ({
+    forceRefreshToken,
+  }: {
+    forceRefreshToken: boolean;
+  }): Promise<string | null> => {
+    if (!forceRefreshToken) return token;
+
+    if (proxy) {
+      // Proxy mode: POST to the proxy to refresh.
+      // The proxy reads the real refresh token from the httpOnly cookie.
+      const resolvedProxyUrl = await resolveProxyUrl();
+      if (
+        typeof window === "undefined" &&
+        !(await isAbsoluteUrl(resolvedProxyUrl))
+      ) {
+        finalizeLoadingState();
+        return token;
+      }
+
+      const tokenBeforeRefresh = token;
+      return await browserMutex("__convexAuthProxyRefresh", async () => {
+        // Another tab/call may have already refreshed.
+        if (token !== tokenBeforeRefresh) return token;
+
+        const proxyRefreshRetryPolicy = Fx.retry.while(
+          Fx.retry.compose(
+            Fx.retry.jittered(Fx.retry.exponential(RETRY_BASE_MS)),
+            Fx.retry.recurs(RETRY_MAX_RETRIES),
+          ),
+          (meta) => isRetriableProxyRefreshError(meta.input),
+        );
+
+        await Fx.run(
+          Fx.from({
+            ok: () =>
+              proxyFetch({
+                action: "auth/session:start",
+                args: { refreshToken: true },
+              }),
+            err: (e) => e,
+          }).pipe(
+            Fx.retry(proxyRefreshRetryPolicy),
+            Fx.chain((result: any) =>
+              Fx.from({
+                ok: async () => {
+                  if (result.tokens) {
+                    await setToken({
+                      shouldStore: false,
+                      tokens: { token: result.tokens.token },
+                      resyncConvexAuth: false,
+                    });
+                  } else {
+                    await setToken({
+                      shouldStore: false,
+                      tokens: null,
+                      resyncConvexAuth: false,
+                    });
+                  }
+                },
+                err: (e) => e,
+              }),
+            ),
+            Fx.inspect((error) =>
+              Fx.sync(() =>
+                console.error("[convex-auth] Proxy refresh failed:", error),
+              ),
+            ),
+            Fx.recover(() => {
+              if (token === null) {
+                finalizeLoadingState();
+              }
+              return Fx.succeed(undefined);
+            }),
+          ),
+        );
+        return token;
+      });
+    }
+
+    // SPA mode: refresh via localStorage + httpClient.
+    const tokenBeforeLockAcquisition = token;
+    return await browserMutex(REFRESH_TOKEN_STORAGE_KEY, async () => {
+      const tokenAfterLockAcquisition = token;
+      if (tokenAfterLockAcquisition !== tokenBeforeLockAcquisition) {
+        return tokenAfterLockAcquisition;
+      }
+      const refreshToken =
+        (await storageGet(REFRESH_TOKEN_STORAGE_KEY)) ?? null;
+      if (!refreshToken) {
+        finalizeLoadingState();
+        return null;
+      }
+      await verifyCodeAndSetToken(
+        { refreshToken },
+        { resyncConvexAuth: false },
+      );
+      return token;
+    });
+  };
+
+  // ---------------------------------------------------------------------------
+  // OAuth code flow (SPA mode only — server handles this in proxy mode)
+  // ---------------------------------------------------------------------------
+
+  const handleCodeFlow = async () => {
+    if (typeof window === "undefined") return;
+    if (handlingCodeFlow) return;
+    const code = new URLSearchParams(window.location.search).get("code");
+    if (!code) return;
+    handlingCodeFlow = true;
+    await Fx.run(
+      Fx.from({
+        ok: async () => {
+          await signIn(undefined, { code });
+          const codeUrl = new URL(window.location.href);
+          codeUrl.searchParams.delete("code");
+          await replaceUrl(codeUrl.pathname + codeUrl.search + codeUrl.hash);
+        },
+        err: (e) => e,
+      }).pipe(
+        Fx.recover(() => Fx.succeed(undefined)),
+        Fx.tap(() =>
+          Fx.sync(() => {
+            handlingCodeFlow = false;
+          }),
+        ),
+        Fx.inspect(() =>
+          Fx.sync(() => {
+            handlingCodeFlow = false;
+          }),
+        ),
+      ),
+    );
+    // The flag is always reset — Fx.recover above ensures success path,
+    // but reset defensively here too.
+    handlingCodeFlow = false;
+  };
+
+  // ---------------------------------------------------------------------------
+  // Hydrate from storage (SPA mode only)
+  // ---------------------------------------------------------------------------
+
+  const hydrateFromStorage = async () => {
+    const storedToken = (await storageGet(JWT_STORAGE_KEY)) ?? null;
+    await setToken({
+      shouldStore: false,
+      tokens: storedToken === null ? null : { token: storedToken },
+    });
+  };
+
+  // ---------------------------------------------------------------------------
+  // Subscribe
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Subscribe to auth state changes. Invokes the callback immediately
+   * with the current state, then again on every state transition.
+   *
+   * ```ts
+   * const unsub = auth.onChange(setState);
+   * ```
+   *
+   * @param cb - Callback receiving the latest {@link AuthState}.
+   * @returns An unsubscribe function.
+   */
+  const onChange = (cb: (state: AuthState) => void): (() => void) => {
+    cb(snapshot);
+    const wrapped = () => cb(snapshot);
+    subscribers.add(wrapped);
+    return () => {
+      subscribers.delete(wrapped);
+    };
+  };
+
+  // ---------------------------------------------------------------------------
+  // Initialization
+  // ---------------------------------------------------------------------------
+
+  // Cross-tab sync via storage events (SPA mode only).
+  if (!proxy && typeof window !== "undefined") {
+    const registryKey = key(JWT_STORAGE_KEY);
+    const registry = getStorageListenerRegistry();
+    const existingListener = registry[registryKey];
+    if (existingListener !== undefined) {
+      window.removeEventListener("storage", existingListener);
+    }
+
+    const onStorage = (event: StorageEvent) => {
+      Fx.detach(async () => {
+        if (event.key !== key(JWT_STORAGE_KEY)) return;
+        await setToken({
+          shouldStore: false,
+          tokens: event.newValue === null ? null : { token: event.newValue },
+        });
+      }, "[convex-auth] Storage event handler failed:");
+    };
+    window.addEventListener("storage", onStorage);
+    registry[registryKey] = onStorage;
+    disposeStorageListener = () => {
+      if (registry[registryKey] === onStorage) {
+        delete registry[registryKey];
+      }
+      window.removeEventListener("storage", onStorage);
+    };
+  }
+
+  // Auto-wire: feed our tokens into the Convex client so
+  // queries and mutations are automatically authenticated.
+  bindConvexAuth();
+
+  // Auto-hydrate and handle code flow.
+  if (typeof window !== "undefined") {
+    if (proxy) {
+      // Proxy mode: eagerly resolve auth once on startup so routes that only
+      // read auth state (and do not issue Convex queries yet) don't stay in
+      // the initial loading phase.
+      if (!hasServerToken) {
+        Fx.detach(
+          () => fetchAccessToken({ forceRefreshToken: true }),
+          "[convex-auth] Proxy token refresh failed:",
+        );
+      }
+    } else {
+      // SPA mode: hydrate from localStorage, then handle OAuth code flow.
+      Fx.detach(async () => {
+        await Fx.run(
+          Fx.from({
+            ok: async () => {
+              await hydrateFromStorage();
+              await handleCodeFlow();
+            },
+            err: (e) => e,
+          }).pipe(
+            Fx.inspect((error) =>
+              Fx.sync(() =>
+                console.error(
+                  "[convex-auth] Client initialization failed:",
+                  error,
+                ),
+              ),
+            ),
+            Fx.recover((_error) =>
+              Fx.from({
+                ok: () => setToken({ shouldStore: false, tokens: null }),
+                err: (e) => e,
+              }).pipe(Fx.recover(() => Fx.succeed(undefined))),
+            ),
+          ),
+        );
+      }, "[convex-auth] SPA initialization failed:");
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Passkey helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Base64url encode/decode helpers for the WebAuthn credential API.
+   * These run client-side only (browser context).
+   */
+  const base64urlEncode = (buffer: ArrayBuffer): string => {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]!);
+    }
+    return btoa(binary)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  };
+
+  const base64urlDecode = (str: string): Uint8Array => {
+    const padded = str.replace(/-/g, "+").replace(/_/g, "/");
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  };
+
+  const passkey = {
+    /**
+     * Check if WebAuthn passkeys are supported in the current environment.
+     */
+    isSupported: (): boolean => {
+      return (
+        typeof window !== "undefined" &&
+        typeof window.PublicKeyCredential !== "undefined"
+      );
+    },
+
+    /**
+     * Check if conditional UI (autofill-assisted passkey sign-in) is supported.
+     *
+     * ```ts
+     * if (await auth.passkey.isAutofillSupported()) {
+     *   auth.passkey.authenticate({ autofill: true });
+     * }
+     * ```
+     */
+    isAutofillSupported: async (): Promise<boolean> => {
+      if (typeof window === "undefined") return false;
+      if (typeof window.PublicKeyCredential === "undefined") return false;
+      if (
+        typeof (window.PublicKeyCredential as any)
+          .isConditionalMediationAvailable !== "function"
+      ) {
+        return false;
+      }
+      return (
+        window.PublicKeyCredential as any
+      ).isConditionalMediationAvailable();
+    },
+
+    /**
+     * Register a new passkey for the current or new user.
+     *
+     * Performs the full two-round-trip WebAuthn registration ceremony:
+     * 1. Requests creation options from the server (challenge, RP info)
+     * 2. Calls `navigator.credentials.create()` with the options
+     * 3. Sends the attestation back to the server for verification
+     * 4. Server creates user + account + passkey records and returns tokens
+     *
+     * Works in both SPA and proxy (SSR) modes.
+     *
+     * ```ts
+     * await auth.passkey.register({ name: "MacBook Touch ID" });
+     * ```
+     *
+     * @param opts.name - Friendly name for this passkey
+     * @param opts.email - Email to associate with the new account
+     * @param opts.userName - Username for the credential (defaults to email)
+     * @param opts.userDisplayName - Display name for the credential
+     * @returns `{ kind: "signedIn" }` on success
+     */
+    register: async (opts?: {
+      name?: string;
+      email?: string;
+      userName?: string;
+      userDisplayName?: string;
+    }): Promise<SignInResult> => {
+      const phase1Params = {
+        flow: "registerOptions",
+        email: opts?.email,
+        userName: opts?.userName,
+        userDisplayName: opts?.userDisplayName,
+      };
+
+      // Phase 1: Get registration options from server
+      let phase1Result: SignInActionResult;
+      if (proxy) {
+        phase1Result = (await proxyFetch({
+          action: "auth/session:start",
+          args: { provider: "passkey", params: phase1Params },
+        })) as SignInActionResult;
+      } else {
+        phase1Result = (await convex.action(requireApiRefs().session.start, {
+          provider: "passkey",
+          params: phase1Params,
+        })) as SignInActionResult;
+      }
+
+      if (phase1Result.kind !== "passkeyOptions") {
+        throw new Error("Server did not return passkey registration options");
+      }
+
+      const options = phase1Result.options;
+
+      // Convert base64url strings to ArrayBuffers for the credential API
+      const createOptions: CredentialCreationOptions = {
+        publicKey: {
+          rp: options.rp,
+          user: {
+            id: base64urlDecode(options.user.id).buffer as ArrayBuffer,
+            name: options.user.name,
+            displayName: options.user.displayName,
+          },
+          challenge: base64urlDecode(options.challenge).buffer as ArrayBuffer,
+          pubKeyCredParams: options.pubKeyCredParams,
+          timeout: options.timeout,
+          attestation: options.attestation,
+          authenticatorSelection: options.authenticatorSelection,
+          excludeCredentials: (options.excludeCredentials ?? []).map(
+            (cred: any) => ({
+              type: cred.type ?? "public-key",
+              id: base64urlDecode(cred.id).buffer as ArrayBuffer,
+              transports: cred.transports,
+            }),
+          ),
+        },
+      };
+
+      // Phase 2: Create credential via browser API
+      const credential = (await navigator.credentials.create(
+        createOptions,
+      )) as PublicKeyCredential | null;
+      if (!credential) {
+        throw new Error("Passkey registration was cancelled");
+      }
+
+      const response = credential.response as AuthenticatorAttestationResponse;
+
+      // Extract transports if available
+      const transports =
+        typeof response.getTransports === "function"
+          ? response.getTransports()
+          : undefined;
+
+      const phase2Params = {
+        flow: "registerVerify",
+        clientDataJSON: base64urlEncode(response.clientDataJSON),
+        attestationObject: base64urlEncode(response.attestationObject),
+        transports,
+        passkeyName: opts?.name,
+        email: opts?.email,
+      };
+
+      // Phase 3: Send attestation to server for verification
+      let phase2Result: SignInActionResult;
+      if (proxy) {
+        // In proxy mode the verifier is stored in an httpOnly cookie by the proxy.
+        // We pass it back explicitly so the proxy can forward it to Convex.
+        phase2Result = (await proxyFetch({
+          action: "auth/session:start",
+          args: {
+            provider: "passkey",
+            params: phase2Params,
+            verifier: phase1Result.verifier,
+          },
+        })) as SignInActionResult;
+      } else {
+        phase2Result = (await convex.action(requireApiRefs().session.start, {
+          provider: "passkey",
+          params: phase2Params,
+          verifier: phase1Result.verifier,
+        })) as SignInActionResult;
+      }
+
+      return Fx.run(
+        Fx.match(phase2Result, phase2Result.kind, {
+          signedIn: (signedInResult) =>
+            Fx.from({
+              ok: async () => {
+                const signingIn = await setTokenAndMaybeWait(
+                  proxy
+                    ? {
+                        shouldStore: false as const,
+                        tokens:
+                          signedInResult.tokens === null
+                            ? null
+                            : { token: signedInResult.tokens.token },
+                        waitForHandshake: true,
+                        context: {
+                          provider: "passkey",
+                          flow: "registerVerify",
+                        },
+                      }
+                    : {
+                        shouldStore: true as const,
+                        tokens: signedInResult.tokens,
+                        waitForHandshake: true,
+                        context: {
+                          provider: "passkey",
+                          flow: "registerVerify",
+                        },
+                      },
+                );
+                return signingIn
+                  ? ({ kind: "signedIn" as const } as SignInResult)
+                  : ({ kind: "started" as const } as SignInResult);
+              },
+              err: (e) => e as never,
+            }),
+          redirect: (_redirectResult) =>
+            Fx.succeed({ kind: "started" as const }),
+          started: (_startedResult) => Fx.succeed({ kind: "started" as const }),
+          passkeyOptions: (_passkeyOptionsResult) =>
+            Fx.succeed({ kind: "started" as const }),
+          totpRequired: (_totpRequiredResult) =>
+            Fx.succeed({ kind: "started" as const }),
+          totpSetup: (_totpSetupResult) =>
+            Fx.succeed({ kind: "started" as const }),
+          deviceCode: (_deviceCodeResult) =>
+            Fx.succeed({ kind: "started" as const }),
+        }),
+      );
+    },
+
+    /**
+     * Authenticate with an existing passkey.
+     *
+     * Performs the full two-round-trip WebAuthn authentication ceremony:
+     * 1. Requests assertion options from the server (challenge, allowed credentials)
+     * 2. Calls `navigator.credentials.get()` with the options
+     * 3. Sends the assertion back to the server for signature verification
+     * 4. Server verifies signature, updates counter, creates session, returns tokens
+     *
+     * Works in both SPA and proxy (SSR) modes.
+     *
+     * ```ts
+     * // Discoverable credential (no email needed)
+     * await auth.passkey.authenticate();
+     *
+     * // Scoped to a specific user's credentials
+     * await auth.passkey.authenticate({ email: "user@example.com" });
+     *
+     * // Autofill-assisted (conditional UI)
+     * await auth.passkey.authenticate({ autofill: true });
+     * ```
+     *
+     * @param opts.email - Scope to credentials for this email's user
+     * @param opts.autofill - Use conditional mediation (autofill UI)
+     * @returns `{ kind: "signedIn" }` on success
+     */
+    authenticate: async (opts?: {
+      email?: string;
+      autofill?: boolean;
+    }): Promise<SignInResult> => {
+      const phase1Params = {
+        flow: "authOptions",
+        email: opts?.email,
+      };
+
+      // Phase 1: Get assertion options from server
+      let phase1Result: SignInActionResult;
+      if (proxy) {
+        phase1Result = (await proxyFetch({
+          action: "auth/session:start",
+          args: { provider: "passkey", params: phase1Params },
+        })) as SignInActionResult;
+      } else {
+        phase1Result = (await convex.action(requireApiRefs().session.start, {
+          provider: "passkey",
+          params: phase1Params,
+        })) as SignInActionResult;
+      }
+
+      if (phase1Result.kind !== "passkeyOptions") {
+        throw new Error("Server did not return passkey authentication options");
+      }
+
+      const options = phase1Result.options;
+
+      // Convert base64url strings to ArrayBuffers for the credential API
+      const getOptions: CredentialRequestOptions = {
+        publicKey: {
+          challenge: base64urlDecode(options.challenge).buffer as ArrayBuffer,
+          timeout: options.timeout,
+          rpId: options.rpId,
+          userVerification: options.userVerification,
+          allowCredentials: (options.allowCredentials ?? []).map(
+            (cred: any) => ({
+              type: cred.type ?? "public-key",
+              id: base64urlDecode(cred.id).buffer as ArrayBuffer,
+              transports: cred.transports,
+            }),
+          ),
+        },
+        ...(opts?.autofill ? { mediation: "conditional" as any } : {}),
+      };
+
+      // Phase 2: Get credential via browser API
+      const credential = (await navigator.credentials.get(
+        getOptions,
+      )) as PublicKeyCredential | null;
+      if (!credential) {
+        throw new Error("Passkey authentication was cancelled");
+      }
+
+      const response = credential.response as AuthenticatorAssertionResponse;
+
+      const phase2Params = {
+        flow: "authVerify",
+        credentialId: base64urlEncode(credential.rawId),
+        clientDataJSON: base64urlEncode(response.clientDataJSON),
+        authenticatorData: base64urlEncode(response.authenticatorData),
+        signature: base64urlEncode(response.signature),
+      };
+
+      // Phase 3: Send assertion to server for verification
+      let phase2Result: SignInActionResult;
+      if (proxy) {
+        phase2Result = (await proxyFetch({
+          action: "auth/session:start",
+          args: {
+            provider: "passkey",
+            params: phase2Params,
+            verifier: phase1Result.verifier,
+          },
+        })) as SignInActionResult;
+      } else {
+        phase2Result = (await convex.action(requireApiRefs().session.start, {
+          provider: "passkey",
+          params: phase2Params,
+          verifier: phase1Result.verifier,
+        })) as SignInActionResult;
+      }
+
+      return Fx.run(
+        Fx.match(phase2Result, phase2Result.kind, {
+          signedIn: (signedInResult) =>
+            Fx.from({
+              ok: async () => {
+                const signingIn = await setTokenAndMaybeWait(
+                  proxy
+                    ? {
+                        shouldStore: false as const,
+                        tokens:
+                          signedInResult.tokens === null
+                            ? null
+                            : { token: signedInResult.tokens.token },
+                        waitForHandshake: true,
+                        context: { provider: "passkey", flow: "authVerify" },
+                      }
+                    : {
+                        shouldStore: true as const,
+                        tokens: signedInResult.tokens,
+                        waitForHandshake: true,
+                        context: { provider: "passkey", flow: "authVerify" },
+                      },
+                );
+                return signingIn
+                  ? ({ kind: "signedIn" as const } as SignInResult)
+                  : ({ kind: "started" as const } as SignInResult);
+              },
+              err: (e) => e as never,
+            }),
+          redirect: (_redirectResult) =>
+            Fx.succeed({ kind: "started" as const }),
+          started: (_startedResult) => Fx.succeed({ kind: "started" as const }),
+          passkeyOptions: (_passkeyOptionsResult) =>
+            Fx.succeed({ kind: "started" as const }),
+          totpRequired: (_totpRequiredResult) =>
+            Fx.succeed({ kind: "started" as const }),
+          totpSetup: (_totpSetupResult) =>
+            Fx.succeed({ kind: "started" as const }),
+          deviceCode: (_deviceCodeResult) =>
+            Fx.succeed({ kind: "started" as const }),
+        }),
+      );
+    },
+  };
+
+  const totp = {
+    /**
+     * Start TOTP enrollment. Must be authenticated.
+     *
+     * Returns a URI for QR code display and a base32 secret for manual entry.
+     *
+     * ```ts
+     * const setup = await auth.totp.setup();
+     * // Display QR code from setup.uri
+     * // Or show setup.secret for manual entry
+     * ```
+     */
+    setup: async (opts?: {
+      name?: string;
+      accountName?: string;
+    }): Promise<{
+      uri: string;
+      secret: string;
+      verifier: string;
+      totpId: string;
+    }> => {
+      const params: Record<string, any> = { flow: "setup" };
+      if (opts?.name) params.name = opts.name;
+      if (opts?.accountName) params.accountName = opts.accountName;
+
+      if (proxy) {
+        const result = await proxyFetch({
+          action: "auth/session:start",
+          args: { provider: "totp", params },
+        });
+        return {
+          uri: result.totpSetup.uri,
+          secret: result.totpSetup.secret,
+          verifier: result.verifier,
+          totpId: result.totpSetup.totpId,
+        };
+      }
+
+      const result = await convex.action(requireApiRefs().session.start, {
+        provider: "totp",
+        params,
+      });
+      return {
+        uri: result.totpSetup.uri,
+        secret: result.totpSetup.secret,
+        verifier: result.verifier,
+        totpId: result.totpSetup.totpId,
+      };
+    },
+
+    /**
+     * Complete TOTP enrollment by verifying the first code from the authenticator app.
+     *
+     * ```ts
+     * await auth.totp.confirm({ code: "123456", verifier: setup.verifier, totpId: setup.totpId });
+     * ```
+     */
+    confirm: async (opts: {
+      code: string;
+      verifier: string;
+      totpId: string;
+    }): Promise<void> => {
+      const params: Record<string, any> = {
+        flow: "confirm",
+        code: opts.code,
+        totpId: opts.totpId,
+      };
+
+      if (proxy) {
+        const result = await proxyFetch({
+          action: "auth/session:start",
+          args: { provider: "totp", params, verifier: opts.verifier },
+        });
+        if (result.tokens) {
+          await setTokenAndMaybeWait({
+            shouldStore: false,
+            tokens:
+              result.tokens === null ? null : { token: result.tokens.token },
+            waitForHandshake: true,
+            context: { provider: "totp", flow: "confirm" },
+          });
+        }
+        return;
+      }
+
+      const result = await convex.action(requireApiRefs().session.start, {
+        provider: "totp",
+        params,
+        verifier: opts.verifier,
+      });
+      if (result.tokens) {
+        await setTokenAndMaybeWait({
+          shouldStore: true,
+          tokens: (result.tokens as AuthSession | null) ?? null,
+          waitForHandshake: true,
+          context: { provider: "totp", flow: "confirm" },
+        });
+      }
+    },
+
+    /**
+     * Complete 2FA verification during sign-in.
+     *
+     * Called after a credentials sign-in returns `kind: "totpRequired"`.
+     *
+     * ```ts
+     * const result = await auth.signIn("password", { email, password });
+     * if (result.kind === "totpRequired") {
+     *   await auth.totp.verify({ code: "123456", verifier: result.verifier });
+     * }
+     * ```
+     */
+    verify: async (opts: { code: string; verifier: string }): Promise<void> => {
+      const params: Record<string, any> = {
+        flow: "verify",
+        code: opts.code,
+      };
+
+      if (proxy) {
+        const result = await proxyFetch({
+          action: "auth/session:start",
+          args: { provider: "totp", params, verifier: opts.verifier },
+        });
+        if (result.tokens) {
+          await setTokenAndMaybeWait({
+            shouldStore: false,
+            tokens:
+              result.tokens === null ? null : { token: result.tokens.token },
+            waitForHandshake: true,
+            context: { provider: "totp", flow: "verify" },
+          });
+        }
+        return;
+      }
+
+      const result = await convex.action(requireApiRefs().session.start, {
+        provider: "totp",
+        params,
+        verifier: opts.verifier,
+      });
+      if (result.tokens) {
+        await setTokenAndMaybeWait({
+          shouldStore: true,
+          tokens: (result.tokens as AuthSession | null) ?? null,
+          waitForHandshake: true,
+          context: { provider: "totp", flow: "verify" },
+        });
+      }
+    },
+  };
+
+  const device = {
+    /**
+     * Poll for device authorization status.
+     *
+     * The device calls this repeatedly (respecting `interval`) after
+     * initiating a device flow via `signIn("device")`. Returns when
+     * the user authorizes, or throws on timeout/denial.
+     *
+     * ```ts
+     * const result = await auth.signIn("device");
+     * const { deviceCode } = result;
+     * // Display deviceCode.userCode to the user, then poll:
+     * await auth.device.poll(deviceCode);
+     * // User is now signed in
+     * ```
+     *
+     * @param code - The {@link DeviceCodeResult} from `signIn("device")`.
+     * @returns Resolves when the device is authorized and tokens are stored.
+     * @throws When the code expires, is denied, or polling encounters an error.
+     */
+    poll: async (code: DeviceCodeResult): Promise<void> => {
+      const intervalMs = code.interval * 1000;
+      const expiresAt = Date.now() + code.expiresIn * 1000;
+
+      while (Date.now() < expiresAt) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+
+        const pollResult = await Fx.run(
+          Fx.from({
+            ok: async () => {
+              let result: any;
+              const params: Record<string, any> = {
+                flow: "poll",
+                deviceCode: code.deviceCode,
+              };
+
+              if (proxy) {
+                result = await proxyFetch({
+                  action: "auth/session:start",
+                  args: { provider: "device", params },
+                });
+              } else {
+                result = await convex.action(requireApiRefs().session.start, {
+                  provider: "device",
+                  params,
+                });
+              }
+
+              return result;
+            },
+            err: (e) => e,
+          }).pipe(
+            Fx.recover((e: unknown) => {
+              const dispatch =
+                e instanceof ConvexError
+                  ? {
+                      tag:
+                        (e.data as Record<string, unknown> | undefined)
+                          ?.code === "DEVICE_AUTHORIZATION_PENDING"
+                          ? "continue"
+                          : (e.data as Record<string, unknown> | undefined)
+                                ?.code === "DEVICE_SLOW_DOWN"
+                            ? "slowDown"
+                            : "fatal",
+                    }
+                  : ({ tag: "fatal" } as const);
+
+              return Fx.match(dispatch, dispatch.tag, {
+                continue: () => Fx.succeed({ _poll: "continue" as const }),
+                slowDown: () => Fx.succeed({ _poll: "slow_down" as const }),
+                fatal: () => Fx.fatal(e),
+              });
+            }),
+          ),
+        );
+
+        if ("_poll" in pollResult) {
+          if (pollResult._poll === "slow_down") {
+            // Back off by adding one interval
+            await new Promise((resolve) => setTimeout(resolve, intervalMs));
+          }
+          continue;
+        }
+
+        // Authorized — tokens received
+        if (pollResult.tokens) {
+          if (proxy) {
+            await setTokenAndMaybeWait({
+              shouldStore: false,
+              tokens:
+                pollResult.tokens === null
+                  ? null
+                  : { token: pollResult.tokens.token },
+              waitForHandshake: true,
+              context: { provider: "device", flow: "poll" },
+            });
+          } else {
+            await setTokenAndMaybeWait({
+              shouldStore: true,
+              tokens: (pollResult.tokens as AuthSession | null) ?? null,
+              waitForHandshake: true,
+              context: { provider: "device", flow: "poll" },
+            });
+          }
+          return;
+        }
+      }
+
+      throw new Error("Device authorization timed out.");
+    },
+
+    /**
+     * Authorize a device from the verification page.
+     *
+     * Called by an authenticated user on the verification page after
+     * they enter the user code displayed on the device.
+     *
+     * ```ts
+     * // On the /device verification page:
+     * await auth.device.verify(userCode);
+     * ```
+     *
+     * @param userCode - The user code entered by the user (e.g. "WDJB-MJHT").
+     */
+    verify: async (userCode: string): Promise<void> => {
+      const params: Record<string, any> = {
+        flow: "verify",
+        userCode,
+      };
+
+      if (proxy) {
+        await proxyFetch({
+          action: "auth/session:start",
+          args: { provider: "device", params },
+        });
+      } else {
+        await convex.action(requireApiRefs().session.start, {
+          provider: "device",
+          params,
+        });
+      }
+    },
+  };
+
+  return {
+    /** Current auth state snapshot. */
+    get state(): AuthState {
+      return snapshot;
+    },
+    /** Sign in with a provider. See {@link SignInResult} for return shape. */
+    signIn,
+    /** Sign out and clear all token state. */
+    signOut,
+    /** Subscribe to auth state changes. Returns an unsubscribe function. */
+    onChange,
+    /** Passkey (WebAuthn) authentication helpers. */
+    passkey,
+    /** TOTP two-factor authentication helpers. */
+    totp,
+    /** Device authorization (RFC 8628) helpers. */
+    device,
+    /** Remove global listeners when disposing this client instance. */
+    destroy: () => {
+      destroyed = true;
+      settleHandshakeWaiters(authEpoch, {
+        type: "reject",
+        error: createHandshakeError("AUTH_HANDSHAKE_REJECTED", {
+          reason: "destroyed",
+        }),
+      });
+      disposeStorageListener?.();
+      subscribers.clear();
+    },
+  } as AuthClient<Api>;
+}
+
+// ---------------------------------------------------------------------------
+// Browser mutex — ensures only one tab refreshes a token at a time.
+// ---------------------------------------------------------------------------
+
+async function browserMutex<T>(
+  key: string,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const lockManager = (globalThis as any)?.navigator?.locks;
+  return lockManager !== undefined
+    ? await lockManager.request(key, callback)
+    : await manualMutex(key, callback);
+}
+
+function getStorageListenerRegistry(): Record<
+  string,
+  (event: StorageEvent) => void
+> {
+  const globalAny = globalThis as any;
+  if (globalAny.__convexAuthStorageListeners === undefined) {
+    globalAny.__convexAuthStorageListeners = {} as Record<
+      string,
+      (event: StorageEvent) => void
+    >;
+  }
+  return globalAny.__convexAuthStorageListeners as Record<
+    string,
+    (event: StorageEvent) => void
+  >;
+}
+
+function getManualMutexTails(): Record<string, Promise<void>> {
+  const globalAny = globalThis as any;
+  if (globalAny.__convexAuthMutexTails === undefined) {
+    globalAny.__convexAuthMutexTails = {} as Record<string, Promise<void>>;
+  }
+  return globalAny.__convexAuthMutexTails as Record<string, Promise<void>>;
+}
+
+async function manualMutex<T>(
+  key: string,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const mutexTails = getManualMutexTails();
+  const previousTail = mutexTails[key] ?? Promise.resolve();
+
+  let releaseCurrent: (() => void) | undefined;
+  const currentTail = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+
+  mutexTails[key] = previousTail.then(
+    () => currentTail,
+    () => currentTail,
+  );
+
+  await Fx.run(
+    Fx.from({
+      ok: () => previousTail,
+      err: () => undefined,
+    }).pipe(Fx.recover(() => Fx.succeed(undefined))),
+  );
+  let result: T;
+  let threw = false;
+  let thrownError: unknown;
+  await Fx.run(
+    Fx.from({
+      ok: async () => {
+        result = await callback();
+      },
+      err: (e) => e,
+    }).pipe(
+      Fx.recover((e) => {
+        threw = true;
+        thrownError = e;
+        return Fx.succeed(undefined);
+      }),
+    ),
+  );
+  releaseCurrent?.();
+  if (mutexTails[key] === currentTail) {
+    delete mutexTails[key];
+  }
+  if (threw) {
+    throw thrownError;
+  }
+  return result!;
+}

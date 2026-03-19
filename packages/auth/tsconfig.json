@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": ["esnext", "ESNext.Array", "dom", "dom.iterable"],
+    "declaration": true,
+    "declarationMap": true,
+    "stripInternal": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "paths": {
+      "@robelest/convex-auth/component": ["./src/component/index"],
+      "@robelest/convex-auth/providers/*": ["./src/providers/*"],
+      "@robelest/convex-auth/client": ["./src/client/index"],
+      "@robelest/convex-auth/server": ["./src/server/index"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx", "*.mjs"],
+  "exclude": ["node_modules", "dist", "docs"]
+}
