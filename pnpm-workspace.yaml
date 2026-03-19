@@ -1,0 +1,22 @@
+packages:
+  - packages/*
+
+catalog:
+  "@robelest/fx": ^0.0.1-preview.2
+  convex: ^1.33.1
+  convex-test: ^0.0.41
+  tsdown: 0.20.0-beta.3
+  typescript: ^5.9.3
+  vite: npm:@voidzero-dev/vite-plus-core@latest
+  vite-plus: latest
+  vitest: npm:@voidzero-dev/vite-plus-test@latest
+overrides:
+  vite: "catalog:"
+  vitest: "catalog:"
+peerDependencyRules:
+  allowAny:
+    - vite
+    - vitest
+  allowedVersions:
+    vite: "*"
+    vitest: "*"

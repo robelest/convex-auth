@@ -1,119 +1,78 @@
 {
-  "name": "@convex-dev/auth",
-  "version": "0.0.91",
-  "description": "Authentication for Convex",
-  "keywords": [
-    "authentication",
-    "authorization",
-    "auth",
-    "login",
-    "sign",
-    "convex"
-  ],
-  "homepage": "https://labs.convex.dev/auth",
-  "bugs": "https://github.com/get-convex/convex-auth/issues",
-  "repository": "https://github.com/get-convex/convex-auth",
-  "license": "Apache-2.0",
-  "author": "xixixao",
-  "files": [
-    "dist",
-    "providers",
-    "react",
-    "server",
-    "src"
-  ],
-  "type": "module",
-  "bin": "./dist/bin.cjs",
-  "sideEffects": false,
-  "scripts": {
-    "build:bin": "esbuild src/cli/index.ts --bundle --platform=node --format=cjs --outfile=dist/bin.cjs",
-    "build:server": "tsc --project tsconfig.server.json",
-    "build:react": "tsc --project tsconfig.react.json && shx mkdir -p dist && shx rm -rf dist/react && shx mv distreact/react dist/react && shx rm -r distreact",
-    "build:nextjs": "tsc --project tsconfig.nextjs.json && shx mkdir -p dist && shx rm -rf dist/nextjs && shx mv distnextjs/nextjs dist/nextjs && shx rm -r distnextjs",
-    "build": "shx rm -rf dist && npm run build:bin && npm run build:server && npm run build:react && npm run build:nextjs",
-    "docs": "cd docs && npm run dev",
-    "lint": "tsc && eslint . && cd test && npm run lint",
-    "spellcheck": "cspell \"docs/pages/**/*.md*\"",
-    "prepare": "npm run build",
-    "preversion": "npm ci && cd test && npm ci && cd .. && npm run build && run-p test:once lint",
-    "prepublishOnly": "npm whoami || npm login",
-    "version": "vim -c 'normal o' -c 'normal o## '$npm_package_version CHANGELOG.md && prettier -w CHANGELOG.md && git add CHANGELOG.md",
-    "alpha": "npm version prerelease --preid alpha && npm publish --tag alpha && git push --follow-tags",
-    "release": "npm version patch && npm publish && git push --follow-tags",
-    "publish:example": "node publishExample.mjs",
-    "test": "cd test && npm run test",
-    "test:once": "cd test && npm run test:once"
-  },
-  "exports": {
-    "./server": {
-      "types": "./dist/server/index.d.ts",
-      "import": "./dist/server/index.js"
-    },
-    "./providers/*": {
-      "types": "./dist/providers/*.d.ts",
-      "import": "./dist/providers/*.js"
-    },
-    "./react": {
-      "import": "./dist/react/index.js",
-      "require": "./dist/react/index.js"
-    },
-    "./nextjs": {
-      "import": "./dist/nextjs/index.js",
-      "require": "./dist/nextjs/index.js"
-    },
-    "./nextjs/server": {
-      "import": "./dist/nextjs/server/index.js",
-      "require": "./dist/nextjs/server/index.js"
+  "name": "convex-auth-monorepo",
+  "private": true,
+  "workspaces": {
+    "packages": [
+      "packages/*"
+    ],
+    "catalog": {
+      "@robelest/fx": "^0.0.1-preview.2",
+      "convex": "^1.33.1",
+      "convex-test": "^0.0.41",
+      "tsdown": "0.20.0-beta.3",
+      "typescript": "^5.9.3",
+      "vite": "npm:@voidzero-dev/vite-plus-core@latest",
+      "vite-plus": "latest",
+      "vitest": "npm:@voidzero-dev/vite-plus-test@latest"
     }
+  },
+  "type": "module",
+  "scripts": {
+    "env:load": "vp exec varlock load",
+    "env:load:prod": "APP_ENV=production vp exec varlock load",
+    "env:scan": "vp exec varlock scan",
+    "convex:init": "vp exec varlock run -- vp exec convex init",
+    "convex:env:list:dev": "vp exec varlock run -- vp exec convex env list",
+    "convex:env:list:prod": "APP_ENV=production vp exec varlock run -- vp exec convex env list --prod",
+    "dev:convex": "vp exec varlock run -- vp exec convex dev",
+    "dev:convex:once": "vp exec varlock run -- vp exec convex dev --once",
+    "postinstall": "node scripts/patch-fluent-convex.mjs",
+    "lint": "vp lint",
+    "lint:fix": "vp lint --fix",
+    "fmt": "vp fmt .",
+    "fmt:check": "vp fmt --check .",
+    "prepare": "vp config"
   },
   "dependencies": {
-    "@oslojs/crypto": "^1.0.1",
-    "@oslojs/encoding": "^1.1.0",
-    "cookie": "^1.0.1",
-    "is-network-error": "^1.1.0",
-    "jose": "^5.2.2",
-    "jwt-decode": "^4.0.0",
-    "lucia": "^3.2.0",
-    "oauth4webapi": "^3.1.2",
-    "path-to-regexp": "^6.3.0",
-    "server-only": "^0.0.1"
+    "@convex-dev/resend": "^0.2.3",
+    "arctic": "^3.7.0",
+    "convex": "catalog:",
+    "convex-helpers": "^0.1.114",
+    "fluent-convex": "^0.12.3",
+    "zod": "^4.3.6"
   },
-  "peerDependencies": {
-    "@auth/core": "^0.37.0",
-    "convex": "^1.17.0",
-    "react": "^18.2.0 || ^19.0.0-0"
-  },
-  "peerDependenciesMeta": {
-    "react": {
-      "optional": true
-    }
-  },
-  "@comment devDependencies": [
-    "The dependencies of the CLI are also in devDependencies, built into",
-    "a bundle."
-  ],
   "devDependencies": {
-    "@commander-js/extra-typings": "^12.1.0",
     "@edge-runtime/vm": "^3.2.0",
-    "@types/inquirer": "^9.0.7",
-    "@types/node": "20.6.0",
-    "@types/react": "^18.3.12",
-    "@typescript-eslint/eslint-plugin": "^6.18.1",
-    "chalk": "^5.3.0",
-    "convex-test": "^0.0.20",
-    "cspell": "^8.17.2",
-    "dotenv": "^16.4.5",
-    "eslint": "8.49.0",
-    "inquirer": "^9.2.22",
-    "next": "^15.2.5",
-    "npm-run-all": "^4.1.5",
-    "prettier": "^3.2.5",
-    "react-dom": "^18.3.1",
-    "shelljs": "^0.8.5",
-    "shx": "^0.4.0",
-    "tsup": "^8.0.1",
-    "typescript": "^5.5.2",
-    "valibot": "^0.35.0",
-    "vitest": "^1.6.0"
+    "@oxlint/plugins": "^1.55.0",
+    "@robelest/fx": "catalog:",
+    "@trestleinc/convex-oxlint": "^0.2.0",
+    "@types/node": "^25.2.2",
+    "@typescript/native-preview": "7.0.0-dev.20260314.1",
+    "@varlock/vite-integration": "^0.2.5",
+    "@xmldom/xmldom": "^0.8.11",
+    "convex-test": "catalog:",
+    "jose": "^5.10.0",
+    "node-html-parser": "^7.1.0",
+    "timekeeper": "^2.3.1",
+    "uuid": "^8.3.2",
+    "varlock": "^0.5.0",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "overrides": {
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  },
+  "packageManager": "pnpm@10.32.1",
+  "pnpm": {
+    "peerDependencyRules": {
+      "allowAny": [
+        "vite",
+        "vitest"
+      ]
+    },
+    "allowBuilds": {
+      "esbuild": true
+    }
   }
 }

@@ -13,29 +13,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: extractions/setup-just@v2
-
-      # TODO this doesn't pass on Node.js 20 but it should, something with Next.js
-      - name: Use Node.js 18.x
-        uses: actions/setup-node@v4
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
         with:
-          node-version: 18.x
-          cache: "npm"
+          node-version: 22
+          cache: true
+          run-install: |
+            args: ['--frozen-lockfile']
 
-      - name: Install dependencies
-        run: |
-          npm ci
-          cd test; npm ci
-          cd ../test-nextjs; npm ci
-          cd ../test-router; npm ci
-
-      - name: test
-        run: npm run test:once
-
-      - name: Install Playwright Browsers
-        working-directory: test-nextjs
-        run: npx playwright install --with-deps
-
-      - name: e2e test
-        working-directory: test-nextjs
-        run: npm run test
+      - name: Run lint
+        run: vp run lint
