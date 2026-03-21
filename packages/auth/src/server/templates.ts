@@ -15,6 +15,7 @@
  * Used by the auto-registered `email` provider when `email` is
  * configured in `createAuth(...)`.
  */
+/** @internal */
 export function defaultMagicLinkEmail(url: string, host: string): string {
   const escapedHost = host.replace(
     /[&<>"']/g,

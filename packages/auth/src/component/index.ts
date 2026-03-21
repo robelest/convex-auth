@@ -26,6 +26,8 @@ export type {
   KeyScope,
   ScopeChecker,
   KeyRecord,
+  EnterprisePolicy,
+  EnterprisePolicyPatch,
   HttpKeyContext,
   CorsConfig,
   DeviceProviderConfig,

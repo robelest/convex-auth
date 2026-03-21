@@ -3,6 +3,8 @@ title: Configuration
 description: createAuth options reference.
 ---
 
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
 ## `createAuth(component, config)`
 
 ```ts
@@ -61,6 +63,36 @@ const auth = createAuth(components.auth, {
 - `auth.invite.*` — Invite helpers
 - `auth.key.*` — API key helpers
 - `auth.http.*` — HTTP route helpers
-- `auth.sso.*` — SSO helpers (only when `new SSO()` is in providers)
+- `auth.sso.*` — inbound enterprise SSO helpers (only when `new SSO()` is in
+  providers)
+- `auth.scim.*` — SCIM provisioning helpers (only when `new SSO()` is in
+  providers)
 - `InferClientApi<typeof auth>` — Type-level utility; use as the generic for
   `client()` on the frontend to get conditional passkey/totp/device helpers
+
+## API layers
+
+<CardGrid>
+  <Card title="Auth-flow actions" icon="rocket">
+    `signIn`, `signOut`, and `store` are the app-facing Convex functions used by
+    the frontend auth client.
+  </Card>
+  <Card title="Helper namespaces" icon="open-book">
+    `auth.*`, `auth.sso.*`, and `auth.scim.*` are server-side helper APIs for
+    your Convex code.
+  </Card>
+  <Card title="Mounted enterprise RPC" icon="laptop">
+    `api.auth.sso.*` and `api.auth.scim.*` only exist after your app mounts or
+    writes public enterprise wrappers.
+  </Card>
+</CardGrid>
+
+The `auth.sso.*` and `auth.scim.*` namespaces are server-side helper APIs. They
+are not automatically exposed as client-callable Convex functions just because
+they exist on the returned object.
+
+If your app wants public enterprise/admin RPC, mount it explicitly in your app:
+
+- write your own Convex wrappers, or
+- run `convex-auth mount enterprise` to scaffold nested `convex/auth/sso/**` and
+  `convex/auth/scim/**` files.

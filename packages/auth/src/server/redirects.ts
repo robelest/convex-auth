@@ -2,6 +2,7 @@ import { AuthError } from "./fx";
 import { ConvexAuthMaterializedConfig } from "./types";
 import { requireEnv } from "./utils";
 
+/** @internal */
 export async function redirectAbsoluteUrl(
   config: ConvexAuthMaterializedConfig,
   params: { redirectTo: unknown },
@@ -35,6 +36,7 @@ async function defaultRedirectCallback({ redirectTo }: { redirectTo: string }) {
 
 // Temporary work-around because Convex doesn't support
 // schemes other than http and https.
+/** @internal */
 export function setURLSearchParam(
   absoluteUrl: string,
   param: string,

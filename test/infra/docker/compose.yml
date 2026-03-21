@@ -1,6 +1,7 @@
 services:
   backend:
     image: ghcr.io/get-convex/convex-backend:latest
+    profiles: ["interop"]
     restart: unless-stopped
     volumes:
       - convex-data:/convex/data
@@ -19,6 +20,7 @@ services:
 
   postgres:
     image: postgres:${POSTGRES_TAG:-16-alpine}
+    profiles: ["interop"]
     restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: ${PG_PASS}
@@ -34,6 +36,7 @@ services:
 
   zitadel:
     image: ghcr.io/zitadel/zitadel:${ZITADEL_TAG:-latest}
+    profiles: ["interop"]
     restart: unless-stopped
     user: "0"
     command: start-from-init --masterkey "${ZITADEL_MASTERKEY}"

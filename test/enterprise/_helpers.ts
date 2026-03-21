@@ -4,6 +4,18 @@ import https from "node:https";
 
 import { api } from "@convex/_generated/api";
 import { ConvexHttpClient } from "convex/browser";
+import { inject } from "vite-plus/test";
+
+declare module "vite-plus/test" {
+  interface ProvidedContext {
+    zitadelAdminPat: string;
+    zitadelLoginClientPat: string;
+    zitadelPublicUrl: string;
+    zitadelInternalUrl: string;
+    convexSelfHostedUrl: string;
+    convexSiteUrl: string;
+  }
+}
 
 export interface SimpleResponse {
   ok: boolean;
@@ -15,6 +27,15 @@ export interface SimpleResponse {
 export interface ConvexSessionStartResult {
   kind: string;
   tokens?: { token: string; refreshToken: string } | null;
+}
+
+export interface InteropRuntime {
+  convexApiUrl: string;
+  convexSiteUrl: string;
+  zitadelBaseUrl: string;
+  zitadelRuntimeBaseUrl: string;
+  managementToken: string;
+  loginToken: string;
 }
 
 export function requireEnv(name: string): string {
@@ -36,6 +57,180 @@ export function resolveHostname(hostname: string): string {
 
 export function randomSlug(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
+}
+
+export function getInteropRuntime(): InteropRuntime {
+  const convexApiUrl = trimTrailingSlash(inject("convexSelfHostedUrl"));
+  const convexSiteUrl = trimTrailingSlash(inject("convexSiteUrl"));
+  const zitadelBaseUrl = trimTrailingSlash(inject("zitadelPublicUrl"));
+  const zitadelRuntimeBaseUrl = trimTrailingSlash(inject("zitadelInternalUrl"));
+  const managementToken = inject("zitadelAdminPat");
+  const loginToken = inject("zitadelLoginClientPat") || managementToken;
+  return {
+    convexApiUrl,
+    convexSiteUrl,
+    zitadelBaseUrl,
+    zitadelRuntimeBaseUrl,
+    managementToken,
+    loginToken,
+  };
+}
+
+export function normalizeRuntimeIssuer(value: string) {
+  return `${trimTrailingSlash(value)}/`;
+}
+
+export function parseSetCookieHeaders(response: {
+  headers: Headers & { getSetCookie?: () => string[] };
+}) {
+  if (typeof response.headers.getSetCookie === "function") {
+    return response.headers.getSetCookie();
+  }
+
+  const setCookie = response.headers.get("set-cookie");
+  if (!setCookie) {
+    return [] as string[];
+  }
+
+  const result: string[] = [];
+  let current = "";
+  let inExpires = false;
+  for (let i = 0; i < setCookie.length; i += 1) {
+    const char = setCookie[i];
+    const next = setCookie[i + 1];
+    current += char;
+    if (current.toLowerCase().endsWith("expires=")) {
+      inExpires = true;
+      continue;
+    }
+    if (inExpires && char === ";") {
+      inExpires = false;
+      continue;
+    }
+    if (!inExpires && char === "," && next === " ") {
+      result.push(current.slice(0, -1).trim());
+      current = "";
+      i += 1;
+    }
+  }
+  if (current.trim() !== "") {
+    result.push(current.trim());
+  }
+  return result;
+}
+
+export function updateCookieJar(
+  jar: Map<string, string>,
+  setCookies: string[],
+) {
+  for (const raw of setCookies) {
+    const [cookiePair] = raw.split(";");
+    if (!cookiePair) {
+      continue;
+    }
+    const index = cookiePair.indexOf("=");
+    if (index < 1) {
+      continue;
+    }
+    const name = cookiePair.slice(0, index).trim();
+    const value = cookiePair.slice(index + 1).trim();
+    if (value === "") {
+      jar.delete(name);
+      continue;
+    }
+    jar.set(name, value);
+  }
+}
+
+export function cookieHeader(jar: Map<string, string>) {
+  if (jar.size === 0) {
+    return undefined;
+  }
+  return Array.from(jar.entries())
+    .map(([name, value]) => `${name}=${value}`)
+    .join("; ");
+}
+
+export function rewriteUrlForHostAccess(
+  url: string,
+  runtimeBaseUrl: string,
+  publicBaseUrl: string,
+) {
+  if (!url.startsWith(runtimeBaseUrl)) {
+    return url;
+  }
+  return `${publicBaseUrl}${url.slice(runtimeBaseUrl.length)}`;
+}
+
+export function extractAuthRequestId(location: string, baseUrl?: string) {
+  const url = new URL(location, baseUrl);
+  for (const key of [
+    "authRequest",
+    "auth_request",
+    "authRequestId",
+    "auth_request_id",
+  ]) {
+    const value = url.searchParams.get(key);
+    if (value) {
+      return value;
+    }
+  }
+  throw new Error(`Unable to extract auth request id from ${location}`);
+}
+
+export function extractSamlRequestIdFromLoginUrl(
+  location: string,
+  base?: string,
+) {
+  const url = new URL(location, base);
+  for (const key of [
+    "samlRequest",
+    "saml_request",
+    "samlRequestId",
+    "saml_request_id",
+    "authRequest",
+    "auth_request",
+    "authRequestId",
+    "auth_request_id",
+  ]) {
+    const value = url.searchParams.get(key);
+    if (value) {
+      return value;
+    }
+  }
+  throw new Error(`Could not find saml request id in location: ${location}`);
+}
+
+export function parseSamlPostFormFromHtml(html: string) {
+  const actionMatch = html.match(/<form[^>]+action="([^"]+)"/i);
+  if (!actionMatch) {
+    throw new Error("Could not find form action in SAML POST response.");
+  }
+  const fields: Record<string, string> = {};
+  let match: RegExpExecArray | null;
+  const inputPattern = /<input[^>]+name="([^"]*)"[^>]+value="([^"]*)"/gi;
+  while ((match = inputPattern.exec(html)) !== null) {
+    fields[match[1]] = match[2].replace(/&amp;/g, "&");
+  }
+  const reverseInputPattern = /<input[^>]+value="([^"]*)"[^>]+name="([^"]*)"/gi;
+  while ((match = reverseInputPattern.exec(html)) !== null) {
+    if (!(match[2] in fields)) {
+      fields[match[2]] = match[1].replace(/&amp;/g, "&");
+    }
+  }
+  return {
+    action: actionMatch[1].replace(/&amp;/g, "&"),
+    fields,
+  };
+}
+
+export function buildFormBody(fields: Record<string, string>) {
+  return Object.entries(fields)
+    .map(
+      ([key, value]) =>
+        `${encodeURIComponent(key)}=${encodeURIComponent(value)}`,
+    )
+    .join("&");
 }
 
 export interface RequestOptions {
@@ -188,7 +383,7 @@ export async function enterpriseConnectionCreateRpc(
   return await enterpriseRpc(
     convexClient,
     userToken,
-    ["enterprise", "connection", "create"],
+    ["auth", "sso", "connection", "create"],
     args as any,
   );
 }
@@ -211,7 +406,7 @@ export async function enterpriseOidcConfigureRpc(
   return await enterpriseRpc(
     convexClient,
     userToken,
-    ["enterprise", "oidc", "configure"],
+    ["auth", "sso", "oidc", "configure"],
     args as any,
   );
 }
@@ -237,7 +432,7 @@ export async function enterpriseSamlConfigureRpc(
   return await enterpriseRpc(
     convexClient,
     userToken,
-    ["enterprise", "saml", "configure"],
+    ["auth", "sso", "saml", "configure"],
     args as any,
   );
 }
@@ -248,14 +443,13 @@ export async function enterpriseScimConfigureRpc(
   args: {
     enterpriseId: string;
     basePath?: string;
-    deprovisionMode?: "soft" | "hard";
     status?: "draft" | "active" | "disabled";
   },
 ): Promise<{ token?: string; configId?: string }> {
   return await enterpriseRpc(
     convexClient,
     userToken,
-    ["enterprise", "scim", "configure"],
+    ["auth", "scim", "configure"],
     args as any,
   );
 }
@@ -273,7 +467,7 @@ export async function enterpriseWebhookEndpointCreateRpc(
   return await enterpriseRpc(
     convexClient,
     userToken,
-    ["enterprise", "webhook", "endpoint", "create"],
+    ["auth", "sso", "webhook", "endpoint", "create"],
     args as any,
   );
 }
@@ -286,8 +480,21 @@ export async function enterpriseWebhookDeliveryListRpc(
   return await enterpriseRpc(
     convexClient,
     userToken,
-    ["enterprise", "webhook", "delivery", "list"],
+    ["auth", "sso", "webhook", "delivery", "list"],
     args as any,
+  );
+}
+
+export async function enterpriseWebhookEndpointListRpc(
+  convexClient: ConvexHttpClient,
+  userToken: string,
+  enterpriseId: string,
+): Promise<Array<Record<string, unknown>>> {
+  return await enterpriseRpc(
+    convexClient,
+    userToken,
+    ["auth", "sso", "webhook", "endpoint", "list"],
+    { enterpriseId },
   );
 }
 
@@ -299,7 +506,7 @@ export async function enterpriseAuditListRpc(
   return await enterpriseRpc(
     convexClient,
     userToken,
-    ["enterprise", "audit", "list"],
+    ["auth", "sso", "audit", "list"],
     args as any,
   );
 }

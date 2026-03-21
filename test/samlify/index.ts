@@ -7,6 +7,12 @@ import { test, expect } from "vite-plus/test";
 
 process.chdir(path.resolve(import.meta.dirname, "../../packages/samlify"));
 
+const FIXTURE_ROOT = path.resolve(import.meta.dirname);
+const fixturePath = (relativePath: string) =>
+  path.join(FIXTURE_ROOT, relativePath);
+const fixtureRead = (relativePath: string) =>
+  readFileSync(fixturePath(relativePath));
+
 const {
   IdentityProvider: identityProvider,
   ServiceProvider: serviceProvider,
@@ -27,57 +33,56 @@ const algorithms = ref.algorithms;
 const wording = ref.wording;
 const signatureAlgorithms = algorithms.signature;
 
-const _spKeyFolder = "../../test/samlify/key/sp/";
-const _spPrivPem = String(readFileSync(_spKeyFolder + "privkey.pem"));
+const _spKeyFolder = fixturePath("key/sp");
+const _spPrivPem = String(readFileSync(path.join(_spKeyFolder, "privkey.pem")));
 const _spPrivKeyPass = "VHOSp5RUiBcrsjrcAuXFwU1NKCkGA8px";
 
 const defaultIdpConfig = {
-  privateKey: readFileSync("../../test/samlify/key/idp/privkey.pem"),
+  privateKey: fixtureRead("key/idp/privkey.pem"),
   privateKeyPass: "q9ALNhGT5EhfcRmp8Pg7e9zTQeP2x1bW",
   isAssertionEncrypted: true,
-  encPrivateKey: readFileSync("../../test/samlify/key/idp/encryptKey.pem"),
+  encPrivateKey: fixtureRead("key/idp/encryptKey.pem"),
   encPrivateKeyPass: "g7hGcRmp8PxT5QeP2q9Ehf1bWe9zTALN",
-  metadata: readFileSync("../../test/samlify/misc/idpmeta.xml"),
+  metadata: fixtureRead("misc/idpmeta.xml"),
 };
 
 const defaultSpConfig = {
-  privateKey: readFileSync("../../test/samlify/key/sp/privkey.pem"),
+  privateKey: fixtureRead("key/sp/privkey.pem"),
   privateKeyPass: "VHOSp5RUiBcrsjrcAuXFwU1NKCkGA8px",
   isAssertionEncrypted: true,
-  encPrivateKey: readFileSync("../../test/samlify/key/sp/encryptKey.pem"),
+  encPrivateKey: fixtureRead("key/sp/encryptKey.pem"),
   encPrivateKeyPass: "BXFNKpxrsjrCkGA8cAu5wUVHOSpci1RU",
-  metadata: readFileSync("../../test/samlify/misc/spmeta.xml"),
+  metadata: fixtureRead("misc/spmeta.xml"),
 };
 
 const idp = identityProvider(defaultIdpConfig);
 const idpRollingCert = identityProvider({
   ...defaultIdpConfig,
-  metadata: readFileSync("../../test/samlify/misc/idpmeta_rollingcert.xml"),
+  metadata: fixtureRead("misc/idpmeta_rollingcert.xml"),
 });
 const sp = serviceProvider(defaultSpConfig);
 
-const IdPMetadata = idpMetadata(
-  readFileSync("../../test/samlify/misc/idpmeta.xml"),
-);
-const SPMetadata = spMetadata(
-  readFileSync("../../test/samlify/misc/spmeta.xml"),
-);
-const sampleSignedResponse = readFileSync(
-  "../../test/samlify/misc/response_signed.xml",
-).toString();
-const wrongResponse = readFileSync(
-  "../../test/samlify/misc/invalid_response.xml",
-).toString();
-const spCertKnownGood = readFileSync(
-  "../../test/samlify/key/sp/knownGoodCert.cer",
-)
+const IdPMetadata = idpMetadata(fixtureRead("misc/idpmeta.xml"));
+const SPMetadata = spMetadata(fixtureRead("misc/spmeta.xml"));
+const sampleSignedResponse = fixtureRead("misc/response_signed.xml").toString();
+const wrongResponse = fixtureRead("misc/invalid_response.xml").toString();
+const spCertKnownGood = fixtureRead("key/sp/knownGoodCert.cer")
   .toString()
   .trim();
-const spPemKnownGood = readFileSync(
-  "../../test/samlify/key/sp/knownGoodEncryptKey.pem",
-)
+const spPemKnownGood = fixtureRead("key/sp/knownGoodEncryptKey.pem")
   .toString()
   .trim();
+
+async function captureError(
+  run: () => Promise<unknown>,
+): Promise<string | Error | undefined> {
+  try {
+    await run();
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error : String(error);
+  }
+}
 
 test("base64 encoding returns encoded string", () => {
   expect(utility.base64Encode("Hello World")).toBe("SGVsbG8gV29ybGQ=");
@@ -94,25 +99,21 @@ test("base64 decoded + inflate", () => {
   expect(utility.inflateString("80jNyclXCM8vykkBAA==")).toBe("Hello World");
 });
 test("parse cer format resulting clean certificate", () => {
-  expect(
-    utility.normalizeCerString(
-      readFileSync("../../test/samlify/key/sp/cert.cer"),
-    ),
-  ).toBe(spCertKnownGood);
+  expect(utility.normalizeCerString(fixtureRead("key/sp/cert.cer"))).toBe(
+    spCertKnownGood,
+  );
 });
 test("normalize pem key returns clean string", () => {
-  const ekey = readFileSync(
-    "../../test/samlify/key/sp/encryptKey.pem",
-  ).toString();
+  const ekey = fixtureRead("key/sp/encryptKey.pem").toString();
   expect(utility.normalizePemString(ekey)).toBe(spPemKnownGood);
 });
 test("getAssertionConsumerService with one binding", () => {
   const expectedPostLocation = "https:sp.example.org/sp/sso/post";
   const _sp = serviceProvider({
-    privateKey: "../../test/samlify/key/sp/privkey.pem",
+    privateKey: fixturePath("key/sp/privkey.pem"),
     privateKeyPass: "VHOSp5RUiBcrsjrcAuXFwU1NKCkGA8px",
     isAssertionEncrypted: true,
-    encPrivateKey: "../../test/samlify/key/sp/encryptKey.pem",
+    encPrivateKey: fixturePath("key/sp/encryptKey.pem"),
     encPrivateKeyPass: "BXFNKpxrsjrCkGA8cAu5wUVHOSpci1RU",
     assertionConsumerService: [
       {
@@ -135,10 +136,10 @@ test("getAssertionConsumerService with two bindings", () => {
   const expectedPostLocation = "https:sp.example.org/sp/sso/post";
   const expectedArtifactLocation = "https:sp.example.org/sp/sso/artifact";
   const _sp = serviceProvider({
-    privateKey: "../../test/samlify/key/sp/privkey.pem",
+    privateKey: fixturePath("key/sp/privkey.pem"),
     privateKeyPass: "VHOSp5RUiBcrsjrcAuXFwU1NKCkGA8px",
     isAssertionEncrypted: true,
-    encPrivateKey: "../../test/samlify/key/sp/encryptKey.pem",
+    encPrivateKey: fixturePath("key/sp/encryptKey.pem"),
     encPrivateKeyPass: "BXFNKpxrsjrCkGA8cAu5wUVHOSpci1RU",
     assertionConsumerService: [
       {
@@ -170,26 +171,24 @@ test("getAssertionConsumerService with two bindings", () => {
 });
 
 (() => {
-  const _originRequest: string = String(
-    readFileSync("../../test/samlify/misc/request.xml"),
-  );
+  const _originRequest: string = String(fixtureRead("misc/request.xml"));
   const _decodedResponse: string = String(
-    readFileSync("../../test/samlify/misc/response_signed.xml"),
+    fixtureRead("misc/response_signed.xml"),
   );
   const _falseDecodedRequestSHA1: string = String(
-    readFileSync("../../test/samlify/misc/false_signed_request_sha1.xml"),
+    fixtureRead("misc/false_signed_request_sha1.xml"),
   );
   const _decodedRequestSHA256: string = String(
-    readFileSync("../../test/samlify/misc/signed_request_sha256.xml"),
+    fixtureRead("misc/signed_request_sha256.xml"),
   );
   const _falseDecodedRequestSHA256: string = String(
-    readFileSync("../../test/samlify/misc/false_signed_request_sha256.xml"),
+    fixtureRead("misc/false_signed_request_sha256.xml"),
   );
   const _decodedRequestSHA512: string = String(
-    readFileSync("../../test/samlify/misc/signed_request_sha512.xml"),
+    fixtureRead("misc/signed_request_sha512.xml"),
   );
   const _falseDecodedRequestSHA512: string = String(
-    readFileSync("../../test/samlify/misc/false_signed_request_sha512.xml"),
+    fixtureRead("misc/false_signed_request_sha512.xml"),
   );
 
   const octetString: string =
@@ -412,10 +411,10 @@ test("getAssertionConsumerService with two bindings", () => {
 
   test("verify a XML signature with metadata but with rolling certificate", () => {
     const responseSignedByCert1 = String(
-      readFileSync("../../test/samlify/misc/response_signed_cert1.xml"),
+      fixtureRead("misc/response_signed_cert1.xml"),
     );
     const responseSignedByCert2 = String(
-      readFileSync("../../test/samlify/misc/response_signed_cert2.xml"),
+      fixtureRead("misc/response_signed_cert2.xml"),
     );
     expect(
       libsaml.verifySignature(responseSignedByCert1, {
@@ -432,41 +431,33 @@ test("getAssertionConsumerService with two bindings", () => {
   });
 
   test("verify a XML signature signed by RSA-SHA1 with .cer keyFile", () => {
-    const xml = String(
-      readFileSync("../../test/samlify/misc/signed_request_sha1.xml"),
-    );
+    const xml = String(fixtureRead("misc/signed_request_sha1.xml"));
     expect(
       libsaml.verifySignature(xml, {
-        keyFile: "../../test/samlify/key/sp/cert.cer",
+        keyFile: fixturePath("key/sp/cert.cer"),
       })[0],
     ).toBe(true);
   });
   test("verify a XML signature signed by RSA-SHA256 with .cer keyFile", () => {
-    const xml = String(
-      readFileSync("../../test/samlify/misc/signed_request_sha256.xml"),
-    );
+    const xml = String(fixtureRead("misc/signed_request_sha256.xml"));
     expect(
       libsaml.verifySignature(xml, {
-        keyFile: "../../test/samlify/key/sp/cert.cer",
+        keyFile: fixturePath("key/sp/cert.cer"),
       })[0],
     ).toBe(true);
   });
   test("verify a XML signature signed by RSA-SHA512 with .cer keyFile", () => {
-    const xml = String(
-      readFileSync("../../test/samlify/misc/signed_request_sha512.xml"),
-    );
+    const xml = String(fixtureRead("misc/signed_request_sha512.xml"));
     expect(
       libsaml.verifySignature(xml, {
-        keyFile: "../../test/samlify/key/sp/cert.cer",
+        keyFile: fixturePath("key/sp/cert.cer"),
       })[0],
     ).toBe(true);
   });
   test("verify signature fails with mismatched keyFile even when KeyInfo is present", () => {
-    const xml = String(
-      readFileSync("../../test/samlify/misc/signed_request_sha256.xml"),
-    );
+    const xml = String(fixtureRead("misc/signed_request_sha256.xml"));
     const [verified] = libsaml.verifySignature(xml, {
-      keyFile: "../../test/samlify/key/idp/cert.cer",
+      keyFile: fixturePath("key/idp/cert.cer"),
       signatureAlgorithm: signatureAlgorithms.RSA_SHA256,
     });
     expect(verified).toBe(false);
@@ -540,35 +531,43 @@ test("getAssertionConsumerService with two bindings", () => {
     await expect(() =>
       libsaml.encryptAssertion(idp, sp, wrongResponse),
     ).rejects.toThrow();
-    const error = await libsaml
-      .encryptAssertion(idp, sp, wrongResponse)
-      .catch((e: Error) => e);
-    expect(error?.message).toBe("ERR_NO_ASSERTION");
+    const error = await captureError(() =>
+      libsaml.encryptAssertion(idp, sp, wrongResponse),
+    );
+    expect(error instanceof Error ? error.message : error).toBe(
+      "ERR_NO_ASSERTION",
+    );
   });
   test("encrypt assertion with invalid xml syntax returns error", async () => {
     await expect(() =>
       libsaml.encryptAssertion(idp, sp, "This is not a xml format string"),
     ).rejects.toThrow();
-    const error = await libsaml
-      .encryptAssertion(idp, sp, "This is not a xml format string")
-      .catch((e: Error) => e);
-    expect(error?.message).toBe("ERR_NO_ASSERTION");
+    const error = await captureError(() =>
+      libsaml.encryptAssertion(idp, sp, "This is not a xml format string"),
+    );
+    expect(error instanceof Error ? error.message : error).toBe(
+      "ERR_NO_ASSERTION",
+    );
   });
   test("encrypt assertion with empty string returns error", async () => {
     await expect(() => libsaml.encryptAssertion(idp, sp, "")).rejects.toThrow();
-    const error = await libsaml
-      .encryptAssertion(idp, sp, "")
-      .catch((e: Error) => e);
-    expect(error?.message).toBe("ERR_UNDEFINED_ASSERTION");
+    const error = await captureError(() =>
+      libsaml.encryptAssertion(idp, sp, ""),
+    );
+    expect(error instanceof Error ? error.message : error).toBe(
+      "ERR_UNDEFINED_ASSERTION",
+    );
   });
   test("encrypt assertion with undefined string returns error", async () => {
     await expect(() =>
       libsaml.encryptAssertion(idp, sp, undefined),
     ).rejects.toThrow();
-    const error = await libsaml
-      .encryptAssertion(idp, sp, undefined)
-      .catch((e: Error) => e);
-    expect(error?.message).toBe("ERR_UNDEFINED_ASSERTION");
+    const error = await captureError(() =>
+      libsaml.encryptAssertion(idp, sp, undefined),
+    );
+    expect(error instanceof Error ? error.message : error).toBe(
+      "ERR_UNDEFINED_ASSERTION",
+    );
   });
   test("building attribute statement with one attribute", () => {
     const attributes = [
@@ -611,8 +610,8 @@ test("getAssertionConsumerService with two bindings", () => {
 
 (() => {
   const baseConfig = {
-    signingCert: readFileSync("../../test/samlify/key/sp/cert.cer"),
-    privateKey: readFileSync("../../test/samlify/key/sp/privkey.pem"),
+    signingCert: fixtureRead("key/sp/cert.cer"),
+    privateKey: fixtureRead("key/sp/privkey.pem"),
     privateKeyPass: "VHOSp5RUiBcrsjrcAuXFwU1NKCkGA8px",
     entityID: "http://sp",
     nameIDFormat: ["urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"],
@@ -651,12 +650,12 @@ test("getAssertionConsumerService with two bindings", () => {
 test("idp with multiple signing and encryption certificates", () => {
   const localIdp = identityProvider({
     signingCert: [
-      readFileSync("../../test/samlify/key/idp/cert.cer"),
-      readFileSync("../../test/samlify/key/idp/cert2.cer").toString(),
+      fixtureRead("key/idp/cert.cer").toString(),
+      fixtureRead("key/idp/cert2.cer").toString(),
     ],
     encryptCert: [
-      readFileSync("../../test/samlify/key/idp/encryptionCert.cer"),
-      readFileSync("../../test/samlify/key/idp/encryptionCert.cer").toString(),
+      fixtureRead("key/idp/encryptionCert.cer").toString(),
+      fixtureRead("key/idp/encryptionCert.cer").toString(),
     ],
     singleSignOnService: [
       {
@@ -725,17 +724,13 @@ test.skip("metadata with multiple entity descriptors is invalid", () => {
   expect(() => {
     identityProvider({
       ...defaultIdpConfig,
-      metadata: readFileSync(
-        "../../test/samlify/misc/multiple_entitydescriptor.xml",
-      ),
+      metadata: fixtureRead("misc/multiple_entitydescriptor.xml"),
     });
   }).toThrow();
   try {
     identityProvider({
       ...defaultIdpConfig,
-      metadata: readFileSync(
-        "../../test/samlify/misc/multiple_entitydescriptor.xml",
-      ),
+      metadata: fixtureRead("misc/multiple_entitydescriptor.xml"),
     });
   } catch (error) {
     expect((error as Error).message).toBe(
@@ -774,9 +769,7 @@ test("get entity setting", () => {
 });
 
 test("contains shared certificate for both signing and encryption in metadata", () => {
-  const metadata = idpMetadata(
-    readFileSync("../../test/samlify/misc/idpmeta_share_cert.xml"),
-  );
+  const metadata = idpMetadata(fixtureRead("misc/idpmeta_share_cert.xml"));
   const signingCertificate = metadata.getX509Certificate("signing");
   const encryptionCertificate = metadata.getX509Certificate("encryption");
   expect(signingCertificate).not.toBe(null);

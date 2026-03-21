@@ -100,6 +100,7 @@ function match<T>(
   );
 }
 
+/** @internal */
 export const Fx = {
   ...BaseFx,
   match,

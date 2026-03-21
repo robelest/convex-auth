@@ -33,6 +33,7 @@ type OAuthProviderConfigLike = {
 // ============================================================================
 
 /** A cookie to be set on the HTTP response. */
+/** @internal */
 export interface OAuthCookie {
   name: string;
   value: string;
@@ -40,6 +41,7 @@ export interface OAuthCookie {
 }
 
 /** Result of creating an authorization URL. */
+/** @internal */
 export interface AuthorizationResult {
   redirect: string;
   cookies: OAuthCookie[];
@@ -47,6 +49,7 @@ export interface AuthorizationResult {
 }
 
 /** Result of handling an OAuth callback. */
+/** @internal */
 export interface CallbackResult {
   profile: OAuthProfile;
   providerAccountId: string;
@@ -98,6 +101,7 @@ function clearCookie(
  * Creates a signature string from the OAuth state parameters.
  * This is stored in the verifier table and validated during callback.
  */
+/** @internal */
 export function getAuthorizationSignature({
   codeVerifier,
   state,
@@ -251,6 +255,7 @@ function validateProfileId(
  *
  * Handles PKCE detection, state generation, and cookie creation.
  */
+/** @internal */
 export async function createOAuthAuthorizationURL(
   providerId: string,
   arcticProvider: any,
@@ -305,6 +310,7 @@ export async function createOAuthAuthorizationURL(
  *
  * Returns `Fx<CallbackResult, AuthError>` composed via `Fx.gen`.
  */
+/** @internal */
 export function handleOAuthCallback(
   providerId: string,
   arcticProvider: any,

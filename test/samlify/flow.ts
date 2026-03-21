@@ -11,6 +11,14 @@ import util from "@robelest/samlify/src/utility";
 import { DOMParser } from "@xmldom/xmldom";
 import * as tk from "timekeeper";
 import { test, expect } from "vite-plus/test";
+
+process.chdir(path.resolve(import.meta.dirname, "../../packages/samlify"));
+
+const FIXTURE_ROOT = path.resolve(import.meta.dirname);
+const fixturePath = (relativePath: string) =>
+  path.join(FIXTURE_ROOT, relativePath);
+const fixtureRead = (relativePath: string) =>
+  readFileSync(fixturePath(relativePath));
 // import * as validator from '@authenio/samlify-validate-with-xmllint';
 // import * as validator from '@authenio/samlify-node-xmllint';
 // import * as validator from '@authenio/samlify-libxml-xsd';
@@ -19,8 +27,6 @@ import { test, expect } from "vite-plus/test";
 // const validator = require('@authenio/samlify-validate-with-xmllint');
 // const validator = require('@authenio/samlify-node-xmllint');
 // const validator = require('@authenio/samlify-libxml-xsd');
-
-process.chdir(path.resolve(import.meta.dirname, "../../packages/samlify"));
 
 const parseQuery = (value: string) => new URL(value).search.slice(1);
 const parseQueryObject = (value: string) =>
@@ -77,9 +83,7 @@ const loginResponseTemplate = {
   ],
 };
 
-const failedResponse: string = String(
-  readFileSync("../../test/samlify/misc/failed_response.xml"),
-);
+const failedResponse: string = String(fixtureRead("misc/failed_response.xml"));
 
 const createTemplateCallback =
   (_idp: any, _sp: any, _binding: any, user: any) => (template: string) => {
@@ -168,42 +172,36 @@ const buildSimpleSignOctetString = (
 // Define of metadata
 
 const defaultIdpConfig = {
-  privateKey: readFileSync("../../test/samlify/key/idp/privkey.pem"),
+  privateKey: fixtureRead("key/idp/privkey.pem"),
   privateKeyPass: "q9ALNhGT5EhfcRmp8Pg7e9zTQeP2x1bW",
   isAssertionEncrypted: true,
-  encPrivateKey: readFileSync("../../test/samlify/key/idp/encryptKey.pem"),
+  encPrivateKey: fixtureRead("key/idp/encryptKey.pem"),
   encPrivateKeyPass: "g7hGcRmp8PxT5QeP2q9Ehf1bWe9zTALN",
-  metadata: readFileSync("../../test/samlify/misc/idpmeta.xml"),
+  metadata: fixtureRead("misc/idpmeta.xml"),
 };
 
 const oneloginIdpConfig = {
-  privateKey: readFileSync("../../test/samlify/key/idp/privkey.pem"),
+  privateKey: fixtureRead("key/idp/privkey.pem"),
   privateKeyPass: "q9ALNhGT5EhfcRmp8Pg7e9zTQeP2x1bW",
   isAssertionEncrypted: true,
-  encPrivateKey: readFileSync("../../test/samlify/key/idp/encryptKey.pem"),
+  encPrivateKey: fixtureRead("key/idp/encryptKey.pem"),
   encPrivateKeyPass: "g7hGcRmp8PxT5QeP2q9Ehf1bWe9zTALN",
-  metadata: readFileSync(
-    "../../test/samlify/misc/idpmeta_onelogoutservice.xml",
-  ),
+  metadata: fixtureRead("misc/idpmeta_onelogoutservice.xml"),
 };
 
 const defaultSpConfig = {
-  privateKey: readFileSync("../../test/samlify/key/sp/privkey.pem"),
+  privateKey: fixtureRead("key/sp/privkey.pem"),
   privateKeyPass: "VHOSp5RUiBcrsjrcAuXFwU1NKCkGA8px",
   isAssertionEncrypted: true, // for logout purpose
-  encPrivateKey: readFileSync("../../test/samlify/key/sp/encryptKey.pem"),
+  encPrivateKey: fixtureRead("key/sp/encryptKey.pem"),
   encPrivateKeyPass: "BXFNKpxrsjrCkGA8cAu5wUVHOSpci1RU",
-  metadata: readFileSync("../../test/samlify/misc/spmeta.xml"),
+  metadata: fixtureRead("misc/spmeta.xml"),
 };
 
-const noSignedIdpMetadata = readFileSync(
-  "../../test/samlify/misc/idpmeta_nosign.xml",
-)
+const noSignedIdpMetadata = fixtureRead("misc/idpmeta_nosign.xml")
   .toString()
   .trim();
-const spmetaNoAssertSign = readFileSync(
-  "../../test/samlify/misc/spmeta_noassertsign.xml",
-)
+const spmetaNoAssertSign = fixtureRead("misc/spmeta_noassertsign.xml")
   .toString()
   .trim();
 
@@ -405,12 +403,8 @@ test("create login request with redirect binding using [custom template]", () =>
 test("create login request with redirect binding signing with unencrypted PKCS#8", () => {
   const _sp = serviceProvider({
     authnRequestsSigned: true,
-    signingCert: readFileSync(
-      "../../test/samlify/key/sp/cert.unencrypted.pkcs8.cer",
-    ),
-    privateKey: readFileSync(
-      "../../test/samlify/key/sp/privkey.unencrypted.pkcs8.pem",
-    ),
+    signingCert: fixtureRead("key/sp/cert.unencrypted.pkcs8.cer"),
+    privateKey: fixtureRead("key/sp/privkey.unencrypted.pkcs8.pem"),
     privateKeyPass: undefined,
   });
 
@@ -431,12 +425,8 @@ test("create login request with redirect binding signing with unencrypted PKCS#8
 test("create login request with redirect binding signing with encrypted PKCS#8", () => {
   const _sp = serviceProvider({
     authnRequestsSigned: true,
-    signingCert: readFileSync(
-      "../../test/samlify/key/sp/cert.encrypted.pkcs8.cer",
-    ),
-    privateKey: readFileSync(
-      "../../test/samlify/key/sp/privkey.encrypted.pkcs8.pem",
-    ),
+    signingCert: fixtureRead("key/sp/cert.encrypted.pkcs8.cer"),
+    privateKey: fixtureRead("key/sp/privkey.encrypted.pkcs8.pem"),
     privateKeyPass: "VHOSp5RUiBcrsjrcAuXFwU1NKCkGA8px",
   });
 

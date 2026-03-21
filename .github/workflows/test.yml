@@ -21,13 +21,5 @@ jobs:
           run-install: |
             args: ['--frozen-lockfile']
 
-      - name: Build package prerequisites
-        run:
-          vp run '@robelest/samlify#build' && vp run
-          '@robelest/convex-auth#build'
-
-      - name: Run consumer typecheck
-        run: vp run '@robelest/convex-auth#typecheck:consumer'
-
-      - name: Run packaging checks
-        run: vp run '@robelest/convex-auth#check:packaging'
+      - name: Run full test suite
+        run: vp run test

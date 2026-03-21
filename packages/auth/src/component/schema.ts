@@ -1,6 +1,24 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+import {
+  vApiKeyRateLimit,
+  vApiKeyRateLimitState,
+  vApiKeyScope,
+  vAuditActorType,
+  vAuditStatus,
+  vDeviceStatus,
+  vEnterprisePolicy,
+  vEnterpriseSecretKind,
+  vEnterpriseStatus,
+  vInviteStatus,
+  vScimResourceType,
+  vScimStatus,
+  vTag,
+  vWebhookDeliveryStatus,
+  vWebhookEndpointStatus,
+} from "./model";
+
 /**
  * Schema for the auth component.
  *
@@ -166,11 +184,7 @@ export default defineSchema({
     /** Minimum polling interval in seconds. */
     interval: v.number(),
     /** Current status of this device authorization session. */
-    status: v.union(
-      v.literal("pending"),
-      v.literal("authorized"),
-      v.literal("denied"),
-    ),
+    status: vDeviceStatus,
     /** Set when the user authorizes — links to the authorizing user. */
     userId: v.optional(v.id("User")),
     /** Set when the user authorizes — the session created for the device. */
@@ -201,7 +215,7 @@ export default defineSchema({
     type: v.optional(v.string()),
     parentGroupId: v.optional(v.id("Group")),
     /** Faceted classification tags. Normalized at write time (trimmed, lowercased). */
-    tags: v.optional(v.array(v.object({ key: v.string(), value: v.string() }))),
+    tags: v.optional(v.array(vTag)),
     extend: v.optional(v.any()),
   })
     .index("slug", ["slug"])
@@ -253,12 +267,7 @@ export default defineSchema({
     email: v.optional(v.string()),
     tokenHash: v.string(),
     role: v.optional(v.string()),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("accepted"),
-      v.literal("revoked"),
-      v.literal("expired"),
-    ),
+    status: vInviteStatus,
     expiresTime: v.optional(v.number()),
     acceptedByUserId: v.optional(v.id("User")),
     acceptedTime: v.optional(v.number()),
@@ -287,11 +296,8 @@ export default defineSchema({
     groupId: v.id("Group"),
     slug: v.optional(v.string()),
     name: v.optional(v.string()),
-    status: v.union(
-      v.literal("draft"),
-      v.literal("active"),
-      v.literal("disabled"),
-    ),
+    status: vEnterpriseStatus,
+    policy: v.optional(vEnterprisePolicy),
     config: v.optional(v.any()),
     extend: v.optional(v.any()),
   })
@@ -314,20 +320,29 @@ export default defineSchema({
     .index("domain", ["domain"]),
 
   /**
+   * Encrypted enterprise secrets stored separately from protocol config.
+   */
+  EnterpriseSecret: defineTable({
+    enterpriseId: v.id("Enterprise"),
+    groupId: v.id("Group"),
+    kind: vEnterpriseSecretKind,
+    ciphertext: v.string(),
+    updatedAt: v.number(),
+  })
+    .index("enterprise_id", ["enterpriseId"])
+    .index("enterprise_id_kind", ["enterpriseId", "kind"])
+    .index("group_id", ["groupId"]),
+
+  /**
    * SCIM configuration for an enterprise tenant.
    */
   EnterpriseScimConfig: defineTable({
     enterpriseId: v.id("Enterprise"),
     groupId: v.id("Group"),
-    status: v.union(
-      v.literal("draft"),
-      v.literal("active"),
-      v.literal("disabled"),
-    ),
+    status: vScimStatus,
     basePath: v.string(),
     tokenHash: v.string(),
     lastRotatedAt: v.optional(v.number()),
-    deprovisionMode: v.optional(v.union(v.literal("soft"), v.literal("hard"))),
     extend: v.optional(v.any()),
   })
     .index("enterprise_id", ["enterpriseId"])
@@ -341,7 +356,7 @@ export default defineSchema({
   EnterpriseScimIdentity: defineTable({
     enterpriseId: v.id("Enterprise"),
     groupId: v.id("Group"),
-    resourceType: v.union(v.literal("user"), v.literal("group")),
+    resourceType: vScimResourceType,
     externalId: v.string(),
     userId: v.optional(v.id("User")),
     mappedGroupId: v.optional(v.id("Group")),
@@ -356,6 +371,7 @@ export default defineSchema({
       "resourceType",
       "externalId",
     ])
+    .index("enterprise_id_user_id", ["enterpriseId", "userId"])
     .index("user_id", ["userId"])
     .index("mapped_group_id", ["mappedGroupId"]),
 
@@ -366,17 +382,11 @@ export default defineSchema({
     enterpriseId: v.id("Enterprise"),
     groupId: v.id("Group"),
     eventType: v.string(),
-    actorType: v.union(
-      v.literal("user"),
-      v.literal("system"),
-      v.literal("scim"),
-      v.literal("api_key"),
-      v.literal("webhook"),
-    ),
+    actorType: vAuditActorType,
     actorId: v.optional(v.string()),
     subjectType: v.string(),
     subjectId: v.optional(v.string()),
-    status: v.union(v.literal("success"), v.literal("failure")),
+    status: vAuditStatus,
     occurredAt: v.number(),
     requestId: v.optional(v.string()),
     ip: v.optional(v.string()),
@@ -393,7 +403,7 @@ export default defineSchema({
     enterpriseId: v.id("Enterprise"),
     groupId: v.id("Group"),
     url: v.string(),
-    status: v.union(v.literal("active"), v.literal("disabled")),
+    status: vWebhookEndpointStatus,
     secretHash: v.string(),
     subscriptions: v.array(v.string()),
     createdByUserId: v.optional(v.id("User")),
@@ -414,12 +424,7 @@ export default defineSchema({
     endpointId: v.id("EnterpriseWebhookEndpoint"),
     auditEventId: v.optional(v.id("EnterpriseAuditEvent")),
     eventType: v.string(),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("processing"),
-      v.literal("delivered"),
-      v.literal("failed"),
-    ),
+    status: vWebhookDeliveryStatus,
     attemptCount: v.number(),
     nextAttemptAt: v.number(),
     lastAttemptAt: v.optional(v.number()),
@@ -454,26 +459,11 @@ export default defineSchema({
     /** User-assigned name (e.g. "CI Pipeline", "Production API"). */
     name: v.string(),
     /** Scoped permissions: [{ resource: "users", actions: ["read", "list"] }]. */
-    scopes: v.array(
-      v.object({
-        resource: v.string(),
-        actions: v.array(v.string()),
-      }),
-    ),
+    scopes: v.array(vApiKeyScope),
     /** Optional per-key rate limit configuration. */
-    rateLimit: v.optional(
-      v.object({
-        maxRequests: v.number(),
-        windowMs: v.number(),
-      }),
-    ),
+    rateLimit: v.optional(vApiKeyRateLimit),
     /** Rate limit state tracking (token-bucket). */
-    rateLimitState: v.optional(
-      v.object({
-        attemptsLeft: v.number(),
-        lastAttemptTime: v.number(),
-      }),
-    ),
+    rateLimitState: v.optional(vApiKeyRateLimitState),
     /** Expiration timestamp. Null/undefined = never expires. */
     expiresAt: v.optional(v.number()),
     lastUsedAt: v.optional(v.number()),

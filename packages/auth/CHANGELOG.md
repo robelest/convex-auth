@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- Stabilize the enterprise namespace model around `auth.sso.*` for inbound SSO,
+  `auth.scim.*` for provisioning, and a planned `auth.oauth.*` provider-mode
+  surface.
+- Move public domain ownership under `auth.sso.connection.*` and keep the next
+  release focused on shipping this stable core shape before larger enterprise
+  features land.
+- Harden enterprise SSO management surfaces by adding tenant-admin checks to the
+  app-level Convex wrappers and tightening their public return schemas.
+- Redact sensitive OIDC and webhook secret material from public reads and stop
+  advertising incomplete provider-mode metadata from discovery.
+- Centralize identity subject parsing for device, passkey, and TOTP flows and
+  add regression coverage for normalized public API outputs.
+- Store enterprise OIDC client secrets outside raw enterprise config and have
+  the CLI provision `AUTH_SECRET_ENCRYPTION_KEY` automatically.
+- Refresh enterprise docs to reflect the current policy scope and provider-mode
+  status.
+
 ## 0.0.4-preview.12
 
 - Add multi-tenant group helpers under `auth.user.group.*`:

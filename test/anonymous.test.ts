@@ -1,10 +1,15 @@
 import { api } from "@convex/_generated/api";
+import { auth } from "@convex/auth";
 import schema from "@convex/schema";
 import { decodeJwt } from "jose";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
 import { convexTest } from "./convex.setup";
-import { expectSignedInResult, signInViaMagicLink } from "./helpers";
+import {
+  expectSignedInResult,
+  signInViaMagicLink,
+  subjectToUserId,
+} from "./helpers";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -13,7 +18,7 @@ afterEach(() => {
 test("sign in anonymously", async () => {
   const t = convexTest(schema);
   const tokens = expectSignedInResult(
-    await t.action(api.auth.session.start, {
+    await t.action(api.auth.signIn, {
       provider: "anonymous",
     }),
   );
@@ -23,7 +28,7 @@ test("sign in anonymously", async () => {
 test("anonymous sign-in is not auto-converted during email sign-in", async () => {
   const t = convexTest(schema);
   const tokens = expectSignedInResult(
-    await t.action(api.auth.session.start, {
+    await t.action(api.auth.signIn, {
       provider: "anonymous",
     }),
   );
@@ -39,14 +44,14 @@ test("anonymous sign-in is not auto-converted during email sign-in", async () =>
   const newClaims = decodeJwt(newTokens!.token);
   expect(newClaims.sub).not.toEqual(claims.sub);
 
-  const oldViewer = await t
-    .withIdentity({ subject: claims.sub })
-    .query(api.users.viewer, {});
+  const oldViewer = await t.run(async (ctx) => {
+    return await auth.user.get(ctx as any, subjectToUserId(claims.sub));
+  });
   expect(oldViewer?.isAnonymous).toEqual(true);
 
-  const viewer = await t
-    .withIdentity({ subject: newClaims.sub })
-    .query(api.users.viewer, {});
+  const viewer = await t.run(async (ctx) => {
+    return await auth.user.get(ctx as any, subjectToUserId(newClaims.sub));
+  });
   expect(viewer).toMatchObject({ email: "mike@gmail.com" });
   expect(viewer?.isAnonymous).not.toEqual(true);
 });

@@ -13,6 +13,7 @@
 import { Fx } from "@robelest/fx";
 
 import { AuthError } from "./fx";
+import { userIdFromIdentitySubject } from "./identity";
 import { callSignIn } from "./mutations/index";
 import { DeviceProviderConfig, GenericActionCtxWithAuthConfig } from "./types";
 import {
@@ -63,6 +64,7 @@ type DeviceResult =
     }
   | { kind: "signedIn"; signedIn: SessionInfo | null };
 
+/** @internal */
 export const handleDevice = (
   ctx: EnrichedActionCtx,
   provider: DeviceProviderConfig,
@@ -187,7 +189,7 @@ export const handleDevice = (
         );
       }
 
-      const userId = identity.subject.split("|")[0]!;
+      const userId = userIdFromIdentitySubject(identity.subject);
       const doc = await queryDeviceByUserCode(ctx, params.userCode);
       if (doc === null) {
         throw new AuthError("DEVICE_INVALID_USER_CODE");

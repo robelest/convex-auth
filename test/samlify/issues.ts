@@ -1,5 +1,4 @@
 import { readFileSync } from "fs";
-import * as fs from "fs";
 import path from "node:path";
 
 import * as esaml2 from "@robelest/samlify";
@@ -8,6 +7,12 @@ import { DOMParser as dom } from "@xmldom/xmldom";
 import { test, expect } from "vite-plus/test";
 
 process.chdir(path.resolve(import.meta.dirname, "../../packages/samlify"));
+
+const FIXTURE_ROOT = path.resolve(import.meta.dirname);
+const fixturePath = (relativePath: string) =>
+  path.join(FIXTURE_ROOT, relativePath);
+const fixtureRead = (relativePath: string) =>
+  readFileSync(fixturePath(relativePath));
 
 const parseUrlQueryObject = (value: string) =>
   Object.fromEntries(
@@ -143,7 +148,7 @@ test("#31 query param for sso/slo returns error", () => {
     },
   ]);
   const sp98 = serviceProvider({
-    metadata: fs.readFileSync("../../test/samlify/misc/sp_metadata_98.xml"),
+    metadata: fixtureRead("misc/sp_metadata_98.xml"),
   });
   test("#33 sp metadata acs index should be increased by 1", () => {
     expect(acs.assertionConsumerService.length).toBe(2);
@@ -166,9 +171,7 @@ test("#31 query param for sso/slo returns error", () => {
     expect(idpslo.singleLogoutService[1].index).toBe(undefined);
   });
   test("#86 duplicate issuer throws error", () => {
-    const xml = readFileSync(
-      "../../test/samlify/misc/dumpes_issuer_response.xml",
-    );
+    const xml = fixtureRead("misc/dumpes_issuer_response.xml");
     const { issuer } = extract(xml.toString(), [
       {
         key: "issuer",
@@ -187,7 +190,7 @@ test("#31 query param for sso/slo returns error", () => {
 
   test("#87 add existence check for signature verification", () => {
     const res = libsaml.verifySignature(
-      readFileSync("../../test/samlify/misc/response.xml").toString(),
+      fixtureRead("misc/response.xml").toString(),
       {},
     );
     expect(res[0]).toBe(false); // signature is invalid because one doesn't exist

@@ -1,21 +1,522 @@
 import { ConvexHttpClient } from "convex/browser";
-import { makeFunctionReference } from "convex/server";
-import { ConvexError } from "convex/values";
+import { actionGeneric, makeFunctionReference } from "convex/server";
+import { ConvexError, v } from "convex/values";
 import { parse, serialize } from "cookie";
 import { jwtDecode } from "jwt-decode";
 
-import { Fx } from "./fx";
+import type { AuthApi } from "./auth";
 import type {
   SignInAction,
   SignInActionResult,
   SignOutAction,
-} from "./implementation";
+} from "./factory";
+import { Fx } from "./fx";
 import { isLocalHost } from "./utils";
 
-const signInActionRef: SignInAction =
-  makeFunctionReference("auth/session:start");
-const signOutActionRef: SignOutAction =
-  makeFunctionReference("auth/session:stop");
+const signInActionRef: SignInAction = makeFunctionReference("auth:signIn");
+const signOutActionRef: SignOutAction = makeFunctionReference("auth:signOut");
+
+function requireSignedIn(auth: Pick<AuthApi, "user">) {
+  return async (ctx: { auth: import("convex/server").Auth }) => {
+    await auth.user.require(ctx as never);
+  };
+}
+
+/**
+ * Build optional public SSO management actions that apps can mount under
+ * `convex/auth/sso/**` when they want a client-callable enterprise API.
+ */
+export function sso(auth: Pick<AuthApi, "group" | "sso" | "user">): {
+  connection: Record<string, any> & { domain: Record<string, any> };
+  oidc: Record<string, any>;
+  saml: Record<string, any>;
+  policy: Record<string, any>;
+  audit: Record<string, any>;
+  webhook: Record<string, any> & {
+    endpoint: Record<string, any>;
+    delivery: Record<string, any>;
+  };
+} {
+  const ensureSignedIn = requireSignedIn(auth);
+
+  return {
+    connection: {
+      create: actionGeneric({
+        args: {
+          groupId: v.optional(v.string()),
+          name: v.optional(v.string()),
+          slug: v.optional(v.string()),
+          status: v.optional(
+            v.union(
+              v.literal("draft"),
+              v.literal("active"),
+              v.literal("disabled"),
+            ),
+          ),
+          domain: v.optional(v.string()),
+        },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          const groupId =
+            args.groupId ??
+            (await auth.group.create(ctx as never, {
+              name: args.name?.trim() || args.slug?.trim() || "Enterprise",
+              slug: args.slug,
+              type: "enterprise",
+            }));
+          const enterpriseId = await auth.sso.connection.create(ctx as never, {
+            groupId,
+            name: args.name,
+            slug: args.slug,
+            status: args.status,
+          });
+          if (args.domain) {
+            await auth.sso.connection.domain.set(ctx as never, enterpriseId, [
+              { domain: args.domain, isPrimary: true },
+            ]);
+          }
+          return { enterpriseId, groupId };
+        },
+      }),
+      get: actionGeneric({
+        args: { enterpriseId: v.string() },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.connection.get(ctx as never, args.enterpriseId);
+        },
+      }),
+      getByGroup: actionGeneric({
+        args: { groupId: v.string() },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.connection.getByGroup(
+            ctx as never,
+            args.groupId,
+          );
+        },
+      }),
+      getByDomain: actionGeneric({
+        args: { domain: v.string() },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.connection.getByDomain(
+            ctx as never,
+            args.domain,
+          );
+        },
+      }),
+      list: actionGeneric({
+        args: {
+          where: v.optional(v.any()),
+          limit: v.optional(v.number()),
+          cursor: v.optional(v.union(v.string(), v.null())),
+          orderBy: v.optional(v.string()),
+          order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
+        },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.connection.list(ctx as never, args as never);
+        },
+      }),
+      update: actionGeneric({
+        args: { enterpriseId: v.string(), data: v.any() },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          await auth.sso.connection.update(
+            ctx as never,
+            args.enterpriseId,
+            args.data,
+          );
+          return null;
+        },
+      }),
+      remove: actionGeneric({
+        args: { enterpriseId: v.string() },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          await auth.sso.connection.remove(ctx as never, args.enterpriseId);
+          return null;
+        },
+      }),
+      status: actionGeneric({
+        args: { enterpriseId: v.string() },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.connection.status(
+            ctx as never,
+            args.enterpriseId,
+          );
+        },
+      }),
+      domain: {
+        list: actionGeneric({
+          args: { enterpriseId: v.string() },
+          handler: async (ctx, args) => {
+            await ensureSignedIn(ctx);
+            return await auth.sso.connection.domain.list(
+              ctx as never,
+              args.enterpriseId,
+            );
+          },
+        }),
+        set: actionGeneric({
+          args: {
+            enterpriseId: v.string(),
+            domains: v.array(
+              v.object({
+                domain: v.string(),
+                isPrimary: v.optional(v.boolean()),
+                verifiedAt: v.optional(v.number()),
+              }),
+            ),
+          },
+          handler: async (ctx, args) => {
+            await ensureSignedIn(ctx);
+            await auth.sso.connection.domain.set(
+              ctx as never,
+              args.enterpriseId,
+              args.domains,
+            );
+            return null;
+          },
+        }),
+      },
+    },
+    oidc: {
+      configure: actionGeneric({
+        args: {
+          enterpriseId: v.string(),
+          issuer: v.optional(v.string()),
+          discoveryUrl: v.optional(v.string()),
+          clientId: v.string(),
+          clientSecret: v.optional(v.string()),
+          scopes: v.optional(v.array(v.string())),
+          authorizationParams: v.optional(v.record(v.string(), v.string())),
+          clockToleranceSeconds: v.optional(v.number()),
+          strictIssuer: v.optional(v.boolean()),
+          extraFields: v.optional(v.record(v.string(), v.string())),
+        },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.oidc.configure(ctx as never, args);
+        },
+      }),
+      get: actionGeneric({
+        args: { enterpriseId: v.string() },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.oidc.get(ctx as never, args.enterpriseId);
+        },
+      }),
+      resolveSignIn: actionGeneric({
+        args: {
+          enterpriseId: v.optional(v.string()),
+          email: v.optional(v.string()),
+          domain: v.optional(v.string()),
+          redirectTo: v.optional(v.string()),
+        },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.oidc.resolveSignIn(ctx as never, args);
+        },
+      }),
+      validate: actionGeneric({
+        args: { enterpriseId: v.string() },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.oidc.validate(ctx as never, args.enterpriseId);
+        },
+      }),
+    },
+    saml: {
+      configure: actionGeneric({
+        args: {
+          enterpriseId: v.string(),
+          metadataXml: v.optional(v.string()),
+          metadataUrl: v.optional(v.string()),
+          domains: v.optional(v.array(v.string())),
+          signAuthnRequests: v.optional(v.boolean()),
+          attributeMapping: v.optional(v.any()),
+          sp: v.optional(v.any()),
+        },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.saml.configure(ctx as never, args);
+        },
+      }),
+      metadata: actionGeneric({
+        args: {
+          enterpriseId: v.string(),
+          entityId: v.optional(v.string()),
+          acsUrl: v.optional(v.string()),
+          sloUrl: v.optional(v.string()),
+        },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.saml.metadata(ctx as never, args);
+        },
+      }),
+      validate: actionGeneric({
+        args: { enterpriseId: v.string() },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.saml.validate(ctx as never, args.enterpriseId);
+        },
+      }),
+    },
+    policy: {
+      get: actionGeneric({
+        args: { enterpriseId: v.string() },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.policy.get(ctx as never, args.enterpriseId);
+        },
+      }),
+      update: actionGeneric({
+        args: { enterpriseId: v.string(), patch: v.any() },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.policy.update(
+            ctx as never,
+            args.enterpriseId,
+            args.patch,
+          );
+        },
+      }),
+      validate: actionGeneric({
+        args: { enterpriseId: v.string() },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.policy.validate(
+            ctx as never,
+            args.enterpriseId,
+          );
+        },
+      }),
+    },
+    audit: {
+      record: actionGeneric({
+        args: { data: v.any() },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.audit.record(ctx as never, args.data);
+        },
+      }),
+      list: actionGeneric({
+        args: {
+          enterpriseId: v.optional(v.string()),
+          groupId: v.optional(v.string()),
+          limit: v.optional(v.number()),
+        },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.sso.audit.list(ctx as never, args);
+        },
+      }),
+    },
+    webhook: {
+      emit: actionGeneric({
+        args: {
+          enterpriseId: v.string(),
+          eventType: v.string(),
+          payload: v.any(),
+          auditEventId: v.optional(v.string()),
+        },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          await auth.sso.webhook.emit(ctx as never, args);
+          return null;
+        },
+      }),
+      endpoint: {
+        create: actionGeneric({
+          args: {
+            enterpriseId: v.string(),
+            url: v.string(),
+            secret: v.string(),
+            subscriptions: v.array(v.string()),
+            createdByUserId: v.optional(v.string()),
+          },
+          handler: async (ctx, args) => {
+            await ensureSignedIn(ctx);
+            const result = await auth.sso.webhook.endpoint.create(
+              ctx as never,
+              args,
+            );
+            return {
+              _id: result.endpointId,
+              enterpriseId: args.enterpriseId,
+              url: args.url,
+              subscriptions: args.subscriptions,
+              createdByUserId: args.createdByUserId,
+              status: "active",
+              failureCount: 0,
+            };
+          },
+        }),
+        list: actionGeneric({
+          args: { enterpriseId: v.string() },
+          handler: async (ctx, args) => {
+            await ensureSignedIn(ctx);
+            const endpoints = await auth.sso.webhook.endpoint.list(
+              ctx as never,
+              args.enterpriseId,
+            );
+            return endpoints.map((endpoint: Record<string, unknown>) => {
+              const { secretHash: _secretHash, ...rest } = endpoint;
+              return rest;
+            });
+          },
+        }),
+        disable: actionGeneric({
+          args: { endpointId: v.string() },
+          handler: async (ctx, args) => {
+            await ensureSignedIn(ctx);
+            await auth.sso.webhook.endpoint.disable(
+              ctx as never,
+              args.endpointId,
+            );
+            return null;
+          },
+        }),
+      },
+      delivery: {
+        list: actionGeneric({
+          args: { enterpriseId: v.string(), limit: v.optional(v.number()) },
+          handler: async (ctx, args) => {
+            await ensureSignedIn(ctx);
+            return await auth.sso.webhook.delivery.list(ctx as never, args);
+          },
+        }),
+        listReady: actionGeneric({
+          args: { limit: v.optional(v.number()) },
+          handler: async (ctx, args) => {
+            await ensureSignedIn(ctx);
+            return await auth.sso.webhook.delivery.listReady(
+              ctx as never,
+              args.limit,
+            );
+          },
+        }),
+        markDelivered: actionGeneric({
+          args: {
+            deliveryId: v.string(),
+            responseStatus: v.optional(v.number()),
+          },
+          handler: async (ctx, args) => {
+            await ensureSignedIn(ctx);
+            await auth.sso.webhook.delivery.markDelivered(
+              ctx as never,
+              args.deliveryId,
+              args.responseStatus,
+            );
+            return null;
+          },
+        }),
+        markFailed: actionGeneric({
+          args: {
+            deliveryId: v.string(),
+            data: v.object({
+              attemptCount: v.number(),
+              responseStatus: v.optional(v.number()),
+              error: v.optional(v.string()),
+              retryAt: v.optional(v.number()),
+            }),
+          },
+          handler: async (ctx, args) => {
+            await ensureSignedIn(ctx);
+            await auth.sso.webhook.delivery.markFailed(
+              ctx as never,
+              args.deliveryId,
+              args.data,
+            );
+            return null;
+          },
+        }),
+      },
+    },
+  };
+}
+
+/**
+ * Build optional public SCIM management actions that apps can mount under
+ * `convex/auth/scim/**` when they want a client-callable enterprise API.
+ */
+export function scim(
+  auth: Pick<AuthApi, "scim" | "user">,
+): Record<string, any> & { identity: Record<string, any> } {
+  const ensureSignedIn = requireSignedIn(auth);
+
+  return {
+    configure: actionGeneric({
+      args: {
+        enterpriseId: v.string(),
+        basePath: v.optional(v.string()),
+        status: v.optional(
+          v.union(
+            v.literal("draft"),
+            v.literal("active"),
+            v.literal("disabled"),
+          ),
+        ),
+      },
+      handler: async (ctx, args) => {
+        await ensureSignedIn(ctx);
+        return await auth.scim.configure(ctx as never, args);
+      },
+    }),
+    get: actionGeneric({
+      args: { enterpriseId: v.string() },
+      handler: async (ctx, args) => {
+        await ensureSignedIn(ctx);
+        return await auth.scim.get(ctx as never, args.enterpriseId);
+      },
+    }),
+    getConfigByToken: actionGeneric({
+      args: { token: v.string() },
+      handler: async (ctx, args) => {
+        await ensureSignedIn(ctx);
+        return await auth.scim.getConfigByToken(ctx as never, args.token);
+      },
+    }),
+    validate: actionGeneric({
+      args: { enterpriseId: v.string() },
+      handler: async (ctx, args) => {
+        await ensureSignedIn(ctx);
+        return await auth.scim.validate(ctx as never, args.enterpriseId);
+      },
+    }),
+    identity: {
+      get: actionGeneric({
+        args: {
+          enterpriseId: v.string(),
+          resourceType: v.union(v.literal("user"), v.literal("group")),
+          externalId: v.string(),
+        },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.scim.identity.get(ctx as never, args);
+        },
+      }),
+      upsert: actionGeneric({
+        args: {
+          enterpriseId: v.string(),
+          groupId: v.string(),
+          resourceType: v.union(v.literal("user"), v.literal("group")),
+          externalId: v.string(),
+          userId: v.optional(v.string()),
+          mappedGroupId: v.optional(v.string()),
+          active: v.optional(v.boolean()),
+          raw: v.optional(v.any()),
+        },
+        handler: async (ctx, args) => {
+          await ensureSignedIn(ctx);
+          return await auth.scim.identity.upsert(ctx as never, args);
+        },
+      }),
+    },
+  };
+}
 
 /** Cookie lifetime configuration for auth tokens. */
 export type AuthCookieConfig = {
@@ -588,9 +1089,9 @@ export function server(options: ServerOptions) {
           : {};
 
       const actionDispatch =
-        action === "auth/session:start"
+        action === "auth:signIn"
           ? { action: "sessionStart" as const }
-          : action === "auth/session:stop"
+          : action === "auth:signOut"
             ? { action: "sessionStop" as const }
             : null;
 
@@ -943,37 +1444,37 @@ export function server(options: ServerOptions) {
                                   redirect: () =>
                                     Fx.fatal(
                                       new Error(
-                                        "Invalid `auth/session:start` result for sign-out fallback refresh",
+                                        "Invalid `auth:signIn` result for sign-out fallback refresh",
                                       ),
                                     ),
                                   started: () =>
                                     Fx.fatal(
                                       new Error(
-                                        "Invalid `auth/session:start` result for sign-out fallback refresh",
+                                        "Invalid `auth:signIn` result for sign-out fallback refresh",
                                       ),
                                     ),
                                   passkeyOptions: () =>
                                     Fx.fatal(
                                       new Error(
-                                        "Invalid `auth/session:start` result for sign-out fallback refresh",
+                                        "Invalid `auth:signIn` result for sign-out fallback refresh",
                                       ),
                                     ),
                                   totpRequired: () =>
                                     Fx.fatal(
                                       new Error(
-                                        "Invalid `auth/session:start` result for sign-out fallback refresh",
+                                        "Invalid `auth:signIn` result for sign-out fallback refresh",
                                       ),
                                     ),
                                   totpSetup: () =>
                                     Fx.fatal(
                                       new Error(
-                                        "Invalid `auth/session:start` result for sign-out fallback refresh",
+                                        "Invalid `auth:signIn` result for sign-out fallback refresh",
                                       ),
                                     ),
                                   deviceCode: () =>
                                     Fx.fatal(
                                       new Error(
-                                        "Invalid `auth/session:start` result for sign-out fallback refresh",
+                                        "Invalid `auth:signIn` result for sign-out fallback refresh",
                                       ),
                                     ),
                                 }),
@@ -1146,37 +1647,37 @@ export function server(options: ServerOptions) {
                       redirect: () =>
                         Fx.fatal(
                           new Error(
-                            "Invalid `auth/session:start` result for code exchange",
+                            "Invalid `auth:signIn` result for code exchange",
                           ),
                         ),
                       started: () =>
                         Fx.fatal(
                           new Error(
-                            "Invalid `auth/session:start` result for code exchange",
+                            "Invalid `auth:signIn` result for code exchange",
                           ),
                         ),
                       passkeyOptions: () =>
                         Fx.fatal(
                           new Error(
-                            "Invalid `auth/session:start` result for code exchange",
+                            "Invalid `auth:signIn` result for code exchange",
                           ),
                         ),
                       totpRequired: () =>
                         Fx.fatal(
                           new Error(
-                            "Invalid `auth/session:start` result for code exchange",
+                            "Invalid `auth:signIn` result for code exchange",
                           ),
                         ),
                       totpSetup: () =>
                         Fx.fatal(
                           new Error(
-                            "Invalid `auth/session:start` result for code exchange",
+                            "Invalid `auth:signIn` result for code exchange",
                           ),
                         ),
                       deviceCode: () =>
                         Fx.fatal(
                           new Error(
-                            "Invalid `auth/session:start` result for code exchange",
+                            "Invalid `auth:signIn` result for code exchange",
                           ),
                         ),
                     }),
@@ -1367,37 +1868,37 @@ export function server(options: ServerOptions) {
                       redirect: () =>
                         Fx.fatal(
                           new Error(
-                            "Invalid `auth/session:start` result for token refresh",
+                            "Invalid `auth:signIn` result for token refresh",
                           ),
                         ),
                       started: () =>
                         Fx.fatal(
                           new Error(
-                            "Invalid `auth/session:start` result for token refresh",
+                            "Invalid `auth:signIn` result for token refresh",
                           ),
                         ),
                       passkeyOptions: () =>
                         Fx.fatal(
                           new Error(
-                            "Invalid `auth/session:start` result for token refresh",
+                            "Invalid `auth:signIn` result for token refresh",
                           ),
                         ),
                       totpRequired: () =>
                         Fx.fatal(
                           new Error(
-                            "Invalid `auth/session:start` result for token refresh",
+                            "Invalid `auth:signIn` result for token refresh",
                           ),
                         ),
                       totpSetup: () =>
                         Fx.fatal(
                           new Error(
-                            "Invalid `auth/session:start` result for token refresh",
+                            "Invalid `auth:signIn` result for token refresh",
                           ),
                         ),
                       deviceCode: () =>
                         Fx.fatal(
                           new Error(
-                            "Invalid `auth/session:start` result for token refresh",
+                            "Invalid `auth:signIn` result for token refresh",
                           ),
                         ),
                     }),
@@ -1518,37 +2019,37 @@ export function server(options: ServerOptions) {
                           redirect: () =>
                             Fx.fatal(
                               new Error(
-                                "Invalid `auth/session:start` result for token refresh",
+                                "Invalid `auth:signIn` result for token refresh",
                               ),
                             ),
                           started: () =>
                             Fx.fatal(
                               new Error(
-                                "Invalid `auth/session:start` result for token refresh",
+                                "Invalid `auth:signIn` result for token refresh",
                               ),
                             ),
                           passkeyOptions: () =>
                             Fx.fatal(
                               new Error(
-                                "Invalid `auth/session:start` result for token refresh",
+                                "Invalid `auth:signIn` result for token refresh",
                               ),
                             ),
                           totpRequired: () =>
                             Fx.fatal(
                               new Error(
-                                "Invalid `auth/session:start` result for token refresh",
+                                "Invalid `auth:signIn` result for token refresh",
                               ),
                             ),
                           totpSetup: () =>
                             Fx.fatal(
                               new Error(
-                                "Invalid `auth/session:start` result for token refresh",
+                                "Invalid `auth:signIn` result for token refresh",
                               ),
                             ),
                           deviceCode: () =>
                             Fx.fatal(
                               new Error(
-                                "Invalid `auth/session:start` result for token refresh",
+                                "Invalid `auth:signIn` result for token refresh",
                               ),
                             ),
                         }),
@@ -1643,37 +2144,37 @@ export function server(options: ServerOptions) {
                               redirect: () =>
                                 Fx.fatal(
                                   new Error(
-                                    "Invalid `auth/session:start` result for token refresh",
+                                    "Invalid `auth:signIn` result for token refresh",
                                   ),
                                 ),
                               started: () =>
                                 Fx.fatal(
                                   new Error(
-                                    "Invalid `auth/session:start` result for token refresh",
+                                    "Invalid `auth:signIn` result for token refresh",
                                   ),
                                 ),
                               passkeyOptions: () =>
                                 Fx.fatal(
                                   new Error(
-                                    "Invalid `auth/session:start` result for token refresh",
+                                    "Invalid `auth:signIn` result for token refresh",
                                   ),
                                 ),
                               totpRequired: () =>
                                 Fx.fatal(
                                   new Error(
-                                    "Invalid `auth/session:start` result for token refresh",
+                                    "Invalid `auth:signIn` result for token refresh",
                                   ),
                                 ),
                               totpSetup: () =>
                                 Fx.fatal(
                                   new Error(
-                                    "Invalid `auth/session:start` result for token refresh",
+                                    "Invalid `auth:signIn` result for token refresh",
                                   ),
                                 ),
                               deviceCode: () =>
                                 Fx.fatal(
                                   new Error(
-                                    "Invalid `auth/session:start` result for token refresh",
+                                    "Invalid `auth:signIn` result for token refresh",
                                   ),
                                 ),
                             }),

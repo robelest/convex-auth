@@ -128,13 +128,9 @@ export type AuthApiRefs<
   HasTotp extends boolean = boolean,
   HasDevice extends boolean = boolean,
 > = {
-  session: {
-    start: FunctionReference<"action", "public", any, any>;
-    stop: FunctionReference<"action", "public", any, any>;
-  };
-  store: {
-    run: FunctionReference<"mutation", "public", any, any>;
-  };
+  signIn: FunctionReference<"action", "public", any, any>;
+  signOut: FunctionReference<"action", "public", any, any>;
+  store: FunctionReference<"mutation", "public", any, any>;
   /** @internal Set automatically by `createAuth` — do not set manually. */
   _capabilities?: {
     passkey: HasPasskey;
@@ -194,7 +190,9 @@ export type AuthClient<
   (InferCaps<Api>["device"] extends true ? { device: DeviceClient } : {});
 
 /** Options for {@link client}. */
-export type ClientOptions = {
+export type ClientOptions<
+  Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs,
+> = {
   /** Any Convex client (`ConvexClient` or `ConvexReactClient`). */
   convex: ConvexTransport;
   /**
@@ -206,11 +204,11 @@ export type ClientOptions = {
    * import { api } from "../convex/_generated/api";
    * client({
    *   convex,
-   *   api: { session: api.auth.session, store: api.auth.store },
+   *   api: api.auth,
    * });
    * ```
    */
-  api?: AuthApiRefs<boolean, boolean, boolean>;
+  api?: Api;
   /**
    * Convex deployment URL. Derived automatically from the client internals
    * when omitted — pass explicitly only if auto-detection fails.
@@ -321,9 +319,10 @@ function isRetriableProxyRefreshError(error: unknown): boolean {
  * ```ts
  * import { ConvexClient } from 'convex/browser';
  * import { client } from '@robelest/convex-auth/client';
+ * import { api } from '../convex/_generated/api';
  *
  * const convex = new ConvexClient(CONVEX_URL);
- * const auth = client({ convex });
+ * const auth = client({ convex, api: api.auth });
  * ```
  *
  * ### SSR / proxy mode
@@ -345,7 +344,7 @@ function isRetriableProxyRefreshError(error: unknown): boolean {
  */
 export function client<
   Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs,
->(options: ClientOptions): AuthClient<Api> {
+>(options: ClientOptions<Api>): AuthClient<Api> {
   const { convex, proxyPath, api: apiRefs } = options;
   const proxy = proxyPath;
 
@@ -353,7 +352,7 @@ export function client<
     if (!apiRefs) {
       throw new Error(
         "The `api` option is required when `proxyPath` is not set. " +
-          "Pass { api: { session: api.auth.session, store: api.auth.store } }.",
+          "Pass { api: api.auth }.",
       );
     }
     return apiRefs;
@@ -856,7 +855,7 @@ export function client<
       Fx.from({
         ok: () =>
           httpClient!.action(
-            requireApiRefs().session.start,
+            requireApiRefs().signIn,
             "code" in args
               ? { params: { code: args.code }, verifier: args.verifier }
               : args,
@@ -1022,7 +1021,7 @@ export function client<
 
     if (proxy) {
       const result = (await proxyFetch({
-        action: "auth/session:start",
+        action: "auth:signIn",
         args: { provider, params },
       })) as SignInActionResult;
       return handleSignInActionResult(result, {
@@ -1034,7 +1033,7 @@ export function client<
     // SPA mode: call Convex directly.
     const verifier = (await storageGet(VERIFIER_STORAGE_KEY)) ?? undefined;
     await storageRemove(VERIFIER_STORAGE_KEY);
-    const result = (await convex.action(requireApiRefs().session.start, {
+    const result = (await convex.action(requireApiRefs().signIn, {
       provider,
       params,
       verifier,
@@ -1060,7 +1059,7 @@ export function client<
     if (proxy) {
       await Fx.run(
         Fx.from({
-          ok: () => proxyFetch({ action: "auth/session:stop", args: {} }),
+          ok: () => proxyFetch({ action: "auth:signOut", args: {} }),
           err: () => undefined,
         }).pipe(Fx.recover(() => Fx.succeed(undefined))),
       );
@@ -1072,7 +1071,7 @@ export function client<
     // SPA mode.
     await Fx.run(
       Fx.from({
-        ok: () => convex.action(requireApiRefs().session.stop, {}),
+        ok: () => convex.action(requireApiRefs().signOut, {}),
         err: () => undefined,
       }).pipe(Fx.recover(() => Fx.succeed(undefined))),
     );
@@ -1120,7 +1119,7 @@ export function client<
           Fx.from({
             ok: () =>
               proxyFetch({
-                action: "auth/session:start",
+                action: "auth:signIn",
                 args: { refreshToken: true },
               }),
             err: (e) => e,
@@ -1439,11 +1438,11 @@ export function client<
       let phase1Result: SignInActionResult;
       if (proxy) {
         phase1Result = (await proxyFetch({
-          action: "auth/session:start",
+          action: "auth:signIn",
           args: { provider: "passkey", params: phase1Params },
         })) as SignInActionResult;
       } else {
-        phase1Result = (await convex.action(requireApiRefs().session.start, {
+        phase1Result = (await convex.action(requireApiRefs().signIn, {
           provider: "passkey",
           params: phase1Params,
         })) as SignInActionResult;
@@ -1510,7 +1509,7 @@ export function client<
         // In proxy mode the verifier is stored in an httpOnly cookie by the proxy.
         // We pass it back explicitly so the proxy can forward it to Convex.
         phase2Result = (await proxyFetch({
-          action: "auth/session:start",
+          action: "auth:signIn",
           args: {
             provider: "passkey",
             params: phase2Params,
@@ -1518,7 +1517,7 @@ export function client<
           },
         })) as SignInActionResult;
       } else {
-        phase2Result = (await convex.action(requireApiRefs().session.start, {
+        phase2Result = (await convex.action(requireApiRefs().signIn, {
           provider: "passkey",
           params: phase2Params,
           verifier: phase1Result.verifier,
@@ -1614,11 +1613,11 @@ export function client<
       let phase1Result: SignInActionResult;
       if (proxy) {
         phase1Result = (await proxyFetch({
-          action: "auth/session:start",
+          action: "auth:signIn",
           args: { provider: "passkey", params: phase1Params },
         })) as SignInActionResult;
       } else {
-        phase1Result = (await convex.action(requireApiRefs().session.start, {
+        phase1Result = (await convex.action(requireApiRefs().signIn, {
           provider: "passkey",
           params: phase1Params,
         })) as SignInActionResult;
@@ -1670,7 +1669,7 @@ export function client<
       let phase2Result: SignInActionResult;
       if (proxy) {
         phase2Result = (await proxyFetch({
-          action: "auth/session:start",
+          action: "auth:signIn",
           args: {
             provider: "passkey",
             params: phase2Params,
@@ -1678,7 +1677,7 @@ export function client<
           },
         })) as SignInActionResult;
       } else {
-        phase2Result = (await convex.action(requireApiRefs().session.start, {
+        phase2Result = (await convex.action(requireApiRefs().signIn, {
           provider: "passkey",
           params: phase2Params,
           verifier: phase1Result.verifier,
@@ -1757,7 +1756,7 @@ export function client<
 
       if (proxy) {
         const result = await proxyFetch({
-          action: "auth/session:start",
+          action: "auth:signIn",
           args: { provider: "totp", params },
         });
         return {
@@ -1768,7 +1767,7 @@ export function client<
         };
       }
 
-      const result = await convex.action(requireApiRefs().session.start, {
+      const result = await convex.action(requireApiRefs().signIn, {
         provider: "totp",
         params,
       });
@@ -1800,7 +1799,7 @@ export function client<
 
       if (proxy) {
         const result = await proxyFetch({
-          action: "auth/session:start",
+          action: "auth:signIn",
           args: { provider: "totp", params, verifier: opts.verifier },
         });
         if (result.tokens) {
@@ -1815,7 +1814,7 @@ export function client<
         return;
       }
 
-      const result = await convex.action(requireApiRefs().session.start, {
+      const result = await convex.action(requireApiRefs().signIn, {
         provider: "totp",
         params,
         verifier: opts.verifier,
@@ -1850,7 +1849,7 @@ export function client<
 
       if (proxy) {
         const result = await proxyFetch({
-          action: "auth/session:start",
+          action: "auth:signIn",
           args: { provider: "totp", params, verifier: opts.verifier },
         });
         if (result.tokens) {
@@ -1865,7 +1864,7 @@ export function client<
         return;
       }
 
-      const result = await convex.action(requireApiRefs().session.start, {
+      const result = await convex.action(requireApiRefs().signIn, {
         provider: "totp",
         params,
         verifier: opts.verifier,
@@ -1919,11 +1918,11 @@ export function client<
 
               if (proxy) {
                 result = await proxyFetch({
-                  action: "auth/session:start",
+                  action: "auth:signIn",
                   args: { provider: "device", params },
                 });
               } else {
-                result = await convex.action(requireApiRefs().session.start, {
+                result = await convex.action(requireApiRefs().signIn, {
                   provider: "device",
                   params,
                 });
@@ -2013,11 +2012,11 @@ export function client<
 
       if (proxy) {
         await proxyFetch({
-          action: "auth/session:start",
+          action: "auth:signIn",
           args: { provider: "device", params },
         });
       } else {
-        await convex.action(requireApiRefs().session.start, {
+        await convex.action(requireApiRefs().signIn, {
           provider: "device",
           params,
         });

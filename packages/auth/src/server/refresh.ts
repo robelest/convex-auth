@@ -13,6 +13,7 @@ import {
 } from "./utils";
 
 const DEFAULT_SESSION_INACTIVE_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+/** @internal */
 export const REFRESH_TOKEN_REUSE_WINDOW_MS = 10 * 1000; // 10 seconds
 
 // ---------------------------------------------------------------------------
@@ -22,6 +23,7 @@ export const REFRESH_TOKEN_REUSE_WINDOW_MS = 10 * 1000; // 10 seconds
 /**
  * Create a new refresh token for the given session.
  */
+/** @internal */
 export async function createRefreshToken(
   ctx: MutationCtx,
   config: ConvexAuthConfig,
@@ -46,6 +48,7 @@ export async function createRefreshToken(
 /**
  * Parse a compound refresh token string into its constituent IDs.
  */
+/** @internal */
 export const parseRefreshToken = (
   refreshToken: string,
 ): Fx<
@@ -82,6 +85,7 @@ export const parseRefreshToken = (
  * Mark all refresh tokens descending from the given refresh token as invalid
  * immediately. Used when we detect token reuse — revoke the entire tree.
  */
+/** @internal */
 export async function invalidateRefreshTokensInSubtree(
   ctx: MutationCtx,
   refreshToken: Doc<"RefreshToken">,
@@ -135,6 +139,7 @@ export async function invalidateRefreshTokensInSubtree(
  * Each validation step is a small composable function chained with `Fx.chain`.
  * On failure, the error message is logged and the pipeline folds to `null`.
  */
+/** @internal */
 export const refreshTokenIfValid = (
   ctx: MutationCtx,
   refreshTokenId: string,

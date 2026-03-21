@@ -3,7 +3,8 @@
   "private": true,
   "workspaces": {
     "packages": [
-      "packages/*"
+      "packages/*",
+      "docs"
     ],
     "catalog": {
       "@robelest/fx": "^0.0.1-preview.2",
@@ -28,6 +29,7 @@
     "dev:convex:once": "vp exec varlock run -- vp exec convex dev --once",
     "postinstall": "node scripts/patch-fluent-convex.mjs",
     "build:auth": "vp exec varlock run -- vp run '@robelest/samlify#build' && vp exec varlock run -- vp exec convex codegen --component-dir ./packages/auth/src/component && vp exec varlock run -- vp run '@robelest/convex-auth#build'",
+    "test": "vp exec node ./test/run.ts",
     "release:auth": "vp run '@robelest/convex-auth#build' && pnpm publish --filter @robelest/convex-auth --access public",
     "typecheck": "vp run '@robelest/convex-auth#typecheck'",
     "lint": "vp lint",
@@ -39,31 +41,31 @@
     "prepare": "vp config"
   },
   "dependencies": {
-    "@convex-dev/resend": "^0.2.3",
+    "@convex-dev/resend": "latest",
     "@robelest/convex-auth": "workspace:*",
-    "arctic": "^3.7.0",
-    "convex": "catalog:",
-    "convex-helpers": "^0.1.114",
-    "fluent-convex": "^0.12.3",
-    "zod": "^4.3.6"
+    "arctic": "latest",
+    "convex": "latest",
+    "convex-helpers": "latest",
+    "fluent-convex": "latest",
+    "zod": "latest"
   },
   "devDependencies": {
-    "@edge-runtime/vm": "^3.2.0",
-    "@oxlint/plugins": "^1.55.0",
-    "@robelest/fx": "catalog:",
-    "@trestleinc/convex-oxlint": "^0.2.0",
-    "@types/node": "^25.2.2",
-    "@typescript/native-preview": "7.0.0-dev.20260314.1",
-    "@varlock/vite-integration": "^0.2.5",
-    "@xmldom/xmldom": "^0.8.11",
-    "convex-test": "catalog:",
-    "jose": "^5.10.0",
-    "node-html-parser": "^7.1.0",
-    "timekeeper": "^2.3.1",
-    "uuid": "^8.3.2",
-    "varlock": "^0.5.0",
-    "vite": "catalog:",
-    "vite-plus": "catalog:"
+    "@edge-runtime/vm": "latest",
+    "@oxlint/plugins": "latest",
+    "@robelest/fx": "latest",
+    "@trestleinc/convex-oxlint": "latest",
+    "@types/node": "latest",
+    "@typescript/native-preview": "latest",
+    "@varlock/vite-integration": "latest",
+    "@xmldom/xmldom": "latest",
+    "convex-test": "latest",
+    "jose": "latest",
+    "node-html-parser": "latest",
+    "timekeeper": "latest",
+    "uuid": "latest",
+    "varlock": "latest",
+    "vite": "latest",
+    "vite-plus": "latest"
   },
   "overrides": {
     "vite": "catalog:",

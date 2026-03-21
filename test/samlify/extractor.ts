@@ -1,18 +1,22 @@
 import { readFileSync } from "fs";
-// This test file includes all the units related to the extractor
 import path from "node:path";
+// This test file includes all the units related to the extractor
 
 import { extract } from "@robelest/samlify/src/extractor";
 import { test, expect } from "vite-plus/test";
 
 process.chdir(path.resolve(import.meta.dirname, "../../packages/samlify"));
 
+const FIXTURE_ROOT = path.resolve(import.meta.dirname);
+const fixturePath = (relativePath: string) =>
+  path.join(FIXTURE_ROOT, relativePath);
+const fixtureRead = (relativePath: string) =>
+  readFileSync(fixturePath(relativePath));
+
 const _decodedResponse: string = String(
-  readFileSync("../../test/samlify/misc/response_signed.xml"),
+  fixtureRead("misc/response_signed.xml"),
 );
-const _spmeta: string = String(
-  readFileSync("../../test/samlify/misc/spmeta.xml"),
-);
+const _spmeta: string = String(fixtureRead("misc/spmeta.xml"));
 
 (() => {
   test("fetch multiple attributes", () => {

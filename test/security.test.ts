@@ -451,7 +451,7 @@ test("proxy refresh keeps valid access token when refresh cookie is missing", as
       cookie: `${cookieNames.token}=${token}`,
     },
     body: JSON.stringify({
-      action: "auth/session:start",
+      action: "auth:signIn",
       args: { refreshToken: true },
     }),
   });
@@ -493,7 +493,7 @@ test("proxy refresh returns null when missing refresh cookie and access token is
       cookie: `${cookieNames.token}=${token}`,
     },
     body: JSON.stringify({
-      action: "auth/session:start",
+      action: "auth:signIn",
       args: { refreshToken: true },
     }),
   });
@@ -527,7 +527,7 @@ test("proxy signIn errors keep existing cookies for non-refresh requests", async
       cookie: `${cookieNames.token}=jwt-token; ${cookieNames.refreshToken}=refresh-token; ${cookieNames.verifier}=verifier-token`,
     },
     body: JSON.stringify({
-      action: "auth/session:start",
+      action: "auth:signIn",
       args: {
         provider: "password",
         params: { email: "sarah@gmail.com", password: "wrong", flow: "signIn" },
@@ -585,7 +585,7 @@ test("proxy signOut retries revocation via refresh token", async () => {
       cookie: `${cookieNames.token}=expired-jwt; ${cookieNames.refreshToken}=valid-refresh-token`,
     },
     body: JSON.stringify({
-      action: "auth/session:stop",
+      action: "auth:signOut",
       args: {},
     }),
   });

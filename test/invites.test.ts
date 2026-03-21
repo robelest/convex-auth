@@ -1,11 +1,13 @@
 import { api, components } from "@convex/_generated/api";
 import type { DataModel } from "@convex/_generated/dataModel";
+import { auth as backendAuth } from "@convex/auth";
 import schema from "@convex/schema";
 import { client } from "@robelest/convex-auth/client/index";
 import { decodeJwt } from "jose";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
 import { convexTest, type TestConvexForDataModel } from "./convex.setup";
+import { subjectToUserId } from "./helpers";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -15,7 +17,7 @@ test("token invite acceptance allows matching unverified email", async () => {
   const t = convexTest(schema);
   const inviteEmail = "invited@example.com";
 
-  const signUpResult = await t.action(api.auth.session.start, {
+  const signUpResult = await t.action(api.auth.signIn, {
     provider: "password",
     params: {
       email: inviteEmail,
@@ -35,9 +37,12 @@ test("token invite acceptance allows matching unverified email", async () => {
     email: inviteEmail,
   });
 
-  const result = await t
-    .withIdentity({ subject: claims.sub })
-    .mutation(api.invites.acceptToken, { token });
+  const result = await t.run(async (ctx) => {
+    return await backendAuth.invite.token.accept(ctx as any, {
+      token,
+      acceptedByUserId: subjectToUserId(claims.sub),
+    });
+  });
 
   expect(result.inviteId).toBe(inviteId);
   expect(result.inviteStatus).toBe("accepted");
@@ -53,7 +58,7 @@ test("token invite acceptance allows matching unverified email", async () => {
 test("token invite acceptance still rejects mismatched email", async () => {
   const t = convexTest(schema);
 
-  const signUpResult = await t.action(api.auth.session.start, {
+  const signUpResult = await t.action(api.auth.signIn, {
     provider: "password",
     params: {
       email: "different@example.com",
@@ -74,11 +79,12 @@ test("token invite acceptance still rejects mismatched email", async () => {
   });
 
   await expect(async () => {
-    await t
-      .withIdentity({ subject: claims.sub })
-      .mutation(api.invites.acceptToken, {
+    await t.run(async (ctx) => {
+      return await backendAuth.invite.token.accept(ctx as any, {
         token,
+        acceptedByUserId: subjectToUserId(claims.sub),
       });
+    });
   }).rejects.toThrow("Invite email does not match accepting user's email");
 });
 
@@ -105,7 +111,7 @@ test("proxy sign up can immediately accept invite", async () => {
         args?: Record<string, unknown>;
       };
 
-      if (body.action !== "auth/session:start") {
+      if (body.action !== "auth:signIn") {
         return new Response(JSON.stringify({ error: "Unsupported action" }), {
           status: 400,
           headers: { "Content-Type": "application/json" },
@@ -122,7 +128,7 @@ test("proxy sign up can immediately accept invite", async () => {
         );
       }
 
-      const result = await t.action(api.auth.session.start, body.args ?? {});
+      const result = await t.action(api.auth.signIn, body.args ?? {});
       return new Response(JSON.stringify(result), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -151,9 +157,12 @@ test("proxy sign up can immediately accept invite", async () => {
 
   const claims = decodeJwt(auth.state.token!);
   expect(typeof claims.sub).toBe("string");
-  const acceptResult = await t
-    .withIdentity({ subject: claims.sub as string })
-    .mutation(api.invites.acceptToken, { token: inviteToken });
+  const acceptResult = await t.run(async (ctx) => {
+    return await backendAuth.invite.token.accept(ctx as any, {
+      token: inviteToken,
+      acceptedByUserId: subjectToUserId(claims.sub),
+    });
+  });
   expect(acceptResult.inviteStatus).toBe("accepted");
   expect(acceptResult.membershipStatus).toBe("not_applicable");
 

@@ -24,14 +24,22 @@ function ensureSamlifyValidator() {
   setSchemaValidator(_samlifyPermissiveValidator);
 }
 import { decodeIdToken } from "arctic";
-import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
+import {
+  createRemoteJWKSet,
+  customFetch,
+  decodeProtectedHeader,
+  jwtVerify,
+} from "jose";
 
 import type {
+  EnterprisePolicy,
+  EnterprisePolicyPatch,
   OAuthMaterializedConfig,
   OAuthProfile,
   SAMLAttributeMapping,
 } from "./types";
 
+/** @internal */
 export type ParsedSamlMetadata = {
   issuer: string;
   sso: {
@@ -48,8 +56,10 @@ export type ParsedSamlMetadata = {
   wantsSignedAuthnRequests: boolean;
 };
 
+/** @internal */
 export type EnterpriseSamlSource = { kind: "enterprise"; id: string };
 
+/** @internal */
 export type EnterpriseSamlRelayState = {
   source: EnterpriseSamlSource;
   signature: string;
@@ -58,18 +68,21 @@ export type EnterpriseSamlRelayState = {
   redirectTo?: string;
 };
 
+/** @internal */
 export type EnterpriseSamlUrls = {
   metadataUrl: string;
   acsUrl: string;
   sloUrl?: string;
 };
 
+/** @internal */
 export type EnterpriseSamlLoadedSource = {
   source: EnterpriseSamlSource;
   config: unknown;
   status?: string;
 };
 
+/** @internal */
 export type EnterpriseSamlHttpRequest = {
   url: URL;
   body: Record<string, string>;
@@ -80,35 +93,44 @@ export type EnterpriseSamlHttpRequest = {
   hasSamlResponse: boolean;
 };
 
+/** @internal */
 export type ScimListRequest = {
   startIndex: number;
   count: number;
   filter?: { attribute: string; value: string };
 };
 
+/** @internal */
 export const SCIM_USER_SCHEMA_ID = "urn:ietf:params:scim:schemas:core:2.0:User";
+/** @internal */
 export const SCIM_GROUP_SCHEMA_ID =
   "urn:ietf:params:scim:schemas:core:2.0:Group";
 
+/** @internal */
 export const ENTERPRISE_OIDC_PROVIDER_PREFIX = "enterprise:oidc:";
+/** @internal */
 export const ENTERPRISE_SAML_PROVIDER_PREFIX = "enterprise:saml:";
 const OIDC_JWKS_CACHE = new Map<
   string,
   ReturnType<typeof createRemoteJWKSet>
 >();
 
+/** @internal */
 export function normalizeDomain(domain: string): string {
   return domain.trim().toLowerCase().replace(/^@+/, "");
 }
 
+/** @internal */
 export function enterpriseOidcProviderId(enterpriseId: string): string {
   return `${ENTERPRISE_OIDC_PROVIDER_PREFIX}${enterpriseId}`;
 }
 
+/** @internal */
 export function enterpriseSamlProviderId(enterpriseId: string): string {
   return `${ENTERPRISE_SAML_PROVIDER_PREFIX}${enterpriseId}`;
 }
 
+/** @internal */
 export function getEnterpriseSamlUrls(opts: {
   rootUrl: string;
   source: EnterpriseSamlSource;
@@ -124,6 +146,7 @@ export function getEnterpriseSamlUrls(opts: {
   };
 }
 
+/** @internal */
 export function getEnterpriseOidcUrls(opts: {
   rootUrl: string;
   enterpriseId: string;
@@ -135,12 +158,14 @@ export function getEnterpriseOidcUrls(opts: {
   };
 }
 
+/** @internal */
 export function isEnterpriseSamlSourceActive(
   source: EnterpriseSamlLoadedSource,
 ) {
   return source.status === "active";
 }
 
+/** @internal */
 export function isEnterpriseProviderId(providerId: string): boolean {
   return (
     providerId.startsWith(ENTERPRISE_OIDC_PROVIDER_PREFIX) ||
@@ -153,6 +178,124 @@ const asRecord = (value: unknown) =>
     ? (value as Record<string, any>)
     : null;
 
+/** @internal */
+export const DEFAULT_ENTERPRISE_POLICY: EnterprisePolicy = {
+  version: 1,
+  identity: {
+    accountLinking: {
+      oidc: "verifiedEmail",
+      saml: "verifiedEmail",
+    },
+  },
+  provisioning: {
+    scimReuse: {
+      user: "externalId",
+    },
+    jit: {
+      mode: "createUserAndMembership",
+      defaultRole: "member",
+    },
+    deprovision: {
+      mode: "soft",
+    },
+  },
+};
+
+/** @internal */
+export function normalizeEnterprisePolicy(policy: unknown): EnterprisePolicy {
+  const input = asRecord(policy) ?? {};
+  const identity = asRecord(input.identity) ?? {};
+  const accountLinking = asRecord(identity.accountLinking) ?? {};
+  const provisioning = asRecord(input.provisioning) ?? {};
+  const scimReuse = asRecord(provisioning.scimReuse) ?? {};
+  const jit = asRecord(provisioning.jit) ?? {};
+  const deprovision = asRecord(provisioning.deprovision) ?? {};
+  const extend = asRecord(input.extend) ?? undefined;
+
+  return {
+    version: 1,
+    identity: {
+      accountLinking: {
+        oidc:
+          accountLinking.oidc === "none"
+            ? "none"
+            : DEFAULT_ENTERPRISE_POLICY.identity.accountLinking.oidc,
+        saml:
+          accountLinking.saml === "none"
+            ? "none"
+            : DEFAULT_ENTERPRISE_POLICY.identity.accountLinking.saml,
+      },
+    },
+    provisioning: {
+      scimReuse: {
+        user:
+          scimReuse.user === "none"
+            ? "none"
+            : DEFAULT_ENTERPRISE_POLICY.provisioning.scimReuse.user,
+      },
+      jit: {
+        mode:
+          jit.mode === "off" ||
+          jit.mode === "createUser" ||
+          jit.mode === "createUserAndMembership"
+            ? jit.mode
+            : DEFAULT_ENTERPRISE_POLICY.provisioning.jit.mode,
+        defaultRole:
+          typeof jit.defaultRole === "string" && jit.defaultRole.length > 0
+            ? jit.defaultRole
+            : DEFAULT_ENTERPRISE_POLICY.provisioning.jit.defaultRole,
+      },
+      deprovision: {
+        mode:
+          deprovision.mode === "hard"
+            ? "hard"
+            : DEFAULT_ENTERPRISE_POLICY.provisioning.deprovision.mode,
+      },
+    },
+    ...(extend ? { extend } : {}),
+  };
+}
+
+/** @internal */
+export function patchEnterprisePolicy(
+  current: unknown,
+  patch: EnterprisePolicyPatch,
+): EnterprisePolicy {
+  const base = normalizeEnterprisePolicy(current);
+  return normalizeEnterprisePolicy({
+    ...base,
+    ...patch,
+    identity: {
+      ...base.identity,
+      ...patch.identity,
+      accountLinking: {
+        ...base.identity.accountLinking,
+        ...patch.identity?.accountLinking,
+      },
+    },
+    provisioning: {
+      ...base.provisioning,
+      ...patch.provisioning,
+      scimReuse: {
+        ...base.provisioning.scimReuse,
+        ...patch.provisioning?.scimReuse,
+      },
+      jit: {
+        ...base.provisioning.jit,
+        ...patch.provisioning?.jit,
+      },
+      deprovision: {
+        ...base.provisioning.deprovision,
+        ...patch.provisioning?.deprovision,
+      },
+    },
+    extend:
+      patch.extend === undefined
+        ? base.extend
+        : { ...base.extend, ...patch.extend },
+  });
+}
+
 const getProtocolConfig = (config: unknown, protocol: "oidc" | "saml") => {
   const base = asRecord(config);
   const direct = base?.[protocol];
@@ -160,14 +303,35 @@ const getProtocolConfig = (config: unknown, protocol: "oidc" | "saml") => {
   return asRecord(direct) ?? asRecord(viaProtocols) ?? {};
 };
 
+/** @internal */
 export function getOidcConfig(config: unknown): Record<string, any> {
   return getProtocolConfig(config, "oidc");
 }
 
+/** @internal */
+export function getPublicOidcConfig(config: unknown): Record<string, any> {
+  const oidc = getOidcConfig(config);
+  const { clientSecret: _clientSecret, ...publicOidc } = oidc;
+  return publicOidc;
+}
+
+/** @internal */
+export function withOidcSecretState(
+  config: Record<string, any>,
+  hasClientSecret: boolean,
+) {
+  return {
+    ...config,
+    hasClientSecret,
+  };
+}
+
+/** @internal */
 export function getSamlConfig(config: unknown): Record<string, any> {
   return getProtocolConfig(config, "saml");
 }
 
+/** @internal */
 export function upsertProtocolConfig(
   config: unknown,
   protocol: "oidc" | "saml",
@@ -182,6 +346,7 @@ export function upsertProtocolConfig(
   return { ...base, protocols };
 }
 
+/** @internal */
 export function createSamlPostBindingResponse(opts: {
   endpoint: string;
   parameter: "SAMLRequest" | "SAMLResponse";
@@ -200,6 +365,7 @@ export function createSamlPostBindingResponse(opts: {
   );
 }
 
+/** @internal */
 export function decodeRelayState(
   value: string | null,
 ): Record<string, unknown> {
@@ -215,6 +381,7 @@ export function decodeRelayState(
   }
 }
 
+/** @internal */
 export function encodeEnterpriseSamlRelayState(
   value: EnterpriseSamlRelayState,
 ) {
@@ -231,6 +398,7 @@ export function encodeEnterpriseSamlRelayState(
   );
 }
 
+/** @internal */
 export function decodeEnterpriseSamlRelayStateOrThrow(
   value: string | null,
 ): EnterpriseSamlRelayState {
@@ -261,6 +429,7 @@ export function decodeEnterpriseSamlRelayStateOrThrow(
   };
 }
 
+/** @internal */
 export async function readRequestBody(
   request: Request,
 ): Promise<Record<string, string>> {
@@ -279,6 +448,7 @@ export async function readRequestBody(
   return {};
 }
 
+/** @internal */
 export async function readEnterpriseSamlHttpRequest(
   request: Request,
 ): Promise<EnterpriseSamlHttpRequest> {
@@ -319,11 +489,13 @@ async function discoverOidcConfiguration(config: Record<string, any>) {
     throw new Error("Enterprise OIDC requires an issuer or discoveryUrl.");
   }
 
+  const oidcFetch = createEnterpriseOidcFetch(config, config.issuer);
+
   return await Fx.run(
     Fx.defer(() =>
       Fx.from({
         ok: async () => {
-          const response = await fetch(discoveryUrl);
+          const response = await oidcFetch(discoveryUrl);
           if (!response.ok) {
             throw new Error(
               `Failed to discover OIDC configuration: ${response.status}`,
@@ -360,11 +532,46 @@ async function discoverOidcConfiguration(config: Record<string, any>) {
   );
 }
 
-function getOidcJwks(url: string) {
-  let jwks = OIDC_JWKS_CACHE.get(url);
+function createEnterpriseOidcFetch(
+  config: Record<string, any>,
+  discoveredIssuer?: string,
+) {
+  const runtimeOrigin =
+    typeof config.discoveryUrl === "string"
+      ? new URL(config.discoveryUrl).origin
+      : undefined;
+  const externalHost =
+    typeof config.issuer === "string"
+      ? new URL(config.issuer).host
+      : typeof discoveredIssuer === "string"
+        ? new URL(discoveredIssuer).host
+        : undefined;
+
+  return async (input: string | URL, init?: RequestInit) => {
+    const url = new URL(typeof input === "string" ? input : input.toString());
+    const rewrittenUrl =
+      runtimeOrigin !== undefined && url.origin !== runtimeOrigin
+        ? new URL(`${runtimeOrigin}${url.pathname}${url.search}`)
+        : url;
+    const headers = new Headers(init?.headers);
+    if (runtimeOrigin !== undefined && externalHost !== undefined) {
+      headers.set("host", externalHost);
+    }
+    return await fetch(rewrittenUrl, { ...init, headers });
+  };
+}
+
+function getOidcJwks(
+  url: string,
+  fetchImpl?: ReturnType<typeof createEnterpriseOidcFetch>,
+) {
+  const cacheKey = fetchImpl ? `${url}::custom` : url;
+  let jwks = OIDC_JWKS_CACHE.get(cacheKey);
   if (!jwks) {
-    jwks = createRemoteJWKSet(new URL(url));
-    OIDC_JWKS_CACHE.set(url, jwks);
+    jwks = fetchImpl
+      ? createRemoteJWKSet(new URL(url), { [customFetch]: fetchImpl })
+      : createRemoteJWKSet(new URL(url));
+    OIDC_JWKS_CACHE.set(cacheKey, jwks);
   }
   return jwks;
 }
@@ -378,10 +585,11 @@ function userInfoProfileFx(opts: {
   accessToken: string;
   verifiedClaims: Record<string, unknown>;
   verifiedProfile: OAuthProfile & { emailVerified?: boolean };
+  fetchImpl?: ReturnType<typeof createEnterpriseOidcFetch>;
 }) {
   return Fx.from({
     ok: async () => {
-      const response = await fetch(opts.endpoint, {
+      const response = await (opts.fetchImpl ?? fetch)(opts.endpoint, {
         headers: { Authorization: `Bearer ${opts.accessToken}` },
       });
       if (!response.ok) {
@@ -438,6 +646,7 @@ function userInfoProfileFx(opts: {
   );
 }
 
+/** @internal */
 export async function createEnterpriseOidcProvider(
   config: Record<string, any>,
   redirectUri: string,
@@ -478,6 +687,10 @@ export async function createEnterpriseOidcProvider(
     : [];
   const userinfoEndpoint =
     (discovery.userinfo_endpoint as string | undefined) ?? undefined;
+  const oidcFetch = createEnterpriseOidcFetch(
+    config,
+    discovery.issuer as string,
+  );
   const scopes = Array.isArray(config.scopes)
     ? config.scopes.filter(
         (value: unknown): value is string => typeof value === "string",
@@ -501,7 +714,7 @@ export async function createEnterpriseOidcProvider(
           ...getIssuerCandidates(discoveredIssuer),
         ]),
       );
-  const jwks = getOidcJwks(jwksUri);
+  const jwks = getOidcJwks(jwksUri, oidcFetch);
   let verifiedClaims: Record<string, unknown> | null = null;
   let verifiedProfile: (OAuthProfile & { emailVerified?: boolean }) | null =
     null;
@@ -563,7 +776,7 @@ export async function createEnterpriseOidcProvider(
       if (codeVerifier) {
         body.set("code_verifier", codeVerifier);
       }
-      const response = await fetch(tokenEndpoint, {
+      const response = await oidcFetch(tokenEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body,
@@ -692,6 +905,7 @@ export async function createEnterpriseOidcProvider(
             accessToken: tokens.accessToken(),
             verifiedClaims,
             verifiedProfile,
+            fetchImpl: oidcFetch,
           }),
         );
         if (userInfoProfile !== null) {
@@ -705,18 +919,23 @@ export async function createEnterpriseOidcProvider(
   return { provider, oauthConfig };
 }
 
+/** @internal */
 export function createSyntheticOAuthMaterializedConfig(
   providerId: string,
+  options?: {
+    accountLinking?: OAuthMaterializedConfig["accountLinking"];
+  },
 ): OAuthMaterializedConfig {
   return {
     id: providerId,
     type: "oauth",
     provider: null,
     scopes: [],
-    accountLinking: "verifiedEmail",
+    accountLinking: options?.accountLinking ?? "verifiedEmail",
   };
 }
 
+/** @internal */
 export function parseSamlIdpMetadata(metadata: string): ParsedSamlMetadata {
   const idp = IdentityProvider({ metadata });
   const entityMeta = idp.entityMeta;
@@ -745,6 +964,7 @@ export function parseSamlIdpMetadata(metadata: string): ParsedSamlMetadata {
   };
 }
 
+/** @internal */
 export function createServiceProviderMetadata(opts: {
   entityId: string;
   acsUrl: string;
@@ -789,6 +1009,7 @@ export function createServiceProviderMetadata(opts: {
   return sp.getMetadata();
 }
 
+/** @internal */
 export function createEnterpriseSamlMetadataXml(opts: {
   rootUrl: string;
   source: EnterpriseSamlSource;
@@ -803,6 +1024,7 @@ export function createEnterpriseSamlMetadataXml(opts: {
   );
 }
 
+/** @internal */
 export function getSamlServiceProviderOptions(opts: {
   rootUrl: string;
   source: EnterpriseSamlSource;
@@ -835,6 +1057,7 @@ export function getSamlServiceProviderOptions(opts: {
   };
 }
 
+/** @internal */
 export function createSamlServiceProvider(opts: {
   entityId: string;
   acsUrl: string;
@@ -874,6 +1097,7 @@ export function createSamlServiceProvider(opts: {
   });
 }
 
+/** @internal */
 export function createEnterpriseSamlRuntime(opts: {
   rootUrl: string;
   source: EnterpriseSamlSource;
@@ -904,6 +1128,7 @@ export function createEnterpriseSamlRuntime(opts: {
   };
 }
 
+/** @internal */
 export function createEnterpriseSamlSignInRequest(opts: {
   rootUrl: string;
   source: EnterpriseSamlSource;
@@ -951,6 +1176,7 @@ export function createEnterpriseSamlSignInRequest(opts: {
   };
 }
 
+/** @internal */
 export async function parseEnterpriseSamlLoginResponse(opts: {
   request: Request;
   rootUrl: string;
@@ -1026,6 +1252,7 @@ function warnDeprecatedSamlAlgorithms(parsed: any) {
   }
 }
 
+/** @internal */
 export function validateEnterpriseSamlLoginRelayState(opts: {
   relayState: EnterpriseSamlRelayState;
   source: EnterpriseSamlSource;
@@ -1040,6 +1267,7 @@ export function validateEnterpriseSamlLoginRelayState(opts: {
   }
 }
 
+/** @internal */
 export async function parseEnterpriseSamlLogoutMessage(opts: {
   request: Request;
   rootUrl: string;
@@ -1071,23 +1299,23 @@ export async function parseEnterpriseSamlLogoutMessage(opts: {
   };
 }
 
+/** @internal */
 export async function createEnterpriseOidcRuntime(opts: {
   rootUrl: string;
   enterpriseId: string;
-  config: unknown;
+  oidc: Record<string, any>;
 }) {
-  const oidc = getOidcConfig(opts.config);
   const providerId = enterpriseOidcProviderId(opts.enterpriseId);
   const urls = getEnterpriseOidcUrls({
     rootUrl: opts.rootUrl,
     enterpriseId: opts.enterpriseId,
   });
   const { provider, oauthConfig } = await createEnterpriseOidcProvider(
-    oidc,
+    opts.oidc,
     urls.callbackUrl,
   );
   return {
-    oidc,
+    oidc: opts.oidc,
     providerId,
     provider,
     oauthConfig,
@@ -1095,6 +1323,7 @@ export async function createEnterpriseOidcRuntime(opts: {
   };
 }
 
+/** @internal */
 export function profileFromSamlExtract(
   extract: any,
   mapping?: SAMLAttributeMapping,
@@ -1145,15 +1374,15 @@ export function profileFromSamlExtract(
   };
 }
 
+/** @internal */
 export function parseScimPath(pathname: string) {
   const parts = pathname.split("/").filter(Boolean);
-  const [api, auth, enterprise, enterpriseId, protocol, version, ...rest] =
-    parts;
+  const [api, auth, sso, enterpriseId, protocol, version, ...rest] = parts;
 
   if (
     api !== "api" ||
     auth !== "auth" ||
-    enterprise !== "enterprise" ||
+    sso !== "sso" ||
     !enterpriseId ||
     enterpriseId === "setup" ||
     protocol !== "scim" ||
@@ -1173,6 +1402,7 @@ export function parseScimPath(pathname: string) {
   };
 }
 
+/** @internal */
 export function parseScimListRequest(url: URL): ScimListRequest {
   const startIndex = Math.max(
     1,
@@ -1195,6 +1425,7 @@ export function parseScimListRequest(url: URL): ScimListRequest {
   return { startIndex, count, filter };
 }
 
+/** @internal */
 export function scimJson(data: unknown, status = 200, headers?: HeadersInit) {
   const responseHeaders = new Headers({
     "Content-Type": "application/scim+json",
@@ -1210,6 +1441,7 @@ export function scimJson(data: unknown, status = 200, headers?: HeadersInit) {
   });
 }
 
+/** @internal */
 export function scimError(status: number, scimType: string, detail: string) {
   return scimJson(
     {
@@ -1222,6 +1454,7 @@ export function scimError(status: number, scimType: string, detail: string) {
   );
 }
 
+/** @internal */
 export function serializeScimUser(args: {
   id: string;
   user: Record<string, any>;
@@ -1253,6 +1486,7 @@ export function serializeScimUser(args: {
   };
 }
 
+/** @internal */
 export function serializeScimGroup(args: {
   id: string;
   group: Record<string, any>;

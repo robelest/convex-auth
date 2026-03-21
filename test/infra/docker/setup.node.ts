@@ -1,220 +1,299 @@
 import { execFile } from "node:child_process";
-import { access, rename } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { access, mkdir, rename, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-const execFileAsync = promisify(execFile);
+import { exportJWK, exportPKCS8, generateKeyPair } from "jose";
 
-const setupDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(setupDir, "../../..");
-const composePath = resolve(setupDir, "compose.yml");
+const execFileAsync = promisify(execFile);
+const repoRoot = path.join(import.meta.dirname, "../../..");
+const composePath = path.join(repoRoot, "test/infra/docker/compose.yml");
+const composeEnvPath = path.join(repoRoot, "test/infra/docker/test.env");
+const runtimeDir = path.join(repoRoot, ".tmp");
+const buildReadyFile = path.join(runtimeDir, "full-test-build-ready");
+const envLocalPath = path.join(repoRoot, ".env.local");
+const envLocalBackupPath = path.join(repoRoot, ".env.local.test-backup");
 const DEFAULT_WAIT_TIMEOUT_MS = 120_000;
 const DEFAULT_CONVEX_TIMEOUT_MS = 300_000;
-const envLocalPath = resolve(repoRoot, ".env.local");
-const envLocalBackupPath = resolve(repoRoot, ".env.local.test-backup");
+const composeEnvDefaults = Object.fromEntries(
+  readFileSync(composeEnvPath, "utf-8")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"))
+    .map((line) => {
+      const index = line.indexOf("=");
+      return [line.slice(0, index), line.slice(index + 1)];
+    }),
+);
 
-type RunOptions = {
-  env?: NodeJS.ProcessEnv;
-  timeoutMs?: number;
-};
-
-function requireEnv(name: string) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required test env: ${name}`);
+declare module "vite-plus/test" {
+  interface ProvidedContext {
+    zitadelAdminPat: string;
+    zitadelLoginClientPat: string;
+    zitadelPublicUrl: string;
+    zitadelInternalUrl: string;
+    convexSelfHostedUrl: string;
+    convexSiteUrl: string;
   }
-  return value;
 }
 
-async function run(command: string, args: string[], options: RunOptions = {}) {
+export default async function setupNodeInterop(project: {
+  provide: (key: string, value: string) => void;
+}) {
+  const waitTimeoutMs = envNumber(
+    "ZITADEL_WAIT_TIMEOUT_MS",
+    DEFAULT_WAIT_TIMEOUT_MS,
+  );
+  const convexTimeoutMs = envNumber(
+    "ZITADEL_CONVEX_RUN_TIMEOUT_MS",
+    DEFAULT_CONVEX_TIMEOUT_MS,
+  );
+  const generated = await generateKeys();
+  const env = {
+    ...baseEnv(),
+    AUTH_SECRET_ENCRYPTION_KEY: "test-auth-secret-encryption-key",
+    JWT_PRIVATE_KEY: generated.jwtPrivateKey,
+    JWKS: generated.jwks,
+  };
+
+  await rm(runtimeDir, { recursive: true, force: true });
+  await mkdir(runtimeDir, { recursive: true });
   try {
-    return await execFileAsync(command, args, {
-      cwd: repoRoot,
-      env: options.env ?? process.env,
-      timeout: options.timeoutMs,
-      maxBuffer: 10 * 1024 * 1024,
-      windowsHide: true,
-    });
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Command execution failed unexpectedly.";
-    throw new Error(`${command} ${args.join(" ")} failed: ${message}`);
-  }
-}
+    await run("docker", composeArgs("down", "-v"), composeEnv());
+  } catch {}
 
-function envNumber(name: string, fallback: number) {
-  const raw = process.env[name];
-  if (!raw) {
-    return fallback;
-  }
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-async function waitForHealthy(service: string, timeoutMs: number) {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    const { stdout: idOut } = await run("docker", [
-      "compose",
-      "-f",
-      composePath,
-      "ps",
-      "-q",
-      service,
-    ]);
-    const containerId = idOut.trim();
-    if (!containerId) {
-      await delay(1_000);
-      continue;
-    }
-
-    const { stdout: healthOut } = await run("docker", [
-      "inspect",
-      "--format",
-      "{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}",
-      containerId,
-    ]);
-    const health = healthOut.trim();
-    if (health === "healthy" || health === "none") {
-      return;
-    }
-    if (health === "unhealthy") {
-      const { stdout, stderr } = await run("docker", [
-        "compose",
-        "-f",
-        composePath,
-        "logs",
-        service,
-        "--since=5m",
-      ]);
-      throw new Error(
-        `${service} became unhealthy.\n${stdout}${stderr ? `\n${stderr}` : ""}`,
-      );
-    }
-    await delay(1_000);
-  }
-  throw new Error(`Timed out waiting for ${service} to become healthy.`);
-}
-
-function parseAdminKey(stdout: string, stderr: string) {
-  const combined = `${stdout}\n${stderr}`;
-  const match = combined.match(/convex-self-hosted\|[A-Za-z0-9]+/);
-  if (!match) {
-    throw new Error(
-      `Unable to parse generated admin key from output:\n${combined}`,
+  try {
+    await run(
+      "docker",
+      composeArgs(
+        "--profile",
+        "interop",
+        "up",
+        "-d",
+        "--wait",
+        "--wait-timeout",
+        String(Math.ceil(waitTimeoutMs / 1000)),
+      ),
+      composeEnv(),
+      { timeout: waitTimeoutMs },
     );
-  }
-  return match[0];
-}
 
-async function setConvexEnv(
-  convexEnv: NodeJS.ProcessEnv,
-  name: string,
-  value: string | undefined,
-) {
-  if (!value) {
-    return;
-  }
-  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    const { stdout, stderr } = await capture(
+      "docker",
+      composeArgs("exec", "-T", "backend", "/convex/generate_admin_key.sh"),
+      composeEnv(),
+    );
+    const adminKey = parseAdminKey(`${stdout}\n${stderr}`);
+    const convexEnv = selfHostedConvexEnv(adminKey);
+    const buildEnv: NodeJS.ProcessEnv = { ...env, ...convexEnv };
+    delete buildEnv.CONVEX_DEPLOYMENT;
+    const envLocalWasHidden = await hideEnvLocalForSelfHostedCommands();
+    const pemPath = path.join(runtimeDir, "jwt-private-key.pem");
     try {
+      if (!(await fileExists(buildReadyFile))) {
+        await run("vp", ["run", "cache:build"], buildEnv, {
+          timeout: convexTimeoutMs,
+        });
+      }
+      await run("vp", ["exec", "convex", "deploy", "--yes"], convexEnv, {
+        timeout: convexTimeoutMs,
+      });
       await run(
-        "env",
+        "vp",
+        ["exec", "convex", "env", "set", "SITE_URL", env.SITE_URL],
+        convexEnv,
+      );
+      await run(
+        "vp",
+        ["exec", "convex", "env", "set", "APP_URL", env.APP_URL],
+        convexEnv,
+      );
+      await run(
+        "vp",
+        ["exec", "convex", "env", "set", "AUTH_EMAIL", env.AUTH_EMAIL],
+        convexEnv,
+      );
+      await run(
+        "vp",
         [
-          "-u",
-          "CONVEX_DEPLOYMENT",
-          "vp",
           "exec",
           "convex",
           "env",
           "set",
-          "--",
-          name,
-          value,
+          "AUTH_SECRET_ENCRYPTION_KEY",
+          env.AUTH_SECRET_ENCRYPTION_KEY,
         ],
-        {
-          env: convexEnv,
-        },
+        convexEnv,
       );
-      return;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const isRetryable =
-        message.includes("OptimisticConcurrencyControlFailure") ||
-        message.includes("503 Service Unavailable");
-      if (!isRetryable || attempt === 5) {
-        throw error;
-      }
-      await delay(attempt * 500);
+      await writeFile(pemPath, generated.jwtPrivateKey + "\n");
+      await run(
+        "vp",
+        [
+          "exec",
+          "convex",
+          "env",
+          "set",
+          "JWT_PRIVATE_KEY",
+          "--from-file",
+          pemPath,
+        ],
+        convexEnv,
+      );
+      await run(
+        "vp",
+        ["exec", "convex", "env", "set", "JWKS", generated.jwks],
+        convexEnv,
+      );
+      await run(
+        "vp",
+        [
+          "exec",
+          "convex",
+          "env",
+          "set",
+          "GOOGLE_CLIENT_ID",
+          env.GOOGLE_CLIENT_ID,
+        ],
+        convexEnv,
+      );
+      await run(
+        "vp",
+        [
+          "exec",
+          "convex",
+          "env",
+          "set",
+          "GOOGLE_CLIENT_SECRET",
+          env.GOOGLE_CLIENT_SECRET,
+        ],
+        convexEnv,
+      );
+      await run(
+        "vp",
+        ["exec", "convex", "env", "set", "RESEND_API_KEY", env.RESEND_API_KEY],
+        convexEnv,
+      );
+    } finally {
+      await rm(pemPath, { force: true });
+      await restoreEnvLocalAfterSelfHostedCommands(envLocalWasHidden);
     }
-  }
-}
 
-async function readFileFromZitadel(remotePath: string, timeoutMs: number) {
-  const bootstrapVolume = await getZitadelBootstrapVolume();
-  const fileName = remotePath.split("/").at(-1);
-  if (!fileName) {
-    throw new Error(`Could not determine filename for ${remotePath}.`);
+    project.provide(
+      "zitadelAdminPat",
+      await readFileFromZitadel("/zitadel/bootstrap/admin.pat", waitTimeoutMs),
+    );
+    project.provide(
+      "zitadelLoginClientPat",
+      await readFileFromZitadel(
+        "/zitadel/bootstrap/login-client.pat",
+        waitTimeoutMs,
+      ),
+    );
+    project.provide("zitadelPublicUrl", env.ZITADEL_BASE_URL);
+    project.provide("zitadelInternalUrl", env.ZITADEL_RUNTIME_BASE_URL);
+    project.provide("convexSelfHostedUrl", env.TEST_TARGET_BASE_URL);
+    project.provide("convexSiteUrl", env.CONVEX_SITE_URL);
+  } catch (error) {
+    await dumpDockerLogs();
+    throw error;
   }
 
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
+  return async () => {
     try {
-      const { stdout } = await run("docker", [
-        "run",
-        "--rm",
-        "-v",
-        `${bootstrapVolume}:/data`,
-        "alpine",
-        "cat",
-        `/data/${fileName}`,
-      ]);
-      const value = stdout.trim();
-      if (value !== "") {
-        return value;
+      await run("docker", composeArgs("down", "-v"), composeEnv());
+    } catch {}
+  };
+}
+
+function baseEnv() {
+  return {
+    ...process.env,
+    AUTH_LOG_LEVEL: "DEBUG",
+    TEST_TARGET_BASE_URL: "http://127.0.0.1:3210",
+    CONVEX_SITE_URL: "http://127.0.0.1:3211",
+    SITE_URL: "http://127.0.0.1:3211",
+    APP_URL: "http://localhost:5173",
+    AUTH_EMAIL: "test@example.com",
+    GOOGLE_CLIENT_ID: "test-google-client-id",
+    GOOGLE_CLIENT_SECRET: "test-google-client-secret",
+    RESEND_API_KEY: "test-resend-api-key",
+    ZITADEL_BASE_URL: "http://127.0.0.1:8080",
+    ZITADEL_RUNTIME_BASE_URL: "http://zitadel:8080",
+  };
+}
+
+function composeEnv() {
+  return {
+    ...baseEnv(),
+    ...composeEnvDefaults,
+  };
+}
+
+function selfHostedConvexEnv(adminKey: string) {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
+    CONVEX_SELF_HOSTED_URL: baseEnv().TEST_TARGET_BASE_URL,
+    CONVEX_SELF_HOSTED_ADMIN_KEY: adminKey,
+  };
+  delete env.CONVEX_DEPLOYMENT;
+  return env;
+}
+
+function composeArgs(...args: string[]) {
+  return ["compose", "--env-file", composeEnvPath, "-f", composePath, ...args];
+}
+
+async function run(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  options: { timeout?: number } = {},
+) {
+  const child = execFile(command, args, {
+    cwd: repoRoot,
+    env,
+    maxBuffer: 20 * 1024 * 1024,
+    timeout: options.timeout,
+  });
+  child.stdout?.pipe(process.stdout);
+  child.stderr?.pipe(process.stderr);
+  return await new Promise<void>((resolve, reject) => {
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
       }
-    } catch {
-      await delay(1_000);
-    }
-  }
-  throw new Error(`Timed out reading ${remotePath} from zitadel.`);
+      reject(
+        new Error(`${command} ${args.join(" ")} exited with code ${code}`),
+      );
+    });
+  });
 }
 
-async function getZitadelBootstrapVolume() {
-  const { stdout: idOut } = await run("docker", [
-    "compose",
-    "-f",
-    composePath,
-    "ps",
-    "-q",
-    "zitadel",
-  ]);
-  const containerId = idOut.trim();
-  if (!containerId) {
-    throw new Error("Could not find the running zitadel container.");
-  }
-
-  const { stdout: volumeOut } = await run("docker", [
-    "inspect",
-    "--format",
-    '{{range .Mounts}}{{if eq .Destination "/zitadel/bootstrap"}}{{.Name}}{{end}}{{end}}',
-    containerId,
-  ]);
-  const bootstrapVolume = volumeOut.trim();
-  if (!bootstrapVolume) {
-    throw new Error("Could not find the zitadel bootstrap volume.");
-  }
-  return bootstrapVolume;
+async function capture(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  options: { timeout?: number } = {},
+) {
+  return await execFileAsync(command, args, {
+    cwd: repoRoot,
+    env,
+    maxBuffer: 20 * 1024 * 1024,
+    timeout: options.timeout,
+  });
 }
 
-function shouldPrepareInteropInfra() {
-  return (
-    process.env.ZITADEL_INTEROP_TEST === "true" &&
-    process.env.ZITADEL_MANAGE_COMPOSE === "true"
-  );
+function envNumber(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 async function hideEnvLocalForSelfHostedCommands() {
@@ -227,99 +306,100 @@ async function hideEnvLocalForSelfHostedCommands() {
   return true;
 }
 
-async function restoreEnvLocalAfterSelfHostedCommands(wasHidden: boolean) {
-  if (!wasHidden) {
-    return;
+async function fileExists(filePath: string) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
   }
-  await rename(envLocalBackupPath, envLocalPath);
 }
 
-export default async function setupZitadelInterop(project: {
-  provide: (key: string, value: string) => void;
-}) {
-  if (!shouldPrepareInteropInfra()) {
-    return;
+async function restoreEnvLocalAfterSelfHostedCommands(wasHidden: boolean) {
+  if (wasHidden) {
+    await rename(envLocalBackupPath, envLocalPath);
   }
+}
 
-  const waitTimeoutMs = envNumber(
-    "ZITADEL_WAIT_TIMEOUT_MS",
-    DEFAULT_WAIT_TIMEOUT_MS,
-  );
-  const convexTimeoutMs = envNumber(
-    "ZITADEL_CONVEX_RUN_TIMEOUT_MS",
-    DEFAULT_CONVEX_TIMEOUT_MS,
-  );
+async function generateKeys() {
+  const keys = await generateKeyPair("RS256", { extractable: true });
+  const privateKey = await exportPKCS8(keys.privateKey);
+  const publicKey = await exportJWK(keys.publicKey);
+  return {
+    jwtPrivateKey: privateKey.trim(),
+    jwks: JSON.stringify({ keys: [{ use: "sig", ...publicKey }] }),
+  };
+}
 
-  await run("docker", ["compose", "-f", composePath, "up", "-d"]);
-  await waitForHealthy("postgres", waitTimeoutMs);
-  await waitForHealthy("backend", waitTimeoutMs);
-  await waitForHealthy("zitadel", waitTimeoutMs);
-
-  const { stdout: keyOut, stderr: keyErr } = await run("docker", [
-    "compose",
-    "-f",
-    composePath,
-    "exec",
-    "-T",
-    "backend",
-    "/convex/generate_admin_key.sh",
-  ]);
-  const adminKey = parseAdminKey(keyOut, keyErr);
-
-  const convexEnv: NodeJS.ProcessEnv = { ...process.env };
-  delete convexEnv.CONVEX_DEPLOYMENT;
-  convexEnv.CONVEX_SELF_HOSTED_URL = requireEnv("TEST_TARGET_BASE_URL");
-  convexEnv.CONVEX_SELF_HOSTED_ADMIN_KEY = adminKey;
-
-  const envLocalWasHidden = await hideEnvLocalForSelfHostedCommands();
+async function dumpDockerLogs() {
+  console.log("\n=== Docker Compose Status ===");
   try {
-    await run("vp", ["run", "build:auth"], {
-      env: convexEnv,
-      timeoutMs: convexTimeoutMs,
-    });
-
+    await run("docker", composeArgs("ps"), composeEnv());
+    console.log("\n=== Docker Compose Logs ===");
     await run(
-      "env",
-      ["-u", "CONVEX_DEPLOYMENT", "vp", "exec", "convex", "deploy", "--yes"],
-      {
-        env: convexEnv,
-        timeoutMs: convexTimeoutMs,
-      },
+      "docker",
+      composeArgs("logs", "--no-color", "--since=10m"),
+      composeEnv(),
     );
-
-    await setConvexEnv(convexEnv, "SITE_URL", process.env.SITE_URL);
-    await setConvexEnv(convexEnv, "APP_URL", process.env.APP_URL);
-    await setConvexEnv(convexEnv, "AUTH_EMAIL", process.env.AUTH_EMAIL);
-    await setConvexEnv(
-      convexEnv,
-      "JWT_PRIVATE_KEY",
-      process.env.JWT_PRIVATE_KEY,
-    );
-    await setConvexEnv(convexEnv, "JWKS", process.env.JWKS);
-    await setConvexEnv(
-      convexEnv,
-      "GOOGLE_CLIENT_ID",
-      process.env.GOOGLE_CLIENT_ID,
-    );
-    await setConvexEnv(
-      convexEnv,
-      "GOOGLE_CLIENT_SECRET",
-      process.env.GOOGLE_CLIENT_SECRET,
-    );
-    await setConvexEnv(convexEnv, "RESEND_API_KEY", process.env.RESEND_API_KEY);
-  } finally {
-    await restoreEnvLocalAfterSelfHostedCommands(envLocalWasHidden);
+  } catch (error) {
+    console.error("Failed to print Docker logs", error);
   }
+}
 
-  const adminPat = await readFileFromZitadel(
-    "/zitadel/bootstrap/admin.pat",
-    waitTimeoutMs,
-  );
-  const loginClientPat = await readFileFromZitadel(
-    "/zitadel/bootstrap/login-client.pat",
-    waitTimeoutMs,
-  );
+function parseAdminKey(output: string) {
+  const match = output.match(/convex-self-hosted\|[A-Za-z0-9]+/);
+  if (!match) {
+    throw new Error(
+      `Unable to parse self-hosted admin key from output:\n${output}`,
+    );
+  }
+  return match[0];
+}
 
-  project.provide("zitadelAdminPat", adminPat);
-  project.provide("zitadelLoginClientPat", loginClientPat);
+async function readFileFromZitadel(remotePath: string, timeoutMs: number) {
+  const { stdout: idOut } = await capture(
+    "docker",
+    composeArgs("ps", "-q", "zitadel"),
+    composeEnv(),
+  );
+  const containerId = idOut.trim();
+  if (!containerId)
+    throw new Error("Could not find the running zitadel container.");
+  const { stdout: volumeOut } = await capture(
+    "docker",
+    [
+      "inspect",
+      "--format",
+      '{{range .Mounts}}{{if eq .Destination "/zitadel/bootstrap"}}{{.Name}}{{end}}{{end}}',
+      containerId,
+    ],
+    composeEnv(),
+  );
+  const bootstrapVolume = volumeOut.trim();
+  if (!bootstrapVolume)
+    throw new Error("Could not find the zitadel bootstrap volume.");
+
+  const fileName = remotePath.split("/").at(-1);
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const { stdout } = await capture(
+        "docker",
+        [
+          "run",
+          "--rm",
+          "-v",
+          `${bootstrapVolume}:/data`,
+          "alpine",
+          "cat",
+          `/data/${fileName}`,
+        ],
+        composeEnv(),
+      );
+      const value = stdout.trim();
+      if (value) return value;
+    } catch {}
+    await delay(1000);
+  }
+  throw new Error(`Timed out reading ${remotePath} from zitadel.`);
 }

@@ -1,5 +1,6 @@
 import { isLocalHost } from "./utils";
 
+/** @internal */
 export const SHARED_COOKIE_OPTIONS = {
   httpOnly: true,
   sameSite: "none" as const,
@@ -9,6 +10,7 @@ export const SHARED_COOKIE_OPTIONS = {
 };
 
 const REDIRECT_MAX_AGE = 60 * 15; // 15 minutes in seconds
+/** @internal */
 export function redirectToParamCookie(providerId: string, redirectTo: string) {
   return {
     name: redirectToParamCookieName(providerId),
@@ -17,6 +19,7 @@ export function redirectToParamCookie(providerId: string, redirectTo: string) {
   };
 }
 
+/** @internal */
 export function useRedirectToParam(
   providerId: string,
   cookies: Record<string, string | undefined>,

@@ -11,6 +11,7 @@ import { errorMessage } from "./utils";
  * Validates that the provider is a credentials provider and has the
  * required crypto function, returning typed errors through the Fx channel.
  */
+/** @internal */
 export const hash = (provider: any, secret: string): Fx<string, AuthError> =>
   Fx.gen(function* () {
     if (provider.type !== "credentials") {
@@ -44,6 +45,7 @@ export const hash = (provider: any, secret: string): Fx<string, AuthError> =>
 /**
  * Verify a secret against a hash using the provider's `crypto.verifySecret` function.
  */
+/** @internal */
 export const verify = (
   provider: AuthProviderMaterializedConfig,
   secret: string,

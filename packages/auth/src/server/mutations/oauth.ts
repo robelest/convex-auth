@@ -10,6 +10,7 @@ import {
   ENTERPRISE_SAML_PROVIDER_PREFIX,
   createSyntheticOAuthMaterializedConfig,
   isEnterpriseProviderId,
+  normalizeEnterprisePolicy,
 } from "../sso";
 import { MutationCtx } from "../types";
 import type { AuthProviderMaterializedConfig } from "../types";
@@ -92,9 +93,29 @@ export function userOAuthImpl(
       : provider.startsWith(ENTERPRISE_SAML_PROVIDER_PREFIX)
         ? provider.slice(ENTERPRISE_SAML_PROVIDER_PREFIX.length)
         : null;
-    // Always try to reuse SCIM-provisioned user by externalId for enterprise sign-ins.
+    const enterprise =
+      enterpriseId !== null
+        ? yield* Fx.promise(() =>
+            ctx.runQuery(config.component.public.enterpriseGet, {
+              enterpriseId,
+            }),
+          )
+        : null;
+    const enterprisePolicy = enterprise
+      ? normalizeEnterprisePolicy(enterprise.policy)
+      : null;
+    const enterpriseProtocol = provider.startsWith(
+      ENTERPRISE_OIDC_PROVIDER_PREFIX,
+    )
+      ? "oidc"
+      : provider.startsWith(ENTERPRISE_SAML_PROVIDER_PREFIX)
+        ? "saml"
+        : null;
+
     const existingScimIdentity =
-      enterpriseId !== null && existingAccount === null
+      enterpriseId !== null &&
+      existingAccount === null &&
+      enterprisePolicy?.provisioning.scimReuse.user === "externalId"
         ? yield* Fx.promise(() =>
             ctx.runQuery(config.component.public.enterpriseScimIdentityGet, {
               enterpriseId,
@@ -123,7 +144,14 @@ export function userOAuthImpl(
         {
           type: "oauth",
           provider: (isEnterpriseProviderId(provider)
-            ? createSyntheticOAuthMaterializedConfig(provider)
+            ? createSyntheticOAuthMaterializedConfig(provider, {
+                accountLinking:
+                  enterpriseProtocol === "oidc"
+                    ? enterprisePolicy?.identity.accountLinking.oidc
+                    : enterpriseProtocol === "saml"
+                      ? enterprisePolicy?.identity.accountLinking.saml
+                      : undefined,
+              })
             : getProviderOrThrow(provider)) as AuthProviderMaterializedConfig,
           profile,
           accountExtend: normalizeAccountExtend(
@@ -142,13 +170,13 @@ export function userOAuthImpl(
     // JIT group provisioning: if this is an enterprise SSO sign-in and the
     // enterprise connection has a groupId, auto-add the user as a member of
     // that group if they aren't already a member.
-    if (enterpriseId !== null) {
+    if (
+      enterpriseId !== null &&
+      enterprisePolicy?.provisioning.jit.mode === "createUserAndMembership"
+    ) {
       const account = yield* Fx.promise(() => db.accounts.getById(accountId));
       const userId = account?.userId;
       if (userId) {
-        const enterprise = yield* Fx.promise(() =>
-          ctx.runQuery(config.component.public.enterpriseGet, { enterpriseId }),
-        );
         const groupId = (enterprise as any)?.groupId as string | undefined;
         if (groupId) {
           const existingMembership = yield* Fx.promise(() =>
@@ -162,7 +190,7 @@ export function userOAuthImpl(
               ctx.runMutation(config.component.public.memberAdd, {
                 groupId,
                 userId,
-                role: "member",
+                role: enterprisePolicy.provisioning.jit.defaultRole,
                 status: "active",
               }),
             );

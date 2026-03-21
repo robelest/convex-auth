@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 import { exportJWK, exportPKCS8, generateKeyPair } from "jose";
 
 export async function generateKeys() {
@@ -9,6 +11,7 @@ export async function generateKeys() {
     return {
       JWT_PRIVATE_KEY: `${privateKey.trimEnd().replace(/\n/g, " ")}`,
       JWKS: jwks,
+      AUTH_SECRET_ENCRYPTION_KEY: randomBytes(32).toString("base64url"),
     };
   } catch (error) {
     console.error(

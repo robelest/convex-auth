@@ -10,6 +10,7 @@ const TOKEN_JTI_LENGTH = 24;
 const TOKEN_JTI_ALPHABET =
   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
+/** @internal */
 export async function generateToken(
   args: {
     userId: GenericId<"User">;

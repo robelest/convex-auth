@@ -19,7 +19,7 @@ function parseJwtPayload(token: string): { sub?: string } {
 }
 
 async function enterpriseAdmin(t: any) {
-  const result = (await t.action(api.auth.session.start, {
+  const result = (await t.action(api.auth.signIn, {
     provider: "anonymous",
   })) as {
     kind: string;
@@ -50,20 +50,31 @@ test("enterprise control-plane HTTP endpoints are not exposed", async () => {
   expect([400, 404]).toContain(response.status);
 });
 
-test("enterprise management RPC is not exposed by default", async () => {
+test("enterprise management RPC is available when enterprise helpers are mounted", async () => {
   const t = convexTest(schema);
   const asAdmin = await enterpriseAdmin(t);
-  await expect(
-    asAdmin.action((api as any).enterprise.connection.create, {
-      name: "No default management API",
-      slug: "no-default-management-api",
+  const created = await asAdmin.action(
+    (api as any).auth.sso.connection.create,
+    {
+      name: "Mounted enterprise API",
+      slug: "mounted-enterprise-api",
       status: "active",
-    }),
-  ).rejects.toThrow();
+    },
+  );
 
-  const unknownEnterpriseId = "enterprise_missing";
+  expect(created).toEqual(
+    expect.objectContaining({
+      enterpriseId: expect.any(String),
+      groupId: expect.any(String),
+    }),
+  );
+
+  await asAdmin.action((api as any).auth.sso.connection.remove, {
+    enterpriseId: created.enterpriseId,
+  });
+
   const metadataResponse = await t.fetch(
-    `/api/auth/sso/${unknownEnterpriseId}/saml/metadata`,
+    `/api/auth/sso/${created.enterpriseId}/saml/metadata`,
     { method: "GET" },
   );
   expect([400, 404, 500]).toContain(metadataResponse.status);

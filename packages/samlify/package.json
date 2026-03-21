@@ -1,17 +1,23 @@
 {
   "name": "@robelest/samlify",
   "version": "0.0.1-preview.0",
-  "private": true,
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "description": "Edge-compatible SAML 2.0 runtime used by convex-auth",
   "license": "MIT",
   "type": "module",
-  "main": "./index.ts",
-  "types": "./index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./index.d.ts",
-      "import": "./index.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "vp exec tsc -p ./tsconfig.build.json",

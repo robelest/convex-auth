@@ -39,6 +39,7 @@ const VISIBLE_PREFIX_EXTRA_CHARS = 4;
  * @param prefix - Key prefix, defaults to "sk_"
  * @returns `{ raw, hashedKey, displayPrefix }`
  */
+/** @internal */
 export async function generateApiKey(
   prefix: string = DEFAULT_KEY_PREFIX,
 ): Promise<{
@@ -65,6 +66,7 @@ export async function generateApiKey(
  *
  * Used during Bearer token verification to find the stored key record.
  */
+/** @internal */
 export async function hashApiKey(rawKey: string): Promise<string> {
   return sha256(rawKey);
 }
@@ -82,6 +84,7 @@ export async function hashApiKey(rawKey: string): Promise<string> {
  * A wildcard action `"*"` grants all actions on that resource.
  * A wildcard resource `"*"` grants the action on all resources.
  */
+/** @internal */
 export function buildScopeChecker(scopes: KeyScope[]): ScopeChecker {
   return {
     scopes,
@@ -107,6 +110,7 @@ export function buildScopeChecker(scopes: KeyScope[]): ScopeChecker {
  *
  * @returns `{ limited: boolean; newState: { attemptsLeft, lastAttemptTime } }`
  */
+/** @internal */
 export function checkKeyRateLimit(
   rateLimit: { maxRequests: number; windowMs: number },
   state: { attemptsLeft: number; lastAttemptTime: number } | undefined,

@@ -16,6 +16,7 @@ import {
 
 const DEFAULT_SESSION_TOTAL_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
+/** @internal */
 export async function maybeGenerateTokensForSession(
   ctx: MutationCtx,
   config: ConvexAuthConfig,
@@ -37,6 +38,7 @@ export async function maybeGenerateTokensForSession(
   };
 }
 
+/** @internal */
 export async function createNewAndDeleteExistingSession(
   ctx: MutationCtx,
   config: ConvexAuthConfig,
@@ -53,6 +55,7 @@ export async function createNewAndDeleteExistingSession(
   return await createSession(ctx, userId, config);
 }
 
+/** @internal */
 export async function generateTokensForSession(
   ctx: MutationCtx,
   config: ConvexAuthConfig,
@@ -102,6 +105,7 @@ async function createSession(
   )) as GenericId<"Session">;
 }
 
+/** @internal */
 export async function deleteSession(
   ctx: MutationCtx,
   session: Doc<"Session">,
@@ -117,6 +121,7 @@ export async function deleteSession(
  *
  * Internal helper used by auth runtime internals and `auth.session.current`.
  */
+/** @internal */
 export async function getAuthSessionId(ctx: { auth: Auth }) {
   const identity = await ctx.auth.getUserIdentity();
   if (identity === null) {

@@ -1,7 +1,10 @@
+import { makeFunctionReference } from "convex/server";
+
 /**
  * Internal function reference for the library's store dispatch mutation.
  *
- * This remains string-based because the library code cannot import the
- * consumer app's generated `internal` API module.
+ * The package cannot import the consumer app's generated `api` module,
+ * so it uses a canonical function reference name that matches the app-level
+ * `export const { store } = auth` surface.
  */
-export const AUTH_STORE_REF = "auth/store:run" as any;
+export const AUTH_STORE_REF = makeFunctionReference("auth:store") as any;

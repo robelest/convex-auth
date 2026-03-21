@@ -109,7 +109,7 @@ test("isPreviewDeployKey returns false for keys without pipe separator", () => {
 
 // ---- generateKeys ----
 
-test("generateKeys produces valid JWT_PRIVATE_KEY and JWKS", async () => {
+test("generateKeys produces signing and secret-encryption keys", async () => {
   const keys = await generateKeys();
 
   // JWT_PRIVATE_KEY should be a PEM-encoded PKCS8 private key (spaces replace newlines)
@@ -131,4 +131,7 @@ test("generateKeys produces valid JWT_PRIVATE_KEY and JWKS", async () => {
   // RSA public key components
   expect(typeof jwk.n).toBe("string");
   expect(typeof jwk.e).toBe("string");
+
+  expect(typeof keys.AUTH_SECRET_ENCRYPTION_KEY).toBe("string");
+  expect(keys.AUTH_SECRET_ENCRYPTION_KEY.length).toBeGreaterThan(20);
 });

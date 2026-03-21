@@ -21,6 +21,13 @@ export function expectSignedInResult(result: {
   return result.kind === "signedIn" ? (result.tokens ?? null) : null;
 }
 
+export function subjectToUserId(subject: unknown) {
+  if (typeof subject !== "string" || subject.length === 0) {
+    throw new Error("Expected subject claim");
+  }
+  return subject.split("|")[0] ?? subject;
+}
+
 /**
  * Perform a full magic-link email sign-in flow: send the OTP email via a
  * stubbed `fetch`, extract the code, then exchange it for tokens.
@@ -46,10 +53,10 @@ export async function signInViaMagicLink(
     }),
   );
 
-  await t.action(api.auth.session.start, { provider, params: { email } });
+  await t.action(api.auth.signIn, { provider, params: { email } });
   vi.unstubAllGlobals();
 
-  const result = await t.action(api.auth.session.start, {
+  const result = await t.action(api.auth.signIn, {
     params: { code },
   });
   return expectSignedInResult(result);

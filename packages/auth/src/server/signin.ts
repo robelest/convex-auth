@@ -60,6 +60,7 @@ type SignInResult =
       interval: number;
     };
 
+/** @internal */
 export async function signInImpl(
   ctx: EnrichedActionCtx,
   provider: AuthProviderMaterializedConfig | null,

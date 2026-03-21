@@ -46,6 +46,7 @@ import type { Fx as FxType } from "@robelest/fx";
 
 import { authDb } from "./db";
 import { AuthError, Fx } from "./fx";
+import { userIdFromIdentitySubject } from "./identity";
 import { callSignIn, callVerifier } from "./mutations/index";
 import { callVerifierSignature } from "./mutations/signature";
 import { PasskeyProviderConfig, GenericActionCtxWithAuthConfig } from "./types";
@@ -300,7 +301,7 @@ export function handlePasskeyFx(
                 Fx.chain((id) =>
                   id === null
                     ? Fx.fail(new AuthError("PASSKEY_AUTH_REQUIRED"))
-                    : Fx.succeed(id.subject.split("|")[0]!),
+                    : Fx.succeed(userIdFromIdentitySubject(id.subject)),
                 ),
               ),
               resolveRpOptionsFx(provider),
@@ -382,7 +383,7 @@ export function handlePasskeyFx(
                 Fx.chain((id) =>
                   id === null
                     ? Fx.fail(new AuthError("PASSKEY_AUTH_REQUIRED"))
-                    : Fx.succeed(id.subject.split("|")[0]!),
+                    : Fx.succeed(userIdFromIdentitySubject(id.subject)),
                 ),
               ),
               resolveRpOptionsFx(provider),

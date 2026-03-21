@@ -12,6 +12,7 @@ import { verifyTOTPWithGracePeriod, createTOTPKeyURI } from "@oslojs/otp";
 import type { Fx as FxType } from "@robelest/fx";
 
 import { AuthError, Fx } from "./fx";
+import { userIdFromIdentitySubject } from "./identity";
 import { callSignIn, callVerifier } from "./mutations/index";
 import { callVerifierSignature } from "./mutations/signature";
 import { TotpProviderConfig, GenericActionCtxWithAuthConfig } from "./types";
@@ -134,6 +135,7 @@ const resolveTotpDispatchFx = (
     ),
   );
 
+/** @internal */
 export const handleTotp = (
   ctx: EnrichedActionCtx,
   provider: TotpProviderConfig,
@@ -152,7 +154,7 @@ export const handleTotp = (
             Fx.chain((identity) =>
               identity === null
                 ? Fx.fail(new AuthError("TOTP_AUTH_REQUIRED"))
-                : Fx.succeed(identity.subject.split("|")[0]!),
+                : Fx.succeed(userIdFromIdentitySubject(identity.subject)),
             ),
             Fx.chain((userId) =>
               Fx.from({
@@ -224,7 +226,7 @@ export const handleTotp = (
             Fx.chain((identity) =>
               identity === null
                 ? Fx.fail(new AuthError("TOTP_AUTH_REQUIRED"))
-                : Fx.succeed(identity.subject.split("|")[0]!),
+                : Fx.succeed(userIdFromIdentitySubject(identity.subject)),
             ),
             Fx.chain((userId) =>
               Fx.from({

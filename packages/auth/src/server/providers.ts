@@ -33,6 +33,7 @@ function isClassProvider(
  *
  * @internal
  */
+/** @internal */
 export function configDefaults(config_: ConvexAuthConfig) {
   const config = materializeAndDefaultProviders(config_);
   // Collect extra providers from credentials providers
@@ -52,6 +53,7 @@ export function configDefaults(config_: ConvexAuthConfig) {
  *
  * @internal
  */
+/** @internal */
 export function materializeProvider(provider: AuthProviderConfig) {
   const config = { providers: [provider], component: {} as any };
   materializeAndDefaultProviders(config);
@@ -63,6 +65,7 @@ export function materializeProvider(provider: AuthProviderConfig) {
  *
  * @internal
  */
+/** @internal */
 export function listAvailableProviders(
   config: ReturnType<typeof configDefaults>,
   allowExtraProviders: boolean,

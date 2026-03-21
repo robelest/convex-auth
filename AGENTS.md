@@ -32,6 +32,9 @@ vp run test
 # Run convex + node tests in watch mode
 vp test --project convex --project node
 
+# Run Docker-backed interop tests
+vp test --project interop
+
 # Run a single test project
 vp test --run --project convex
 
@@ -178,7 +181,7 @@ use options objects.
 - Tests live under `test/` (root feature tests and `test/enterprise/*.test.ts`).
 - Use `test()` directly (no `describe()` blocks).
 - Each test creates an isolated environment via `convexTest(schema)`.
-- Call Convex functions: `t.action(api.auth.session.start, { ... })`.
+- Call Convex functions: `t.action(api.auth.signIn, { ... })`.
 - Simulate identity: `t.withIdentity({ subject: claims.sub })`.
 - Error assertions: `expect(...).rejects.toThrow("expected message")`.
 - Use `test.todo("...")` for planned tests.

@@ -8,9 +8,9 @@ import type { UserIdentity } from "convex/server";
 import type { GenericId } from "convex/values";
 
 import type { AuthApiRefs } from "../client/index";
+import { Auth as AuthFactory } from "./factory";
 import { Fx } from "./fx";
 import { AuthError } from "./fx";
-import { Auth as AuthFactory } from "./implementation";
 import type { Doc } from "./types";
 import type {
   AuthProviderConfig,
@@ -47,14 +47,36 @@ export type AuthApiBase = {
   http: ReturnType<typeof AuthFactory>["auth"]["http"];
 };
 
-/** Auth API with SSO namespace — present only when `new SSO()` is in providers. */
+type InternalSsoApi = ReturnType<typeof AuthFactory>["auth"]["sso"];
+
+type PublicSsoApi = Omit<InternalSsoApi, "domain" | "scim" | "connection"> & {
+  connection: InternalSsoApi["connection"] & {
+    domain: {
+      list: InternalSsoApi["domain"]["list"];
+      set: (
+        ctx: Parameters<InternalSsoApi["connection"]["create"]>[0],
+        enterpriseId: string,
+        domains: Array<{
+          domain: string;
+          isPrimary?: boolean;
+          verifiedAt?: number;
+        }>,
+      ) => Promise<void>;
+    };
+  };
+};
+
+type PublicScimApi = InternalSsoApi["scim"];
+
+/** Auth API with enterprise namespaces — present only when `new SSO()` is in providers. */
 export type AuthApi = AuthApiBase & {
-  sso: ReturnType<typeof AuthFactory>["auth"]["sso"];
+  sso: PublicSsoApi;
+  scim: PublicScimApi;
 };
 
 /**
  * The return type of `createAuth`. Conditional namespaces:
- * - `auth.sso` — only when `new SSO()` is in providers
+ * - `auth.sso` and `auth.scim` — only when `new SSO()` is in providers
  * - `auth.clientApi` — typed API refs for the client SDK with capabilities
  */
 export type ConvexAuthResult<P extends AuthProviderConfig[]> =
@@ -72,7 +94,7 @@ export type ConvexAuthResult<P extends AuthProviderConfig[]> =
  * // Frontend
  * import type { auth } from "../convex/auth";
  * import type { InferClientApi } from "@robelest/convex-auth/component";
- * const c = client<InferClientApi<typeof auth>>({ convex, api: { ... } });
+ * const c = client<InferClientApi<typeof auth>>({ convex, api: api.auth });
  * ```
  */
 export type InferClientApi<T> =
@@ -94,9 +116,9 @@ export type AuthLike = Pick<AuthApiBase, "user">;
 /**
  * Create an auth API object.
  *
- * When `new SSO()` is included in providers, `auth.sso` is available
- * on the returned object. Without it, `auth.sso` is absent and
- * accessing it is a TypeScript compile error.
+ * When `new SSO()` is included in providers, `auth.sso` and `auth.scim`
+ * are available on the returned object. Without it, those namespaces are
+ * absent and accessing them is a TypeScript compile error.
  */
 export function createAuth<P extends AuthProviderConfig[]>(
   component: ConvexAuthConfig["component"],
@@ -107,6 +129,114 @@ export function createAuth<P extends AuthProviderConfig[]>(
     component,
     providers: [...config.providers],
   });
+  const {
+    domain: domainApi,
+    scim: scimApi,
+    connection: connectionApi,
+    ...restSso
+  } = authResult.auth.sso as InternalSsoApi;
+
+  type SetEnterpriseDomains = PublicSsoApi["connection"]["domain"]["set"];
+  type EnterpriseDomainInput = Array<{
+    domain: string;
+    isPrimary?: boolean;
+    verifiedAt?: number;
+  }>;
+  const setEnterpriseDomains: PublicSsoApi["connection"]["domain"]["set"] =
+    async (
+      ctx: Parameters<SetEnterpriseDomains>[0],
+      enterpriseId: Parameters<SetEnterpriseDomains>[1],
+      domains: EnterpriseDomainInput,
+    ) => {
+      const enterprise = await connectionApi.get(ctx, enterpriseId);
+      if (enterprise === null) {
+        throw new AuthError(
+          "INVALID_PARAMETERS",
+          "Enterprise not found.",
+        ).toConvexError();
+      }
+
+      const normalized = domains.map((entry: (typeof domains)[number]) => ({
+        ...entry,
+        domain: entry.domain.trim().toLowerCase(),
+      }));
+      const deduped = new Map<string, (typeof normalized)[number]>();
+      for (const entry of normalized) {
+        if (entry.domain.length === 0) {
+          throw new AuthError(
+            "INVALID_PARAMETERS",
+            "Domain must not be empty.",
+          ).toConvexError();
+        }
+        if (deduped.has(entry.domain)) {
+          throw new AuthError(
+            "INVALID_PARAMETERS",
+            `Duplicate domain: ${entry.domain}`,
+          ).toConvexError();
+        }
+        deduped.set(entry.domain, entry);
+      }
+
+      const nextDomains = [...deduped.values()];
+      const primaryCount = nextDomains.filter(
+        (entry) => entry.isPrimary,
+      ).length;
+      if (primaryCount > 1) {
+        throw new AuthError(
+          "INVALID_PARAMETERS",
+          "Only one primary domain may be set.",
+        ).toConvexError();
+      }
+      if (nextDomains.length > 0 && primaryCount === 0) {
+        nextDomains[0] = { ...nextDomains[0], isPrimary: true };
+      }
+
+      const currentDomains = await domainApi.list(ctx, enterpriseId);
+      const currentByDomain = new Map<string, (typeof currentDomains)[number]>(
+        currentDomains.map((entry: (typeof currentDomains)[number]) => [
+          entry.domain.toLowerCase(),
+          entry,
+        ]),
+      );
+
+      for (const existing of currentDomains) {
+        if (!deduped.has(existing.domain.toLowerCase())) {
+          await domainApi.remove(ctx, existing._id);
+        }
+      }
+
+      for (const nextDomain of nextDomains) {
+        const current = currentByDomain.get(nextDomain.domain);
+        if (
+          current &&
+          current.isPrimary === Boolean(nextDomain.isPrimary) &&
+          current.verifiedAt === (nextDomain.verifiedAt ?? current.verifiedAt)
+        ) {
+          continue;
+        }
+        if (current) {
+          await domainApi.remove(ctx, current._id);
+        }
+        await domainApi.add(ctx, {
+          enterpriseId: enterprise._id,
+          groupId: enterprise.groupId,
+          domain: nextDomain.domain,
+          isPrimary: nextDomain.isPrimary,
+          verifiedAt: nextDomain.verifiedAt ?? current?.verifiedAt,
+        });
+      }
+    };
+
+  const publicSso: PublicSsoApi = {
+    ...restSso,
+    connection: {
+      ...connectionApi,
+      domain: {
+        list: domainApi.list,
+        set: setEnterpriseDomains,
+      },
+    },
+  };
 
   return {
     signIn: authResult.signIn,
@@ -120,7 +250,8 @@ export function createAuth<P extends AuthProviderConfig[]>(
     member: authResult.auth.member,
     invite: authResult.auth.invite,
     key: authResult.auth.key,
-    sso: authResult.auth.sso,
+    sso: publicSso,
+    scim: scimApi,
     http: authResult.auth.http,
   } as ConvexAuthResult<P>;
 }

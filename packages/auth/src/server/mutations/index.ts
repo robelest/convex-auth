@@ -96,7 +96,7 @@ export const storeImpl = async (
   config: Provider.Config,
 ) => {
   const args = fnArgs.args;
-  logWithLevel(LOG_LEVELS.INFO, `\`auth/store:run\` type: ${args.type}`);
+  logWithLevel(LOG_LEVELS.INFO, `\`auth:store\` type: ${args.type}`);
   return Fx.run(
     Fx.match(args, args.type, {
       signIn: (a) =>

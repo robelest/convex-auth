@@ -12,8 +12,17 @@ import {
   RegisteredQuery,
   TableNamesInDataModel,
 } from "convex/server";
+import type { Infer } from "convex/values";
 import { GenericId, Value } from "convex/values";
 
+import {
+  vApiKeyDoc,
+  vAuthVerifierDoc,
+  vDeviceCodeDoc,
+  vPasskeyDoc,
+  vTotpFactorDoc,
+  vUserDoc,
+} from "../component/model";
 import schema from "../component/schema";
 import { CredentialsUserConfig } from "../providers/credentials";
 
@@ -280,6 +289,62 @@ export type AuthProviderConfig =
 export interface SSOProviderConfig {
   id: string;
   type: "sso";
+}
+
+export type EnterpriseAccountLinkingPolicy = "verifiedEmail" | "none";
+
+export type EnterpriseScimReuseUserPolicy = "externalId" | "none";
+
+export type EnterpriseJitProvisioningMode =
+  | "off"
+  | "createUser"
+  | "createUserAndMembership";
+
+export type EnterpriseDeprovisionMode = "soft" | "hard";
+
+export interface EnterprisePolicy {
+  version: 1;
+  identity: {
+    accountLinking: {
+      oidc: EnterpriseAccountLinkingPolicy;
+      saml: EnterpriseAccountLinkingPolicy;
+    };
+  };
+  provisioning: {
+    scimReuse: {
+      user: EnterpriseScimReuseUserPolicy;
+    };
+    jit: {
+      mode: EnterpriseJitProvisioningMode;
+      defaultRole: string;
+    };
+    deprovision: {
+      mode: EnterpriseDeprovisionMode;
+    };
+  };
+  extend?: Record<string, unknown>;
+}
+
+export interface EnterprisePolicyPatch {
+  identity?: {
+    accountLinking?: {
+      oidc?: EnterpriseAccountLinkingPolicy;
+      saml?: EnterpriseAccountLinkingPolicy;
+    };
+  };
+  provisioning?: {
+    scimReuse?: {
+      user?: EnterpriseScimReuseUserPolicy;
+    };
+    jit?: {
+      mode?: EnterpriseJitProvisioningMode;
+      defaultRole?: string;
+    };
+    deprovision?: {
+      mode?: EnterpriseDeprovisionMode;
+    };
+  };
+  extend?: Record<string, unknown>;
 }
 
 /**
@@ -1055,6 +1120,9 @@ export type AuthComponentApi = {
     enterpriseDomainAdd: FunctionReference<"mutation", "internal", any, any>;
     enterpriseDomainList: FunctionReference<"query", "internal", any, any>;
     enterpriseDomainDelete: FunctionReference<"mutation", "internal", any, any>;
+    enterpriseSecretUpsert: FunctionReference<"mutation", "internal", any, any>;
+    enterpriseSecretGet: FunctionReference<"query", "internal", any, any>;
+    enterpriseSecretDelete: FunctionReference<"mutation", "internal", any, any>;
     enterpriseScimConfigUpsert: FunctionReference<
       "mutation",
       "internal",
@@ -1075,6 +1143,12 @@ export type AuthComponentApi = {
     >;
     enterpriseScimIdentityGet: FunctionReference<"query", "internal", any, any>;
     enterpriseScimIdentityGetByUser: FunctionReference<
+      "query",
+      "internal",
+      any,
+      any
+    >;
+    enterpriseScimIdentityGetByEnterpriseAndUser: FunctionReference<
       "query",
       "internal",
       any,
@@ -1243,80 +1317,25 @@ export type SessionInfoWithTokens = {
 // code can work with typed results from cross-component queries/mutations
 // instead of casting to `any` at every field access.
 
-export interface TotpDoc {
-  _id: string;
-  _creationTime: number;
-  userId: string;
-  secret: ArrayBuffer;
-  digits: number;
-  period: number;
-  verified: boolean;
-  name?: string;
-  createdAt: number;
-  lastUsedAt?: number;
-}
+export type TotpDoc = Infer<typeof vTotpFactorDoc>;
 
-export interface PasskeyDoc {
-  _id: string;
-  _creationTime: number;
-  userId: string;
-  credentialId: string;
-  publicKey: ArrayBuffer;
-  algorithm: number;
-  counter: number;
-  transports?: string[];
-  deviceType: string;
-  backedUp: boolean;
-  name?: string;
-  createdAt: number;
-  lastUsedAt?: number;
-}
+export type PasskeyDoc = Infer<typeof vPasskeyDoc>;
 
-export interface VerifierDoc {
-  _id: string;
-  _creationTime: number;
-  signature?: string;
-  sessionId?: string;
-}
+export type VerifierDoc = Infer<typeof vAuthVerifierDoc>;
 
 /**
- * Plain cross-component user document shape with `string` IDs.
+ * Cross-component user document shape inferred from the component validator.
  *
- * Used by internal typed wrappers (`queryUserById`, etc.) that operate
- * across the component boundary where Convex `Id<"User">` is erased
- * to a plain string. Not intended for consumer use — consumers should
- * use `UserDoc` (exported from `@robelest/convex-auth/component`)
- * which preserves typed `Id<"User">`.
+ * Used by internal typed wrappers (`queryUserById`, etc.) so server code stays
+ * aligned with the component runtime contract. Not intended for consumer use —
+ * consumers should use `UserDoc` (exported from
+ * `@robelest/convex-auth/component`).
  *
  * @internal
  */
-export interface CrossComponentUserDoc {
-  _id: string;
-  _creationTime: number;
-  email?: string;
-  emailVerificationTime?: number;
-  phone?: string;
-  phoneVerificationTime?: number;
-  name?: string;
-  image?: string;
-  isAnonymous?: boolean;
-}
+export type CrossComponentUserDoc = Infer<typeof vUserDoc>;
 
-export interface KeyDoc {
-  _id: string;
-  _creationTime: number;
-  userId: string;
-  prefix: string;
-  hashedKey: string;
-  name: string;
-  scopes: Array<{ resource: string; actions: string[] }>;
-  rateLimit?: { maxRequests: number; windowMs: number };
-  rateLimitState?: { attemptsLeft: number; lastAttemptTime: number };
-  expiresAt?: number;
-  lastUsedAt?: number;
-  createdAt: number;
-  revoked: boolean;
-}
+export type KeyDoc = Infer<typeof vApiKeyDoc>;
 
 // ---------------------------------------------------------------------------
 // Cross-component wrapper context
@@ -1555,18 +1574,7 @@ export async function mutateKeyDelete(
 
 // -- Device authorization queries / mutations --
 
-export interface DeviceDoc {
-  _id: string;
-  _creationTime: number;
-  deviceCodeHash: string;
-  userCode: string;
-  expiresAt: number;
-  interval: number;
-  status: "pending" | "authorized" | "denied";
-  userId?: string;
-  sessionId?: string;
-  lastPolledAt?: number;
-}
+export type DeviceDoc = Infer<typeof vDeviceCodeDoc>;
 
 export async function mutateDeviceInsert(
   ctx: ComponentCallCtx,

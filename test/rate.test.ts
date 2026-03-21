@@ -13,7 +13,7 @@ test("rate limit on password", async () => {
   vi.useFakeTimers();
   const t = convexTest(schema);
 
-  await t.action(api.auth.session.start, {
+  await t.action(api.auth.signIn, {
     provider: "password",
     params: { email: TEST_EMAIL, password: TEST_PASSWORD, flow: "signUp" },
   });
@@ -26,7 +26,7 @@ test("rate limit on password", async () => {
     vi.advanceTimersByTime(10 * SECOND_MS);
     await expect(
       async () =>
-        await t.action(api.auth.session.start, {
+        await t.action(api.auth.signIn, {
           provider: "password",
           params: {
             email: TEST_EMAIL,
@@ -40,7 +40,7 @@ test("rate limit on password", async () => {
   // Now we can't succeed, even with the right password
   await expect(
     async () =>
-      await t.action(api.auth.session.start, {
+      await t.action(api.auth.signIn, {
         provider: "password",
         params: {
           email: TEST_EMAIL,
@@ -54,7 +54,7 @@ test("rate limit on password", async () => {
   vi.advanceTimersByTime(8 * MINUTE_MS);
 
   const tokens = expectSignedInResult(
-    await t.action(api.auth.session.start, {
+    await t.action(api.auth.signIn, {
       provider: "password",
       params: {
         email: TEST_EMAIL,

@@ -83,3 +83,4 @@ const auth = createAuth(components.auth, {
 });
 
 export { auth };
+export const { signIn, signOut, store } = auth;

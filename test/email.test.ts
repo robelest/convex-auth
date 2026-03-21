@@ -30,7 +30,7 @@ test("sign in with email", async () => {
     }),
   );
 
-  await t.action(api.auth.session.start, {
+  await t.action(api.auth.signIn, {
     provider: "email",
     params: { email: "tom@gmail.com" },
   });
@@ -43,7 +43,7 @@ test("sign in with email", async () => {
   expect(capturedInit.body).toBeTypeOf("string");
 
   const tokens = expectSignedInResult(
-    await t.action(api.auth.session.start, {
+    await t.action(api.auth.signIn, {
       params: { code },
     }),
   );
@@ -68,7 +68,7 @@ test("redirectTo with email", async () => {
     }),
   );
 
-  await t.action(api.auth.session.start, {
+  await t.action(api.auth.signIn, {
     provider: "email",
     params: { email: "tom@gmail.com", redirectTo: "/dashboard" },
   });
@@ -81,8 +81,10 @@ test("redirectTo with email", async () => {
   expect(capturedInit.body).toBeTypeOf("string");
 
   // Custom URL via redirectTo
+  const siteUrl = process.env.SITE_URL ?? "http://localhost:5173";
+  const escapedSiteUrl = siteUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const code = capturedInit.body.match(
-    /http:\/\/localhost:5173\/dashboard\?code=([^\s\\]+)/,
+    new RegExp(`${escapedSiteUrl}\\/dashboard\\?code=([^\\s]+)`),
   )?.[1];
   expect(code).toBeTypeOf("string");
 });

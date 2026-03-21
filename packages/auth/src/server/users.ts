@@ -37,6 +37,7 @@ function mergeExtend(
   return existingRecord ? { ...existingRecord, ...incoming } : incoming;
 }
 
+/** @internal */
 export async function upsertUserAndAccount(
   ctx: MutationCtx,
   sessionId: GenericId<"Session"> | null,

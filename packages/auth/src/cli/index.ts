@@ -1,8 +1,7 @@
-#!/usr/bin/env node
-
 import { execFileSync } from "child_process";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   writeFileSync,
@@ -92,7 +91,7 @@ function convexCmd(...subArgs: string[]): { file: string; args: string[] } {
 // Commander program
 // ---------------------------------------------------------------------------
 
-const program = new Command()
+export const program = new Command()
   .name("@robelest/convex-auth")
   .version(version)
   .description(
@@ -174,7 +173,43 @@ program
     p.outro("Done!");
   });
 
-program.parse(process.argv);
+program
+  .command("mount")
+  .description("Mount optional Convex Auth app helpers")
+  .command("enterprise")
+  .description("Create nested enterprise RPC mount files under convex/auth/")
+  .option("--only <kind>", "Limit to one namespace: 'sso' or 'scim'.")
+  .option("--skip-git-check", "Don't warn when running outside a Git checkout.")
+  .option("--allow-dirty-git-state", "Don't warn when Git state is not clean.")
+  .action(async (options) => {
+    p.intro("@robelest/convex-auth");
+
+    await checkSourceControl(options);
+
+    const packageJson = readPackageJson();
+    const convexJson = readConvexJson();
+    const usesTypeScript = !!(
+      packageJson.dependencies?.typescript ||
+      packageJson.devDependencies?.typescript
+    );
+    const convexFolderPath = convexJson.functions ?? "convex";
+    const config: ProjectConfig = {
+      isExpo: !!(
+        packageJson.dependencies?.expo || packageJson.devDependencies?.expo
+      ),
+      isNextjs: !!packageJson.dependencies?.next,
+      isVite: !!(
+        packageJson.dependencies?.vite || packageJson.devDependencies?.vite
+      ),
+      usesTypeScript,
+      convexFolderPath,
+      deployment: { name: null, type: null, options: {} },
+      step: 1,
+    };
+
+    await mountEnterprise(config, options.only);
+    p.outro("Done!");
+  });
 
 // ---------------------------------------------------------------------------
 // Types
@@ -284,13 +319,22 @@ async function configureEnvVar(
 // ---------------------------------------------------------------------------
 
 async function configureKeys(config: ProjectConfig) {
-  logStep(config, "Configure private and public key");
-  const { JWT_PRIVATE_KEY, JWKS } = await generateKeys();
+  logStep(config, "Configure signing and encryption keys");
+  const { JWT_PRIVATE_KEY, JWKS, AUTH_SECRET_ENCRYPTION_KEY } =
+    await generateKeys();
   const existingPrivateKey = backendEnvVar(config, "JWT_PRIVATE_KEY");
   const existingJwks = backendEnvVar(config, "JWKS");
-  if (existingPrivateKey !== "" || existingJwks !== "") {
+  const existingSecretEncryptionKey = backendEnvVar(
+    config,
+    "AUTH_SECRET_ENCRYPTION_KEY",
+  );
+  if (
+    existingPrivateKey !== "" ||
+    existingJwks !== "" ||
+    existingSecretEncryptionKey !== ""
+  ) {
     const shouldOverwrite = await promptForConfirmation(
-      `The ${printDeployment(config)} already has JWT_PRIVATE_KEY or JWKS configured. Overwrite them?`,
+      `The ${printDeployment(config)} already has JWT_PRIVATE_KEY, JWKS, or AUTH_SECRET_ENCRYPTION_KEY configured. Overwrite them?`,
       { default: false },
     );
     if (!shouldOverwrite) {
@@ -300,6 +344,14 @@ async function configureKeys(config: ProjectConfig) {
   // Use --from-file to avoid shell quoting issues with multiline values
   await setEnvVarFromFile(config, "JWT_PRIVATE_KEY", JWT_PRIVATE_KEY);
   await setEnvVarFromFile(config, "JWKS", JWKS);
+  await setEnvVar(
+    config,
+    "AUTH_SECRET_ENCRYPTION_KEY",
+    AUTH_SECRET_ENCRYPTION_KEY,
+    {
+      hideValue: true,
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -634,6 +686,178 @@ export default http;
     writeFileSync(newHttpPath, source);
     p.log.success(`Created ${newHttpPath}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Optional: mount enterprise helpers
+// ---------------------------------------------------------------------------
+
+async function mountEnterprise(config: ProjectConfig, only?: string) {
+  logStep(config, "Mount enterprise helper files");
+
+  if (only !== undefined && only !== "sso" && only !== "scim") {
+    logErrorAndExit("The --only flag must be either 'sso' or 'scim'.");
+  }
+
+  const authPath = path.join(config.convexFolderPath, "auth");
+  const existingAuthPath = existingNonEmptySourcePath(authPath);
+  if (existingAuthPath === null) {
+    logErrorAndExit(
+      `Could not find ${authPath}.ts or ${authPath}.js. Initialize auth first, then re-run this command.`,
+    );
+  }
+
+  const authSource = readFileSync(existingAuthPath, "utf8");
+  if (!/new\s+SSO\s*\(/.test(authSource)) {
+    p.log.warn(
+      "Your auth.ts does not appear to include `new SSO()`. Enterprise helper namespaces will not be available until SSO is enabled.",
+    );
+    await promptForConfirmationOrExit("Continue anyway?", { default: false });
+  }
+
+  const mountSso =
+    only === undefined
+      ? await promptForConfirmation("Mount SSO helpers?", { default: true })
+      : only === "sso";
+  const mountScim =
+    only === undefined
+      ? await promptForConfirmation("Mount SCIM helpers?", { default: true })
+      : only === "scim";
+
+  if (!mountSso && !mountScim) {
+    p.log.info("Nothing selected. No files were created.");
+    return;
+  }
+
+  if (mountSso) {
+    writeMountFile(
+      config,
+      path.join(config.convexFolderPath, "auth", "sso", "connection"),
+      `import { auth } from "../../auth";
+import { sso } from "@robelest/convex-auth/server";
+
+export const { create, get, getByGroup, getByDomain, list, update, remove, status } =
+  sso(auth).connection;
+`,
+    );
+    writeMountFile(
+      config,
+      path.join(config.convexFolderPath, "auth", "sso", "connection", "domain"),
+      `import { auth } from "../../../auth";
+import { sso } from "@robelest/convex-auth/server";
+
+export const { list, set } = sso(auth).connection.domain;
+`,
+    );
+    writeMountFile(
+      config,
+      path.join(config.convexFolderPath, "auth", "sso", "oidc"),
+      `import { auth } from "../../auth";
+import { sso } from "@robelest/convex-auth/server";
+
+export const { configure, get, resolveSignIn, validate } = sso(auth).oidc;
+`,
+    );
+    writeMountFile(
+      config,
+      path.join(config.convexFolderPath, "auth", "sso", "saml"),
+      `import { auth } from "../../auth";
+import { sso } from "@robelest/convex-auth/server";
+
+export const { configure, metadata, validate } = sso(auth).saml;
+`,
+    );
+    writeMountFile(
+      config,
+      path.join(config.convexFolderPath, "auth", "sso", "policy"),
+      `import { auth } from "../../auth";
+import { sso } from "@robelest/convex-auth/server";
+
+export const { get, update, validate } = sso(auth).policy;
+`,
+    );
+    writeMountFile(
+      config,
+      path.join(config.convexFolderPath, "auth", "sso", "audit"),
+      `import { auth } from "../../auth";
+import { sso } from "@robelest/convex-auth/server";
+
+export const { record, list } = sso(auth).audit;
+`,
+    );
+    writeMountFile(
+      config,
+      path.join(config.convexFolderPath, "auth", "sso", "webhook"),
+      `import { auth } from "../../auth";
+import { sso } from "@robelest/convex-auth/server";
+
+export const { emit } = sso(auth).webhook;
+`,
+    );
+    writeMountFile(
+      config,
+      path.join(config.convexFolderPath, "auth", "sso", "webhook", "endpoint"),
+      `import { auth } from "../../../auth";
+import { sso } from "@robelest/convex-auth/server";
+
+export const { create, list, disable } = sso(auth).webhook.endpoint;
+`,
+    );
+    writeMountFile(
+      config,
+      path.join(config.convexFolderPath, "auth", "sso", "webhook", "delivery"),
+      `import { auth } from "../../../auth";
+import { sso } from "@robelest/convex-auth/server";
+
+export const { list, listReady, markDelivered, markFailed } =
+  sso(auth).webhook.delivery;
+`,
+    );
+  }
+
+  if (mountScim) {
+    writeMountFile(
+      config,
+      path.join(config.convexFolderPath, "auth", "scim"),
+      `import { auth } from "../auth";
+import { scim } from "@robelest/convex-auth/server";
+
+export const { configure, get, getConfigByToken, validate } = scim(auth);
+`,
+    );
+    writeMountFile(
+      config,
+      path.join(config.convexFolderPath, "auth", "scim", "identity"),
+      `import { auth } from "../../auth";
+import { scim } from "@robelest/convex-auth/server";
+
+export const { get, upsert } = scim(auth).identity;
+`,
+    );
+  }
+
+  p.log.success("Enterprise helper mounts are ready.");
+}
+
+function writeMountFile(
+  config: ProjectConfig,
+  filePathWithoutExtension: string,
+  source: string,
+) {
+  const filePath = `${filePathWithoutExtension}.${config.usesTypeScript ? "ts" : "js"}`;
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  if (existsSync(filePath)) {
+    const existing = readFileSync(filePath, "utf8");
+    if (existing.trim() === source.trim()) {
+      p.log.success(`The ${filePath} is already set up.`);
+      return;
+    }
+    p.log.info(`You already have a ${filePath}, make sure it matches:`);
+    p.log.message(indent(`\n${source}\n`));
+    return;
+  }
+  writeFileSync(filePath, source);
+  p.log.success(`Created ${filePath}`);
 }
 
 // ---------------------------------------------------------------------------

@@ -11,6 +11,7 @@ const DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR = 10;
 /**
  * Check whether the given identifier is currently rate-limited.
  */
+/** @internal */
 export const isSignInRateLimited = (
   ctx: MutationCtx,
   identifier: string,
@@ -25,6 +26,7 @@ export const isSignInRateLimited = (
  *
  * If a record exists, decrement; otherwise create.
  */
+/** @internal */
 export const recordFailedSignIn = (
   ctx: MutationCtx,
   identifier: string,
@@ -67,6 +69,7 @@ export const recordFailedSignIn = (
 /**
  * Reset the rate limit for the given identifier (e.g. after successful sign-in).
  */
+/** @internal */
 export const resetSignInRateLimit = (
   ctx: MutationCtx,
   identifier: string,

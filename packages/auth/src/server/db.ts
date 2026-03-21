@@ -56,10 +56,13 @@ type AuthComponentApiLike = {
   };
 };
 
+/** @internal */
 export type AuthDbConfig = { component: AuthComponentApiLike };
 
+/** @internal */
 export type AuthDb = ReturnType<typeof authDb>;
 
+/** @internal */
 export function authDb(ctx: CtxLike, config: AuthDbConfig) {
   const component = config.component;
   return {

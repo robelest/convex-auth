@@ -38,4 +38,16 @@ export default defineConfig([
     external: [/^convex/],
     outExtensions: jsExtensions,
   },
+  {
+    entry: {
+      bin: "src/cli/bin.ts",
+    },
+    format: "cjs",
+    outDir: "dist",
+    dts: false,
+    clean: false,
+    platform: "node",
+    external: [/^convex/],
+    outExtensions: () => ({ js: ".cjs", dts: ".d.ts" }),
+  },
 ]);

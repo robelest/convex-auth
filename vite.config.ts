@@ -42,19 +42,18 @@ export default defineConfig({
   },
   run: {
     cache: {
-      scripts: false,
+      scripts: true,
       tasks: true,
     },
     tasks: {
       "cache:build": {
         command:
-          "vp exec convex codegen --component-dir ./packages/auth/src/component && vp run --filter @robelest/convex-auth build",
+          "vp run --filter @robelest/samlify build && vp exec varlock run -- vp exec convex codegen --component-dir ./packages/auth/src/component && vp run --filter @robelest/convex-auth build",
         cache: true,
         input: [
           "convex/**",
           "packages/**",
           "scripts/**",
-          "docs/**",
           "package.json",
           "pnpm-lock.yaml",
           "pnpm-workspace.yaml",
@@ -84,14 +83,29 @@ export default defineConfig({
       },
       "cache:test": {
         command:
-          "vp test --run --project convex --project node --project samlify && vp run --filter @robelest/samlify check:runtime-imports && vp run --filter @robelest/samlify report:edge-gaps",
+          "vp test --run --project convex --project node --project samlify --project interop",
         cache: true,
         input: [
           "convex/**",
           "packages/**",
           "test/**",
-          "scripts/**",
-          "docs/**",
+          "package.json",
+          "pnpm-lock.yaml",
+          "pnpm-workspace.yaml",
+          "tsconfig*.json",
+          "vite.config.ts",
+          "!**/dist/**",
+          "!**/_generated/**",
+        ],
+      },
+      "cache:validate": {
+        command:
+          "vp run '@robelest/convex-auth#typecheck:consumer' && vp run '@robelest/convex-auth#check:packaging' && vp run --filter @robelest/samlify check:runtime-imports && vp run --filter @robelest/samlify report:edge-gaps",
+        cache: true,
+        input: [
+          "convex/**",
+          "packages/**",
+          "test/**",
           "package.json",
           "pnpm-lock.yaml",
           "pnpm-workspace.yaml",
@@ -129,13 +143,32 @@ export default defineConfig({
         },
         test: {
           name: "node",
-          include: ["*.node.test.ts", "enterprise/**/*.node.test.ts"],
+          include: ["*.node.test.ts"],
+          exclude: ["enterprise/**/*.node.test.ts"],
+          environment: "node",
+          setupFiles: ["./vitest.setup.ts"],
+          server: { deps: { inline: ["convex-test"] } },
+          fileParallelism: false,
+          testTimeout: 60000,
+        },
+      },
+      {
+        root: "./test",
+        resolve: {
+          alias: testProjectAliases,
+        },
+        test: {
+          name: "interop",
+          include: ["enterprise/**/*.node.test.ts"],
           environment: "node",
           globalSetup: ["./infra/docker/setup.node.ts"],
           setupFiles: ["./vitest.setup.ts"],
           server: { deps: { inline: ["convex-test"] } },
           fileParallelism: false,
           testTimeout: 60000,
+          sequence: {
+            groupOrder: 1,
+          },
         },
       },
       {
