@@ -4,17 +4,26 @@ import {
   GenericDataModel,
   HttpRouter,
   actionGeneric,
-  httpActionGeneric,
   internalMutationGeneric,
 } from "convex/server";
-import { ConvexError, v } from "convex/values";
-import { parse as parseCookies, serialize as serializeCookie } from "cookie";
+import { v } from "convex/values";
+import { serialize as serializeCookie } from "cookie";
 
 import { redirectToParamCookie, useRedirectToParam } from "./cookies";
 import { createCoreDomains } from "./domains/core";
 import { createSsoDomain } from "./domains/sso";
 import { isAuthError } from "./errors";
 import { AuthError, Fx } from "./fx";
+import {
+  addAuthRoutes,
+  addOpenIdRoutes,
+  addSSORoutes,
+  convertErrorsToResponse,
+  createHttpAction,
+  createHttpRoute,
+  getCookies,
+  type SSORuntimeRoute,
+} from "./http";
 import {
   callCreateAccountFromCredentials,
   callInvalidateSessions,
@@ -67,9 +76,7 @@ import {
 } from "./sso";
 import type {
   ConvexAuthConfig,
-  CorsConfig,
   FunctionReferenceFromExport,
-  HttpKeyContext,
   OAuthMaterializedConfig,
   Tokens,
 } from "./types";
@@ -242,6 +249,65 @@ export function Auth(config_: ConvexAuthConfig) {
       ).toConvexError();
     }
     return enterprise;
+  };
+
+  const loadActiveEnterpriseOrThrow = async (
+    ctx: ComponentReadCtx,
+    enterpriseId: string,
+  ) => {
+    const enterprise = await loadEnterpriseOrThrow(ctx, enterpriseId);
+    if (enterprise.status !== "active") {
+      throw new AuthError(
+        "INVALID_PARAMETERS",
+        "Enterprise connection is not active.",
+      ).toConvexError();
+    }
+    return enterprise;
+  };
+
+  const loadActiveEnterpriseSamlOrThrow = async (
+    ctx: ComponentReadCtx,
+    enterpriseId: string,
+  ) => {
+    const enterprise = await loadEnterpriseOrThrow(ctx, enterpriseId);
+    const loaded = {
+      source: {
+        kind: "enterprise" as const,
+        id: enterpriseId,
+      },
+      config: enterprise.config,
+      status: enterprise.status,
+      enterprise,
+    };
+    if (!isEnterpriseSamlSourceActive(loaded)) {
+      throw new AuthError(
+        "INVALID_PARAMETERS",
+        "Enterprise connection is not active.",
+      ).toConvexError();
+    }
+    const saml = getSamlConfig(loaded.config);
+    if (!saml.idp?.metadataXml) {
+      throw new AuthError(
+        "PROVIDER_NOT_CONFIGURED",
+        "SAML is not configured for this enterprise.",
+      ).toConvexError();
+    }
+    return { loaded, enterprise, saml };
+  };
+
+  const loadEnterpriseOidcOrThrow = async (
+    ctx: ComponentReadCtx,
+    enterpriseId: string,
+  ) => {
+    const enterprise = await loadActiveEnterpriseOrThrow(ctx, enterpriseId);
+    const oidc = await getEnterpriseOidcConfigWithSecret(ctx, enterprise);
+    if (oidc.enabled !== true) {
+      throw new AuthError(
+        "PROVIDER_NOT_CONFIGURED",
+        "OIDC is not configured for this enterprise.",
+      ).toConvexError();
+    }
+    return { enterprise, oidc };
   };
 
   const validateEnterprisePolicy = (
@@ -570,861 +636,199 @@ export function Auth(config_: ConvexAuthConfig) {
        * @param http your HTTP router
        */
       add: (http: HttpRouter) => {
-        http.route({
-          path: "/.well-known/openid-configuration",
-          method: "GET",
-          handler: httpActionGeneric(async () => {
-            return new Response(
-              JSON.stringify({
-                issuer: requireEnv("CONVEX_SITE_URL"),
-                jwks_uri:
-                  requireEnv("CONVEX_SITE_URL") + "/.well-known/jwks.json",
-              }),
-              {
-                status: 200,
-                headers: {
-                  "Content-Type": "application/json",
-                  "Cache-Control":
-                    "public, max-age=15, stale-while-revalidate=15, stale-if-error=86400",
-                },
-              },
-            );
-          }),
-        });
-
-        http.route({
-          path: "/.well-known/jwks.json",
-          method: "GET",
-          handler: httpActionGeneric(async () => {
-            return new Response(requireEnv("JWKS"), {
-              status: 200,
-              headers: {
-                "Content-Type": "application/json",
-                "Cache-Control":
-                  "public, max-age=15, stale-while-revalidate=15, stale-if-error=86400",
-              },
-            });
-          }),
+        addOpenIdRoutes(http, {
+          getIssuer: () => requireEnv("CONVEX_SITE_URL"),
+          getJwks: () => requireEnv("JWKS"),
         });
 
         if (hasSSO) {
-          http.route({
-            pathPrefix: `${ENTERPRISE_CONTROL_ROUTE_BASE}/`,
-            method: "GET",
-            handler: httpActionGeneric(
-              convertErrorsToResponse(400, async (ctx, request) => {
-                const runtimePathname = new URL(request.url).pathname;
-                const runtimePrefix = `${ENTERPRISE_CONTROL_ROUTE_BASE}/`;
-                const runtimeParts = runtimePathname.startsWith(runtimePrefix)
-                  ? runtimePathname
-                      .slice(runtimePrefix.length)
-                      .split("/")
-                      .filter(Boolean)
-                  : [];
-                const [runtimeEnterpriseId, protocol, ...rest] = runtimeParts;
-                const runtimeRoute =
-                  runtimeEnterpriseId !== undefined &&
-                  (protocol === "oidc" ||
-                    protocol === "saml" ||
-                    protocol === "scim") &&
-                  rest.length > 0
-                    ? ({
-                        enterpriseId: runtimeEnterpriseId,
-                        protocol,
-                        rest,
-                      } as const)
-                    : null;
-                if (!runtimeRoute) {
-                  throw new AuthError(
-                    "INVALID_PARAMETERS",
-                    "Invalid enterprise runtime path.",
-                  ).toConvexError();
-                }
-                if (
-                  runtimeRoute.protocol === "saml" &&
-                  runtimeRoute.rest.length === 1 &&
-                  runtimeRoute.rest[0] === "metadata"
-                ) {
-                  const enterpriseDoc = await ctx.runQuery(
-                    config.component.public.enterpriseGet,
-                    {
-                      enterpriseId: runtimeRoute.enterpriseId,
-                    },
-                  );
-                  if (enterpriseDoc === null) {
-                    throw new AuthError(
+          const handleSamlAcs = async (
+            ctx: GenericActionCtx<any>,
+            request: Request,
+            runtimeRoute: SSORuntimeRoute,
+          ) =>
+            Fx.run(
+              Fx.gen(function* () {
+                yield* Fx.guard(
+                  runtimeRoute.protocol !== "saml" ||
+                    runtimeRoute.rest.length !== 1 ||
+                    runtimeRoute.rest[0] !== "acs",
+                  Fx.fail(
+                    new AuthError(
                       "INVALID_PARAMETERS",
-                      "Enterprise not found.",
-                    ).toConvexError();
-                  }
-                  const loaded = {
-                    source: {
-                      kind: "enterprise" as const,
-                      id: runtimeRoute.enterpriseId,
-                    },
-                    config: enterpriseDoc.config,
-                    status: enterpriseDoc.status,
-                  };
-                  if (!isEnterpriseSamlSourceActive(loaded)) {
-                    throw new AuthError(
-                      "INVALID_PARAMETERS",
-                      "Enterprise connection is not active.",
-                    ).toConvexError();
-                  }
-                  const samlConfig = getSamlConfig(loaded.config);
-                  if (!samlConfig.idp?.metadataXml) {
-                    throw new AuthError(
-                      "PROVIDER_NOT_CONFIGURED",
-                      "SAML is not configured for this enterprise.",
-                    ).toConvexError();
-                  }
-                  return new Response(
-                    createEnterpriseSamlMetadataXml({
+                      "Invalid enterprise runtime path.",
+                    ).toConvexError(),
+                  ),
+                );
+
+                const enterpriseId = runtimeRoute.enterpriseId;
+                const { loaded, enterprise, saml } = yield* Fx.from({
+                  ok: () => loadActiveEnterpriseSamlOrThrow(ctx, enterpriseId),
+                  err: (e) => e,
+                });
+
+                const parsedResponse = yield* Fx.from({
+                  ok: () =>
+                    parseEnterpriseSamlLoginResponse({
+                      request,
                       rootUrl: requireEnv("CONVEX_SITE_URL"),
-                      source: loaded.source,
+                      source: { kind: "enterprise", id: enterprise._id },
                       config: loaded.config,
                     }),
-                    {
-                      status: 200,
-                      headers: { "Content-Type": "application/xml" },
-                    },
-                  );
-                }
-                if (
-                  runtimeRoute.protocol === "saml" &&
-                  runtimeRoute.rest.length === 1 &&
-                  runtimeRoute.rest[0] === "signin"
-                ) {
-                  const url = new URL(request.url);
-                  const verifier = url.searchParams.get("code");
-                  if (!verifier) {
-                    throw new AuthError(
-                      "OAUTH_MISSING_VERIFIER",
-                    ).toConvexError();
-                  }
-                  const enterpriseDoc = await ctx.runQuery(
-                    config.component.public.enterpriseGet,
-                    {
-                      enterpriseId: runtimeRoute.enterpriseId,
-                    },
-                  );
-                  if (enterpriseDoc === null) {
-                    throw new AuthError(
-                      "INVALID_PARAMETERS",
-                      "Enterprise not found.",
-                    ).toConvexError();
-                  }
-                  const loaded = {
-                    source: {
-                      kind: "enterprise" as const,
-                      id: runtimeRoute.enterpriseId,
-                    },
-                    config: enterpriseDoc.config,
-                    status: enterpriseDoc.status,
-                    enterprise: enterpriseDoc,
-                  };
-                  if (!isEnterpriseSamlSourceActive(loaded)) {
-                    throw new AuthError(
-                      "INVALID_PARAMETERS",
-                      "Enterprise connection is not active.",
-                    ).toConvexError();
-                  }
-                  const samlConfig = getSamlConfig(loaded.config);
-                  if (!samlConfig.idp?.metadataXml) {
-                    throw new AuthError(
-                      "PROVIDER_NOT_CONFIGURED",
-                      "SAML is not configured for this enterprise.",
-                    ).toConvexError();
-                  }
-                  const enterprise = loaded.enterprise;
-                  const state = generateRandomString(24, INVITE_TOKEN_ALPHABET);
-                  const signInRequest = createEnterpriseSamlSignInRequest({
-                    rootUrl: requireEnv("CONVEX_SITE_URL"),
-                    source: { kind: "enterprise", id: enterprise._id },
-                    config: loaded.config,
-                    state,
-                    signature: `saml ${enterprise._id} pending ${state}`,
-                    redirectTo: url.searchParams.get("redirectTo") ?? undefined,
-                  });
-                  const signature = `saml ${enterprise._id} ${signInRequest.requestId} ${state}`;
-                  await callVerifierSignature(ctx, { verifier, signature });
-                  const redirectTo = url.searchParams.get("redirectTo");
-                  const redirectCookies =
-                    redirectTo !== null
-                      ? [
-                          redirectToParamCookie(
-                            enterpriseSamlProviderId(enterprise._id),
-                            redirectTo,
-                          ),
-                        ]
-                      : [];
-                  const relayState = encodeEnterpriseSamlRelayState({
-                    source: { kind: "enterprise", id: enterprise._id },
-                    signature,
-                    requestId: signInRequest.requestId,
-                    state,
-                    redirectTo: url.searchParams.get("redirectTo") ?? undefined,
-                  });
-                  if (
-                    signInRequest.binding === "redirect" &&
-                    signInRequest.redirectUrl
-                  ) {
-                    const redirectUrl = new URL(signInRequest.redirectUrl);
-                    redirectUrl.searchParams.set("RelayState", relayState);
-                    const headers = new Headers({
-                      Location: redirectUrl.toString(),
-                    });
-                    for (const {
-                      name,
-                      value,
-                      options,
-                    } of redirectCookies as any) {
-                      headers.append(
-                        "Set-Cookie",
-                        serializeCookie(name, value, options),
-                      );
-                    }
-                    return new Response(null, { status: 302, headers });
-                  }
-                  const response = createSamlPostBindingResponse({
-                    endpoint: signInRequest.post!.endpoint,
-                    parameter: "SAMLRequest",
-                    value: signInRequest.post!.value,
-                    relayState,
-                  });
-                  for (const {
-                    name,
-                    value,
-                    options,
-                  } of redirectCookies as any) {
-                    response.headers.append(
-                      "Set-Cookie",
-                      serializeCookie(name, value, options),
-                    );
-                  }
-                  return response;
-                }
-                if (
-                  runtimeRoute.protocol === "saml" &&
-                  runtimeRoute.rest.length === 1 &&
-                  runtimeRoute.rest[0] === "acs"
-                ) {
-                  return await samlAcsHandler(ctx, request);
-                }
-                if (
-                  runtimeRoute.protocol === "saml" &&
-                  runtimeRoute.rest.length === 1 &&
-                  runtimeRoute.rest[0] === "slo"
-                ) {
-                  return await samlSloHandler(ctx, request);
-                }
-                if (
-                  runtimeRoute.protocol === "oidc" &&
-                  runtimeRoute.rest.length === 1 &&
-                  runtimeRoute.rest[0] === "signin"
-                ) {
-                  const url = new URL(request.url);
-                  const verifier = url.searchParams.get("code");
-                  if (!verifier) {
-                    throw new AuthError(
-                      "OAUTH_MISSING_VERIFIER",
-                    ).toConvexError();
-                  }
-                  const enterprise = await ctx.runQuery(
-                    config.component.public.enterpriseGet,
-                    {
-                      enterpriseId: runtimeRoute.enterpriseId,
-                    },
-                  );
-                  if (enterprise === null) {
-                    throw new AuthError(
-                      "INVALID_PARAMETERS",
-                      "Enterprise not found.",
-                    ).toConvexError();
-                  }
-                  if (enterprise.status !== "active") {
-                    throw new AuthError(
-                      "INVALID_PARAMETERS",
-                      "Enterprise connection is not active.",
-                    ).toConvexError();
-                  }
-                  const oidc = await getEnterpriseOidcConfigWithSecret(
-                    ctx,
-                    enterprise,
-                  );
-                  if (oidc.enabled !== true) {
-                    throw new AuthError(
-                      "PROVIDER_NOT_CONFIGURED",
-                      "OIDC is not configured for this enterprise.",
-                    ).toConvexError();
-                  }
-                  const { providerId, provider, oauthConfig } =
-                    await createEnterpriseOidcRuntime({
-                      rootUrl: requireEnv("CONVEX_SITE_URL"),
-                      enterpriseId: enterprise._id,
-                      oidc,
-                    });
-                  const { redirect, cookies, signature } =
-                    await createOAuthAuthorizationURL(
-                      providerId,
-                      provider,
-                      oauthConfig,
-                    );
-                  await callVerifierSignature(ctx, { verifier, signature });
-                  const redirectTo = url.searchParams.get("redirectTo");
-                  const headers_ = new Headers({ Location: redirect });
-                  for (const { name, value, options } of [
-                    ...cookies,
-                    ...(redirectTo !== null
-                      ? [redirectToParamCookie(providerId, redirectTo)]
-                      : []),
-                  ] as any) {
-                    headers_.append(
-                      "Set-Cookie",
-                      serializeCookie(name, value, options),
-                    );
-                  }
-                  return new Response(null, {
-                    status: 302,
-                    headers: headers_,
-                  });
-                }
-                if (
-                  runtimeRoute.protocol === "oidc" &&
-                  runtimeRoute.rest.length === 1 &&
-                  runtimeRoute.rest[0] === "callback"
-                ) {
-                  const url = new URL(request.url);
-                  const enterpriseId = runtimeRoute.enterpriseId;
-                  const enterprise = await ctx.runQuery(
-                    config.component.public.enterpriseGet,
-                    {
-                      enterpriseId,
-                    },
-                  );
-                  if (enterprise === null) {
-                    throw new AuthError(
-                      "INVALID_PARAMETERS",
-                      "Enterprise not found.",
-                    ).toConvexError();
-                  }
-                  const oidc = await getEnterpriseOidcConfigWithSecret(
-                    ctx,
-                    enterprise,
-                  );
-                  const { providerId, provider, oauthConfig } =
-                    await createEnterpriseOidcRuntime({
-                      rootUrl: requireEnv("CONVEX_SITE_URL"),
-                      enterpriseId: enterprise._id,
-                      oidc,
-                    });
-                  const cookies = getCookies(request);
-                  const maybeRedirectTo = useRedirectToParam(
-                    providerId,
-                    cookies,
-                  );
-                  const destinationUrl = await redirectAbsoluteUrl(config, {
-                    redirectTo: maybeRedirectTo?.redirectTo,
-                  });
-                  const params = url.searchParams;
-                  const result = await Fx.run(
-                    handleOAuthCallback(
-                      providerId,
-                      provider,
-                      oauthConfig,
-                      Object.fromEntries(params.entries()),
-                      cookies,
-                    ),
-                  );
-                  // Apply OIDC extra field mapping if configured
-                  const extraFields = oidc.extraFields as
-                    | Record<string, string>
-                    | undefined;
-                  let profile = result.profile as Record<string, unknown>;
-                  if (extraFields && typeof profile === "object" && profile) {
-                    const extend: Record<string, unknown> = {};
-                    for (const [claimName, fieldName] of Object.entries(
-                      extraFields,
-                    )) {
-                      if (claimName in profile) {
-                        extend[fieldName] = profile[claimName];
-                      }
-                    }
-                    if (Object.keys(extend).length > 0) {
-                      profile = { ...profile, extend };
-                    }
-                  }
-
-                  const verificationCode = await callUserOAuth(ctx, {
-                    provider: providerId,
-                    providerAccountId: result.providerAccountId,
-                    profile,
-                    signature: result.signature,
-                    accountExtend: {
-                      identity: {
-                        protocol: "oidc",
-                        enterpriseId: enterprise._id,
-                        subject: result.providerAccountId,
-                        issuer:
-                          typeof oidc.issuer === "string"
-                            ? oidc.issuer
-                            : undefined,
-                        discoveryUrl:
-                          typeof oidc.discoveryUrl === "string"
-                            ? oidc.discoveryUrl
-                            : undefined,
-                      },
-                    },
-                  });
-                  const headers = new Headers({
-                    Location: setURLSearchParam(
-                      destinationUrl,
-                      "code",
-                      verificationCode,
-                    ),
-                  });
-                  for (const { name, value, options } of result.cookies) {
-                    headers.append(
-                      "Set-Cookie",
-                      serializeCookie(name, value, options as any),
-                    );
-                  }
-                  if (maybeRedirectTo) {
-                    headers.append(
-                      "Set-Cookie",
-                      serializeCookie(
-                        maybeRedirectTo.updatedCookie.name,
-                        maybeRedirectTo.updatedCookie.value,
-                        maybeRedirectTo.updatedCookie.options as any,
-                      ),
-                    );
-                  }
-                  return new Response(null, { status: 302, headers });
-                }
-                if (
-                  runtimeRoute.protocol === "scim" &&
-                  runtimeRoute.rest[0] === "v2"
-                ) {
-                  return await enterpriseScimHandler(ctx, request);
-                }
-                throw new AuthError(
-                  "INVALID_PARAMETERS",
-                  "Invalid enterprise runtime path.",
-                ).toConvexError();
-              }),
-            ),
-          });
-
-          http.route({
-            pathPrefix: `${ENTERPRISE_CONTROL_ROUTE_BASE}/`,
-            method: "POST",
-            handler: httpActionGeneric(
-              convertErrorsToResponse(400, async (ctx, request) => {
-                const runtimePathname = new URL(request.url).pathname;
-                const runtimePrefix = `${ENTERPRISE_CONTROL_ROUTE_BASE}/`;
-                const runtimeParts = runtimePathname.startsWith(runtimePrefix)
-                  ? runtimePathname
-                      .slice(runtimePrefix.length)
-                      .split("/")
-                      .filter(Boolean)
-                  : [];
-                const [runtimeEnterpriseId, protocol, ...rest] = runtimeParts;
-                const runtimeRoute =
-                  runtimeEnterpriseId !== undefined &&
-                  (protocol === "oidc" ||
-                    protocol === "saml" ||
-                    protocol === "scim") &&
-                  rest.length > 0
-                    ? ({
-                        pathname: runtimePathname,
-                        enterpriseId: runtimeEnterpriseId,
-                        protocol,
-                        rest,
-                      } as const)
-                    : null;
-                if (runtimeRoute) {
-                  if (
-                    runtimeRoute.protocol === "saml" &&
-                    runtimeRoute.rest.length === 1 &&
-                    runtimeRoute.rest[0] === "acs"
-                  ) {
-                    return await samlAcsHandler(ctx, request);
-                  }
-                  if (
-                    runtimeRoute.protocol === "saml" &&
-                    runtimeRoute.rest.length === 1 &&
-                    runtimeRoute.rest[0] === "slo"
-                  ) {
-                    return await samlSloHandler(ctx, request);
-                  }
-                  if (
-                    runtimeRoute.protocol === "scim" &&
-                    runtimeRoute.rest[0] === "v2"
-                  ) {
-                    return await enterpriseScimHandler(ctx, request);
-                  }
-                  throw new AuthError(
-                    "INVALID_PARAMETERS",
-                    "Invalid enterprise runtime path.",
-                  ).toConvexError();
-                }
-                throw new AuthError(
-                  "INVALID_PARAMETERS",
-                  "Invalid enterprise runtime path.",
-                ).toConvexError();
-              }),
-            ),
-          });
-
-          http.route({
-            pathPrefix: `${ENTERPRISE_CONTROL_ROUTE_BASE}/`,
-            method: "PUT",
-            handler: httpActionGeneric(
-              convertErrorsToResponse(400, async (ctx, request) => {
-                const runtimePathname = new URL(request.url).pathname;
-                const runtimePrefix = `${ENTERPRISE_CONTROL_ROUTE_BASE}/`;
-                const runtimeParts = runtimePathname.startsWith(runtimePrefix)
-                  ? runtimePathname
-                      .slice(runtimePrefix.length)
-                      .split("/")
-                      .filter(Boolean)
-                  : [];
-                const [runtimeEnterpriseId, protocol, ...rest] = runtimeParts;
-                const runtimeRoute =
-                  runtimeEnterpriseId !== undefined &&
-                  (protocol === "oidc" ||
-                    protocol === "saml" ||
-                    protocol === "scim") &&
-                  rest.length > 0
-                    ? ({
-                        pathname: runtimePathname,
-                        enterpriseId: runtimeEnterpriseId,
-                        protocol,
-                        rest,
-                      } as const)
-                    : null;
-                if (runtimeRoute) {
-                  if (
-                    runtimeRoute.protocol === "scim" &&
-                    runtimeRoute.rest[0] === "v2"
-                  ) {
-                    return await enterpriseScimHandler(ctx, request);
-                  }
-                  throw new AuthError(
-                    "INVALID_PARAMETERS",
-                    "Invalid enterprise runtime path.",
-                  ).toConvexError();
-                }
-                throw new AuthError(
-                  "INVALID_PARAMETERS",
-                  "Invalid enterprise runtime path.",
-                ).toConvexError();
-              }),
-            ),
-          });
-
-          const samlAcsHandler = convertErrorsToResponse(
-            400,
-            async (ctx, request) =>
-              Fx.run(
-                Fx.gen(function* () {
-                  const runtimePathname = new URL(request.url).pathname;
-                  const runtimePrefix = `${ENTERPRISE_CONTROL_ROUTE_BASE}/`;
-                  const runtimeParts = runtimePathname.startsWith(runtimePrefix)
-                    ? runtimePathname
-                        .slice(runtimePrefix.length)
-                        .split("/")
-                        .filter(Boolean)
-                    : [];
-                  const [runtimeEnterpriseId, protocol, ...rest] = runtimeParts;
-                  const runtimeRoute =
-                    runtimeEnterpriseId !== undefined &&
-                    (protocol === "oidc" ||
-                      protocol === "saml" ||
-                      protocol === "scim") &&
-                    rest.length > 0
-                      ? ({
-                          pathname: runtimePathname,
-                          enterpriseId: runtimeEnterpriseId,
-                          protocol,
-                          rest,
-                        } as const)
-                      : null;
-                  yield* Fx.guard(
-                    !runtimeRoute ||
-                      runtimeRoute.protocol !== "saml" ||
-                      runtimeRoute.rest.length !== 1 ||
-                      runtimeRoute.rest[0] !== "acs",
-                    Fx.fail(
-                      new AuthError(
-                        "INVALID_PARAMETERS",
-                        "Invalid enterprise runtime path.",
-                      ).toConvexError(),
-                    ),
-                  );
-
-                  const enterpriseId = runtimeRoute!.enterpriseId;
-                  const { loaded, saml } = yield* Fx.from({
-                    ok: async () => {
-                      const enterprise = await ctx.runQuery(
-                        config.component.public.enterpriseGet,
-                        {
-                          enterpriseId,
-                        },
-                      );
-                      if (enterprise === null) {
-                        throw new AuthError(
-                          "INVALID_PARAMETERS",
-                          "Enterprise not found.",
-                        ).toConvexError();
-                      }
-                      const loaded = {
-                        source: {
-                          kind: "enterprise" as const,
-                          id: enterpriseId,
-                        },
-                        config: enterprise.config,
-                        status: enterprise.status,
-                        enterprise,
-                      };
-                      if (!isEnterpriseSamlSourceActive(loaded)) {
-                        throw new AuthError(
-                          "INVALID_PARAMETERS",
-                          "Enterprise connection is not active.",
-                        ).toConvexError();
-                      }
-                      const saml = getSamlConfig(loaded.config);
-                      if (!saml.idp?.metadataXml) {
-                        throw new AuthError(
-                          "PROVIDER_NOT_CONFIGURED",
-                          "SAML is not configured for this enterprise.",
-                        ).toConvexError();
-                      }
-                      return { loaded, saml };
-                    },
-                    err: (e) => e,
-                  });
-
-                  const enterprise = loaded.enterprise;
-
-                  const parsedResponse = yield* Fx.from({
-                    ok: () =>
-                      parseEnterpriseSamlLoginResponse({
-                        request,
-                        rootUrl: requireEnv("CONVEX_SITE_URL"),
-                        source: { kind: "enterprise", id: enterprise._id },
-                        config: loaded.config,
-                      }),
-                    err: (e) =>
-                      new AuthError(
-                        "OAUTH_PROVIDER_ERROR",
-                        `SAML response parse failed: ${e instanceof Error ? e.message : String(e)}`,
-                      ).toConvexError(),
-                  });
-
-                  yield* Fx.from({
-                    ok: () => {
-                      validateEnterpriseSamlLoginRelayState({
-                        relayState: parsedResponse.relayState,
-                        source: { kind: "enterprise", id: enterprise._id },
-                        inResponseTo:
-                          parsedResponse.parsed.extract?.response?.inResponseTo,
-                      });
-                      return Promise.resolve();
-                    },
-                    err: () =>
-                      new AuthError(
-                        "OAUTH_INVALID_STATE",
-                        "SAML RelayState did not match the pending login request.",
-                      ).toConvexError(),
-                  });
-
-                  // samlAttributes and samlSessionIndex are SAML-specific — they
-                  // must not be stored in the User document. Put them in the
-                  // account extend payload and pass only standard fields to the
-                  // user upsert.
-                  const { samlAttributes, samlSessionIndex, ...userProfile } =
-                    profileFromSamlExtract(
-                      parsedResponse.parsed.extract,
-                      saml.attributeMapping,
-                    );
-                  const profile = userProfile as Record<string, unknown> & {
-                    id: string;
-                  };
-
-                  const maybeRedirectTo = useRedirectToParam(
-                    enterpriseSamlProviderId(enterprise._id),
-                    getCookies(request),
-                  );
-
-                  const verificationCode = yield* Fx.from({
-                    ok: () =>
-                      callUserOAuth(ctx, {
-                        provider: enterpriseSamlProviderId(enterprise._id),
-                        providerAccountId: profile.id,
-                        profile,
-                        signature: parsedResponse.relayState.signature,
-                        accountExtend: {
-                          identity: {
-                            protocol: "saml",
-                            enterpriseId: enterprise._id,
-                            subject: profile.id,
-                            entityId:
-                              typeof saml.entityId === "string"
-                                ? saml.entityId
-                                : undefined,
-                          },
-                          saml: {
-                            attributes: samlAttributes,
-                            sessionIndex: samlSessionIndex,
-                          },
-                        },
-                      }),
-                    err: (e) => e,
-                  });
-
-                  const destinationUrl = yield* Fx.from({
-                    ok: () =>
-                      redirectAbsoluteUrl(config, {
-                        redirectTo:
-                          maybeRedirectTo?.redirectTo ??
-                          (typeof parsedResponse.relayState.redirectTo ===
-                          "string"
-                            ? parsedResponse.relayState.redirectTo
-                            : undefined),
-                      }),
-                    err: (e) => e,
-                  });
-
-                  const vurl = setURLSearchParam(
-                    destinationUrl,
-                    "code",
-                    verificationCode,
-                  );
-                  const vheaders = new Headers({ Location: vurl });
-                  vheaders.set("Cache-Control", "must-revalidate");
-                  for (const { name, value, options } of maybeRedirectTo !==
-                  null
-                    ? [maybeRedirectTo.updatedCookie]
-                    : []) {
-                    vheaders.append(
-                      "Set-Cookie",
-                      serializeCookie(name, value, options),
-                    );
-                  }
-                  return new Response(null, { status: 302, headers: vheaders });
-                }).pipe(Fx.recover((e) => Fx.fatal(e))),
-              ),
-          );
-
-          const samlSloHandler = convertErrorsToResponse(
-            400,
-            async (ctx, request) => {
-              const runtimePathname = new URL(request.url).pathname;
-              const runtimePrefix = `${ENTERPRISE_CONTROL_ROUTE_BASE}/`;
-              const runtimeParts = runtimePathname.startsWith(runtimePrefix)
-                ? runtimePathname
-                    .slice(runtimePrefix.length)
-                    .split("/")
-                    .filter(Boolean)
-                : [];
-              const [runtimeEnterpriseId, protocol, ...rest] = runtimeParts;
-              const runtimeRoute =
-                runtimeEnterpriseId !== undefined &&
-                (protocol === "oidc" ||
-                  protocol === "saml" ||
-                  protocol === "scim") &&
-                rest.length > 0
-                  ? ({
-                      pathname: runtimePathname,
-                      enterpriseId: runtimeEnterpriseId,
-                      protocol,
-                      rest,
-                    } as const)
-                  : null;
-              if (
-                !runtimeRoute ||
-                runtimeRoute.protocol !== "saml" ||
-                runtimeRoute.rest.length !== 1 ||
-                runtimeRoute.rest[0] !== "slo"
-              ) {
-                throw new AuthError(
-                  "INVALID_PARAMETERS",
-                  "Invalid enterprise runtime path.",
-                ).toConvexError();
-              }
-              const enterpriseId = runtimeRoute.enterpriseId;
-              const enterpriseDoc = await ctx.runQuery(
-                config.component.public.enterpriseGet,
-                {
-                  enterpriseId,
-                },
-              );
-              if (enterpriseDoc === null) {
-                throw new AuthError(
-                  "INVALID_PARAMETERS",
-                  "Enterprise not found.",
-                ).toConvexError();
-              }
-              const loaded = {
-                source: { kind: "enterprise" as const, id: enterpriseId },
-                config: enterpriseDoc.config,
-                status: enterpriseDoc.status,
-                enterprise: enterpriseDoc,
-              };
-              if (!isEnterpriseSamlSourceActive(loaded)) {
-                throw new AuthError(
-                  "INVALID_PARAMETERS",
-                  "Enterprise connection is not active.",
-                ).toConvexError();
-              }
-              const saml = getSamlConfig(loaded.config);
-              if (!saml.idp?.metadataXml) {
-                throw new AuthError(
-                  "PROVIDER_NOT_CONFIGURED",
-                  "SAML is not configured for this enterprise.",
-                ).toConvexError();
-              }
-              const enterprise = loaded.enterprise;
-              const parsedMessage = await parseEnterpriseSamlLogoutMessage({
-                request,
-                rootUrl: requireEnv("CONVEX_SITE_URL"),
-                source: { kind: "enterprise", id: enterprise._id },
-                config: loaded.config,
-              });
-              if (parsedMessage.hasSamlRequest && parsedMessage.parsedRequest) {
-                const responseContext = (
-                  parsedMessage.runtime.sp as any
-                ).createLogoutResponse(
-                  parsedMessage.runtime.idp as any,
-                  parsedMessage.parsedRequest.extract,
-                  parsedMessage.binding as any,
-                  parsedMessage.relayState ?? "",
-                ) as any;
-                if (parsedMessage.binding === "redirect") {
-                  return new Response(null, {
-                    status: 302,
-                    headers: { Location: responseContext.context },
-                  });
-                }
-                return createSamlPostBindingResponse({
-                  endpoint: responseContext.entityEndpoint,
-                  parameter: "SAMLResponse",
-                  value: responseContext.context,
-                  relayState: parsedMessage.relayState,
+                  err: (e) =>
+                    new AuthError(
+                      "OAUTH_PROVIDER_ERROR",
+                      `SAML response parse failed: ${e instanceof Error ? e.message : String(e)}`,
+                    ).toConvexError(),
                 });
-              }
-              if (parsedMessage.hasSamlResponse) {
-                return new Response(null, { status: 204 });
-              }
+
+                yield* Fx.from({
+                  ok: () => {
+                    validateEnterpriseSamlLoginRelayState({
+                      relayState: parsedResponse.relayState,
+                      source: { kind: "enterprise", id: enterprise._id },
+                      inResponseTo:
+                        parsedResponse.parsed.extract?.response?.inResponseTo,
+                    });
+                    return Promise.resolve();
+                  },
+                  err: () =>
+                    new AuthError(
+                      "OAUTH_INVALID_STATE",
+                      "SAML RelayState did not match the pending login request.",
+                    ).toConvexError(),
+                });
+
+                const { samlAttributes, samlSessionIndex, ...userProfile } =
+                  profileFromSamlExtract(
+                    parsedResponse.parsed.extract,
+                    saml.attributeMapping,
+                  );
+                const profile = userProfile as Record<string, unknown> & {
+                  id: string;
+                };
+
+                const maybeRedirectTo = useRedirectToParam(
+                  enterpriseSamlProviderId(enterprise._id),
+                  getCookies(request),
+                );
+
+                const verificationCode = yield* Fx.from({
+                  ok: () =>
+                    callUserOAuth(ctx, {
+                      provider: enterpriseSamlProviderId(enterprise._id),
+                      providerAccountId: profile.id,
+                      profile,
+                      signature: parsedResponse.relayState.signature,
+                      accountExtend: {
+                        identity: {
+                          protocol: "saml",
+                          enterpriseId: enterprise._id,
+                          subject: profile.id,
+                          entityId:
+                            typeof saml.entityId === "string"
+                              ? saml.entityId
+                              : undefined,
+                        },
+                        saml: {
+                          attributes: samlAttributes,
+                          sessionIndex: samlSessionIndex,
+                        },
+                      },
+                    }),
+                  err: (e) => e,
+                });
+
+                const destinationUrl = yield* Fx.from({
+                  ok: () =>
+                    redirectAbsoluteUrl(config, {
+                      redirectTo:
+                        maybeRedirectTo?.redirectTo ??
+                        (typeof parsedResponse.relayState.redirectTo ===
+                        "string"
+                          ? parsedResponse.relayState.redirectTo
+                          : undefined),
+                    }),
+                  err: (e) => e,
+                });
+
+                const vurl = setURLSearchParam(
+                  destinationUrl,
+                  "code",
+                  verificationCode,
+                );
+                const vheaders = new Headers({ Location: vurl });
+                vheaders.set("Cache-Control", "must-revalidate");
+                for (const { name, value, options } of maybeRedirectTo !== null
+                  ? [maybeRedirectTo.updatedCookie]
+                  : []) {
+                  vheaders.append(
+                    "Set-Cookie",
+                    serializeCookie(name, value, options),
+                  );
+                }
+                return new Response(null, { status: 302, headers: vheaders });
+              }).pipe(Fx.recover((e) => Fx.fatal(e))),
+            );
+
+          const handleSamlSlo = async (
+            ctx: GenericActionCtx<any>,
+            request: Request,
+            runtimeRoute: SSORuntimeRoute,
+          ) => {
+            if (
+              runtimeRoute.protocol !== "saml" ||
+              runtimeRoute.rest.length !== 1 ||
+              runtimeRoute.rest[0] !== "slo"
+            ) {
               throw new AuthError(
                 "INVALID_PARAMETERS",
-                "Missing SAML logout payload.",
+                "Invalid enterprise runtime path.",
               ).toConvexError();
-            },
-          );
+            }
+            const { loaded, enterprise } =
+              await loadActiveEnterpriseSamlOrThrow(
+                ctx,
+                runtimeRoute.enterpriseId,
+              );
+            const parsedMessage = await parseEnterpriseSamlLogoutMessage({
+              request,
+              rootUrl: requireEnv("CONVEX_SITE_URL"),
+              source: { kind: "enterprise", id: enterprise._id },
+              config: loaded.config,
+            });
+            if (parsedMessage.hasSamlRequest && parsedMessage.parsedRequest) {
+              const responseContext = (
+                parsedMessage.runtime.sp as any
+              ).createLogoutResponse(
+                parsedMessage.runtime.idp as any,
+                parsedMessage.parsedRequest.extract,
+                parsedMessage.binding as any,
+                parsedMessage.relayState ?? "",
+              ) as any;
+              if (parsedMessage.binding === "redirect") {
+                return new Response(null, {
+                  status: 302,
+                  headers: { Location: responseContext.context },
+                });
+              }
+              return createSamlPostBindingResponse({
+                endpoint: responseContext.entityEndpoint,
+                parameter: "SAMLResponse",
+                value: responseContext.context,
+                relayState: parsedMessage.relayState,
+              });
+            }
+            if (parsedMessage.hasSamlResponse) {
+              return new Response(null, { status: 204 });
+            }
+            throw new AuthError(
+              "INVALID_PARAMETERS",
+              "Missing SAML logout payload.",
+            ).toConvexError();
+          };
 
-          const enterpriseScimHandler = async (
+          const handleScimRequest = async (
             ctx: GenericActionCtx<any>,
             request: Request,
           ) => {
@@ -2201,210 +1605,386 @@ export function Auth(config_: ConvexAuthConfig) {
             }
           };
 
-          for (const method of ["PATCH", "DELETE"] as const) {
-            http.route({
-              pathPrefix: "/api/auth/sso/",
-              method,
-              handler: httpActionGeneric(async (ctx, request) => {
-                const runtimePathname = new URL(request.url).pathname;
-                const runtimePrefix = `${ENTERPRISE_CONTROL_ROUTE_BASE}/`;
-                const runtimeParts = runtimePathname.startsWith(runtimePrefix)
-                  ? runtimePathname
-                      .slice(runtimePrefix.length)
-                      .split("/")
-                      .filter(Boolean)
+          addSSORoutes(http, {
+            routeBase: ENTERPRISE_CONTROL_ROUTE_BASE,
+            convertErrorsToResponse,
+            handleSamlMetadata: async (ctx, _request, runtimeRoute) => {
+              const { loaded } = await loadActiveEnterpriseSamlOrThrow(
+                ctx,
+                runtimeRoute.enterpriseId,
+              );
+              return new Response(
+                createEnterpriseSamlMetadataXml({
+                  rootUrl: requireEnv("CONVEX_SITE_URL"),
+                  source: loaded.source,
+                  config: loaded.config,
+                }),
+                {
+                  status: 200,
+                  headers: { "Content-Type": "application/xml" },
+                },
+              );
+            },
+            handleSamlSignIn: async (ctx, request, runtimeRoute) => {
+              const url = new URL(request.url);
+              const verifier = url.searchParams.get("code");
+              if (!verifier) {
+                throw new AuthError("OAUTH_MISSING_VERIFIER").toConvexError();
+              }
+              const { loaded, enterprise } =
+                await loadActiveEnterpriseSamlOrThrow(
+                  ctx,
+                  runtimeRoute.enterpriseId,
+                );
+              const state = generateRandomString(24, INVITE_TOKEN_ALPHABET);
+              const signInRequest = createEnterpriseSamlSignInRequest({
+                rootUrl: requireEnv("CONVEX_SITE_URL"),
+                source: { kind: "enterprise", id: enterprise._id },
+                config: loaded.config,
+                state,
+                signature: `saml ${enterprise._id} pending ${state}`,
+                redirectTo: url.searchParams.get("redirectTo") ?? undefined,
+              });
+              const signature = `saml ${enterprise._id} ${signInRequest.requestId} ${state}`;
+              await callVerifierSignature(ctx, { verifier, signature });
+              const redirectTo = url.searchParams.get("redirectTo");
+              const redirectCookies =
+                redirectTo !== null
+                  ? [
+                      redirectToParamCookie(
+                        enterpriseSamlProviderId(enterprise._id),
+                        redirectTo,
+                      ),
+                    ]
                   : [];
-                const [runtimeEnterpriseId, protocol, ...rest] = runtimeParts;
-                const runtimeRoute =
-                  runtimeEnterpriseId !== undefined &&
-                  (protocol === "oidc" ||
-                    protocol === "saml" ||
-                    protocol === "scim") &&
-                  rest.length > 0
-                    ? ({
-                        pathname: runtimePathname,
-                        enterpriseId: runtimeEnterpriseId,
-                        protocol,
-                        rest,
-                      } as const)
-                    : null;
-                if (
-                  !runtimeRoute ||
-                  runtimeRoute.protocol !== "scim" ||
-                  runtimeRoute.rest[0] !== "v2"
-                ) {
-                  return scimError(404, "notFound", "SCIM resource not found.");
+              const relayState = encodeEnterpriseSamlRelayState({
+                source: { kind: "enterprise", id: enterprise._id },
+                signature,
+                requestId: signInRequest.requestId,
+                state,
+                redirectTo: url.searchParams.get("redirectTo") ?? undefined,
+              });
+              if (
+                signInRequest.binding === "redirect" &&
+                signInRequest.redirectUrl
+              ) {
+                const redirectUrl = new URL(signInRequest.redirectUrl);
+                redirectUrl.searchParams.set("RelayState", relayState);
+                const headers = new Headers({
+                  Location: redirectUrl.toString(),
+                });
+                for (const { name, value, options } of redirectCookies as any) {
+                  headers.append(
+                    "Set-Cookie",
+                    serializeCookie(name, value, options),
+                  );
                 }
-                return await enterpriseScimHandler(ctx, request);
-              }),
-            });
-          }
+                return new Response(null, { status: 302, headers });
+              }
+              const response = createSamlPostBindingResponse({
+                endpoint: signInRequest.post!.endpoint,
+                parameter: "SAMLRequest",
+                value: signInRequest.post!.value,
+                relayState,
+              });
+              for (const { name, value, options } of redirectCookies as any) {
+                response.headers.append(
+                  "Set-Cookie",
+                  serializeCookie(name, value, options),
+                );
+              }
+              return response;
+            },
+            handleOidcSignIn: async (ctx, request, runtimeRoute) => {
+              const url = new URL(request.url);
+              const verifier = url.searchParams.get("code");
+              if (!verifier) {
+                throw new AuthError("OAUTH_MISSING_VERIFIER").toConvexError();
+              }
+              const { enterprise, oidc } = await loadEnterpriseOidcOrThrow(
+                ctx,
+                runtimeRoute.enterpriseId,
+              );
+              const { providerId, provider, oauthConfig } =
+                await createEnterpriseOidcRuntime({
+                  rootUrl: requireEnv("CONVEX_SITE_URL"),
+                  enterpriseId: enterprise._id,
+                  oidc,
+                });
+              const { redirect, cookies, signature } =
+                await createOAuthAuthorizationURL(
+                  providerId,
+                  provider,
+                  oauthConfig,
+                );
+              await callVerifierSignature(ctx, { verifier, signature });
+              const redirectTo = url.searchParams.get("redirectTo");
+              const headers_ = new Headers({ Location: redirect });
+              for (const { name, value, options } of [
+                ...cookies,
+                ...(redirectTo !== null
+                  ? [redirectToParamCookie(providerId, redirectTo)]
+                  : []),
+              ] as any) {
+                headers_.append(
+                  "Set-Cookie",
+                  serializeCookie(name, value, options),
+                );
+              }
+              return new Response(null, {
+                status: 302,
+                headers: headers_,
+              });
+            },
+            handleOidcCallback: async (ctx, request, runtimeRoute) => {
+              const url = new URL(request.url);
+              const { enterprise, oidc } = await loadEnterpriseOidcOrThrow(
+                ctx,
+                runtimeRoute.enterpriseId,
+              );
+              const { providerId, provider, oauthConfig } =
+                await createEnterpriseOidcRuntime({
+                  rootUrl: requireEnv("CONVEX_SITE_URL"),
+                  enterpriseId: enterprise._id,
+                  oidc,
+                });
+              const cookies = getCookies(request);
+              const maybeRedirectTo = useRedirectToParam(providerId, cookies);
+              const destinationUrl = await redirectAbsoluteUrl(config, {
+                redirectTo: maybeRedirectTo?.redirectTo,
+              });
+              const params = url.searchParams;
+              const result = await Fx.run(
+                handleOAuthCallback(
+                  providerId,
+                  provider,
+                  oauthConfig,
+                  Object.fromEntries(params.entries()),
+                  cookies,
+                ),
+              );
+              const extraFields = oidc.extraFields as
+                | Record<string, string>
+                | undefined;
+              let profile = result.profile as Record<string, unknown>;
+              if (extraFields && typeof profile === "object" && profile) {
+                const extend: Record<string, unknown> = {};
+                for (const [claimName, fieldName] of Object.entries(
+                  extraFields,
+                )) {
+                  if (claimName in profile) {
+                    extend[fieldName] = profile[claimName];
+                  }
+                }
+                if (Object.keys(extend).length > 0) {
+                  profile = { ...profile, extend };
+                }
+              }
+
+              const verificationCode = await callUserOAuth(ctx, {
+                provider: providerId,
+                providerAccountId: result.providerAccountId,
+                profile,
+                signature: result.signature,
+                accountExtend: {
+                  identity: {
+                    protocol: "oidc",
+                    enterpriseId: enterprise._id,
+                    subject: result.providerAccountId,
+                    issuer:
+                      typeof oidc.issuer === "string" ? oidc.issuer : undefined,
+                    discoveryUrl:
+                      typeof oidc.discoveryUrl === "string"
+                        ? oidc.discoveryUrl
+                        : undefined,
+                  },
+                },
+              });
+              const headers = new Headers({
+                Location: setURLSearchParam(
+                  destinationUrl,
+                  "code",
+                  verificationCode,
+                ),
+              });
+              for (const { name, value, options } of result.cookies) {
+                headers.append(
+                  "Set-Cookie",
+                  serializeCookie(name, value, options as any),
+                );
+              }
+              if (maybeRedirectTo) {
+                headers.append(
+                  "Set-Cookie",
+                  serializeCookie(
+                    maybeRedirectTo.updatedCookie.name,
+                    maybeRedirectTo.updatedCookie.value,
+                    maybeRedirectTo.updatedCookie.options as any,
+                  ),
+                );
+              }
+              return new Response(null, { status: 302, headers });
+            },
+            handleSamlAcs,
+            handleSamlSlo,
+            handleScimRequest,
+            scimError,
+          });
         } // end if (hasSSO)
 
         if (hasOAuth) {
-          http.route({
-            pathPrefix: "/api/auth/signin/",
-            method: "GET",
-            handler: httpActionGeneric(
-              convertErrorsToResponse(400, async (ctx, request) => {
-                const url = new URL(request.url);
-                const pathParts = url.pathname.split("/");
-                const providerId = pathParts.at(-1)!;
-                if (providerId === null) {
-                  throw new AuthError("OAUTH_MISSING_PROVIDER").toConvexError();
-                }
-                const verifier = url.searchParams.get("code");
-                if (verifier === null) {
-                  throw new AuthError("OAUTH_MISSING_VERIFIER").toConvexError();
-                }
-                const provider = getProviderOrThrow(providerId);
+          addAuthRoutes(http, {
+            handleSignIn: convertErrorsToResponse(400, async (ctx, request) => {
+              const url = new URL(request.url);
+              const pathParts = url.pathname.split("/");
+              const providerId = pathParts.at(-1)!;
+              if (providerId === null) {
+                throw new AuthError("OAUTH_MISSING_PROVIDER").toConvexError();
+              }
+              const verifier = url.searchParams.get("code");
+              if (verifier === null) {
+                throw new AuthError("OAUTH_MISSING_VERIFIER").toConvexError();
+              }
+              const provider = getProviderOrThrow(providerId);
 
-                const oauthConfig = provider as OAuthMaterializedConfig;
-                const { redirect, cookies, signature } =
-                  await createOAuthAuthorizationURL(
-                    providerId,
-                    oauthConfig.provider,
-                    oauthConfig,
-                  );
+              const oauthConfig = provider as OAuthMaterializedConfig;
+              const { redirect, cookies, signature } =
+                await createOAuthAuthorizationURL(
+                  providerId,
+                  oauthConfig.provider,
+                  oauthConfig,
+                );
 
-                await callVerifierSignature(ctx, {
-                  verifier,
-                  signature,
-                });
-
-                const redirectTo = url.searchParams.get("redirectTo");
-                if (redirectTo !== null) {
-                  cookies.push(redirectToParamCookie(providerId, redirectTo));
-                }
-
-                const headers = new Headers({ Location: redirect });
-                for (const { name, value, options } of cookies) {
-                  headers.append(
-                    "Set-Cookie",
-                    serializeCookie(name, value, options as any),
-                  );
-                }
-
-                return new Response(null, { status: 302, headers });
-              }),
-            ),
-          });
-
-          const callbackAction = httpActionGeneric(async (ctx, request) => {
-            const url = new URL(request.url);
-            const providerId = new URL(request.url).pathname.split("/").at(-1);
-            if (!providerId) {
-              throw new AuthError("OAUTH_MISSING_PROVIDER").toConvexError();
-            }
-            logWithLevel(
-              LOG_LEVELS.DEBUG,
-              "Handling OAuth callback for provider:",
-              providerId,
-            );
-            const provider = getProviderOrThrow(providerId);
-
-            const cookies = getCookies(request);
-
-            const maybeRedirectTo = useRedirectToParam(provider.id, cookies);
-
-            const destinationUrl = await redirectAbsoluteUrl(config, {
-              redirectTo: maybeRedirectTo?.redirectTo,
-            });
-
-            const params = url.searchParams;
-
-            // Handle OAuth providers that use formData (such as Apple)
-            if (
-              request.headers.get("Content-Type") ===
-              "application/x-www-form-urlencoded"
-            ) {
-              const formData = await request.formData();
-              formData.forEach((value, key) => {
-                if (typeof value === "string") {
-                  params.append(key, value);
-                }
+              await callVerifierSignature(ctx, {
+                verifier,
+                signature,
               });
-            }
 
-            return Fx.run(
-              Fx.from({
-                ok: async () => {
-                  const oauthConfig = provider as OAuthMaterializedConfig;
-                  const result = await Fx.run(
-                    handleOAuthCallback(
-                      providerId,
-                      oauthConfig.provider,
-                      oauthConfig,
-                      Object.fromEntries(params.entries()),
-                      cookies,
-                    ),
-                  );
-                  const oauthCookies = result.cookies;
-                  const { id: profileId, ...profileData } = result.profile;
-                  const { signature } = result;
+              const redirectTo = url.searchParams.get("redirectTo");
+              if (redirectTo !== null) {
+                cookies.push(redirectToParamCookie(providerId, redirectTo));
+              }
 
-                  const verificationCode = await callUserOAuth(ctx, {
-                    provider: providerId,
-                    providerAccountId: profileId,
-                    profile: profileData,
-                    signature,
-                  });
+              const headers = new Headers({ Location: redirect });
+              for (const { name, value, options } of cookies) {
+                headers.append(
+                  "Set-Cookie",
+                  serializeCookie(name, value, options as any),
+                );
+              }
 
-                  const redirUrl = setURLSearchParam(
-                    destinationUrl,
-                    "code",
-                    verificationCode,
-                  );
-                  const redirHeaders = new Headers({ Location: redirUrl });
-                  redirHeaders.set("Cache-Control", "must-revalidate");
-                  for (const { name, value, options } of [
-                    ...oauthCookies,
-                    ...(maybeRedirectTo !== null
+              return new Response(null, { status: 302, headers });
+            }),
+            handleCallback: async (ctx, request) => {
+              const url = new URL(request.url);
+              const providerId = new URL(request.url).pathname
+                .split("/")
+                .at(-1);
+              if (!providerId) {
+                throw new AuthError("OAUTH_MISSING_PROVIDER").toConvexError();
+              }
+              logWithLevel(
+                LOG_LEVELS.DEBUG,
+                "Handling OAuth callback for provider:",
+                providerId,
+              );
+              const provider = getProviderOrThrow(providerId);
+
+              const cookies = getCookies(request);
+
+              const maybeRedirectTo = useRedirectToParam(provider.id, cookies);
+
+              const destinationUrl = await redirectAbsoluteUrl(config, {
+                redirectTo: maybeRedirectTo?.redirectTo,
+              });
+
+              const params = url.searchParams;
+
+              if (
+                request.headers.get("Content-Type") ===
+                "application/x-www-form-urlencoded"
+              ) {
+                const formData = await request.formData();
+                formData.forEach((value, key) => {
+                  if (typeof value === "string") {
+                    params.append(key, value);
+                  }
+                });
+              }
+
+              return Fx.run(
+                Fx.from({
+                  ok: async () => {
+                    const oauthConfig = provider as OAuthMaterializedConfig;
+                    const result = await Fx.run(
+                      handleOAuthCallback(
+                        providerId,
+                        oauthConfig.provider,
+                        oauthConfig,
+                        Object.fromEntries(params.entries()),
+                        cookies,
+                      ),
+                    );
+                    const oauthCookies = result.cookies;
+                    const { id: profileId, ...profileData } = result.profile;
+                    const { signature } = result;
+
+                    const verificationCode = await callUserOAuth(ctx, {
+                      provider: providerId,
+                      providerAccountId: profileId,
+                      profile: profileData,
+                      signature,
+                    });
+
+                    const redirUrl = setURLSearchParam(
+                      destinationUrl,
+                      "code",
+                      verificationCode,
+                    );
+                    const redirHeaders = new Headers({ Location: redirUrl });
+                    redirHeaders.set("Cache-Control", "must-revalidate");
+                    for (const { name, value, options } of [
+                      ...oauthCookies,
+                      ...(maybeRedirectTo !== null
+                        ? [maybeRedirectTo.updatedCookie]
+                        : []),
+                    ] as any) {
+                      redirHeaders.append(
+                        "Set-Cookie",
+                        serializeCookie(name, value, options),
+                      );
+                    }
+                    return new Response(null, {
+                      status: 302,
+                      headers: redirHeaders,
+                    });
+                  },
+                  err: (error) => error,
+                }).pipe(
+                  Fx.recover((error) => {
+                    logError(error);
+                    const respHeaders = new Headers({
+                      Location: destinationUrl,
+                    });
+                    for (const { name, value, options } of maybeRedirectTo !==
+                    null
                       ? [maybeRedirectTo.updatedCookie]
-                      : []),
-                  ] as any) {
-                    redirHeaders.append(
-                      "Set-Cookie",
-                      serializeCookie(name, value, options),
+                      : []) {
+                      respHeaders.append(
+                        "Set-Cookie",
+                        serializeCookie(name, value, options),
+                      );
+                    }
+                    return Fx.succeed(
+                      new Response(null, {
+                        status: 302,
+                        headers: respHeaders,
+                      }),
                     );
-                  }
-                  return new Response(null, {
-                    status: 302,
-                    headers: redirHeaders,
-                  });
-                },
-                err: (error) => error,
-              }).pipe(
-                Fx.recover((error) => {
-                  logError(error);
-                  const respHeaders = new Headers({ Location: destinationUrl });
-                  for (const { name, value, options } of maybeRedirectTo !==
-                  null
-                    ? [maybeRedirectTo.updatedCookie]
-                    : []) {
-                    respHeaders.append(
-                      "Set-Cookie",
-                      serializeCookie(name, value, options),
-                    );
-                  }
-                  return Fx.succeed(
-                    new Response(null, { status: 302, headers: respHeaders }),
-                  );
-                }),
-              ),
-            );
-          });
-
-          http.route({
-            pathPrefix: "/api/auth/callback/",
-            method: "GET",
-            handler: callbackAction,
-          });
-
-          http.route({
-            pathPrefix: "/api/auth/callback/",
-            method: "POST",
-            handler: callbackAction,
+                  }),
+                ),
+              );
+            },
           });
         }
       },
@@ -2433,165 +2013,7 @@ export function Auth(config_: ConvexAuthConfig) {
        * @param options.scope - Optional scope check; returns 403 if the key lacks permission.
        * @param options.cors - CORS config; defaults to permissive (`*`).
        */
-      action: (
-        handler: (
-          ctx: GenericActionCtx<GenericDataModel> & HttpKeyContext,
-          request: Request,
-        ) => Promise<Response | Record<string, unknown>>,
-        options?: {
-          scope?: { resource: string; action: string };
-          cors?: CorsConfig;
-        },
-      ) => {
-        const corsConfig = options?.cors ?? {};
-        const corsHeaders: Record<string, string> = {
-          "Access-Control-Allow-Origin": corsConfig.origin ?? "*",
-          "Access-Control-Allow-Methods":
-            corsConfig.methods ?? "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-          "Access-Control-Allow-Headers":
-            corsConfig.headers ?? "Content-Type,Authorization",
-        };
-
-        return httpActionGeneric(async (genericCtx, request) => {
-          return Fx.run(
-            Fx.from({
-              ok: async () => {
-                // 1. Extract Bearer token
-                const authHeader = request.headers.get("Authorization");
-                if (!authHeader?.startsWith("Bearer ")) {
-                  return new Response(
-                    JSON.stringify({
-                      error:
-                        "Missing or malformed Authorization: Bearer header.",
-                      code: "MISSING_BEARER_TOKEN",
-                    }),
-                    {
-                      status: 401,
-                      headers: {
-                        ...corsHeaders,
-                        "Content-Type": "application/json",
-                      },
-                    },
-                  );
-                }
-                const rawKey = authHeader.slice(7);
-
-                // 2. Verify API key — auth errors become JSON error responses
-                const keyResult = await Fx.run(
-                  Fx.from({
-                    ok: () => auth.key.verify(genericCtx, rawKey),
-                    err: (error) => error,
-                  }).pipe(
-                    Fx.fold({
-                      ok: (result) => ({ ok: true, value: result }) as const,
-                      err: (error) => ({ ok: false, error }) as const,
-                    }),
-                  ),
-                );
-
-                if (!keyResult.ok) {
-                  if (isAuthError(keyResult.error)) {
-                    const { code, message } = keyResult.error.data as {
-                      code: string;
-                      message: string;
-                    };
-                    return new Response(
-                      JSON.stringify({ error: message, code }),
-                      {
-                        status: 403,
-                        headers: {
-                          ...corsHeaders,
-                          "Content-Type": "application/json",
-                        },
-                      },
-                    );
-                  }
-                  throw keyResult.error;
-                }
-
-                // 3. Optional scope check
-                if (options?.scope) {
-                  if (
-                    !keyResult.value.scopes.can(
-                      options.scope.resource,
-                      options.scope.action,
-                    )
-                  ) {
-                    return new Response(
-                      JSON.stringify({
-                        error:
-                          "This API key does not have the required permissions.",
-                        code: "SCOPE_CHECK_FAILED",
-                      }),
-                      {
-                        status: 403,
-                        headers: {
-                          ...corsHeaders,
-                          "Content-Type": "application/json",
-                        },
-                      },
-                    );
-                  }
-                }
-
-                // 4. Enrich context with key info
-                const enrichedCtx = Object.assign(genericCtx, {
-                  key: {
-                    userId: keyResult.value.userId,
-                    keyId: keyResult.value.keyId,
-                    scopes: keyResult.value.scopes,
-                  },
-                });
-
-                // 5. Call handler
-                const result = await handler(enrichedCtx, request);
-
-                // 6. Auto-wrap plain objects as JSON responses
-                if (result instanceof Response) {
-                  // Merge CORS headers into existing response
-                  const headers = new Headers(result.headers);
-                  for (const [k, val] of Object.entries(corsHeaders)) {
-                    if (!headers.has(k)) headers.set(k, val);
-                  }
-                  return new Response(result.body, {
-                    status: result.status,
-                    statusText: result.statusText,
-                    headers,
-                  });
-                }
-
-                return new Response(JSON.stringify(result), {
-                  status: 200,
-                  headers: {
-                    ...corsHeaders,
-                    "Content-Type": "application/json",
-                  },
-                });
-              },
-              err: (error) => error,
-            }).pipe(
-              Fx.recover((error) => {
-                logError(error);
-                return Fx.succeed(
-                  new Response(
-                    JSON.stringify({
-                      error: "An unexpected error occurred.",
-                      code: "INTERNAL_ERROR",
-                    }),
-                    {
-                      status: 500,
-                      headers: {
-                        ...corsHeaders,
-                        "Content-Type": "application/json",
-                      },
-                    },
-                  ),
-                );
-              }),
-            ),
-          );
-        });
-      },
+      action: createHttpAction(auth),
 
       /**
        * Register a Bearer-authenticated route **and** its OPTIONS preflight
@@ -2619,47 +2041,7 @@ export function Auth(config_: ConvexAuthConfig) {
        * @param routeConfig.scope - Optional scope check; returns 403 if the key lacks permission.
        * @param routeConfig.cors - CORS config; defaults to permissive (`*`).
        */
-      route: (
-        http: HttpRouter,
-        routeConfig: {
-          path: string;
-          method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-          handler: (
-            ctx: GenericActionCtx<GenericDataModel> & HttpKeyContext,
-            request: Request,
-          ) => Promise<Response | Record<string, unknown>>;
-          scope?: { resource: string; action: string };
-          cors?: CorsConfig;
-        },
-      ) => {
-        const corsConfig = routeConfig.cors ?? {};
-        const corsHeaders: Record<string, string> = {
-          "Access-Control-Allow-Origin": corsConfig.origin ?? "*",
-          "Access-Control-Allow-Methods":
-            corsConfig.methods ?? "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-          "Access-Control-Allow-Headers":
-            corsConfig.headers ?? "Content-Type,Authorization",
-        };
-
-        // Register OPTIONS preflight
-        http.route({
-          path: routeConfig.path,
-          method: "OPTIONS",
-          handler: httpActionGeneric(async () => {
-            return new Response(null, { status: 204, headers: corsHeaders });
-          }),
-        });
-
-        // Register the main route with Bearer auth wrapping
-        http.route({
-          path: routeConfig.path,
-          method: routeConfig.method,
-          handler: auth.http.action(routeConfig.handler, {
-            scope: routeConfig.scope,
-            cors: routeConfig.cors,
-          }),
-        });
-      },
+      route: createHttpRoute(createHttpAction(auth)),
     },
   };
 
@@ -2783,54 +2165,4 @@ export function Auth(config_: ConvexAuthConfig) {
       },
     }),
   };
-}
-
-function convertErrorsToResponse(
-  errorStatusCode: number,
-  action: (ctx: GenericActionCtx<any>, request: Request) => Promise<Response>,
-) {
-  return async (ctx: GenericActionCtx<any>, request: Request) => {
-    return Fx.run(
-      Fx.from({
-        ok: () => action(ctx, request),
-        err: (error) => error,
-      }).pipe(
-        Fx.recover((error) => {
-          if (isAuthError(error)) {
-            return Fx.succeed(
-              new Response(
-                JSON.stringify({
-                  code: error.data.code,
-                  message: error.data.message,
-                }),
-                {
-                  status: errorStatusCode,
-                  headers: { "Content-Type": "application/json" },
-                },
-              ),
-            );
-          } else if (error instanceof ConvexError) {
-            return Fx.succeed(
-              new Response(null, {
-                status: errorStatusCode,
-                statusText:
-                  typeof error.data === "string" ? error.data : "Error",
-              }),
-            );
-          } else {
-            logError(error);
-            return Fx.succeed(
-              new Response(null, {
-                status: 500,
-                statusText: "Internal Server Error",
-              }),
-            );
-          }
-        }),
-      ),
-    );
-  };
-}
-function getCookies(request: Request): Record<string, string | undefined> {
-  return parseCookies(request.headers.get("Cookie") ?? "");
 }
