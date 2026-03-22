@@ -231,6 +231,65 @@ export function createSsoDomain(deps: any) {
           },
         );
       },
+      validate: async (ctx: ComponentReadCtx, enterpriseId: string) => {
+        const enterprise = await ctx.runQuery(
+          config.component.public.enterpriseGet,
+          { enterpriseId },
+        );
+        if (enterprise === null) {
+          throw new AuthError(
+            "INVALID_PARAMETERS",
+            enterpriseNotFoundError,
+          ).toConvexError();
+        }
+
+        const domains = await ctx.runQuery(
+          config.component.public.enterpriseDomainList,
+          { enterpriseId },
+        );
+        const primaryDomains = domains.filter(
+          (domain: (typeof domains)[number]) => domain.isPrimary,
+        );
+        const verifiedDomains = domains.filter(
+          (domain: (typeof domains)[number]) => domain.verifiedAt !== undefined,
+        );
+
+        const warnings: string[] = [];
+        if (domains.length === 0) {
+          warnings.push("No domains configured.");
+        }
+        if (primaryDomains.length === 0 && domains.length > 0) {
+          warnings.push("No primary domain configured.");
+        }
+        if (primaryDomains.length > 1) {
+          warnings.push("Multiple primary domains configured.");
+        }
+        if (verifiedDomains.length === 0 && domains.length > 0) {
+          warnings.push("No verified domains yet.");
+        }
+
+        return {
+          enterpriseId,
+          ready:
+            enterprise.status === "active" &&
+            domains.length > 0 &&
+            primaryDomains.length === 1 &&
+            verifiedDomains.length > 0,
+          summary: {
+            domainCount: domains.length,
+            primaryCount: primaryDomains.length,
+            verifiedCount: verifiedDomains.length,
+          },
+          domains: domains.map((domain: (typeof domains)[number]) => ({
+            domainId: domain._id,
+            domain: domain.domain,
+            isPrimary: domain.isPrimary,
+            verified: domain.verifiedAt !== undefined,
+            verifiedAt: domain.verifiedAt ?? null,
+          })),
+          warnings,
+        };
+      },
       remove: async (ctx: ComponentCtx, domainId: string) => {
         await ctx.runMutation(config.component.public.enterpriseDomainDelete, {
           domainId,

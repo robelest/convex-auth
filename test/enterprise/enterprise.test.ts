@@ -91,6 +91,60 @@ test("enterprise component stores enterprise records and domains", async () => {
   expect(domains[0]?.isPrimary).toBe(true);
 });
 
+test("enterprise domain validation reports onboarding diagnostics", async () => {
+  const t = convexTest(schema);
+
+  const groupId = await t.run(async (ctx) => {
+    return await ctx.runMutation(components.auth.public.groupCreate, {
+      name: "Acme Corp",
+      slug: "acme-onboarding",
+      type: "organization",
+    });
+  });
+
+  const enterpriseId = await t.run(async (ctx) => {
+    return await auth.sso.connection.create(ctx as any, {
+      groupId,
+      slug: "acme-onboarding",
+      name: "Acme Onboarding",
+      status: "active",
+    });
+  });
+
+  await t.run(async (ctx) => {
+    await auth.sso.connection.domain.set(ctx as any, enterpriseId, [
+      { domain: "acme.example", isPrimary: true },
+    ]);
+  });
+
+  const missingVerification = await t.run(async (ctx) => {
+    return await auth.sso.connection.domain.validate(ctx as any, enterpriseId);
+  });
+
+  expect(missingVerification.ready).toBe(false);
+  expect(missingVerification.summary.domainCount).toBe(1);
+  expect(missingVerification.summary.verifiedCount).toBe(0);
+  expect(missingVerification.warnings).toContain("No verified domains yet.");
+
+  await t.run(async (ctx) => {
+    await auth.sso.connection.domain.set(ctx as any, enterpriseId, [
+      {
+        domain: "acme.example",
+        isPrimary: true,
+        verifiedAt: Date.now(),
+      },
+    ]);
+  });
+
+  const verified = await t.run(async (ctx) => {
+    return await auth.sso.connection.domain.validate(ctx as any, enterpriseId);
+  });
+
+  expect(verified.ready).toBe(true);
+  expect(verified.summary.verifiedCount).toBe(1);
+  expect(verified.warnings).toHaveLength(0);
+});
+
 test("saml metadata parser extracts core IdP details", () => {
   const parsed = parseSamlIdpMetadata(idpMetadataXml);
 

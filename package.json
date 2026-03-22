@@ -36,6 +36,7 @@
     "lint:fix": "vp lint --fix",
     "fmt": "vp fmt .",
     "fmt:check": "vp fmt --check .",
+    "deploy:docs": "vpx wrangler pages deploy ./docs//dist --project-name=convex-auth",
     "codegen:convex": "vp exec varlock run -- vp exec convex codegen && vp exec varlock run -- vp exec convex codegen --component-dir ./packages/auth/src/component",
     "codegen:convex:component": "vp exec varlock run -- vp exec convex codegen --component-dir ./packages/auth/src/component",
     "prepare": "vp config"

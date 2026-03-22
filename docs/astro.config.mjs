@@ -1,11 +1,12 @@
 import starlight from "@astrojs/starlight";
 // @ts-check
+import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "astro/config";
 import starlightLlmsTxt from "starlight-llms-txt";
-import rapide from "starlight-theme-rapide";
 
 export default defineConfig({
   site: "https://convex-auth.pages.dev",
+  vite: { plugins: [tailwindcss()] },
   integrations: [
     starlight({
       title: "convex-auth",
@@ -22,8 +23,15 @@ export default defineConfig({
         baseUrl: "https://github.com/robelest/convex-auth/edit/main/docs/",
       },
       lastUpdated: true,
-      plugins: [starlightLlmsTxt(), rapide()],
-      customCss: ["./src/styles/custom.css"],
+      plugins: [starlightLlmsTxt()],
+      expressiveCode: {
+        themes: ["github-dark-dimmed", "github-light"],
+        styleOverrides: {
+          borderRadius: "0",
+          frames: { frameBoxShadowCssValue: "none" },
+        },
+      },
+      customCss: ["./src/styles/global.css", "./src/styles/overrides.css"],
       sidebar: [
         {
           label: "Getting Started",

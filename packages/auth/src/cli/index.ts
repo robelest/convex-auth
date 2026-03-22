@@ -746,7 +746,7 @@ export const { create, get, getByGroup, getByDomain, list, update, remove, statu
       `import { auth } from "../../../auth";
 import { sso } from "@robelest/convex-auth/server";
 
-export const { list, set } = sso(auth).connection.domain;
+export const { list, validate, set } = sso(auth).connection.domain;
 `,
     );
     writeMountFile(

@@ -159,6 +159,16 @@ export function sso(auth: Pick<AuthApi, "group" | "sso" | "user">): {
             );
           },
         }),
+        validate: actionGeneric({
+          args: { enterpriseId: v.string() },
+          handler: async (ctx, args) => {
+            await ensureSignedIn(ctx);
+            return await auth.sso.connection.domain.validate(
+              ctx as never,
+              args.enterpriseId,
+            );
+          },
+        }),
         set: actionGeneric({
           args: {
             enterpriseId: v.string(),

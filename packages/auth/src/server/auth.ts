@@ -53,6 +53,7 @@ type PublicSsoApi = Omit<InternalSsoApi, "domain" | "scim" | "connection"> & {
   connection: InternalSsoApi["connection"] & {
     domain: {
       list: InternalSsoApi["domain"]["list"];
+      validate: InternalSsoApi["domain"]["validate"];
       set: (
         ctx: Parameters<InternalSsoApi["connection"]["create"]>[0],
         enterpriseId: string,
@@ -233,6 +234,7 @@ export function createAuth<P extends AuthProviderConfig[]>(
       ...connectionApi,
       domain: {
         list: domainApi.list,
+        validate: domainApi.validate,
         set: setEnterpriseDomains,
       },
     },
