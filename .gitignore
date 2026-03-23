@@ -12,6 +12,9 @@
 **/dist
 docs/.astro/
 docs/dist/
+docs/build/
+docs/static/pagefind/
+docs/node_modules/.vite/
 /.pnp
 .pnp.js
 
