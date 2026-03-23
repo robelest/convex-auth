@@ -92,7 +92,7 @@ const auth = createAuth(components.auth, {
     your Convex code.
   </Card>
   <Card title="Mounted enterprise RPC">
-    <code>api.auth.sso.*</code> and <code>api.auth.scim.admin.*</code> only exist after your app mounts or
+    <code>api.auth.enterprise.*</code> only exists after your app mounts or
     writes public enterprise wrappers.
   </Card>
 </CardGrid>
@@ -103,6 +103,7 @@ because they exist on the returned object.
 
 If your app wants public enterprise/admin RPC, mount it explicitly in your app:
 
-- write your own Convex wrappers, or
-- run `convex-auth mount enterprise` to scaffold nested `convex/auth/sso/**` and
-  `convex/auth/scim/**` files.
+- write your own Convex wrappers in a file such as `convex/auth/enterprise.ts`.
+
+See the [Enterprise RPC guide](/sso/rpc/) for the recommended flat enterprise
+RPC shape.

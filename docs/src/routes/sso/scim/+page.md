@@ -1,5 +1,5 @@
 ---
-title: auth.scim
+title: auth.scim.admin
 description:
   SCIM 2.0 provisioning — configure directory sync and manage provisioned
   identities.
@@ -7,20 +7,22 @@ description:
 
 <svelte:head>
 
-  <title>auth.scim - convex-auth</title>
+  <title>auth.scim.admin - convex-auth</title>
 </svelte:head>
 
-# auth.scim
+# auth.scim.admin
 
 The `auth.scim.admin` namespace configures SCIM 2.0 provisioning for automatic
 user and group synchronization from an identity provider's directory.
 
-> This page documents the **server-side helper API**: `auth.scim.admin.*`.
-> Public RPC like `api.auth.scim.admin.configure` only exists after your app
-> mounts enterprise helpers or writes explicit wrappers.
+> This page documents the **server-side helper API**:
+> [`auth.scim.admin.*`](/sso/scim/). Public RPC like
+> [`api.auth.enterprise.configureScim`](/sso/rpc/) only exists after your app
+> exposes app-owned enterprise wrappers.
 
-Use the `enterpriseId` returned by `auth.sso.admin.connection.create(...)` when
-configuring SCIM.
+Use the `enterpriseId` returned by
+[`auth.sso.admin.connection.create(...)`](/sso/connection/) when configuring
+SCIM.
 
 ## Methods
 
@@ -47,4 +49,5 @@ const config = await auth.scim.admin.get(ctx, enterpriseId);
 ```
 
 Provisioning behavior such as deprovision mode is configured through
-`auth.sso.admin.policy`, not `auth.scim.admin.configure(...)`.
+[`auth.sso.admin.policy`](/sso/policy/), not
+[`auth.scim.admin.configure(...)`](/sso/scim/).

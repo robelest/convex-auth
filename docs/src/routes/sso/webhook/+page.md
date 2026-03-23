@@ -14,9 +14,9 @@ The `auth.sso.admin.webhook` namespace manages enterprise webhook endpoints for
 SSO-related events.
 
 > This page documents the **server-side helper API**:
-> `auth.sso.admin.webhook.*`. Public RPC like
-> `api.auth.sso.admin.webhook.endpoint.create` only exists after your app mounts
-> enterprise helpers or writes explicit wrappers.
+> [`auth.sso.admin.webhook.*`](/sso/webhook/). Public RPC like
+> [`api.auth.enterprise.createWebhookEndpoint`](/sso/rpc/) only exists after
+> your app exposes app-owned enterprise wrappers.
 
 ## Endpoint methods
 

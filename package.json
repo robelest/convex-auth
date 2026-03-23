@@ -30,7 +30,6 @@
     "postinstall": "node scripts/patch-fluent-convex.mjs",
     "build:auth": "vp exec varlock run -- vp run '@robelest/samlify#build' && vp exec varlock run -- vp exec convex codegen --component-dir ./packages/auth/src/component && vp exec varlock run -- vp run '@robelest/convex-auth#build'",
     "test": "vp exec node ./test/run.ts",
-    "release:auth": "vp run '@robelest/convex-auth#build' && pnpm publish --filter @robelest/convex-auth --access public",
     "typecheck": "vp run '@robelest/convex-auth#typecheck'",
     "lint": "vp lint",
     "lint:fix": "vp lint --fix",

@@ -1,5 +1,5 @@
 ---
-title: auth.sso.policy
+title: auth.sso.admin.policy
 description:
   Enterprise policy management — centralize account linking, SCIM reuse, JIT,
   and deprovision behavior.
@@ -7,23 +7,25 @@ description:
 
 <svelte:head>
 
-  <title>auth.sso.policy - convex-auth</title>
+  <title>auth.sso.admin.policy - convex-auth</title>
 </svelte:head>
 
-# auth.sso.policy
+# auth.sso.admin.policy
 
-The `auth.sso.policy` namespace manages enterprise behavior for an SSO
+The `auth.sso.admin.policy` namespace manages enterprise behavior for an SSO
 connection. Use it to configure how OIDC and SAML account linking works, how
 SCIM-provisioned users are reused, whether JIT membership is created on sign-in,
 and how deprovisioning behaves.
 
-> This page documents the **server-side helper API**: `auth.sso.admin.policy.*`.
-> Public RPC like `api.auth.sso.admin.policy.update` only exists after your app
-> mounts enterprise helpers or writes explicit wrappers.
+> This page documents the **server-side helper API**:
+> [`auth.sso.admin.policy.*`](/sso/policy/). Public RPC like
+> [`api.auth.enterprise.updatePolicy`](/sso/rpc/) only exists after your app
+> exposes app-owned enterprise wrappers.
 
 This policy surface is deliberately small today. Keep connector mechanics in
-`auth.sso.oidc`, `auth.sso.saml`, and `auth.scim`, and keep broader tenant
-access rules in your application until dedicated policy fields land.
+[`auth.sso.admin.oidc`](/sso/oidc/), [`auth.sso.admin.saml`](/sso/saml/), and
+[`auth.scim.admin`](/sso/scim/), and keep broader tenant access rules in your
+application until dedicated policy fields land.
 
 ## Methods
 
@@ -82,5 +84,6 @@ Not first-class yet:
 - session or token policy
 
 Connector settings such as OIDC issuer URLs, client secrets, SAML metadata, and
-SCIM bearer tokens remain in their respective `auth.sso.oidc`, `auth.sso.saml`,
-and `auth.scim` configuration APIs.
+SCIM bearer tokens remain in their respective
+[`auth.sso.admin.oidc`](/sso/oidc/), [`auth.sso.admin.saml`](/sso/saml/), and
+[`auth.scim.admin`](/sso/scim/) configuration APIs.

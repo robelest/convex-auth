@@ -1,33 +1,35 @@
 ---
-title: auth.sso.saml
+title: auth.sso.admin.saml
 description:
   SAML 2.0 provider configuration — metadata exchange and assertion validation.
 ---
 
 <svelte:head>
 
-  <title>auth.sso.saml - convex-auth</title>
+  <title>auth.sso.admin.saml - convex-auth</title>
 </svelte:head>
 
-# auth.sso.saml
+# auth.sso.admin.saml
 
-The `auth.sso.saml` namespace configures SAML 2.0 identity providers for SSO
-connections.
+The `auth.sso.admin.saml` namespace configures SAML 2.0 identity providers for
+SSO connections.
 
-> This page documents the **server-side helper API**: `auth.sso.saml.*`. Public
-> RPC like `api.auth.sso.admin.saml.configure` only exists after your app mounts
-> enterprise helpers or writes explicit wrappers.
+> This page documents the **server-side helper API**:
+> [`auth.sso.admin.saml.*`](/sso/saml/). Public RPC like
+> [`api.auth.enterprise.configureSaml`](/sso/rpc/) only exists after your app
+> exposes app-owned enterprise wrappers.
 
-Use the `enterpriseId` returned by `auth.sso.admin.connection.create(...)` when
-configuring SAML.
+Use the `enterpriseId` returned by
+[`auth.sso.admin.connection.create(...)`](/sso/connection/) when configuring
+SAML.
 
 ## Methods
 
-| Method      | Signature                                                                                                   | Returns                        | Description                                                                          |
-| ----------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------ |
-| `configure` | `(ctx, { enterpriseId, metadataXml?, metadataUrl?, domains?, signAuthnRequests?, attributeMapping?, sp? })` | `{ enterpriseId, groupId }`    | Configures SAML settings for a connection. Accepts a metadata URL or raw XML.        |
-| `metadata`  | `(ctx, { enterpriseId, entityId?, acsUrl?, sloUrl? })`                                                      | `string`                       | Returns the SP (Service Provider) metadata XML for the connection.                   |
-| `validate`  | `(ctx, enterpriseId)`                                                                                       | `{ ok, enterpriseId, checks }` | Validates that the SAML configuration is complete and the IdP metadata is parseable. |
+| Method      | Signature                                                                                                   | Returns                        | Description                                                                                      |
+| ----------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `configure` | `(ctx, { enterpriseId, metadataXml?, metadataUrl?, domains?, signAuthnRequests?, attributeMapping?, sp? })` | `{ enterpriseId, groupId }`    | Configures SAML settings for a connection. Accepts a metadata URL or raw XML.                    |
+| `metadata`  | `(ctx, { enterpriseId, entityId?, acsUrl?, sloUrl? })`                                                      | `string`                       | Returns the SP metadata XML for the connection via [`auth.sso.client.metadata(...)`](/sso/rpc/). |
+| `validate`  | `(ctx, enterpriseId)`                                                                                       | `{ ok, enterpriseId, checks }` | Validates that the SAML configuration is complete and the IdP metadata is parseable.             |
 
 ## Example
 

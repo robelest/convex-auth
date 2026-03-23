@@ -1,7 +1,7 @@
 import { api, components } from "@convex/_generated/api";
 import { auth } from "@convex/auth";
 import schema from "@convex/schema";
-import { scim, sso } from "@robelest/convex-auth/server";
+import { enterprise, scim, sso } from "@robelest/convex-auth/server";
 import {
   createEnterpriseOidcProvider,
   getEnterpriseOidcUrls,
@@ -627,6 +627,9 @@ test("enterprise saml.register persists config directly on enterprise connection
 test("mounted enterprise helpers expose only the narrowed public surface", () => {
   const mountedSso = sso(auth);
   const mountedScim = scim(auth);
+  const mountedEnterprise = enterprise(auth, {
+    authorized: async () => {},
+  });
 
   expect(Object.keys(mountedSso.admin.oidc).sort()).toEqual([
     "configure",
@@ -649,6 +652,37 @@ test("mounted enterprise helpers expose only the narrowed public surface", () =>
   ]);
   expect("identity" in mountedScim.admin).toBe(false);
   expect("getConfigByToken" in mountedScim.admin).toBe(false);
+
+  expect(Object.keys(mountedEnterprise).sort()).toEqual([
+    "configureOidc",
+    "configureSaml",
+    "configureScim",
+    "createConnection",
+    "createWebhookEndpoint",
+    "deleteConnection",
+    "disableWebhookEndpoint",
+    "getConnection",
+    "getConnectionByDomain",
+    "getConnectionByGroup",
+    "getConnectionStatus",
+    "getOidc",
+    "getPolicy",
+    "getScim",
+    "listAudit",
+    "listConnections",
+    "listDomains",
+    "listWebhookEndpoints",
+    "metadata",
+    "setDomains",
+    "signIn",
+    "updateConnection",
+    "updatePolicy",
+    "validateDomains",
+    "validateOidc",
+    "validatePolicy",
+    "validateSaml",
+    "validateScim",
+  ]);
 });
 
 test("enterprise policy defaults and updates are normalized through auth.sso.policy", async () => {
@@ -761,7 +795,7 @@ test("enterprise oidc.register merges config and client.signIn returns enterpris
       redirectTo: "/dashboard",
     });
   });
-  const clientResolved = await t.query((api as any).auth.sso.client.signIn, {
+  const clientResolved = await t.query((api as any).auth.enterprise.signIn, {
     domain: "oidc.example.com",
     redirectTo: "/dashboard",
   });

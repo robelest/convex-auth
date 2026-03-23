@@ -1,5 +1,5 @@
 ---
-title: auth.sso.oidc
+title: auth.sso.admin.oidc
 description:
   OIDC provider configuration — discovery, claim mapping, and sign-in
   resolution.
@@ -7,21 +7,23 @@ description:
 
 <svelte:head>
 
-  <title>auth.sso.oidc - convex-auth</title>
+  <title>auth.sso.admin.oidc - convex-auth</title>
 </svelte:head>
 
-# auth.sso.oidc
+# auth.sso.admin.oidc
 
 The `auth.sso.admin.oidc` namespace configures OpenID Connect identity providers
 for SSO connections.
 
-> This page documents the **server-side helper API**: `auth.sso.admin.oidc.*`
-> plus `auth.sso.client.signIn(...)`. Public RPC like
-> `api.auth.sso.admin.oidc.configure` only exists after your app mounts
-> enterprise helpers or writes explicit wrappers.
+> This page documents the **server-side helper API**:
+> [`auth.sso.admin.oidc.*`](/sso/oidc/) plus
+> [`auth.sso.client.signIn(...)`](/sso/rpc/). Public RPC like
+> [`api.auth.enterprise.configureOidc`](/sso/rpc/) only exists after your app
+> exposes app-owned enterprise wrappers.
 
-Use the `enterpriseId` returned by `auth.sso.admin.connection.create(...)` when
-configuring OIDC.
+Use the `enterpriseId` returned by
+[`auth.sso.admin.connection.create(...)`](/sso/connection/) when configuring
+OIDC.
 
 ## Methods
 
@@ -33,8 +35,9 @@ configuring OIDC.
 | `auth.sso.client.signIn`        | `(ctx, { enterpriseId?, email?, domain?, redirectTo? })`                                                       | Sign-in route description      | Resolves the client-facing OIDC sign-in route for a connection.             |
 
 `clientSecret` is write-only. Configure it through
-`auth.sso.admin.oidc.configure(...)`, but expect `auth.sso.admin.oidc.get(...)`
-and other public reads to return a redacted view of the OIDC config.
+[`auth.sso.admin.oidc.configure(...)`](/sso/oidc/), but expect
+[`auth.sso.admin.oidc.get(...)`](/sso/oidc/) and other public reads to return a
+redacted view of the OIDC config.
 
 ## `configure` arguments
 

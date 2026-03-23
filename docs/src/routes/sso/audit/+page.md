@@ -13,9 +13,10 @@ description: SSO audit log query helpers for enterprise admin tooling.
 The `auth.sso.admin.audit` namespace exposes read-only audit log queries for
 enterprise admin tooling.
 
-> This page documents the **server-side helper API**: `auth.sso.admin.audit.*`.
-> Public RPC like `api.auth.sso.admin.audit.list` only exists after your app
-> mounts enterprise helpers or writes explicit wrappers.
+> This page documents the **server-side helper API**:
+> [`auth.sso.admin.audit.*`](/sso/audit/). Public RPC like
+> [`api.auth.enterprise.listAudit`](/sso/rpc/) only exists after your app
+> exposes app-owned enterprise wrappers.
 
 ## Methods
 

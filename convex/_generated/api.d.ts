@@ -9,15 +9,7 @@
  */
 
 import type * as auth from "../auth.js";
-import type * as auth_scim_admin from "../auth/scim/admin.js";
-import type * as auth_sso_admin_audit from "../auth/sso/admin/audit.js";
-import type * as auth_sso_admin_connection from "../auth/sso/admin/connection.js";
-import type * as auth_sso_admin_connection_domain from "../auth/sso/admin/connection/domain.js";
-import type * as auth_sso_admin_oidc from "../auth/sso/admin/oidc.js";
-import type * as auth_sso_admin_policy from "../auth/sso/admin/policy.js";
-import type * as auth_sso_admin_saml from "../auth/sso/admin/saml.js";
-import type * as auth_sso_admin_webhook_endpoint from "../auth/sso/admin/webhook/endpoint.js";
-import type * as auth_sso_client from "../auth/sso/client.js";
+import type * as auth_enterprise from "../auth/enterprise.js";
 import type * as http from "../http.js";
 
 import type {
@@ -28,15 +20,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
-  "auth/scim/admin": typeof auth_scim_admin;
-  "auth/sso/admin/audit": typeof auth_sso_admin_audit;
-  "auth/sso/admin/connection": typeof auth_sso_admin_connection;
-  "auth/sso/admin/connection/domain": typeof auth_sso_admin_connection_domain;
-  "auth/sso/admin/oidc": typeof auth_sso_admin_oidc;
-  "auth/sso/admin/policy": typeof auth_sso_admin_policy;
-  "auth/sso/admin/saml": typeof auth_sso_admin_saml;
-  "auth/sso/admin/webhook/endpoint": typeof auth_sso_admin_webhook_endpoint;
-  "auth/sso/client": typeof auth_sso_client;
+  "auth/enterprise": typeof auth_enterprise;
   http: typeof http;
 }>;
 

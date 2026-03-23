@@ -82,7 +82,7 @@ const auth = createAuth(components.auth, {
   ],
 });
 
-export async function authorizeAdmin(
+export async function authorized(
   ctx: any,
   input: { userId: string; resolvedGroupId: string | null },
 ) {

@@ -88,15 +88,16 @@ For subsequent requests:
 
 ## API layers
 
-| Layer                  | What it is                                                        | Typical usage                                                           |
-| ---------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Auth-flow actions      | Required client-callable functions exported from `convex/auth.ts` | `api.auth.signIn`, `api.auth.signOut`, `api.auth.store`                 |
-| Helper namespaces      | Server-side helper APIs returned by `createAuth(...)`             | `auth.user.require(ctx)`, `auth.sso.admin.connection.create(ctx, ...)`  |
-| Mounted enterprise RPC | Optional app-owned public RPC for enterprise/admin UI             | `api.auth.sso.admin.connection.create`, `api.auth.scim.admin.configure` |
+| Layer                  | What it is                                                        | Typical usage                                                               |
+| ---------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Auth-flow actions      | Required client-callable functions exported from `convex/auth.ts` | `api.auth.signIn`, `api.auth.signOut`, `api.auth.store`                     |
+| Helper namespaces      | Server-side helper APIs returned by `createAuth(...)`             | `auth.user.require(ctx)`, `auth.sso.admin.connection.create(ctx, ...)`      |
+| Mounted enterprise RPC | Optional app-owned public RPC for enterprise/admin UI             | `api.auth.enterprise.createConnection`, `api.auth.enterprise.configureScim` |
 
 Only the first layer is required for the frontend auth client. The third layer
-exists only if your app explicitly mounts enterprise helpers or writes custom
-enterprise wrappers.
+exists only if your app explicitly exposes app-owned enterprise wrappers or
+custom enterprise wrappers. For the app-facing RPC surface, see the
+[Enterprise RPC guide](/sso/rpc/).
 
 `auth.oauth.*` is the planned provider-mode namespace and is intentionally not
 part of the current stable surface yet.

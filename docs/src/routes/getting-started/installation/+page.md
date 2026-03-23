@@ -94,8 +94,8 @@ The wizard handles everything:
     Convex code. They are not automatically public RPC.
   </Card>
   <Card title="Optional enterprise RPC">
-    If your app wants client-callable enterprise admin APIs, mount them
-    explicitly or write your own wrappers.
+    If your app wants client-callable enterprise admin APIs, expose app-owned
+    wrappers such as <code>convex/auth/enterprise.ts</code>.
   </Card>
 </CardGrid>
 

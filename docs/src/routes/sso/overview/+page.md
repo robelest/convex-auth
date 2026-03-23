@@ -29,43 +29,41 @@ error — the namespace does not exist on the type.
 
 The `auth.sso.*` and `auth.scim.admin.*` namespaces are the canonical
 server-side enterprise helpers. If your app wants a client-callable enterprise
-management API, expose it explicitly from your Convex app.
+management API, expose it explicitly from your Convex app. See the
+[Enterprise RPC guide](/sso/rpc/).
 
 > **Server helpers vs mounted RPC**
 >
 > - `auth.sso.*` and `auth.scim.admin.*` are server-side helper namespaces for
 >   Convex code.
-> - `api.auth.sso.*` and `api.auth.scim.admin.*` are optional public RPC only
->   after you mount enterprise helpers or write app-owned wrappers.
+> - `api.auth.enterprise.*` is optional public RPC only after you expose
+>   app-owned enterprise wrappers.
 > - The frontend auth client only needs `api.auth.signIn`, `api.auth.signOut`,
 >   and `api.auth.store`.
 
-For the common case, use the guided CLI mount command:
+For the common case, create a single app-owned file such as
+`convex/auth/enterprise.ts` and export the enterprise helpers your app needs.
 
-```bash
-npx @robelest/convex-auth mount enterprise
-```
-
-This generates nested `convex/auth/sso/**` and `convex/auth/scim/**` files so
-paths like `api.auth.sso.admin.connection.create` and
-`api.auth.scim.admin.configure` become real public Convex functions.
-
-After mounting, frontend code can use normal Convex hooks/calls:
+After exporting those wrappers, frontend code can use normal Convex hooks/calls:
 
 ```ts
+import { enterprise } from "@robelest/convex-auth/server";
+import { auth, authorized } from "../auth";
 import { useAction } from "convex/react";
 import { api } from "../convex/_generated/api";
 
-const createConnection = useAction(api.auth.sso.admin.connection.create);
-const configureOidc = useAction(api.auth.sso.admin.oidc.configure);
-const configureScim = useAction(api.auth.scim.admin.configure);
+export const { createConnection, configureOidc, configureScim } = enterprise(
+  auth,
+  { authorized },
+);
+
+const createConnection = useAction(api.auth.enterprise.createConnection);
+const configureOidc = useAction(api.auth.enterprise.configureOidc);
+const configureScim = useAction(api.auth.enterprise.configureScim);
 ```
 
-The mounted helpers are only a convenience. You can always skip them and expose
-your own enterprise API surface from the app instead.
-
-You can also skip the mounted helpers entirely and define app-owned enterprise
-functions that call the server helpers directly:
+These are app-owned wrappers over the server helper namespaces. You can also
+skip the flat mounted surface entirely and call the server helpers directly:
 
 ```ts
 // convex/admin/enterprise.ts
@@ -84,11 +82,11 @@ export const createConnection = action({
 
 ## What SSO covers
 
-| Protocol | Purpose                                  | Namespace       |
-| -------- | ---------------------------------------- | --------------- |
-| OIDC     | OpenID Connect identity provider login   | `auth.sso.oidc` |
-| SAML 2.0 | Security Assertion Markup Language login | `auth.sso.saml` |
-| SCIM 2.0 | Cross-domain user/group provisioning     | `auth.scim`     |
+| Protocol | Purpose                                  | Namespace                           |
+| -------- | ---------------------------------------- | ----------------------------------- |
+| OIDC     | OpenID Connect identity provider login   | [`auth.sso.admin.oidc`](/sso/oidc/) |
+| SAML 2.0 | Security Assertion Markup Language login | [`auth.sso.admin.saml`](/sso/saml/) |
+| SCIM 2.0 | Cross-domain user/group provisioning     | [`auth.scim.admin`](/sso/scim/)     |
 
 ## Per-tenant runtime configuration
 
@@ -124,13 +122,13 @@ authorization in addition to checking that the caller is signed in.
 
 ## Related namespaces
 
-| Namespace                   | Purpose                                   |
-| --------------------------- | ----------------------------------------- |
-| `auth.sso.admin.connection` | Manage SSO connections per group          |
-| `auth.sso.admin.policy`     | Manage enterprise auth behavior           |
-| `auth.sso.admin.oidc`       | Configure and validate OIDC providers     |
-| `auth.sso.admin.saml`       | Configure and validate SAML 2.0 providers |
-| `auth.sso.client`           | Resolve enterprise sign-in and metadata   |
-| `auth.scim.admin`           | Configure SCIM 2.0 provisioning           |
-| `auth.sso.admin.audit`      | Query SSO audit events                    |
-| `auth.sso.admin.webhook`    | Manage webhook endpoints                  |
+| Namespace                                       | Purpose                                   |
+| ----------------------------------------------- | ----------------------------------------- |
+| [`auth.sso.admin.connection`](/sso/connection/) | Manage SSO connections per group          |
+| [`auth.sso.admin.policy`](/sso/policy/)         | Manage enterprise auth behavior           |
+| [`auth.sso.admin.oidc`](/sso/oidc/)             | Configure and validate OIDC providers     |
+| [`auth.sso.admin.saml`](/sso/saml/)             | Configure and validate SAML 2.0 providers |
+| [`auth.sso.client`](/sso/rpc/)                  | Resolve enterprise sign-in and metadata   |
+| [`auth.scim.admin`](/sso/scim/)                 | Configure SCIM 2.0 provisioning           |
+| [`auth.sso.admin.audit`](/sso/audit/)           | Query SSO audit events                    |
+| [`auth.sso.admin.webhook`](/sso/webhook/)       | Manage webhook endpoints                  |

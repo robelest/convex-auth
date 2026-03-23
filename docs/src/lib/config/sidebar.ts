@@ -49,6 +49,7 @@ export const sidebar: SidebarGroup[] = [
     label: "Enterprise SSO",
     items: [
       { title: "SSO Overview", slug: "/sso/overview" },
+      { title: "Enterprise RPC", slug: "/sso/rpc" },
       { title: "auth.sso.connection", slug: "/sso/connection" },
       { title: "auth.sso.oidc", slug: "/sso/oidc" },
       { title: "auth.sso.saml", slug: "/sso/saml" },

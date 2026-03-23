@@ -54,7 +54,7 @@ test("enterprise management RPC is available when enterprise helpers are mounted
   const t = convexTest(schema);
   const asAdmin = await enterpriseAdmin(t);
   const created = await asAdmin.mutation(
-    (api as any).auth.sso.admin.connection.create,
+    (api as any).auth.enterprise.createConnection,
     {
       name: "Mounted enterprise API",
       slug: "mounted-enterprise-api",
@@ -69,7 +69,7 @@ test("enterprise management RPC is available when enterprise helpers are mounted
     }),
   );
 
-  await asAdmin.mutation((api as any).auth.sso.admin.connection.delete, {
+  await asAdmin.mutation((api as any).auth.enterprise.deleteConnection, {
     enterpriseId: created.enterpriseId,
   });
 

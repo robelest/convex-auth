@@ -14,13 +14,13 @@ description:
 The `auth.sso.admin.connection` namespace manages enterprise SSO records. Each
 record links a group (tenant) to an identity provider configuration. It is also
 the root namespace for enterprise domain management through
-`auth.sso.admin.connection.domain.*`. The returned `enterpriseId` is passed to
-the rest of the enterprise APIs.
+[`auth.sso.admin.connection.domain.*`](/sso/connection/). The returned
+`enterpriseId` is passed to the rest of the enterprise APIs.
 
 > This page documents the **server-side helper API**:
-> `auth.sso.admin.connection.*`. If you want client-callable admin RPC like
-> `api.auth.sso.admin.connection.create`, mount enterprise helpers or expose
-> app-owned wrappers first.
+> [`auth.sso.admin.connection.*`](/sso/connection/). If you want client-callable
+> admin RPC like [`api.auth.enterprise.createConnection`](/sso/rpc/), expose
+> app-owned enterprise wrappers first.
 
 ## Methods
 
@@ -32,13 +32,13 @@ the rest of the enterprise APIs.
 | `getByDomain` | `(ctx, domain)`                                            | `Doc \| null`               | Looks up a connection by email domain.                        |
 | `list`        | `(ctx, { where?, limit?, cursor?, orderBy?, order? })`     | Paginated list              | Lists SSO connections with optional filtering and sorting.    |
 | `update`      | `(ctx, enterpriseId, data)`                                | `void`                      | Updates connection fields (status, metadata, domains, etc.).  |
-| `remove`      | `(ctx, enterpriseId)`                                      | `void`                      | Removes an SSO connection.                                    |
+| `delete`      | `(ctx, enterpriseId)`                                      | `void`                      | Deletes an SSO connection.                                    |
 | `status`      | `(ctx, enterpriseId)`                                      | Status object               | Returns readiness and per-protocol status for the connection. |
 
 ## Domain methods
 
-The `auth.sso.admin.connection.domain` namespace manages domains owned by the
-connection.
+The [`auth.sso.admin.connection.domain`](/sso/connection/) namespace manages
+domains owned by the connection.
 
 | Method                | Signature                      | Returns     | Description                                  |
 | --------------------- | ------------------------------ | ----------- | -------------------------------------------- |

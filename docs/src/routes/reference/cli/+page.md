@@ -33,36 +33,26 @@ The wizard runs 6 steps: configure `SITE_URL`, generate key pair, configure
 | `--skip-git-check`         | Skip the "outside Git repo" warning             |
 | `--allow-dirty-git-state`  | Skip all source-control checks                  |
 
-## Enterprise mounts
+## Enterprise API
 
-To scaffold optional client-callable enterprise RPC under `convex/auth/sso/**`
-and `convex/auth/scim/**`:
+Enterprise RPC is app-owned. Create a single file like
+`convex/auth/enterprise.ts` and export only the helpers your app needs:
 
-```bash
-npx @robelest/convex-auth mount enterprise
+```ts
+import { enterprise } from "@robelest/convex-auth/server";
+import { auth, authorized } from "../auth";
+
+export const { createConnection, configureScim } = enterprise(auth, {
+  authorized,
+});
 ```
 
-The command is guided and only generates app-side mount files. It does not
-change your frontend auth client, which still uses
-`client({ convex, api: api.auth })`.
-
-Generated files include nested mounts like:
-
-- `convex/auth/sso/connection.ts`
-- `convex/auth/sso/oidc.ts`
-- `convex/auth/sso/saml.ts`
-- `convex/auth/sso/policy.ts`
-- `convex/auth/sso/audit.ts`
-- `convex/auth/sso/webhook/**`
-- `convex/auth/scim.ts`
-
-After mounting, frontend code can call the generated enterprise APIs with normal
-Convex hooks:
+Then call the exported functions with normal Convex hooks:
 
 ```ts
 import { useAction } from "convex/react";
 import { api } from "../convex/_generated/api";
 
-const createConnection = useAction(api.auth.sso.admin.connection.create);
-const configureScim = useAction(api.auth.scim.admin.configure);
+const createConnection = useAction(api.auth.enterprise.createConnection);
+const configureScim = useAction(api.auth.enterprise.configureScim);
 ```

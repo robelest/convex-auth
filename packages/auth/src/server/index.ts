@@ -48,13 +48,17 @@ export type EnterpriseAdminAuthorizationInput = {
   resolvedGroupId: string | null;
 };
 
-export type EnterpriseAdminAuthorizer = (
+export type EnterpriseAuthorizer = (
   ctx: { auth: import("convex/server").Auth },
   input: EnterpriseAdminAuthorizationInput,
 ) => Promise<void>;
 
 type MountedEnterpriseOptions = {
-  authorizeAdmin?: EnterpriseAdminAuthorizer;
+  authorized?: EnterpriseAuthorizer;
+};
+
+export type EnterpriseMountOptions = {
+  authorized: EnterpriseAuthorizer;
 };
 
 type MountedEnterpriseTarget = {
@@ -137,15 +141,15 @@ function createMountedAdminAuthorizer(
     target: MountedEnterpriseTarget = {},
   ) => {
     const userId = await requireUserId(ctx);
-    if (!options?.authorizeAdmin) {
+    if (!options?.authorized) {
       throw new ConvexError({
         code: "FORBIDDEN",
         message:
-          "Mounted enterprise admin APIs require an authorizeAdmin callback.",
+          "Mounted enterprise admin APIs require an authorized callback.",
       });
     }
     const resolved = await resolveMountedEnterpriseTarget(auth, ctx, target);
-    await options.authorizeAdmin(ctx, {
+    await options.authorized(ctx, {
       userId,
       permission,
       enterpriseId: resolved.enterpriseId,
@@ -168,7 +172,7 @@ export function sso(
   auth: Pick<AuthApi, "group" | "member" | "sso" | "user">,
   options?: MountedEnterpriseOptions,
 ) {
-  const authorizeAdmin = createMountedAdminAuthorizer(auth, options);
+  const authorize = createMountedAdminAuthorizer(auth, options);
 
   return {
     admin: {
@@ -182,13 +186,9 @@ export function sso(
             domain: v.optional(v.string()),
           },
           handler: async (ctx, args) => {
-            const { userId } = await authorizeAdmin(
-              ctx,
-              "sso.connection.create",
-              {
-                groupId: args.groupId,
-              },
-            );
+            const { userId } = await authorize(ctx, "sso.connection.create", {
+              groupId: args.groupId,
+            });
             const createsGroup = args.groupId === undefined;
             const groupId =
               args.groupId ??
@@ -226,7 +226,7 @@ export function sso(
         get: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.connection.read", {
+            await authorize(ctx, "sso.connection.read", {
               enterpriseId: args.enterpriseId,
             });
             return await auth.sso.admin.connection.get(
@@ -238,7 +238,7 @@ export function sso(
         getByGroup: queryGeneric({
           args: { groupId: v.string() },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.connection.read", {
+            await authorize(ctx, "sso.connection.read", {
               groupId: args.groupId,
             });
             return await auth.sso.admin.connection.getByGroup(
@@ -250,7 +250,7 @@ export function sso(
         getByDomain: queryGeneric({
           args: { domain: v.string() },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.connection.read", {
+            await authorize(ctx, "sso.connection.read", {
               domain: args.domain,
             });
             return await auth.sso.admin.connection.getByDomain(
@@ -268,7 +268,7 @@ export function sso(
             order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
           },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.connection.read", {
+            await authorize(ctx, "sso.connection.read", {
               groupId: args.where?.groupId,
             });
             return await auth.sso.admin.connection.list(
@@ -287,7 +287,7 @@ export function sso(
             }),
           },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.connection.manage", {
+            await authorize(ctx, "sso.connection.manage", {
               enterpriseId: args.enterpriseId,
             });
             await auth.sso.admin.connection.update(
@@ -301,7 +301,7 @@ export function sso(
         delete: mutationGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.connection.manage", {
+            await authorize(ctx, "sso.connection.manage", {
               enterpriseId: args.enterpriseId,
             });
             await auth.sso.admin.connection.delete(
@@ -314,7 +314,7 @@ export function sso(
         status: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.connection.read", {
+            await authorize(ctx, "sso.connection.read", {
               enterpriseId: args.enterpriseId,
             });
             return await auth.sso.admin.connection.status(
@@ -327,7 +327,7 @@ export function sso(
           list: queryGeneric({
             args: { enterpriseId: v.string() },
             handler: async (ctx, args) => {
-              await authorizeAdmin(ctx, "sso.connection.read", {
+              await authorize(ctx, "sso.connection.read", {
                 enterpriseId: args.enterpriseId,
               });
               return await auth.sso.admin.connection.domain.list(
@@ -339,7 +339,7 @@ export function sso(
           validate: queryGeneric({
             args: { enterpriseId: v.string() },
             handler: async (ctx, args) => {
-              await authorizeAdmin(ctx, "sso.domain.manage", {
+              await authorize(ctx, "sso.domain.manage", {
                 enterpriseId: args.enterpriseId,
               });
               return await auth.sso.admin.connection.domain.validate(
@@ -354,7 +354,7 @@ export function sso(
               domains: v.array(enterpriseDomainInputValidator),
             },
             handler: async (ctx, args) => {
-              await authorizeAdmin(ctx, "sso.domain.manage", {
+              await authorize(ctx, "sso.domain.manage", {
                 enterpriseId: args.enterpriseId,
               });
               await auth.sso.admin.connection.domain.set(
@@ -382,7 +382,7 @@ export function sso(
             extraFields: v.optional(v.record(v.string(), v.string())),
           },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.protocol.manage", {
+            await authorize(ctx, "sso.protocol.manage", {
               enterpriseId: args.enterpriseId,
             });
             return await auth.sso.admin.oidc.configure(ctx as never, args);
@@ -391,7 +391,7 @@ export function sso(
         get: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.connection.read", {
+            await authorize(ctx, "sso.connection.read", {
               enterpriseId: args.enterpriseId,
             });
             return await auth.sso.admin.oidc.get(
@@ -403,7 +403,7 @@ export function sso(
         validate: actionGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.protocol.manage", {
+            await authorize(ctx, "sso.protocol.manage", {
               enterpriseId: args.enterpriseId,
             });
             return await auth.sso.admin.oidc.validate(
@@ -427,7 +427,7 @@ export function sso(
             sp: v.optional(enterpriseSamlSpValidator),
           },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.protocol.manage", {
+            await authorize(ctx, "sso.protocol.manage", {
               enterpriseId: args.enterpriseId,
             });
             return await auth.sso.admin.saml.configure(ctx as never, args);
@@ -436,7 +436,7 @@ export function sso(
         validate: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.protocol.manage", {
+            await authorize(ctx, "sso.protocol.manage", {
               enterpriseId: args.enterpriseId,
             });
             return await auth.sso.admin.saml.validate(
@@ -450,7 +450,7 @@ export function sso(
         get: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.connection.read", {
+            await authorize(ctx, "sso.connection.read", {
               enterpriseId: args.enterpriseId,
             });
             return await auth.sso.admin.policy.get(
@@ -465,7 +465,7 @@ export function sso(
             patch: enterprisePolicyPatchValidator,
           },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.policy.manage", {
+            await authorize(ctx, "sso.policy.manage", {
               enterpriseId: args.enterpriseId,
             });
             return await auth.sso.admin.policy.update(
@@ -478,7 +478,7 @@ export function sso(
         validate: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.policy.manage", {
+            await authorize(ctx, "sso.policy.manage", {
               enterpriseId: args.enterpriseId,
             });
             return await auth.sso.admin.policy.validate(
@@ -496,7 +496,7 @@ export function sso(
             limit: v.optional(v.number()),
           },
           handler: async (ctx, args) => {
-            await authorizeAdmin(ctx, "sso.audit.read", {
+            await authorize(ctx, "sso.audit.read", {
               enterpriseId: args.enterpriseId,
               groupId: args.groupId,
             });
@@ -515,11 +515,9 @@ export function sso(
               createdByUserId: v.optional(v.string()),
             },
             handler: async (ctx, args) => {
-              const { userId } = await authorizeAdmin(
-                ctx,
-                "sso.webhook.manage",
-                { enterpriseId: args.enterpriseId },
-              );
+              const { userId } = await authorize(ctx, "sso.webhook.manage", {
+                enterpriseId: args.enterpriseId,
+              });
               const result = await auth.sso.admin.webhook.endpoint.create(
                 ctx as never,
                 {
@@ -541,7 +539,7 @@ export function sso(
           list: queryGeneric({
             args: { enterpriseId: v.string() },
             handler: async (ctx, args) => {
-              await authorizeAdmin(ctx, "sso.webhook.manage", {
+              await authorize(ctx, "sso.webhook.manage", {
                 enterpriseId: args.enterpriseId,
               });
               const endpoints = await auth.sso.admin.webhook.endpoint.list(
@@ -557,7 +555,7 @@ export function sso(
           disable: mutationGeneric({
             args: { endpointId: v.string() },
             handler: async (ctx, args) => {
-              await authorizeAdmin(ctx, "sso.webhook.manage");
+              await authorize(ctx, "sso.webhook.manage");
               await auth.sso.admin.webhook.endpoint.disable(
                 ctx as never,
                 args.endpointId,
@@ -603,7 +601,7 @@ export function scim(
   auth: Pick<AuthApi, "scim" | "sso" | "user">,
   options?: MountedEnterpriseOptions,
 ) {
-  const authorizeAdmin = createMountedAdminAuthorizer(auth, options);
+  const authorize = createMountedAdminAuthorizer(auth, options);
 
   return {
     admin: {
@@ -614,7 +612,7 @@ export function scim(
           status: v.optional(enterpriseStatusValidator),
         },
         handler: async (ctx, args) => {
-          await authorizeAdmin(ctx, "scim.manage", {
+          await authorize(ctx, "scim.manage", {
             enterpriseId: args.enterpriseId,
           });
           return await auth.scim.admin.configure(ctx as never, args);
@@ -623,7 +621,7 @@ export function scim(
       get: queryGeneric({
         args: { enterpriseId: v.string() },
         handler: async (ctx, args) => {
-          await authorizeAdmin(ctx, "scim.manage", {
+          await authorize(ctx, "scim.manage", {
             enterpriseId: args.enterpriseId,
           });
           return await auth.scim.admin.get(ctx as never, args.enterpriseId);
@@ -632,7 +630,7 @@ export function scim(
       validate: queryGeneric({
         args: { enterpriseId: v.string() },
         handler: async (ctx, args) => {
-          await authorizeAdmin(ctx, "scim.manage", {
+          await authorize(ctx, "scim.manage", {
             enterpriseId: args.enterpriseId,
           });
           return await auth.scim.admin.validate(
@@ -642,6 +640,52 @@ export function scim(
         },
       }),
     },
+  };
+}
+
+/**
+ * Build a flat mounted enterprise API surface for app-owned Convex exports.
+ *
+ * The returned object contains tenant-admin SSO and SCIM control-plane
+ * functions plus end-user enterprise sign-in helpers. The `authorized`
+ * callback is required for admin operations.
+ */
+export function enterprise(
+  auth: Pick<AuthApi, "group" | "member" | "scim" | "sso" | "user">,
+  options: EnterpriseMountOptions,
+) {
+  const mountedSso = sso(auth, { authorized: options.authorized });
+  const mountedScim = scim(auth, { authorized: options.authorized });
+
+  return {
+    createConnection: mountedSso.admin.connection.create,
+    getConnection: mountedSso.admin.connection.get,
+    getConnectionByGroup: mountedSso.admin.connection.getByGroup,
+    getConnectionByDomain: mountedSso.admin.connection.getByDomain,
+    listConnections: mountedSso.admin.connection.list,
+    updateConnection: mountedSso.admin.connection.update,
+    deleteConnection: mountedSso.admin.connection.delete,
+    getConnectionStatus: mountedSso.admin.connection.status,
+    listDomains: mountedSso.admin.connection.domain.list,
+    validateDomains: mountedSso.admin.connection.domain.validate,
+    setDomains: mountedSso.admin.connection.domain.set,
+    configureOidc: mountedSso.admin.oidc.configure,
+    getOidc: mountedSso.admin.oidc.get,
+    validateOidc: mountedSso.admin.oidc.validate,
+    configureSaml: mountedSso.admin.saml.configure,
+    validateSaml: mountedSso.admin.saml.validate,
+    getPolicy: mountedSso.admin.policy.get,
+    updatePolicy: mountedSso.admin.policy.update,
+    validatePolicy: mountedSso.admin.policy.validate,
+    listAudit: mountedSso.admin.audit.list,
+    createWebhookEndpoint: mountedSso.admin.webhook.endpoint.create,
+    listWebhookEndpoints: mountedSso.admin.webhook.endpoint.list,
+    disableWebhookEndpoint: mountedSso.admin.webhook.endpoint.disable,
+    configureScim: mountedScim.admin.configure,
+    getScim: mountedScim.admin.get,
+    validateScim: mountedScim.admin.validate,
+    signIn: mountedSso.client.signIn,
+    metadata: mountedSso.client.metadata,
   };
 }
 
