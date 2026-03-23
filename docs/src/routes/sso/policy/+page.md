@@ -17,9 +17,9 @@ connection. Use it to configure how OIDC and SAML account linking works, how
 SCIM-provisioned users are reused, whether JIT membership is created on sign-in,
 and how deprovisioning behaves.
 
-> This page documents the **server-side helper API**: `auth.sso.policy.*`.
-> Public RPC like `api.auth.sso.policy.update` only exists after your app mounts
-> enterprise helpers or writes explicit wrappers.
+> This page documents the **server-side helper API**: `auth.sso.admin.policy.*`.
+> Public RPC like `api.auth.sso.admin.policy.update` only exists after your app
+> mounts enterprise helpers or writes explicit wrappers.
 
 This policy surface is deliberately small today. Keep connector mechanics in
 `auth.sso.oidc`, `auth.sso.saml`, and `auth.scim`, and keep broader tenant
@@ -36,7 +36,7 @@ access rules in your application until dedicated policy fields land.
 ## Default policy
 
 ```ts
-const policy = await auth.sso.policy.get(ctx, enterpriseId);
+const policy = await auth.sso.admin.policy.get(ctx, enterpriseId);
 
 policy.identity.accountLinking.oidc; // "verifiedEmail"
 policy.identity.accountLinking.saml; // "verifiedEmail"
@@ -49,7 +49,7 @@ policy.provisioning.deprovision.mode; // "soft"
 ## Example
 
 ```ts
-await auth.sso.policy.update(ctx, enterpriseId, {
+await auth.sso.admin.policy.update(ctx, enterpriseId, {
   identity: {
     accountLinking: {
       saml: "none",

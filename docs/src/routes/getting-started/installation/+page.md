@@ -90,7 +90,7 @@ The wizard handles everything:
     functions. Frontends use them through <code>client({'{'} convex, api: api.auth {'}'}).</code>
   </Card>
   <Card title="Server helpers">
-    `auth.user.*`, `auth.sso.*`, and `auth.scim.*` are server-side helpers for
+    `auth.user.*`, `auth.sso.*`, and `auth.scim.admin.*` are server-side helpers for
     Convex code. They are not automatically public RPC.
   </Card>
   <Card title="Optional enterprise RPC">

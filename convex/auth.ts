@@ -82,5 +82,19 @@ const auth = createAuth(components.auth, {
   ],
 });
 
+export async function authorizeAdmin(
+  ctx: any,
+  input: { userId: string; resolvedGroupId: string | null },
+) {
+  if (input.resolvedGroupId === null) {
+    return;
+  }
+  await auth.member.require(ctx, {
+    userId: input.userId,
+    groupId: input.resolvedGroupId,
+    roles: ["admin"],
+  });
+}
+
 export { auth };
 export const { signIn, signOut, store } = auth;

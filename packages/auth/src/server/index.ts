@@ -1,10 +1,23 @@
 import { ConvexHttpClient } from "convex/browser";
-import { actionGeneric, makeFunctionReference } from "convex/server";
+import {
+  actionGeneric,
+  makeFunctionReference,
+  mutationGeneric,
+  queryGeneric,
+} from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { parse, serialize } from "cookie";
 import { jwtDecode } from "jwt-decode";
 
 import type { AuthApi } from "./auth";
+import {
+  enterpriseConnectionWhereValidator,
+  enterpriseDomainInputValidator,
+  enterprisePolicyPatchValidator,
+  enterpriseSamlAttributeMappingValidator,
+  enterpriseSamlSpValidator,
+  enterpriseStatusValidator,
+} from "./enterpriseValidators";
 import type {
   SignInAction,
   SignInActionResult,
@@ -16,144 +29,372 @@ import { isLocalHost } from "./utils";
 const signInActionRef: SignInAction = makeFunctionReference("auth:signIn");
 const signOutActionRef: SignOutAction = makeFunctionReference("auth:signOut");
 
-function requireSignedIn(auth: Pick<AuthApi, "user">) {
+export type EnterpriseAdminPermission =
+  | "sso.connection.create"
+  | "sso.connection.read"
+  | "sso.connection.manage"
+  | "sso.domain.manage"
+  | "sso.protocol.manage"
+  | "sso.policy.manage"
+  | "sso.audit.read"
+  | "sso.webhook.manage"
+  | "scim.manage";
+
+export type EnterpriseAdminAuthorizationInput = {
+  userId: string;
+  permission: EnterpriseAdminPermission;
+  enterpriseId?: string;
+  groupId?: string;
+  resolvedGroupId: string | null;
+};
+
+export type EnterpriseAdminAuthorizer = (
+  ctx: { auth: import("convex/server").Auth },
+  input: EnterpriseAdminAuthorizationInput,
+) => Promise<void>;
+
+type MountedEnterpriseOptions = {
+  authorizeAdmin?: EnterpriseAdminAuthorizer;
+};
+
+type MountedEnterpriseTarget = {
+  enterpriseId?: string;
+  groupId?: string;
+  domain?: string;
+};
+
+function requireSignedInUser(auth: Pick<AuthApi, "user">) {
   return async (ctx: { auth: import("convex/server").Auth }) => {
-    await auth.user.require(ctx as never);
+    return await auth.user.require(ctx as never);
+  };
+}
+
+async function resolveMountedEnterpriseTarget(
+  auth: Pick<AuthApi, "sso">,
+  ctx: { auth: import("convex/server").Auth },
+  target: MountedEnterpriseTarget,
+) {
+  if (target.groupId !== undefined) {
+    return {
+      enterpriseId: target.enterpriseId,
+      groupId: target.groupId,
+      resolvedGroupId: target.groupId,
+    };
+  }
+
+  if (target.enterpriseId !== undefined) {
+    const enterprise = await auth.sso.admin.connection.get(
+      ctx as never,
+      target.enterpriseId,
+    );
+    if (enterprise === null) {
+      throw new ConvexError({
+        code: "INVALID_PARAMETERS",
+        message: "Enterprise not found.",
+      });
+    }
+    return {
+      enterpriseId: enterprise._id,
+      groupId: enterprise.groupId,
+      resolvedGroupId: enterprise.groupId,
+    };
+  }
+
+  if (target.domain !== undefined) {
+    const resolved = await auth.sso.admin.connection.getByDomain(
+      ctx as never,
+      target.domain,
+    );
+    if (resolved?.enterprise === undefined) {
+      throw new ConvexError({
+        code: "INVALID_PARAMETERS",
+        message: "Enterprise not found.",
+      });
+    }
+    return {
+      enterpriseId: resolved.enterprise._id,
+      groupId: resolved.enterprise.groupId,
+      resolvedGroupId: resolved.enterprise.groupId,
+    };
+  }
+
+  return {
+    enterpriseId: undefined,
+    groupId: undefined,
+    resolvedGroupId: null,
+  };
+}
+
+function createMountedAdminAuthorizer(
+  auth: Pick<AuthApi, "sso" | "user">,
+  options?: MountedEnterpriseOptions,
+) {
+  const requireUserId = requireSignedInUser(auth);
+
+  return async (
+    ctx: { auth: import("convex/server").Auth },
+    permission: EnterpriseAdminPermission,
+    target: MountedEnterpriseTarget = {},
+  ) => {
+    const userId = await requireUserId(ctx);
+    if (!options?.authorizeAdmin) {
+      throw new ConvexError({
+        code: "FORBIDDEN",
+        message:
+          "Mounted enterprise admin APIs require an authorizeAdmin callback.",
+      });
+    }
+    const resolved = await resolveMountedEnterpriseTarget(auth, ctx, target);
+    await options.authorizeAdmin(ctx, {
+      userId,
+      permission,
+      enterpriseId: resolved.enterpriseId,
+      groupId: resolved.groupId,
+      resolvedGroupId: resolved.resolvedGroupId,
+    });
+    return { userId, ...resolved };
   };
 }
 
 /**
  * Build optional public SSO management actions that apps can mount under
- * `convex/auth/sso/**` when they want a client-callable enterprise API.
+ * `convex/auth/sso/**` when they want client-callable enterprise APIs.
+ *
+ * `admin` is for tenant-admin control-plane operations and should be mounted
+ * with an explicit authorization policy. `client` is for end-user sign-in
+ * helpers and does not require tenant-admin authorization.
  */
-export function sso(auth: Pick<AuthApi, "group" | "sso" | "user">): {
-  connection: Record<string, any> & { domain: Record<string, any> };
-  oidc: Record<string, any>;
-  saml: Record<string, any>;
-  policy: Record<string, any>;
-  audit: Record<string, any>;
-  webhook: Record<string, any> & {
-    endpoint: Record<string, any>;
-    delivery: Record<string, any>;
-  };
-} {
-  const ensureSignedIn = requireSignedIn(auth);
+export function sso(
+  auth: Pick<AuthApi, "group" | "member" | "sso" | "user">,
+  options?: MountedEnterpriseOptions,
+) {
+  const authorizeAdmin = createMountedAdminAuthorizer(auth, options);
 
   return {
-    connection: {
-      create: actionGeneric({
-        args: {
-          groupId: v.optional(v.string()),
-          name: v.optional(v.string()),
-          slug: v.optional(v.string()),
-          status: v.optional(
-            v.union(
-              v.literal("draft"),
-              v.literal("active"),
-              v.literal("disabled"),
-            ),
-          ),
-          domain: v.optional(v.string()),
-        },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          const groupId =
-            args.groupId ??
-            (await auth.group.create(ctx as never, {
-              name: args.name?.trim() || args.slug?.trim() || "Enterprise",
-              slug: args.slug,
-              type: "enterprise",
-            }));
-          const enterpriseId = await auth.sso.connection.create(ctx as never, {
-            groupId,
-            name: args.name,
-            slug: args.slug,
-            status: args.status,
-          });
-          if (args.domain) {
-            await auth.sso.connection.domain.set(ctx as never, enterpriseId, [
-              { domain: args.domain, isPrimary: true },
-            ]);
-          }
-          return { enterpriseId, groupId };
-        },
-      }),
-      get: actionGeneric({
-        args: { enterpriseId: v.string() },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.connection.get(ctx as never, args.enterpriseId);
-        },
-      }),
-      getByGroup: actionGeneric({
-        args: { groupId: v.string() },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.connection.getByGroup(
-            ctx as never,
-            args.groupId,
-          );
-        },
-      }),
-      getByDomain: actionGeneric({
-        args: { domain: v.string() },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.connection.getByDomain(
-            ctx as never,
-            args.domain,
-          );
-        },
-      }),
-      list: actionGeneric({
-        args: {
-          where: v.optional(v.any()),
-          limit: v.optional(v.number()),
-          cursor: v.optional(v.union(v.string(), v.null())),
-          orderBy: v.optional(v.string()),
-          order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
-        },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.connection.list(ctx as never, args as never);
-        },
-      }),
-      update: actionGeneric({
-        args: { enterpriseId: v.string(), data: v.any() },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          await auth.sso.connection.update(
-            ctx as never,
-            args.enterpriseId,
-            args.data,
-          );
-          return null;
-        },
-      }),
-      remove: actionGeneric({
-        args: { enterpriseId: v.string() },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          await auth.sso.connection.remove(ctx as never, args.enterpriseId);
-          return null;
-        },
-      }),
-      status: actionGeneric({
-        args: { enterpriseId: v.string() },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.connection.status(
-            ctx as never,
-            args.enterpriseId,
-          );
-        },
-      }),
-      domain: {
-        list: actionGeneric({
+    admin: {
+      connection: {
+        create: mutationGeneric({
+          args: {
+            groupId: v.optional(v.string()),
+            name: v.optional(v.string()),
+            slug: v.optional(v.string()),
+            status: v.optional(enterpriseStatusValidator),
+            domain: v.optional(v.string()),
+          },
+          handler: async (ctx, args) => {
+            const { userId } = await authorizeAdmin(
+              ctx,
+              "sso.connection.create",
+              {
+                groupId: args.groupId,
+              },
+            );
+            const createsGroup = args.groupId === undefined;
+            const groupId =
+              args.groupId ??
+              (await auth.group.create(ctx as never, {
+                name: args.name?.trim() || args.slug?.trim() || "Enterprise",
+                slug: args.slug,
+                type: "enterprise",
+              }));
+            if (createsGroup) {
+              await auth.member.add(ctx as never, {
+                groupId,
+                userId,
+                role: "admin",
+              });
+            }
+            const enterpriseId = await auth.sso.admin.connection.create(
+              ctx as never,
+              {
+                groupId,
+                name: args.name,
+                slug: args.slug,
+                status: args.status,
+              },
+            );
+            if (args.domain) {
+              await auth.sso.admin.connection.domain.set(
+                ctx as never,
+                enterpriseId,
+                [{ domain: args.domain, isPrimary: true }],
+              );
+            }
+            return { enterpriseId, groupId };
+          },
+        }),
+        get: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await ensureSignedIn(ctx);
-            return await auth.sso.connection.domain.list(
+            await authorizeAdmin(ctx, "sso.connection.read", {
+              enterpriseId: args.enterpriseId,
+            });
+            return await auth.sso.admin.connection.get(
+              ctx as never,
+              args.enterpriseId,
+            );
+          },
+        }),
+        getByGroup: queryGeneric({
+          args: { groupId: v.string() },
+          handler: async (ctx, args) => {
+            await authorizeAdmin(ctx, "sso.connection.read", {
+              groupId: args.groupId,
+            });
+            return await auth.sso.admin.connection.getByGroup(
+              ctx as never,
+              args.groupId,
+            );
+          },
+        }),
+        getByDomain: queryGeneric({
+          args: { domain: v.string() },
+          handler: async (ctx, args) => {
+            await authorizeAdmin(ctx, "sso.connection.read", {
+              domain: args.domain,
+            });
+            return await auth.sso.admin.connection.getByDomain(
+              ctx as never,
+              args.domain,
+            );
+          },
+        }),
+        list: queryGeneric({
+          args: {
+            where: v.optional(enterpriseConnectionWhereValidator),
+            limit: v.optional(v.number()),
+            cursor: v.optional(v.union(v.string(), v.null())),
+            orderBy: v.optional(v.string()),
+            order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
+          },
+          handler: async (ctx, args) => {
+            await authorizeAdmin(ctx, "sso.connection.read", {
+              groupId: args.where?.groupId,
+            });
+            return await auth.sso.admin.connection.list(
+              ctx as never,
+              args as never,
+            );
+          },
+        }),
+        update: mutationGeneric({
+          args: {
+            enterpriseId: v.string(),
+            data: v.object({
+              name: v.optional(v.string()),
+              slug: v.optional(v.string()),
+              status: v.optional(enterpriseStatusValidator),
+            }),
+          },
+          handler: async (ctx, args) => {
+            await authorizeAdmin(ctx, "sso.connection.manage", {
+              enterpriseId: args.enterpriseId,
+            });
+            await auth.sso.admin.connection.update(
+              ctx as never,
+              args.enterpriseId,
+              args.data,
+            );
+            return null;
+          },
+        }),
+        delete: mutationGeneric({
+          args: { enterpriseId: v.string() },
+          handler: async (ctx, args) => {
+            await authorizeAdmin(ctx, "sso.connection.manage", {
+              enterpriseId: args.enterpriseId,
+            });
+            await auth.sso.admin.connection.delete(
+              ctx as never,
+              args.enterpriseId,
+            );
+            return null;
+          },
+        }),
+        status: queryGeneric({
+          args: { enterpriseId: v.string() },
+          handler: async (ctx, args) => {
+            await authorizeAdmin(ctx, "sso.connection.read", {
+              enterpriseId: args.enterpriseId,
+            });
+            return await auth.sso.admin.connection.status(
+              ctx as never,
+              args.enterpriseId,
+            );
+          },
+        }),
+        domain: {
+          list: queryGeneric({
+            args: { enterpriseId: v.string() },
+            handler: async (ctx, args) => {
+              await authorizeAdmin(ctx, "sso.connection.read", {
+                enterpriseId: args.enterpriseId,
+              });
+              return await auth.sso.admin.connection.domain.list(
+                ctx as never,
+                args.enterpriseId,
+              );
+            },
+          }),
+          validate: queryGeneric({
+            args: { enterpriseId: v.string() },
+            handler: async (ctx, args) => {
+              await authorizeAdmin(ctx, "sso.domain.manage", {
+                enterpriseId: args.enterpriseId,
+              });
+              return await auth.sso.admin.connection.domain.validate(
+                ctx as never,
+                args.enterpriseId,
+              );
+            },
+          }),
+          set: mutationGeneric({
+            args: {
+              enterpriseId: v.string(),
+              domains: v.array(enterpriseDomainInputValidator),
+            },
+            handler: async (ctx, args) => {
+              await authorizeAdmin(ctx, "sso.domain.manage", {
+                enterpriseId: args.enterpriseId,
+              });
+              await auth.sso.admin.connection.domain.set(
+                ctx as never,
+                args.enterpriseId,
+                args.domains,
+              );
+              return null;
+            },
+          }),
+        },
+      },
+      oidc: {
+        configure: mutationGeneric({
+          args: {
+            enterpriseId: v.string(),
+            issuer: v.optional(v.string()),
+            discoveryUrl: v.optional(v.string()),
+            clientId: v.string(),
+            clientSecret: v.optional(v.string()),
+            scopes: v.optional(v.array(v.string())),
+            authorizationParams: v.optional(v.record(v.string(), v.string())),
+            clockToleranceSeconds: v.optional(v.number()),
+            strictIssuer: v.optional(v.boolean()),
+            extraFields: v.optional(v.record(v.string(), v.string())),
+          },
+          handler: async (ctx, args) => {
+            await authorizeAdmin(ctx, "sso.protocol.manage", {
+              enterpriseId: args.enterpriseId,
+            });
+            return await auth.sso.admin.oidc.configure(ctx as never, args);
+          },
+        }),
+        get: queryGeneric({
+          args: { enterpriseId: v.string() },
+          handler: async (ctx, args) => {
+            await authorizeAdmin(ctx, "sso.connection.read", {
+              enterpriseId: args.enterpriseId,
+            });
+            return await auth.sso.admin.oidc.get(
               ctx as never,
               args.enterpriseId,
             );
@@ -162,63 +403,173 @@ export function sso(auth: Pick<AuthApi, "group" | "sso" | "user">): {
         validate: actionGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await ensureSignedIn(ctx);
-            return await auth.sso.connection.domain.validate(
+            await authorizeAdmin(ctx, "sso.protocol.manage", {
+              enterpriseId: args.enterpriseId,
+            });
+            return await auth.sso.admin.oidc.validate(
               ctx as never,
               args.enterpriseId,
             );
-          },
-        }),
-        set: actionGeneric({
-          args: {
-            enterpriseId: v.string(),
-            domains: v.array(
-              v.object({
-                domain: v.string(),
-                isPrimary: v.optional(v.boolean()),
-                verifiedAt: v.optional(v.number()),
-              }),
-            ),
-          },
-          handler: async (ctx, args) => {
-            await ensureSignedIn(ctx);
-            await auth.sso.connection.domain.set(
-              ctx as never,
-              args.enterpriseId,
-              args.domains,
-            );
-            return null;
           },
         }),
       },
+      saml: {
+        configure: actionGeneric({
+          args: {
+            enterpriseId: v.string(),
+            metadataXml: v.optional(v.string()),
+            metadataUrl: v.optional(v.string()),
+            domains: v.optional(v.array(v.string())),
+            signAuthnRequests: v.optional(v.boolean()),
+            attributeMapping: v.optional(
+              enterpriseSamlAttributeMappingValidator,
+            ),
+            sp: v.optional(enterpriseSamlSpValidator),
+          },
+          handler: async (ctx, args) => {
+            await authorizeAdmin(ctx, "sso.protocol.manage", {
+              enterpriseId: args.enterpriseId,
+            });
+            return await auth.sso.admin.saml.configure(ctx as never, args);
+          },
+        }),
+        validate: queryGeneric({
+          args: { enterpriseId: v.string() },
+          handler: async (ctx, args) => {
+            await authorizeAdmin(ctx, "sso.protocol.manage", {
+              enterpriseId: args.enterpriseId,
+            });
+            return await auth.sso.admin.saml.validate(
+              ctx as never,
+              args.enterpriseId,
+            );
+          },
+        }),
+      },
+      policy: {
+        get: queryGeneric({
+          args: { enterpriseId: v.string() },
+          handler: async (ctx, args) => {
+            await authorizeAdmin(ctx, "sso.connection.read", {
+              enterpriseId: args.enterpriseId,
+            });
+            return await auth.sso.admin.policy.get(
+              ctx as never,
+              args.enterpriseId,
+            );
+          },
+        }),
+        update: mutationGeneric({
+          args: {
+            enterpriseId: v.string(),
+            patch: enterprisePolicyPatchValidator,
+          },
+          handler: async (ctx, args) => {
+            await authorizeAdmin(ctx, "sso.policy.manage", {
+              enterpriseId: args.enterpriseId,
+            });
+            return await auth.sso.admin.policy.update(
+              ctx as never,
+              args.enterpriseId,
+              args.patch,
+            );
+          },
+        }),
+        validate: queryGeneric({
+          args: { enterpriseId: v.string() },
+          handler: async (ctx, args) => {
+            await authorizeAdmin(ctx, "sso.policy.manage", {
+              enterpriseId: args.enterpriseId,
+            });
+            return await auth.sso.admin.policy.validate(
+              ctx as never,
+              args.enterpriseId,
+            );
+          },
+        }),
+      },
+      audit: {
+        list: queryGeneric({
+          args: {
+            enterpriseId: v.optional(v.string()),
+            groupId: v.optional(v.string()),
+            limit: v.optional(v.number()),
+          },
+          handler: async (ctx, args) => {
+            await authorizeAdmin(ctx, "sso.audit.read", {
+              enterpriseId: args.enterpriseId,
+              groupId: args.groupId,
+            });
+            return await auth.sso.admin.audit.list(ctx as never, args);
+          },
+        }),
+      },
+      webhook: {
+        endpoint: {
+          create: mutationGeneric({
+            args: {
+              enterpriseId: v.string(),
+              url: v.string(),
+              secret: v.string(),
+              subscriptions: v.array(v.string()),
+              createdByUserId: v.optional(v.string()),
+            },
+            handler: async (ctx, args) => {
+              const { userId } = await authorizeAdmin(
+                ctx,
+                "sso.webhook.manage",
+                { enterpriseId: args.enterpriseId },
+              );
+              const result = await auth.sso.admin.webhook.endpoint.create(
+                ctx as never,
+                {
+                  ...args,
+                  createdByUserId: args.createdByUserId ?? userId,
+                },
+              );
+              return {
+                _id: result.endpointId,
+                enterpriseId: args.enterpriseId,
+                url: args.url,
+                subscriptions: args.subscriptions,
+                createdByUserId: args.createdByUserId ?? userId,
+                status: "active",
+                failureCount: 0,
+              };
+            },
+          }),
+          list: queryGeneric({
+            args: { enterpriseId: v.string() },
+            handler: async (ctx, args) => {
+              await authorizeAdmin(ctx, "sso.webhook.manage", {
+                enterpriseId: args.enterpriseId,
+              });
+              const endpoints = await auth.sso.admin.webhook.endpoint.list(
+                ctx as never,
+                args.enterpriseId,
+              );
+              return endpoints.map((endpoint: Record<string, unknown>) => {
+                const { secretHash: _secretHash, ...rest } = endpoint;
+                return rest;
+              });
+            },
+          }),
+          disable: mutationGeneric({
+            args: { endpointId: v.string() },
+            handler: async (ctx, args) => {
+              await authorizeAdmin(ctx, "sso.webhook.manage");
+              await auth.sso.admin.webhook.endpoint.disable(
+                ctx as never,
+                args.endpointId,
+              );
+              return null;
+            },
+          }),
+        },
+      },
     },
-    oidc: {
-      configure: actionGeneric({
-        args: {
-          enterpriseId: v.string(),
-          issuer: v.optional(v.string()),
-          discoveryUrl: v.optional(v.string()),
-          clientId: v.string(),
-          clientSecret: v.optional(v.string()),
-          scopes: v.optional(v.array(v.string())),
-          authorizationParams: v.optional(v.record(v.string(), v.string())),
-          clockToleranceSeconds: v.optional(v.number()),
-          strictIssuer: v.optional(v.boolean()),
-          extraFields: v.optional(v.record(v.string(), v.string())),
-        },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.oidc.configure(ctx as never, args);
-        },
-      }),
-      get: actionGeneric({
-        args: { enterpriseId: v.string() },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.oidc.get(ctx as never, args.enterpriseId);
-        },
-      }),
-      resolveSignIn: actionGeneric({
+    client: {
+      signIn: queryGeneric({
         args: {
           enterpriseId: v.optional(v.string()),
           email: v.optional(v.string()),
@@ -226,35 +577,10 @@ export function sso(auth: Pick<AuthApi, "group" | "sso" | "user">): {
           redirectTo: v.optional(v.string()),
         },
         handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.oidc.resolveSignIn(ctx as never, args);
+          return await auth.sso.client.signIn(ctx as never, args);
         },
       }),
-      validate: actionGeneric({
-        args: { enterpriseId: v.string() },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.oidc.validate(ctx as never, args.enterpriseId);
-        },
-      }),
-    },
-    saml: {
-      configure: actionGeneric({
-        args: {
-          enterpriseId: v.string(),
-          metadataXml: v.optional(v.string()),
-          metadataUrl: v.optional(v.string()),
-          domains: v.optional(v.array(v.string())),
-          signAuthnRequests: v.optional(v.boolean()),
-          attributeMapping: v.optional(v.any()),
-          sp: v.optional(v.any()),
-        },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.saml.configure(ctx as never, args);
-        },
-      }),
-      metadata: actionGeneric({
+      metadata: queryGeneric({
         args: {
           enterpriseId: v.string(),
           entityId: v.optional(v.string()),
@@ -262,266 +588,57 @@ export function sso(auth: Pick<AuthApi, "group" | "sso" | "user">): {
           sloUrl: v.optional(v.string()),
         },
         handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.saml.metadata(ctx as never, args);
+          return await auth.sso.client.metadata(ctx as never, args);
         },
       }),
-      validate: actionGeneric({
-        args: { enterpriseId: v.string() },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.saml.validate(ctx as never, args.enterpriseId);
-        },
-      }),
-    },
-    policy: {
-      get: actionGeneric({
-        args: { enterpriseId: v.string() },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.policy.get(ctx as never, args.enterpriseId);
-        },
-      }),
-      update: actionGeneric({
-        args: { enterpriseId: v.string(), patch: v.any() },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.policy.update(
-            ctx as never,
-            args.enterpriseId,
-            args.patch,
-          );
-        },
-      }),
-      validate: actionGeneric({
-        args: { enterpriseId: v.string() },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.policy.validate(
-            ctx as never,
-            args.enterpriseId,
-          );
-        },
-      }),
-    },
-    audit: {
-      record: actionGeneric({
-        args: { data: v.any() },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.audit.record(ctx as never, args.data);
-        },
-      }),
-      list: actionGeneric({
-        args: {
-          enterpriseId: v.optional(v.string()),
-          groupId: v.optional(v.string()),
-          limit: v.optional(v.number()),
-        },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.sso.audit.list(ctx as never, args);
-        },
-      }),
-    },
-    webhook: {
-      emit: actionGeneric({
-        args: {
-          enterpriseId: v.string(),
-          eventType: v.string(),
-          payload: v.any(),
-          auditEventId: v.optional(v.string()),
-        },
-        handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          await auth.sso.webhook.emit(ctx as never, args);
-          return null;
-        },
-      }),
-      endpoint: {
-        create: actionGeneric({
-          args: {
-            enterpriseId: v.string(),
-            url: v.string(),
-            secret: v.string(),
-            subscriptions: v.array(v.string()),
-            createdByUserId: v.optional(v.string()),
-          },
-          handler: async (ctx, args) => {
-            await ensureSignedIn(ctx);
-            const result = await auth.sso.webhook.endpoint.create(
-              ctx as never,
-              args,
-            );
-            return {
-              _id: result.endpointId,
-              enterpriseId: args.enterpriseId,
-              url: args.url,
-              subscriptions: args.subscriptions,
-              createdByUserId: args.createdByUserId,
-              status: "active",
-              failureCount: 0,
-            };
-          },
-        }),
-        list: actionGeneric({
-          args: { enterpriseId: v.string() },
-          handler: async (ctx, args) => {
-            await ensureSignedIn(ctx);
-            const endpoints = await auth.sso.webhook.endpoint.list(
-              ctx as never,
-              args.enterpriseId,
-            );
-            return endpoints.map((endpoint: Record<string, unknown>) => {
-              const { secretHash: _secretHash, ...rest } = endpoint;
-              return rest;
-            });
-          },
-        }),
-        disable: actionGeneric({
-          args: { endpointId: v.string() },
-          handler: async (ctx, args) => {
-            await ensureSignedIn(ctx);
-            await auth.sso.webhook.endpoint.disable(
-              ctx as never,
-              args.endpointId,
-            );
-            return null;
-          },
-        }),
-      },
-      delivery: {
-        list: actionGeneric({
-          args: { enterpriseId: v.string(), limit: v.optional(v.number()) },
-          handler: async (ctx, args) => {
-            await ensureSignedIn(ctx);
-            return await auth.sso.webhook.delivery.list(ctx as never, args);
-          },
-        }),
-        listReady: actionGeneric({
-          args: { limit: v.optional(v.number()) },
-          handler: async (ctx, args) => {
-            await ensureSignedIn(ctx);
-            return await auth.sso.webhook.delivery.listReady(
-              ctx as never,
-              args.limit,
-            );
-          },
-        }),
-        markDelivered: actionGeneric({
-          args: {
-            deliveryId: v.string(),
-            responseStatus: v.optional(v.number()),
-          },
-          handler: async (ctx, args) => {
-            await ensureSignedIn(ctx);
-            await auth.sso.webhook.delivery.markDelivered(
-              ctx as never,
-              args.deliveryId,
-              args.responseStatus,
-            );
-            return null;
-          },
-        }),
-        markFailed: actionGeneric({
-          args: {
-            deliveryId: v.string(),
-            data: v.object({
-              attemptCount: v.number(),
-              responseStatus: v.optional(v.number()),
-              error: v.optional(v.string()),
-              retryAt: v.optional(v.number()),
-            }),
-          },
-          handler: async (ctx, args) => {
-            await ensureSignedIn(ctx);
-            await auth.sso.webhook.delivery.markFailed(
-              ctx as never,
-              args.deliveryId,
-              args.data,
-            );
-            return null;
-          },
-        }),
-      },
     },
   };
 }
 
 /**
  * Build optional public SCIM management actions that apps can mount under
- * `convex/auth/scim/**` when they want a client-callable enterprise API.
+ * `convex/auth/scim/**` when they want client-callable enterprise admin APIs.
  */
 export function scim(
-  auth: Pick<AuthApi, "scim" | "user">,
-): Record<string, any> & { identity: Record<string, any> } {
-  const ensureSignedIn = requireSignedIn(auth);
+  auth: Pick<AuthApi, "scim" | "sso" | "user">,
+  options?: MountedEnterpriseOptions,
+) {
+  const authorizeAdmin = createMountedAdminAuthorizer(auth, options);
 
   return {
-    configure: actionGeneric({
-      args: {
-        enterpriseId: v.string(),
-        basePath: v.optional(v.string()),
-        status: v.optional(
-          v.union(
-            v.literal("draft"),
-            v.literal("active"),
-            v.literal("disabled"),
-          ),
-        ),
-      },
-      handler: async (ctx, args) => {
-        await ensureSignedIn(ctx);
-        return await auth.scim.configure(ctx as never, args);
-      },
-    }),
-    get: actionGeneric({
-      args: { enterpriseId: v.string() },
-      handler: async (ctx, args) => {
-        await ensureSignedIn(ctx);
-        return await auth.scim.get(ctx as never, args.enterpriseId);
-      },
-    }),
-    getConfigByToken: actionGeneric({
-      args: { token: v.string() },
-      handler: async (ctx, args) => {
-        await ensureSignedIn(ctx);
-        return await auth.scim.getConfigByToken(ctx as never, args.token);
-      },
-    }),
-    validate: actionGeneric({
-      args: { enterpriseId: v.string() },
-      handler: async (ctx, args) => {
-        await ensureSignedIn(ctx);
-        return await auth.scim.validate(ctx as never, args.enterpriseId);
-      },
-    }),
-    identity: {
-      get: actionGeneric({
+    admin: {
+      configure: mutationGeneric({
         args: {
           enterpriseId: v.string(),
-          resourceType: v.union(v.literal("user"), v.literal("group")),
-          externalId: v.string(),
+          basePath: v.optional(v.string()),
+          status: v.optional(enterpriseStatusValidator),
         },
         handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.scim.identity.get(ctx as never, args);
+          await authorizeAdmin(ctx, "scim.manage", {
+            enterpriseId: args.enterpriseId,
+          });
+          return await auth.scim.admin.configure(ctx as never, args);
         },
       }),
-      upsert: actionGeneric({
-        args: {
-          enterpriseId: v.string(),
-          groupId: v.string(),
-          resourceType: v.union(v.literal("user"), v.literal("group")),
-          externalId: v.string(),
-          userId: v.optional(v.string()),
-          mappedGroupId: v.optional(v.string()),
-          active: v.optional(v.boolean()),
-          raw: v.optional(v.any()),
-        },
+      get: queryGeneric({
+        args: { enterpriseId: v.string() },
         handler: async (ctx, args) => {
-          await ensureSignedIn(ctx);
-          return await auth.scim.identity.upsert(ctx as never, args);
+          await authorizeAdmin(ctx, "scim.manage", {
+            enterpriseId: args.enterpriseId,
+          });
+          return await auth.scim.admin.get(ctx as never, args.enterpriseId);
+        },
+      }),
+      validate: queryGeneric({
+        args: { enterpriseId: v.string() },
+        handler: async (ctx, args) => {
+          await authorizeAdmin(ctx, "scim.manage", {
+            enterpriseId: args.enterpriseId,
+          });
+          return await auth.scim.admin.validate(
+            ctx as never,
+            args.enterpriseId,
+          );
         },
       }),
     },

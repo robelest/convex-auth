@@ -1,6 +1,7 @@
-import { components } from "@convex/_generated/api";
+import { api, components } from "@convex/_generated/api";
 import { auth } from "@convex/auth";
 import schema from "@convex/schema";
+import { scim, sso } from "@robelest/convex-auth/server";
 import {
   createEnterpriseOidcProvider,
   getEnterpriseOidcUrls,
@@ -14,6 +15,7 @@ import {
   parseSamlIdpMetadata,
   upsertProtocolConfig,
 } from "@robelest/convex-auth/server/sso";
+import { sha256 } from "@robelest/convex-auth/server/utils";
 import idpMetadataXml from "@robelest/samlify/test/misc/idpmeta.xml?raw";
 import { SignJWT } from "jose";
 import { afterEach, expect, test, vi } from "vite-plus/test";
@@ -103,7 +105,7 @@ test("enterprise domain validation reports onboarding diagnostics", async () => 
   });
 
   const enterpriseId = await t.run(async (ctx) => {
-    return await auth.sso.connection.create(ctx as any, {
+    return await auth.sso.admin.connection.create(ctx as any, {
       groupId,
       slug: "acme-onboarding",
       name: "Acme Onboarding",
@@ -112,13 +114,16 @@ test("enterprise domain validation reports onboarding diagnostics", async () => 
   });
 
   await t.run(async (ctx) => {
-    await auth.sso.connection.domain.set(ctx as any, enterpriseId, [
+    await auth.sso.admin.connection.domain.set(ctx as any, enterpriseId, [
       { domain: "acme.example", isPrimary: true },
     ]);
   });
 
   const missingVerification = await t.run(async (ctx) => {
-    return await auth.sso.connection.domain.validate(ctx as any, enterpriseId);
+    return await auth.sso.admin.connection.domain.validate(
+      ctx as any,
+      enterpriseId,
+    );
   });
 
   expect(missingVerification.ready).toBe(false);
@@ -127,7 +132,7 @@ test("enterprise domain validation reports onboarding diagnostics", async () => 
   expect(missingVerification.warnings).toContain("No verified domains yet.");
 
   await t.run(async (ctx) => {
-    await auth.sso.connection.domain.set(ctx as any, enterpriseId, [
+    await auth.sso.admin.connection.domain.set(ctx as any, enterpriseId, [
       {
         domain: "acme.example",
         isPrimary: true,
@@ -137,7 +142,10 @@ test("enterprise domain validation reports onboarding diagnostics", async () => 
   });
 
   const verified = await t.run(async (ctx) => {
-    return await auth.sso.connection.domain.validate(ctx as any, enterpriseId);
+    return await auth.sso.admin.connection.domain.validate(
+      ctx as any,
+      enterpriseId,
+    );
   });
 
   expect(verified.ready).toBe(true);
@@ -270,7 +278,7 @@ test("enterprise component stores scim config, audit events, and webhook deliver
   });
 
   const configured = await t.run(async (ctx) => {
-    return await auth.scim.configure(ctx, {
+    return await auth.scim.admin.configure(ctx, {
       enterpriseId,
       basePath: "/api/auth/sso/globex/scim/v2",
     });
@@ -279,27 +287,34 @@ test("enterprise component stores scim config, audit events, and webhook deliver
   const rawToken = configured.token;
 
   const identityId = await t.run(async (ctx) => {
-    return await auth.scim.identity.upsert(ctx, {
-      enterpriseId,
-      groupId,
-      resourceType: "user",
-      externalId: "scim-user-1",
-      active: true,
-      raw: { userName: "person@globex.com" },
-    });
+    return await ctx.runMutation(
+      components.auth.public.enterpriseScimIdentityUpsert,
+      {
+        enterpriseId,
+        groupId,
+        resourceType: "user",
+        externalId: "scim-user-1",
+        active: true,
+        raw: { userName: "person@globex.com" },
+      },
+    );
   });
   const auditEventId = await t.run(async (ctx) => {
-    return await auth.sso.audit.record(ctx, {
-      enterpriseId,
-      groupId,
-      eventType: "enterprise.scim.configured",
-      actorType: "system",
-      subjectType: "enterprise_scim",
-      ok: true,
-    });
+    return await ctx.runMutation(
+      components.auth.public.enterpriseAuditEventCreate,
+      {
+        enterpriseId,
+        groupId,
+        eventType: "enterprise.scim.configured",
+        actorType: "system",
+        subjectType: "enterprise_scim",
+        status: "success",
+        occurredAt: Date.now(),
+      },
+    );
   });
   const { endpointId } = await t.run(async (ctx) => {
-    return await auth.sso.webhook.endpoint.create(ctx, {
+    return await auth.sso.admin.webhook.endpoint.create(ctx, {
       enterpriseId,
       url: "https://example.com/webhooks/enterprise",
       secret: "secret-hash",
@@ -307,32 +322,51 @@ test("enterprise component stores scim config, audit events, and webhook deliver
     });
   });
   await t.run(async (ctx) => {
-    await auth.sso.webhook.emit(ctx, {
-      enterpriseId,
-      eventType: "enterprise.scim.configured",
-      auditEventId,
-      payload: { ok: true },
-    });
+    await ctx.runMutation(
+      components.auth.public.enterpriseWebhookDeliveryEnqueue,
+      {
+        enterpriseId,
+        endpointId,
+        eventType: "enterprise.scim.configured",
+        auditEventId,
+        payload: { ok: true },
+        nextAttemptAt: Date.now(),
+      },
+    );
   });
 
   const scimConfig = await t.run(async (ctx) => {
-    return await auth.scim.getConfigByToken(ctx, rawToken);
+    return await ctx.runQuery(
+      components.auth.public.enterpriseScimConfigGetByTokenHash,
+      {
+        tokenHash: await sha256(rawToken),
+      },
+    );
   });
   const identity = await t.run(async (ctx) => {
-    return await auth.scim.identity.get(ctx, {
-      enterpriseId,
-      resourceType: "user",
-      externalId: "scim-user-1",
-    });
+    return await ctx.runQuery(
+      components.auth.public.enterpriseScimIdentityGet,
+      {
+        enterpriseId,
+        resourceType: "user",
+        externalId: "scim-user-1",
+      },
+    );
   });
   const auditEvents = await t.run(async (ctx) => {
-    return await auth.sso.audit.list(ctx, {
+    return await auth.sso.admin.audit.list(ctx, {
       enterpriseId,
       limit: 10,
     });
   });
   const readyDeliveries = await t.run(async (ctx) => {
-    return await auth.sso.webhook.delivery.listReady(ctx, 10);
+    return await ctx.runQuery(
+      components.auth.public.enterpriseWebhookDeliveryListReady,
+      {
+        now: Date.now(),
+        limit: 10,
+      },
+    );
   });
 
   expect(scimConfigId).toBeDefined();
@@ -538,7 +572,7 @@ test("enterprise saml.register persists config directly on enterprise connection
   });
 
   const completed = await t.run(async (ctx) => {
-    return await auth.sso.saml.configure(ctx as any, {
+    return await auth.sso.admin.saml.configure(ctx as any, {
       enterpriseId,
       metadataXml: idpMetadataXml,
       domains: ["register.example.com"],
@@ -567,7 +601,7 @@ test("enterprise saml.register persists config directly on enterprise connection
     });
   });
   const policy = await t.run(async (ctx) => {
-    return await auth.sso.policy.get(ctx as any, enterpriseId);
+    return await auth.sso.admin.policy.get(ctx as any, enterpriseId);
   });
 
   expect(completed.enterpriseId).toBe(enterpriseId);
@@ -590,6 +624,33 @@ test("enterprise saml.register persists config directly on enterprise connection
   expect(auditEvents[0]?.eventType).toBe("enterprise.saml.registered");
 });
 
+test("mounted enterprise helpers expose only the narrowed public surface", () => {
+  const mountedSso = sso(auth);
+  const mountedScim = scim(auth);
+
+  expect(Object.keys(mountedSso.admin.oidc).sort()).toEqual([
+    "configure",
+    "get",
+    "validate",
+  ]);
+  expect(Object.keys(mountedSso.admin.saml).sort()).toEqual([
+    "configure",
+    "validate",
+  ]);
+  expect(Object.keys(mountedSso.client).sort()).toEqual(["metadata", "signIn"]);
+  expect(Object.keys(mountedSso.admin.audit)).toEqual(["list"]);
+  expect(Object.keys(mountedSso.admin.webhook).sort()).toEqual(["endpoint"]);
+  expect("delivery" in mountedSso.admin.webhook).toBe(false);
+
+  expect(Object.keys(mountedScim.admin).sort()).toEqual([
+    "configure",
+    "get",
+    "validate",
+  ]);
+  expect("identity" in mountedScim.admin).toBe(false);
+  expect("getConfigByToken" in mountedScim.admin).toBe(false);
+});
+
 test("enterprise policy defaults and updates are normalized through auth.sso.policy", async () => {
   const t = convexTest(schema);
 
@@ -610,10 +671,10 @@ test("enterprise policy defaults and updates are normalized through auth.sso.pol
   });
 
   const defaults = await t.run(async (ctx) => {
-    return await auth.sso.policy.get(ctx as any, enterpriseId);
+    return await auth.sso.admin.policy.get(ctx as any, enterpriseId);
   });
   const updated = await t.run(async (ctx) => {
-    return await auth.sso.policy.update(ctx as any, enterpriseId, {
+    return await auth.sso.admin.policy.update(ctx as any, enterpriseId, {
       identity: { accountLinking: { saml: "none" } },
       provisioning: {
         jit: { mode: "createUser", defaultRole: "admin" },
@@ -622,7 +683,7 @@ test("enterprise policy defaults and updates are normalized through auth.sso.pol
     });
   });
   const validation = await t.run(async (ctx) => {
-    return await auth.sso.policy.validate(ctx as any, enterpriseId);
+    return await auth.sso.admin.policy.validate(ctx as any, enterpriseId);
   });
 
   expect(defaults.identity.accountLinking.oidc).toBe("verifiedEmail");
@@ -634,7 +695,7 @@ test("enterprise policy defaults and updates are normalized through auth.sso.pol
   expect(validation.ok).toBe(true);
 });
 
-test("enterprise oidc.register merges config and resolveSignIn returns enterprise paths", async () => {
+test("enterprise oidc.register merges config and client.signIn returns enterprise paths", async () => {
   savedEnv.CONVEX_SITE_URL = process.env.CONVEX_SITE_URL;
   process.env.CONVEX_SITE_URL = ENTERPRISE_SITE_URL;
   const t = convexTest(schema);
@@ -665,7 +726,7 @@ test("enterprise oidc.register merges config and resolveSignIn returns enterpris
   });
 
   const oidcConfig = await t.run(async (ctx) => {
-    return await auth.sso.oidc.configure(ctx as any, {
+    return await auth.sso.admin.oidc.configure(ctx as any, {
       enterpriseId,
       issuer: "https://issuer.example.com",
       discoveryUrl:
@@ -695,10 +756,14 @@ test("enterprise oidc.register merges config and resolveSignIn returns enterpris
     });
   });
   const resolved = await t.run(async (ctx) => {
-    return await auth.sso.oidc.resolveSignIn(ctx as any, {
+    return await auth.sso.client.signIn(ctx as any, {
       domain: "oidc.example.com",
       redirectTo: "/dashboard",
     });
+  });
+  const clientResolved = await t.query((api as any).auth.sso.client.signIn, {
+    domain: "oidc.example.com",
+    redirectTo: "/dashboard",
   });
 
   expect(oidcConfig.hasClientSecret).toBe(true);
@@ -718,6 +783,7 @@ test("enterprise oidc.register merges config and resolveSignIn returns enterpris
     `${ENTERPRISE_SITE_URL}/api/auth/sso/${enterpriseId}/oidc/callback`,
   );
   expect(resolved.redirectTo).toBe("/dashboard");
+  expect(clientResolved).toEqual(resolved);
   expect(
     (oidcConfig as { clientSecret?: string }).clientSecret,
   ).toBeUndefined();
@@ -796,19 +862,24 @@ test("enterprise scim.configure stores hashed token and enqueues subscribed deli
   });
 
   const configured = await t.run(async (ctx) => {
-    return await auth.scim.configure(ctx as any, {
+    return await auth.scim.admin.configure(ctx as any, {
       enterpriseId,
     });
   });
 
   const scimConfig = await t.run(async (ctx) => {
-    return await auth.scim.get(ctx as any, enterpriseId);
+    return await auth.scim.admin.get(ctx as any, enterpriseId);
   });
   const lookedUpByToken = await t.run(async (ctx) => {
-    return await auth.scim.getConfigByToken(ctx as any, configured.token);
+    return await ctx.runQuery(
+      components.auth.public.enterpriseScimConfigGetByTokenHash,
+      {
+        tokenHash: await sha256(configured.token),
+      },
+    );
   });
   const policy = await t.run(async (ctx) => {
-    return await auth.sso.policy.get(ctx as any, enterpriseId);
+    return await auth.sso.admin.policy.get(ctx as any, enterpriseId);
   });
   const auditEvents = await t.run(async (ctx) => {
     return await ctx.runQuery(components.auth.public.enterpriseAuditEventList, {

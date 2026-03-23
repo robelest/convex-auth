@@ -732,85 +732,93 @@ async function mountEnterprise(config: ProjectConfig, only?: string) {
   if (mountSso) {
     writeMountFile(
       config,
-      path.join(config.convexFolderPath, "auth", "sso", "connection"),
+      path.join(config.convexFolderPath, "auth", "sso", "admin", "connection"),
+      `import { auth, authorizeAdmin } from "../../auth";
+import { sso } from "@robelest/convex-auth/server";
+
+const connection = sso(auth, { authorizeAdmin: authorizeAdmin }).admin.connection;
+
+export const { create, get, getByGroup, getByDomain, list, update, status } = connection;
+export { deleteConnection as delete };
+
+const deleteConnection = connection.delete;
+`,
+    );
+    writeMountFile(
+      config,
+      path.join(
+        config.convexFolderPath,
+        "auth",
+        "sso",
+        "admin",
+        "connection",
+        "domain",
+      ),
+      `import { auth, authorizeAdmin } from "../../../../auth";
+import { sso } from "@robelest/convex-auth/server";
+
+export const { list, validate, set } = sso(auth, { authorizeAdmin: authorizeAdmin }).admin.connection.domain;
+`,
+    );
+    writeMountFile(
+      config,
+      path.join(config.convexFolderPath, "auth", "sso", "admin", "oidc"),
+      `import { auth, authorizeAdmin } from "../../../auth";
+import { sso } from "@robelest/convex-auth/server";
+
+export const { configure, get, validate } = sso(auth, { authorizeAdmin: authorizeAdmin }).admin.oidc;
+`,
+    );
+    writeMountFile(
+      config,
+      path.join(config.convexFolderPath, "auth", "sso", "admin", "saml"),
+      `import { auth, authorizeAdmin } from "../../../auth";
+import { sso } from "@robelest/convex-auth/server";
+
+export const { configure, validate } = sso(auth, { authorizeAdmin: authorizeAdmin }).admin.saml;
+`,
+    );
+    writeMountFile(
+      config,
+      path.join(config.convexFolderPath, "auth", "sso", "client"),
       `import { auth } from "../../auth";
 import { sso } from "@robelest/convex-auth/server";
 
-export const { create, get, getByGroup, getByDomain, list, update, remove, status } =
-  sso(auth).connection;
+export const { signIn, metadata } = sso(auth).client;
 `,
     );
     writeMountFile(
       config,
-      path.join(config.convexFolderPath, "auth", "sso", "connection", "domain"),
-      `import { auth } from "../../../auth";
+      path.join(config.convexFolderPath, "auth", "sso", "admin", "policy"),
+      `import { auth, authorizeAdmin } from "../../../auth";
 import { sso } from "@robelest/convex-auth/server";
 
-export const { list, validate, set } = sso(auth).connection.domain;
+export const { get, update, validate } = sso(auth, { authorizeAdmin: authorizeAdmin }).admin.policy;
 `,
     );
     writeMountFile(
       config,
-      path.join(config.convexFolderPath, "auth", "sso", "oidc"),
-      `import { auth } from "../../auth";
+      path.join(config.convexFolderPath, "auth", "sso", "admin", "audit"),
+      `import { auth, authorizeAdmin } from "../../../auth";
 import { sso } from "@robelest/convex-auth/server";
 
-export const { configure, get, resolveSignIn, validate } = sso(auth).oidc;
+export const { list } = sso(auth, { authorizeAdmin: authorizeAdmin }).admin.audit;
 `,
     );
     writeMountFile(
       config,
-      path.join(config.convexFolderPath, "auth", "sso", "saml"),
-      `import { auth } from "../../auth";
+      path.join(
+        config.convexFolderPath,
+        "auth",
+        "sso",
+        "admin",
+        "webhook",
+        "endpoint",
+      ),
+      `import { auth, authorizeAdmin } from "../../../../auth";
 import { sso } from "@robelest/convex-auth/server";
 
-export const { configure, metadata, validate } = sso(auth).saml;
-`,
-    );
-    writeMountFile(
-      config,
-      path.join(config.convexFolderPath, "auth", "sso", "policy"),
-      `import { auth } from "../../auth";
-import { sso } from "@robelest/convex-auth/server";
-
-export const { get, update, validate } = sso(auth).policy;
-`,
-    );
-    writeMountFile(
-      config,
-      path.join(config.convexFolderPath, "auth", "sso", "audit"),
-      `import { auth } from "../../auth";
-import { sso } from "@robelest/convex-auth/server";
-
-export const { record, list } = sso(auth).audit;
-`,
-    );
-    writeMountFile(
-      config,
-      path.join(config.convexFolderPath, "auth", "sso", "webhook"),
-      `import { auth } from "../../auth";
-import { sso } from "@robelest/convex-auth/server";
-
-export const { emit } = sso(auth).webhook;
-`,
-    );
-    writeMountFile(
-      config,
-      path.join(config.convexFolderPath, "auth", "sso", "webhook", "endpoint"),
-      `import { auth } from "../../../auth";
-import { sso } from "@robelest/convex-auth/server";
-
-export const { create, list, disable } = sso(auth).webhook.endpoint;
-`,
-    );
-    writeMountFile(
-      config,
-      path.join(config.convexFolderPath, "auth", "sso", "webhook", "delivery"),
-      `import { auth } from "../../../auth";
-import { sso } from "@robelest/convex-auth/server";
-
-export const { list, listReady, markDelivered, markFailed } =
-  sso(auth).webhook.delivery;
+export const { create, list, disable } = sso(auth, { authorizeAdmin: authorizeAdmin }).admin.webhook.endpoint;
 `,
     );
   }
@@ -818,20 +826,11 @@ export const { list, listReady, markDelivered, markFailed } =
   if (mountScim) {
     writeMountFile(
       config,
-      path.join(config.convexFolderPath, "auth", "scim"),
-      `import { auth } from "../auth";
+      path.join(config.convexFolderPath, "auth", "scim", "admin"),
+      `import { auth, authorizeAdmin } from "../../auth";
 import { scim } from "@robelest/convex-auth/server";
 
-export const { configure, get, getConfigByToken, validate } = scim(auth);
-`,
-    );
-    writeMountFile(
-      config,
-      path.join(config.convexFolderPath, "auth", "scim", "identity"),
-      `import { auth } from "../../auth";
-import { scim } from "@robelest/convex-auth/server";
-
-export const { get, upsert } = scim(auth).identity;
+export const { configure, get, validate } = scim(auth, { authorizeAdmin: authorizeAdmin }).admin;
 `,
     );
   }

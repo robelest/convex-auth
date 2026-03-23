@@ -49,7 +49,7 @@ export type AuthApiBase = {
 
 type InternalSsoApi = ReturnType<typeof AuthFactory>["auth"]["sso"];
 
-type PublicSsoApi = Omit<InternalSsoApi, "domain" | "scim" | "connection"> & {
+type PublicSsoAdminApi = {
   connection: InternalSsoApi["connection"] & {
     domain: {
       list: InternalSsoApi["domain"]["list"];
@@ -65,9 +65,30 @@ type PublicSsoApi = Omit<InternalSsoApi, "domain" | "scim" | "connection"> & {
       ) => Promise<void>;
     };
   };
+  oidc: Omit<InternalSsoApi["oidc"], "signIn">;
+  saml: Omit<InternalSsoApi["saml"], "metadata">;
+  policy: InternalSsoApi["policy"];
+  audit: {
+    list: InternalSsoApi["audit"]["list"];
+  };
+  webhook: {
+    endpoint: InternalSsoApi["webhook"]["endpoint"];
+  };
 };
 
-type PublicScimApi = InternalSsoApi["scim"];
+type PublicSsoClientApi = {
+  signIn: InternalSsoApi["oidc"]["signIn"];
+  metadata: InternalSsoApi["saml"]["metadata"];
+};
+
+type PublicSsoApi = {
+  admin: PublicSsoAdminApi;
+  client: PublicSsoClientApi;
+};
+
+type PublicScimApi = {
+  admin: Omit<InternalSsoApi["scim"], "getConfigByToken" | "identity">;
+};
 
 /** Auth API with enterprise namespaces — present only when `new SSO()` is in providers. */
 export type AuthApi = AuthApiBase & {
@@ -134,16 +155,20 @@ export function createAuth<P extends AuthProviderConfig[]>(
     domain: domainApi,
     scim: scimApi,
     connection: connectionApi,
+    audit: auditApi,
+    webhook: webhookApi,
+    oidc: oidcApi,
+    saml: samlApi,
     ...restSso
   } = authResult.auth.sso as InternalSsoApi;
 
-  type SetEnterpriseDomains = PublicSsoApi["connection"]["domain"]["set"];
+  type SetEnterpriseDomains = PublicSsoAdminApi["connection"]["domain"]["set"];
   type EnterpriseDomainInput = Array<{
     domain: string;
     isPrimary?: boolean;
     verifiedAt?: number;
   }>;
-  const setEnterpriseDomains: PublicSsoApi["connection"]["domain"]["set"] =
+  const setEnterpriseDomains: PublicSsoAdminApi["connection"]["domain"]["set"] =
     async (
       ctx: Parameters<SetEnterpriseDomains>[0],
       enterpriseId: Parameters<SetEnterpriseDomains>[1],
@@ -229,14 +254,33 @@ export function createAuth<P extends AuthProviderConfig[]>(
     };
 
   const publicSso: PublicSsoApi = {
-    ...restSso,
-    connection: {
-      ...connectionApi,
-      domain: {
-        list: domainApi.list,
-        validate: domainApi.validate,
-        set: setEnterpriseDomains,
+    admin: {
+      ...restSso,
+      oidc: {
+        ...oidcApi,
       },
+      saml: {
+        ...samlApi,
+      },
+      connection: {
+        ...connectionApi,
+        domain: {
+          list: domainApi.list,
+          validate: domainApi.validate,
+          set: setEnterpriseDomains,
+        },
+      },
+      policy: restSso.policy,
+      audit: {
+        list: auditApi.list,
+      },
+      webhook: {
+        endpoint: webhookApi.endpoint,
+      },
+    },
+    client: {
+      signIn: oidcApi.signIn,
+      metadata: samlApi.metadata,
     },
   };
 
@@ -253,7 +297,13 @@ export function createAuth<P extends AuthProviderConfig[]>(
     invite: authResult.auth.invite,
     key: authResult.auth.key,
     sso: publicSso,
-    scim: scimApi,
+    scim: {
+      admin: {
+        configure: scimApi.configure,
+        get: scimApi.get,
+        validate: scimApi.validate,
+      },
+    },
     http: authResult.auth.http,
   } as ConvexAuthResult<P>;
 }

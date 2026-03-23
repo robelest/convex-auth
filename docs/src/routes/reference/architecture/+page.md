@@ -83,16 +83,16 @@ For subsequent requests:
 - **HTTP**: `auth.http.add(http)` — registers OAuth callbacks and JWKS
 - **SSO** (conditional): `auth.sso.*` — only present when `new SSO()` is in
   providers
-- **SCIM** (conditional): `auth.scim.*` — provisioning helpers when `new SSO()`
-  is in providers
+- **SCIM** (conditional): `auth.scim.admin.*` — provisioning helpers when
+  `new SSO()` is in providers
 
 ## API layers
 
-| Layer                  | What it is                                                        | Typical usage                                                    |
-| ---------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Auth-flow actions      | Required client-callable functions exported from `convex/auth.ts` | `api.auth.signIn`, `api.auth.signOut`, `api.auth.store`          |
-| Helper namespaces      | Server-side helper APIs returned by `createAuth(...)`             | `auth.user.require(ctx)`, `auth.sso.connection.create(ctx, ...)` |
-| Mounted enterprise RPC | Optional app-owned public RPC for enterprise/admin UI             | `api.auth.sso.connection.create`, `api.auth.scim.configure`      |
+| Layer                  | What it is                                                        | Typical usage                                                           |
+| ---------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Auth-flow actions      | Required client-callable functions exported from `convex/auth.ts` | `api.auth.signIn`, `api.auth.signOut`, `api.auth.store`                 |
+| Helper namespaces      | Server-side helper APIs returned by `createAuth(...)`             | `auth.user.require(ctx)`, `auth.sso.admin.connection.create(ctx, ...)`  |
+| Mounted enterprise RPC | Optional app-owned public RPC for enterprise/admin UI             | `api.auth.sso.admin.connection.create`, `api.auth.scim.admin.configure` |
 
 Only the first layer is required for the frontend auth client. The third layer
 exists only if your app explicitly mounts enterprise helpers or writes custom

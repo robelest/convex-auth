@@ -1,25 +1,26 @@
 ---
-title: auth.sso.connection
+title: auth.sso.admin.connection
 description:
   SSO connection management — create and manage per-tenant SSO connections.
 ---
 
 <svelte:head>
 
-  <title>auth.sso.connection - convex-auth</title>
+  <title>auth.sso.admin.connection - convex-auth</title>
 </svelte:head>
 
-# auth.sso.connection
+# auth.sso.admin.connection
 
-The `auth.sso.connection` namespace manages enterprise SSO records. Each record
-links a group (tenant) to an identity provider configuration. It is also the
-root namespace for enterprise domain management through
-`auth.sso.connection.domain.*`. The returned `enterpriseId` is passed to the
-rest of the enterprise APIs.
+The `auth.sso.admin.connection` namespace manages enterprise SSO records. Each
+record links a group (tenant) to an identity provider configuration. It is also
+the root namespace for enterprise domain management through
+`auth.sso.admin.connection.domain.*`. The returned `enterpriseId` is passed to
+the rest of the enterprise APIs.
 
-> This page documents the **server-side helper API**: `auth.sso.connection.*`.
-> If you want client-callable admin RPC like `api.auth.sso.connection.create`,
-> mount enterprise helpers or expose app-owned wrappers first.
+> This page documents the **server-side helper API**:
+> `auth.sso.admin.connection.*`. If you want client-callable admin RPC like
+> `api.auth.sso.admin.connection.create`, mount enterprise helpers or expose
+> app-owned wrappers first.
 
 ## Methods
 
@@ -36,7 +37,7 @@ rest of the enterprise APIs.
 
 ## Domain methods
 
-The `auth.sso.connection.domain` namespace manages domains owned by the
+The `auth.sso.admin.connection.domain` namespace manages domains owned by the
 connection.
 
 | Method                | Signature                      | Returns     | Description                                  |
@@ -52,7 +53,7 @@ connection.
 
 ```ts
 // Create an SSO connection for a tenant
-const { enterpriseId } = await auth.sso.connection.create(ctx, {
+const { enterpriseId } = await auth.sso.admin.connection.create(ctx, {
   groupId: orgId,
   slug: "acme",
   name: "Acme SSO",
@@ -60,19 +61,19 @@ const { enterpriseId } = await auth.sso.connection.create(ctx, {
 });
 
 // Replace the attached enterprise domains
-await auth.sso.connection.domain.set(ctx, enterpriseId, [
+await auth.sso.admin.connection.domain.set(ctx, enterpriseId, [
   { domain: "acme.com", isPrimary: true },
   { domain: "login.acme.com" },
 ]);
 
-const domains = await auth.sso.connection.domain.list(ctx, enterpriseId);
+const domains = await auth.sso.admin.connection.domain.list(ctx, enterpriseId);
 
 // Inspect domain onboarding readiness
-const diagnostics = await auth.sso.connection.domain.validate(
+const diagnostics = await auth.sso.admin.connection.domain.validate(
   ctx,
   enterpriseId,
 );
 
 // Check connection health
-const status = await auth.sso.connection.status(ctx, enterpriseId);
+const status = await auth.sso.admin.connection.status(ctx, enterpriseId);
 ```

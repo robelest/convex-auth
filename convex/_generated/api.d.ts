@@ -9,17 +9,15 @@
  */
 
 import type * as auth from "../auth.js";
-import type * as auth_scim from "../auth/scim.js";
-import type * as auth_scim_identity from "../auth/scim/identity.js";
-import type * as auth_sso_audit from "../auth/sso/audit.js";
-import type * as auth_sso_connection from "../auth/sso/connection.js";
-import type * as auth_sso_connection_domain from "../auth/sso/connection/domain.js";
-import type * as auth_sso_oidc from "../auth/sso/oidc.js";
-import type * as auth_sso_policy from "../auth/sso/policy.js";
-import type * as auth_sso_saml from "../auth/sso/saml.js";
-import type * as auth_sso_webhook from "../auth/sso/webhook.js";
-import type * as auth_sso_webhook_delivery from "../auth/sso/webhook/delivery.js";
-import type * as auth_sso_webhook_endpoint from "../auth/sso/webhook/endpoint.js";
+import type * as auth_scim_admin from "../auth/scim/admin.js";
+import type * as auth_sso_admin_audit from "../auth/sso/admin/audit.js";
+import type * as auth_sso_admin_connection from "../auth/sso/admin/connection.js";
+import type * as auth_sso_admin_connection_domain from "../auth/sso/admin/connection/domain.js";
+import type * as auth_sso_admin_oidc from "../auth/sso/admin/oidc.js";
+import type * as auth_sso_admin_policy from "../auth/sso/admin/policy.js";
+import type * as auth_sso_admin_saml from "../auth/sso/admin/saml.js";
+import type * as auth_sso_admin_webhook_endpoint from "../auth/sso/admin/webhook/endpoint.js";
+import type * as auth_sso_client from "../auth/sso/client.js";
 import type * as http from "../http.js";
 
 import type {
@@ -30,17 +28,15 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
-  "auth/scim": typeof auth_scim;
-  "auth/scim/identity": typeof auth_scim_identity;
-  "auth/sso/audit": typeof auth_sso_audit;
-  "auth/sso/connection": typeof auth_sso_connection;
-  "auth/sso/connection/domain": typeof auth_sso_connection_domain;
-  "auth/sso/oidc": typeof auth_sso_oidc;
-  "auth/sso/policy": typeof auth_sso_policy;
-  "auth/sso/saml": typeof auth_sso_saml;
-  "auth/sso/webhook": typeof auth_sso_webhook;
-  "auth/sso/webhook/delivery": typeof auth_sso_webhook_delivery;
-  "auth/sso/webhook/endpoint": typeof auth_sso_webhook_endpoint;
+  "auth/scim/admin": typeof auth_scim_admin;
+  "auth/sso/admin/audit": typeof auth_sso_admin_audit;
+  "auth/sso/admin/connection": typeof auth_sso_admin_connection;
+  "auth/sso/admin/connection/domain": typeof auth_sso_admin_connection_domain;
+  "auth/sso/admin/oidc": typeof auth_sso_admin_oidc;
+  "auth/sso/admin/policy": typeof auth_sso_admin_policy;
+  "auth/sso/admin/saml": typeof auth_sso_admin_saml;
+  "auth/sso/admin/webhook/endpoint": typeof auth_sso_admin_webhook_endpoint;
+  "auth/sso/client": typeof auth_sso_client;
   http: typeof http;
 }>;
 

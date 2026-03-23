@@ -133,14 +133,17 @@ project already uses `convex-helpers`.
 
 The enterprise direction is a headless SDK/API rather than a hosted admin UI.
 
-- `auth.sso.*` stores enterprise config on top of `auth.group`, with nested
-  namespaces for domain, OIDC, SAML, SCIM, webhooks, and audit.
-- Standardized helpers are exposed as `auth.sso.connection.*`,
-  `auth.sso.domain.*`, `auth.sso.oidc.configure/get`, `auth.sso.saml.configure`,
-  and `auth.sso.scim.configure/get`.
+- `auth.sso.*` stores enterprise config on top of `auth.group`, with distinct
+  `admin` and `client` helper surfaces.
+- Standardized helpers are exposed as `auth.sso.admin.connection.*`,
+  `auth.sso.admin.connection.domain.*`, `auth.sso.admin.oidc.*`,
+  `auth.sso.admin.saml.*`, `auth.sso.admin.policy.*`,
+  `auth.sso.admin.audit.list`, `auth.sso.admin.webhook.endpoint.*`,
+  `auth.sso.client.signIn`, `auth.sso.client.metadata`, and
+  `auth.scim.admin.configure/get/validate`.
 - Enterprise helpers are server-side primitives. Consumers can build and expose
   their own Convex RPC wrappers when needed.
-- `auth.sso.saml.metadata(...)` uses the local `@robelest/samlify` package to
+- `auth.sso.client.metadata(...)` uses the local `@robelest/samlify` package to
   parse IdP metadata and generate SP metadata from the same setup state.
 
 ## Documentation

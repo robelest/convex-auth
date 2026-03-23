@@ -15,10 +15,10 @@ The `auth.sso.saml` namespace configures SAML 2.0 identity providers for SSO
 connections.
 
 > This page documents the **server-side helper API**: `auth.sso.saml.*`. Public
-> RPC like `api.auth.sso.saml.configure` only exists after your app mounts
+> RPC like `api.auth.sso.admin.saml.configure` only exists after your app mounts
 > enterprise helpers or writes explicit wrappers.
 
-Use the `enterpriseId` returned by `auth.sso.connection.create(...)` when
+Use the `enterpriseId` returned by `auth.sso.admin.connection.create(...)` when
 configuring SAML.
 
 ## Methods
@@ -34,7 +34,7 @@ configuring SAML.
 ### Configure with a metadata URL
 
 ```ts
-await auth.sso.saml.configure(ctx, {
+await auth.sso.admin.saml.configure(ctx, {
   enterpriseId,
   metadataUrl: "https://idp.acme.com/metadata.xml",
 });
@@ -43,7 +43,7 @@ await auth.sso.saml.configure(ctx, {
 ### Configure with raw XML
 
 ```ts
-await auth.sso.saml.configure(ctx, {
+await auth.sso.admin.saml.configure(ctx, {
   enterpriseId,
   metadataXml: "<EntityDescriptor ...>...</EntityDescriptor>",
 });
@@ -54,14 +54,14 @@ await auth.sso.saml.configure(ctx, {
 Provide this to the customer's IdP admin so they can set up the trust:
 
 ```ts
-const spMetadata = await auth.sso.saml.metadata(ctx, { enterpriseId });
+const spMetadata = await auth.sso.client.metadata(ctx, { enterpriseId });
 // Returns XML string — serve this at a public URL or provide for download
 ```
 
 ### Validate configuration
 
 ```ts
-const result = await auth.sso.saml.validate(ctx, enterpriseId);
+const result = await auth.sso.admin.saml.validate(ctx, enterpriseId);
 
 if (!result.ok) {
   console.error("SAML validation failed:", result.checks);

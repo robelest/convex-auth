@@ -117,7 +117,7 @@ export function createSsoDomain(deps: any) {
           data,
         });
       },
-      remove: async (ctx: ComponentCtx, enterpriseId: string) => {
+      delete: async (ctx: ComponentCtx, enterpriseId: string) => {
         await ctx.runMutation(config.component.public.enterpriseDelete, {
           enterpriseId,
         });
@@ -883,7 +883,7 @@ export function createSsoDomain(deps: any) {
        * Resolve enterprise OIDC sign-in route from enterprise id, domain, or
        * user email domain.
        */
-      resolveSignIn: async (
+      signIn: async (
         ctx: ComponentReadCtx,
         data: {
           enterpriseId?: string;

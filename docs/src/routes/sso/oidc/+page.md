@@ -12,28 +12,29 @@ description:
 
 # auth.sso.oidc
 
-The `auth.sso.oidc` namespace configures OpenID Connect identity providers for
-SSO connections.
+The `auth.sso.admin.oidc` namespace configures OpenID Connect identity providers
+for SSO connections.
 
-> This page documents the **server-side helper API**: `auth.sso.oidc.*`. Public
-> RPC like `api.auth.sso.oidc.configure` only exists after your app mounts
+> This page documents the **server-side helper API**: `auth.sso.admin.oidc.*`
+> plus `auth.sso.client.signIn(...)`. Public RPC like
+> `api.auth.sso.admin.oidc.configure` only exists after your app mounts
 > enterprise helpers or writes explicit wrappers.
 
-Use the `enterpriseId` returned by `auth.sso.connection.create(...)` when
+Use the `enterpriseId` returned by `auth.sso.admin.connection.create(...)` when
 configuring OIDC.
 
 ## Methods
 
-| Method          | Signature                                                                                                      | Returns                        | Description                                                                 |
-| --------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------- |
-| `configure`     | `(ctx, { enterpriseId, issuer?, discoveryUrl?, clientId, clientSecret?, scopes?, authorizationParams?, ... })` | OIDC config document           | Configures OIDC settings for a connection and stores the normalized config. |
-| `get`           | `(ctx, enterpriseId)`                                                                                          | OIDC config document           | Returns the current OIDC configuration for a connection.                    |
-| `resolveSignIn` | `(ctx, { enterpriseId?, email?, domain?, redirectTo? })`                                                       | Sign-in route description      | Resolves the OIDC sign-in route for a connection.                           |
-| `validate`      | `(ctx, enterpriseId)`                                                                                          | `{ ok, enterpriseId, checks }` | Validates that the OIDC configuration is complete and the IdP is reachable. |
+| Method                          | Signature                                                                                                      | Returns                        | Description                                                                 |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------- |
+| `auth.sso.admin.oidc.configure` | `(ctx, { enterpriseId, issuer?, discoveryUrl?, clientId, clientSecret?, scopes?, authorizationParams?, ... })` | OIDC config document           | Configures OIDC settings for a connection and stores the normalized config. |
+| `auth.sso.admin.oidc.get`       | `(ctx, enterpriseId)`                                                                                          | OIDC config document           | Returns the current OIDC configuration for a connection.                    |
+| `auth.sso.admin.oidc.validate`  | `(ctx, enterpriseId)`                                                                                          | `{ ok, enterpriseId, checks }` | Validates that the OIDC configuration is complete and the IdP is reachable. |
+| `auth.sso.client.signIn`        | `(ctx, { enterpriseId?, email?, domain?, redirectTo? })`                                                       | Sign-in route description      | Resolves the client-facing OIDC sign-in route for a connection.             |
 
 `clientSecret` is write-only. Configure it through
-`auth.sso.oidc.configure(...)`, but expect `auth.sso.oidc.get(...)` and other
-public reads to return a redacted view of the OIDC config.
+`auth.sso.admin.oidc.configure(...)`, but expect `auth.sso.admin.oidc.get(...)`
+and other public reads to return a redacted view of the OIDC config.
 
 ## `configure` arguments
 
@@ -55,7 +56,7 @@ public reads to return a redacted view of the OIDC config.
 Use `extraFields` to map custom IdP claims to user document fields:
 
 ```ts
-await auth.sso.oidc.configure(ctx, {
+await auth.sso.admin.oidc.configure(ctx, {
   enterpriseId,
   issuer: "https://login.microsoftonline.com/tenant-id/v2.0",
   clientId: "...",
@@ -82,7 +83,7 @@ available yet.
 After configuring, validate that the connection is working:
 
 ```ts
-const result = await auth.sso.oidc.validate(ctx, enterpriseId);
+const result = await auth.sso.admin.oidc.validate(ctx, enterpriseId);
 
 if (!result.ok) {
   console.error("OIDC validation failed:", result.checks);
@@ -92,7 +93,7 @@ if (!result.ok) {
 ## Resolve a sign-in route
 
 ```ts
-const route = await auth.sso.oidc.resolveSignIn(ctx, {
+const route = await auth.sso.client.signIn(ctx, {
   enterpriseId,
   redirectTo: "/dashboard",
 });

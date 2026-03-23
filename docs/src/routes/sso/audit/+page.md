@@ -1,57 +1,41 @@
 ---
-title: auth.sso.audit
-description: SSO audit log — record and query authentication events.
+title: auth.sso.admin.audit
+description: SSO audit log query helpers for enterprise admin tooling.
 ---
 
 <svelte:head>
 
-  <title>auth.sso.audit - convex-auth</title>
+  <title>auth.sso.admin.audit - convex-auth</title>
 </svelte:head>
 
-# auth.sso.audit
+# auth.sso.admin.audit
 
-The `auth.sso.audit` namespace records and queries SSO-related audit events. Use
-this to build audit logs for compliance, debugging, and security monitoring.
+The `auth.sso.admin.audit` namespace exposes read-only audit log queries for
+enterprise admin tooling.
 
-> This page documents the **server-side helper API**: `auth.sso.audit.*`. Public
-> RPC like `api.auth.sso.audit.list` only exists after your app mounts
-> enterprise helpers or writes explicit wrappers.
+> This page documents the **server-side helper API**: `auth.sso.admin.audit.*`.
+> Public RPC like `api.auth.sso.admin.audit.list` only exists after your app
+> mounts enterprise helpers or writes explicit wrappers.
 
 ## Methods
 
-| Method   | Signature                                                                                            | Returns  | Description                                                    |
-| -------- | ---------------------------------------------------------------------------------------------------- | -------- | -------------------------------------------------------------- |
-| `record` | `(ctx, { enterpriseId, groupId, eventType, actorType, actorId?, subjectType, subjectId?, ok, ... })` | `string` | Records an audit event (e.g. sign-in, sign-out, provisioning). |
-| `list`   | `(ctx, { enterpriseId?, groupId?, limit? })`                                                         | Event[]  | Lists audit events with optional enterprise/group filters.     |
+| Method | Signature                                    | Returns | Description                                                |
+| ------ | -------------------------------------------- | ------- | ---------------------------------------------------------- |
+| `list` | `(ctx, { enterpriseId?, groupId?, limit? })` | Event[] | Lists audit events with optional enterprise/group filters. |
 
 ## Example
-
-### Record an event
-
-```ts
-await auth.sso.audit.record(ctx, {
-  enterpriseId,
-  groupId: orgId,
-  eventType: "enterprise.oidc.registered",
-  actorType: "user",
-  actorId: userId,
-  subjectType: "enterprise_oidc",
-  ok: true,
-  metadata: { ip: "192.168.1.1" },
-});
-```
 
 ### Query audit logs
 
 ```ts
 // List all events for an SSO connection
-const logs = await auth.sso.audit.list(ctx, {
+const logs = await auth.sso.admin.audit.list(ctx, {
   enterpriseId,
   limit: 50,
 });
 
 // List all events for a tenant group
-const userLogs = await auth.sso.audit.list(ctx, {
+const userLogs = await auth.sso.admin.audit.list(ctx, {
   groupId: orgId,
 });
 ```

@@ -14,7 +14,7 @@
  * });
  *
  * // auth.sso is now available
- * await auth.sso.oidc.configure(ctx, { enterpriseId, clientId, ... });
+ * await auth.sso.admin.oidc.configure(ctx, { enterpriseId, clientId, ... });
  * ```
  *
  * Without `new SSO()` in the providers list, `auth.sso` is not

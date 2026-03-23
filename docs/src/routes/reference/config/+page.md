@@ -75,7 +75,7 @@ const auth = createAuth(components.auth, {
 - `auth.http.*` — HTTP route helpers
 - `auth.sso.*` — inbound enterprise SSO helpers (only when `new SSO()` is in
   providers)
-- `auth.scim.*` — SCIM provisioning helpers (only when `new SSO()` is in
+- `auth.scim.admin.*` — SCIM provisioning helpers (only when `new SSO()` is in
   providers)
 - `InferClientApi<typeof auth>` — Type-level utility; use as the generic for
   `client()` on the frontend to get conditional passkey/totp/device helpers
@@ -88,18 +88,18 @@ const auth = createAuth(components.auth, {
     the frontend auth client.
   </Card>
   <Card title="Helper namespaces">
-    <code>auth.*</code>, <code>auth.sso.*</code>, and <code>auth.scim.*</code> are server-side helper APIs for
+    <code>auth.*</code>, <code>auth.sso.*</code>, and <code>auth.scim.admin.*</code> are server-side helper APIs for
     your Convex code.
   </Card>
   <Card title="Mounted enterprise RPC">
-    <code>api.auth.sso.*</code> and <code>api.auth.scim.*</code> only exist after your app mounts or
+    <code>api.auth.sso.*</code> and <code>api.auth.scim.admin.*</code> only exist after your app mounts or
     writes public enterprise wrappers.
   </Card>
 </CardGrid>
 
-The `auth.sso.*` and `auth.scim.*` namespaces are server-side helper APIs. They
-are not automatically exposed as client-callable Convex functions just because
-they exist on the returned object.
+The `auth.sso.*` and `auth.scim.admin.*` namespaces are server-side helper APIs.
+They are not automatically exposed as client-callable Convex functions just
+because they exist on the returned object.
 
 If your app wants public enterprise/admin RPC, mount it explicitly in your app:
 

@@ -63,6 +63,6 @@ Convex hooks:
 import { useAction } from "convex/react";
 import { api } from "../convex/_generated/api";
 
-const createConnection = useAction(api.auth.sso.connection.create);
-const configureScim = useAction(api.auth.scim.configure);
+const createConnection = useAction(api.auth.sso.admin.connection.create);
+const configureScim = useAction(api.auth.scim.admin.configure);
 ```
