@@ -79,3 +79,45 @@ test("enterprise management RPC is available when enterprise helpers are mounted
   );
   expect([400, 404, 500]).toContain(metadataResponse.status);
 });
+
+test("disableWebhookEndpoint authorizes against the endpoint enterprise", async () => {
+  const t = convexTest(schema);
+  const asAdmin = await enterpriseAdmin(t);
+  const asOtherUser = await enterpriseAdmin(t);
+
+  const created = await asAdmin.mutation(
+    (api as any).auth.enterprise.createConnection,
+    {
+      name: "Webhook auth",
+      slug: "webhook-auth",
+      status: "active",
+    },
+  );
+
+  const endpoint = await asAdmin.mutation(
+    (api as any).auth.enterprise.createWebhookEndpoint,
+    {
+      enterpriseId: created.enterpriseId,
+      url: "https://example.com/webhook",
+      secret: "super-secret",
+      subscriptions: ["user.created"],
+    },
+  );
+
+  const forbidden = await asOtherUser.mutation(
+    (api as any).auth.enterprise.disableWebhookEndpoint,
+    {
+      endpointId: endpoint._id,
+    },
+  );
+  expect(forbidden.ok).toBe(false);
+
+  const disabled = await asAdmin.mutation(
+    (api as any).auth.enterprise.disableWebhookEndpoint,
+    {
+      endpointId: endpoint._id,
+    },
+  );
+
+  expect(disabled).toEqual({ ok: true, endpointId: endpoint._id });
+});

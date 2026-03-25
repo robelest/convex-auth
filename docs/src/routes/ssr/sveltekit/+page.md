@@ -75,6 +75,38 @@ export const POST: RequestHandler = async ({ request }) => {
 Point your client-side auth configuration to `/api/auth` so that sign-in and
 sign-out calls are routed through this endpoint.
 
+## Client setup
+
+In your root layout, create the auth client with `proxyPath` and `location`:
+
+```svelte
+<!-- src/routes/+layout.svelte -->
+<script lang="ts">
+  import { page } from "$app/state";
+  import { setupConvex, useConvexClient } from "convex-svelte";
+  import { setContext } from "svelte";
+  import { client as createAuthClient } from "@robelest/convex-auth/client";
+
+  let { data, children } = $props();
+
+  setupConvex(data.convexUrl);
+  const convexClient = useConvexClient();
+
+  const auth = createAuthClient({
+    convex: convexClient,
+    proxyPath: "/api/auth",
+    tokenSeed: data.auth.token ?? null,
+    location: () => page.url, // SSR-safe URL reading
+  });
+
+  setContext("auth", auth);
+</script>
+```
+
+Use `auth.param()` for SSR-safe URL parameter reading and `auth.invite` for
+invite token handling. See [SSR Overview](/ssr/overview/) for the full client
+API.
+
 ## Accessing the token
 
 After the hook runs, you can access `event.locals.token` in any server load

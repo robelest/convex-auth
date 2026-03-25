@@ -16,6 +16,7 @@ export const TABLES = {
   GroupInvite: "GroupInvite",
   Enterprise: "Enterprise",
   EnterpriseDomain: "EnterpriseDomain",
+  EnterpriseDomainVerification: "EnterpriseDomainVerification",
   EnterpriseSecret: "EnterpriseSecret",
   EnterpriseScimConfig: "EnterpriseScimConfig",
   EnterpriseScimIdentity: "EnterpriseScimIdentity",
@@ -82,7 +83,8 @@ export const vEnterprisePolicy = v.object({
     }),
     jit: v.object({
       mode: vEnterpriseJitProvisioningMode,
-      defaultRole: v.string(),
+      defaultRole: v.optional(v.string()),
+      defaultRoleIds: v.optional(v.array(v.string())),
     }),
     deprovision: v.object({
       mode: vEnterpriseDeprovisionMode,
@@ -252,6 +254,8 @@ export const vGroupDoc = v.object({
   slug: v.optional(v.string()),
   type: v.optional(v.string()),
   parentGroupId: v.optional(v.id(TABLES.Group)),
+  rootGroupId: v.optional(v.id(TABLES.Group)),
+  isRoot: v.optional(v.boolean()),
   tags: v.optional(v.array(vTag)),
   extend: v.optional(v.any()),
 });
@@ -261,6 +265,7 @@ export const vGroupMemberDoc = v.object({
   groupId: v.id(TABLES.Group),
   userId: v.id(TABLES.User),
   role: v.optional(v.string()),
+  roleIds: v.optional(v.array(v.string())),
   status: v.optional(v.string()),
   extend: v.optional(v.any()),
 });
@@ -272,6 +277,7 @@ export const vGroupInviteDoc = v.object({
   email: v.optional(v.string()),
   tokenHash: v.string(),
   role: v.optional(v.string()),
+  roleIds: v.optional(v.array(v.string())),
   status: vInviteStatus,
   expiresTime: v.optional(v.number()),
   acceptedByUserId: v.optional(v.id(TABLES.User)),
@@ -325,6 +331,19 @@ export const vEnterpriseDomainDoc = v.object({
   domain: v.string(),
   isPrimary: v.boolean(),
   verifiedAt: v.optional(v.number()),
+});
+
+export const vEnterpriseDomainVerificationDoc = v.object({
+  ...vDocMeta(TABLES.EnterpriseDomainVerification),
+  enterpriseId: v.id(TABLES.Enterprise),
+  groupId: v.id(TABLES.Group),
+  domainId: v.id(TABLES.EnterpriseDomain),
+  domain: v.string(),
+  recordName: v.string(),
+  token: v.string(),
+  tokenHash: v.string(),
+  requestedAt: v.number(),
+  expiresAt: v.number(),
 });
 
 export const vEnterpriseSecretDoc = v.object({

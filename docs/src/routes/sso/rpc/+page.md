@@ -53,6 +53,11 @@ export const {
   listConnections,
   updateConnection,
   deleteConnection,
+  listDomains,
+  validateDomains,
+  setDomains,
+  requestDomainVerification,
+  confirmDomainVerification,
   configureOidc,
   getOidc,
   validateOidc,
@@ -66,7 +71,12 @@ export const {
   validateScim,
   signIn,
   metadata,
-} = enterprise(auth, { authorized });
+} = enterprise(auth, {
+  admin: {
+    authorized,
+    roles: [roles.orgAdmin],
+  },
+});
 ```
 
 ## Client usage
@@ -90,8 +100,14 @@ const signIn = useQuery(api.auth.enterprise.signIn, {
 
 ## Authorization
 
-`enterprise(auth, { authorized })` requires an app-owned authorization callback
-for admin operations.
+`enterprise(auth, { admin: { authorized, roles? } })` requires an app-owned
+authorization callback for admin operations.
+
+When `createConnection` creates a new group automatically, `admin.roles` are
+assigned to the creator's initial membership in that group.
+
+See [Authorization Patterns](/guides/authorization) for how role objects and
+grant checks fit into this mounted enterprise pattern.
 
 The callback receives a normalized authorization input, including:
 
@@ -107,17 +123,24 @@ Example:
 // convex/auth.ts
 export async function authorized(
   ctx: any,
-  input: { userId: string; resolvedGroupId: string | null },
+  input: {
+    userId: string;
+    permission: string;
+    resolvedGroupId: string | null;
+  },
 ) {
   if (input.resolvedGroupId === null) {
     return;
   }
 
-  await auth.member.require(ctx, {
+  const result = await auth.access.check(ctx, {
     userId: input.userId,
     groupId: input.resolvedGroupId,
-    roles: ["admin"],
+    grants: [input.permission],
   });
+  if (!result.ok) {
+    throw new Error("Access denied");
+  }
 }
 ```
 
@@ -141,6 +164,8 @@ The flat enterprise RPC builder exposes verb-first functions:
 - `listDomains`
 - `validateDomains`
 - `setDomains`
+- `requestDomainVerification`
+- `confirmDomainVerification`
 
 ### OIDC
 

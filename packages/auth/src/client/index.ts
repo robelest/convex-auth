@@ -166,9 +166,21 @@ type InferCaps<Api extends AuthApiRefs<boolean, boolean, boolean>> =
     ? { passkey: P; totp: T; device: D }
     : { passkey: boolean; totp: boolean; device: boolean };
 
+/** Pending invite detected from URL or recovered from storage after redirect. */
+export interface PendingInvite {
+  readonly token: string;
+  readonly email: string | null;
+  /** Consume the invite: clears storage/URL params and returns the token. */
+  accept(): Promise<{ ok: boolean; token?: string; message?: string }>;
+}
+
 /** Base auth client — always present. */
 export interface AuthClientBase {
   readonly state: AuthState;
+  /** SSR-safe URL param reader. Uses the `location` option or `window.location`. */
+  param: (name: string) => string | null;
+  /** Pending invite from URL `?invite=` or recovered from storage. Null if none. */
+  readonly invite: PendingInvite | null;
   signIn: (
     provider: string,
     params?: Record<string, any>,
@@ -242,11 +254,21 @@ export type ClientOptions<
    * flash on first render — the client is immediately authenticated.
    */
   tokenSeed?: string | null;
+  /**
+   * SSR-safe URL source for reading query parameters.
+   *
+   * - SvelteKit: `page.url` (from `$app/state`)
+   * - Next.js: pass from server props or `useSearchParams()`
+   * - SPA: omit (defaults to `window.location` with SSR guard)
+   */
+  location?: URL | (() => URL | null);
 };
 
 const VERIFIER_STORAGE_KEY = "__convexAuthOAuthVerifier";
 const JWT_STORAGE_KEY = "__convexAuthJWT";
 const REFRESH_TOKEN_STORAGE_KEY = "__convexAuthRefreshToken";
+const INVITE_TOKEN_KEY = "__convexAuthPendingInvite";
+const INVITE_EMAIL_KEY = "__convexAuthPendingInviteEmail";
 
 const RETRY_BASE_MS = 500;
 const RETRY_MAX_RETRIES = 2;
@@ -375,6 +397,41 @@ export function client<
         window.history.replaceState({}, "", url);
       }
     });
+
+  // ---------------------------------------------------------------------------
+  // Location — SSR-safe URL reading
+  // ---------------------------------------------------------------------------
+
+  function getLocation(): URL | null {
+    if (typeof options.location === "function") return options.location();
+    if (options.location instanceof URL) return options.location;
+    if (typeof window !== "undefined") return new URL(window.location.href);
+    return null;
+  }
+
+  function param(name: string): string | null {
+    const loc = getLocation();
+    return loc?.searchParams.get(name) ?? null;
+  }
+
+  function cleanUrlParams(params: string[]) {
+    const loc = getLocation();
+    if (!loc) return;
+    const searchParams = new URLSearchParams(loc.search);
+    let changed = false;
+    for (const p of params) {
+      if (searchParams.has(p)) {
+        searchParams.delete(p);
+        changed = true;
+      }
+    }
+    if (changed) {
+      const next = searchParams.toString()
+        ? `${loc.pathname}?${searchParams}`
+        : loc.pathname;
+      void replaceUrl(next);
+    }
+  }
 
   const url = proxy ? undefined : resolveUrl(convex, options.url);
   const escapedNamespace = proxy
@@ -648,6 +705,57 @@ export function client<
       ),
     );
   };
+
+  // ---------------------------------------------------------------------------
+  // Invite lifecycle
+  // ---------------------------------------------------------------------------
+
+  let pendingInvite: { token: string; email: string | null } | null = null;
+
+  // Load invite from URL params (synchronous), then try storage (async, lazy)
+  const urlInviteToken = param("invite");
+  if (urlInviteToken) {
+    pendingInvite = { token: urlInviteToken, email: param("email") };
+  } else {
+    // Recover invite from storage after OAuth redirect (fire-and-forget init)
+    void (async () => {
+      const storedToken = await storageGet(INVITE_TOKEN_KEY);
+      if (storedToken && !pendingInvite) {
+        pendingInvite = {
+          token: storedToken,
+          email: (await storageGet(INVITE_EMAIL_KEY)) ?? null,
+        };
+        void storageRemove(INVITE_TOKEN_KEY);
+        void storageRemove(INVITE_EMAIL_KEY);
+      }
+    })();
+  }
+
+  async function persistInvite() {
+    if (!pendingInvite) return;
+    await storageSet(INVITE_TOKEN_KEY, pendingInvite.token);
+    if (pendingInvite.email) {
+      await storageSet(INVITE_EMAIL_KEY, pendingInvite.email);
+    }
+  }
+
+  /**
+   * Consume the pending invite: clears storage/URL and returns the token.
+   * The app uses the returned token to call its own accept mutation.
+   */
+  async function acceptInvite(): Promise<{
+    ok: boolean;
+    token?: string;
+    message?: string;
+  }> {
+    if (!pendingInvite) return { ok: false, message: "No pending invite" };
+    const { token } = pendingInvite;
+    pendingInvite = null;
+    void storageRemove(INVITE_TOKEN_KEY);
+    void storageRemove(INVITE_EMAIL_KEY);
+    cleanUrlParams(["invite", "email"]);
+    return { ok: true, token };
+  }
 
   // ---------------------------------------------------------------------------
   // Token management
@@ -930,6 +1038,9 @@ export function client<
     provider?: string,
     args?: FormData | Record<string, Value>,
   ): Promise<SignInResult> => {
+    // Persist invite before potential OAuth redirect
+    await persistInvite();
+
     const params =
       args instanceof FormData
         ? (() => {
@@ -2028,6 +2139,17 @@ export function client<
     /** Current auth state snapshot. */
     get state(): AuthState {
       return snapshot;
+    },
+    /** SSR-safe URL param reader. */
+    param,
+    /** Pending invite from URL or recovered from storage. Null if none. */
+    get invite(): PendingInvite | null {
+      if (!pendingInvite) return null;
+      return {
+        token: pendingInvite.token,
+        email: pendingInvite.email,
+        accept: acceptInvite,
+      };
     },
     /** Sign in with a provider. See {@link SignInResult} for return shape. */
     signIn,

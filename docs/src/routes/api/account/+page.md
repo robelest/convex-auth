@@ -16,11 +16,11 @@ passkey credentials, and TOTP enrollments.
 
 ## Account methods
 
-| Method   | Signature                          | Returns          | Description                                                                       |
-| -------- | ---------------------------------- | ---------------- | --------------------------------------------------------------------------------- |
-| `create` | `(ctx, { userId, provider, ... })` | `Id<"accounts">` | Links a new authentication provider to a user.                                    |
-| `update` | `(ctx, accountId, data)`           | `void`           | Updates an existing account record.                                               |
-| `remove` | `(ctx, accountId)`                 | `void`           | Removes an account link. **Throws** if this is the user's only remaining account. |
+| Method   | Signature                          | Returns                                          | Description                                                                                                     |
+| -------- | ---------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `create` | `(ctx, { userId, provider, ... })` | `{ ok, account, user }`                          | Links a new authentication provider to a user and returns the created account plus resolved user.               |
+| `update` | `(ctx, accountId, data)`           | `{ ok, accountId }`                              | Updates an existing account record.                                                                             |
+| `delete` | `(ctx, accountId)`                 | `{ ok: true, accountId } \| { ok: false, code }` | Deletes an account link. Returns `{ ok: false, code: "ACCOUNT_NOT_FOUND" \| "INVALID_PARAMETERS" }` on failure. |
 
 ## Passkey methods
 
@@ -29,12 +29,12 @@ Manage WebAuthn passkey credentials. Requires `new Passkey()` in providers.
 | Method          | Signature                | Returns             | Description                               |
 | --------------- | ------------------------ | ------------------- | ----------------------------------------- |
 | `listPasskeys`  | `(ctx, { userId })`      | `Doc<"passkeys">[]` | Lists all registered passkeys for a user. |
-| `renamePasskey` | `(ctx, passkeyId, name)` | `void`              | Renames a passkey credential.             |
-| `removePasskey` | `(ctx, passkeyId)`       | `void`              | Removes a passkey credential.             |
+| `renamePasskey` | `(ctx, passkeyId, name)` | `{ ok, passkeyId }` | Renames a passkey credential.             |
+| `deletePasskey` | `(ctx, passkeyId)`       | `{ ok, passkeyId }` | Deletes a passkey credential.             |
 
 ```ts
 const passkeys = await auth.account.listPasskeys(ctx, { userId });
-await auth.account.removePasskey(ctx, passkeyId);
+await auth.account.deletePasskey(ctx, passkeyId);
 ```
 
 ## TOTP methods
@@ -44,23 +44,22 @@ Manage TOTP two-factor authentication. Requires `new Totp()` in providers.
 | Method       | Signature           | Returns          | Description                        |
 | ------------ | ------------------- | ---------------- | ---------------------------------- |
 | `listTotps`  | `(ctx, { userId })` | `Doc<"totps">[]` | Lists TOTP enrollments for a user. |
-| `removeTotp` | `(ctx, totpId)`     | `void`           | Removes a TOTP enrollment.         |
+| `deleteTotp` | `(ctx, totpId)`     | `{ ok, totpId }` | Deletes a TOTP enrollment.         |
 
 ```ts
 const totps = await auth.account.listTotps(ctx, { userId });
-await auth.account.removeTotp(ctx, totpId);
+await auth.account.deleteTotp(ctx, totpId);
 ```
 
 ## Examples
 
-### Remove an account
+### Delete an account
 
 ```ts
-const accounts = await auth.account.list(ctx, { userId });
+const result = await auth.account.delete(ctx, accountId);
 
-if (accounts.length <= 1) {
-  throw new Error("Cannot remove your only sign-in method");
+if (!result.ok) {
+  // result.code is "ACCOUNT_NOT_FOUND" or "INVALID_PARAMETERS"
+  throw new Error(`Failed to delete account: ${result.code}`);
 }
-
-await auth.account.remove(ctx, accountId);
 ```

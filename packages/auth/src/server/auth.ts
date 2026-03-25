@@ -13,7 +13,11 @@ import { Fx } from "./fx";
 import { AuthError } from "./fx";
 import type { Doc } from "./types";
 import type {
+  AuthAuthorizationConfig,
+  AuthGrant,
   AuthProviderConfig,
+  AuthRoleDefinition,
+  AuthRoleId,
   ConvexAuthConfig,
   HasDeviceProvider,
   HasPasskeyProvider,
@@ -31,8 +35,82 @@ import type {
  */
 export type AuthConfig = Omit<ConvexAuthConfig, "component">;
 
+type MemberApiWithAuthorization<
+  TAuthorization extends AuthAuthorizationConfig | undefined,
+> = Omit<
+  ReturnType<typeof AuthFactory>["auth"]["member"],
+  "create" | "list" | "update" | "resolve"
+> & {
+  create: (
+    ctx: Parameters<
+      ReturnType<typeof AuthFactory>["auth"]["member"]["create"]
+    >[0],
+    data: {
+      groupId: string;
+      userId: string;
+      roleIds?: AuthRoleId<TAuthorization>[];
+      status?: string;
+      extend?: Record<string, unknown>;
+    },
+  ) => Promise<{ ok: true; memberId: string }>;
+  list: (
+    ctx: Parameters<
+      ReturnType<typeof AuthFactory>["auth"]["member"]["list"]
+    >[0],
+    opts?: {
+      where?: {
+        groupId?: string;
+        userId?: string;
+        roleId?: AuthRoleId<TAuthorization>;
+        status?: string;
+      };
+      limit?: number;
+      cursor?: string | null;
+      orderBy?: "_creationTime" | "status";
+      order?: "asc" | "desc";
+    },
+  ) => ReturnType<ReturnType<typeof AuthFactory>["auth"]["member"]["list"]>;
+  update: (
+    ctx: Parameters<
+      ReturnType<typeof AuthFactory>["auth"]["member"]["update"]
+    >[0],
+    memberId: string,
+    data: Record<string, unknown> & { roleIds?: AuthRoleId<TAuthorization>[] },
+  ) => Promise<{ ok: true; memberId: string }>;
+  resolve: (
+    ctx: Parameters<
+      ReturnType<typeof AuthFactory>["auth"]["member"]["resolve"]
+    >[0],
+    opts: {
+      userId: string;
+      groupId: string;
+      roleIds?: AuthRoleId<TAuthorization>[];
+      grants?: AuthGrant<TAuthorization>[];
+      maxDepth?: number;
+    },
+  ) => ReturnType<ReturnType<typeof AuthFactory>["auth"]["member"]["resolve"]>;
+};
+
+type AccessApiWithAuthorization<
+  TAuthorization extends AuthAuthorizationConfig | undefined,
+> = {
+  check: (
+    ctx: Parameters<
+      ReturnType<typeof AuthFactory>["auth"]["access"]["check"]
+    >[0],
+    opts: {
+      userId: string;
+      groupId: string;
+      grants: AuthGrant<TAuthorization>[];
+      maxDepth?: number;
+    },
+  ) => ReturnType<ReturnType<typeof AuthFactory>["auth"]["access"]["check"]>;
+};
+
 /** The base auth API surface, without conditional namespaces. */
-export type AuthApiBase = {
+export type AuthApiBase<
+  TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+> = {
   signIn: ReturnType<typeof AuthFactory>["signIn"];
   signOut: ReturnType<typeof AuthFactory>["signOut"];
   store: ReturnType<typeof AuthFactory>["store"];
@@ -41,7 +119,8 @@ export type AuthApiBase = {
   provider: ReturnType<typeof AuthFactory>["auth"]["provider"];
   account: ReturnType<typeof AuthFactory>["auth"]["account"];
   group: ReturnType<typeof AuthFactory>["auth"]["group"];
-  member: ReturnType<typeof AuthFactory>["auth"]["member"];
+  member: MemberApiWithAuthorization<TAuthorization>;
+  access: AccessApiWithAuthorization<TAuthorization>;
   invite: ReturnType<typeof AuthFactory>["auth"]["invite"];
   key: ReturnType<typeof AuthFactory>["auth"]["key"];
   http: ReturnType<typeof AuthFactory>["auth"]["http"];
@@ -60,9 +139,45 @@ type PublicSsoAdminApi = {
         domains: Array<{
           domain: string;
           isPrimary?: boolean;
-          verifiedAt?: number;
         }>,
-      ) => Promise<void>;
+      ) => Promise<{
+        ok: true;
+        enterpriseId: string;
+        domains: Array<{
+          domainId: string;
+          domain: string;
+          isPrimary: boolean;
+          verified: boolean;
+          verifiedAt: number | null;
+        }>;
+      }>;
+      verification: {
+        request: (
+          ctx: Parameters<InternalSsoApi["connection"]["create"]>[0],
+          args: { enterpriseId: string; domain: string },
+        ) => Promise<{
+          ok: true;
+          enterpriseId: string;
+          domain: string;
+          requestedAt: number;
+          expiresAt: number;
+          challenge: {
+            recordType: "TXT";
+            recordName: string;
+            recordValue: string;
+          };
+        }>;
+        confirm: (
+          ctx: Parameters<InternalSsoApi["connection"]["create"]>[0],
+          args: { enterpriseId: string; domain: string },
+        ) => Promise<{
+          ok: boolean;
+          enterpriseId: string;
+          domain: string;
+          verifiedAt?: number;
+          checks: Array<{ name: string; ok: boolean; message?: string }>;
+        }>;
+      };
     };
   };
   oidc: Omit<InternalSsoApi["oidc"], "signIn">;
@@ -73,6 +188,9 @@ type PublicSsoAdminApi = {
   };
   webhook: {
     endpoint: InternalSsoApi["webhook"]["endpoint"];
+    delivery: {
+      list: InternalSsoApi["webhook"]["delivery"]["list"];
+    };
   };
 };
 
@@ -91,7 +209,9 @@ type PublicScimApi = {
 };
 
 /** Auth API with enterprise namespaces — present only when `new SSO()` is in providers. */
-export type AuthApi = AuthApiBase & {
+export type AuthApi<
+  TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+> = AuthApiBase<TAuthorization> & {
   sso: PublicSsoApi;
   scim: PublicScimApi;
 };
@@ -101,8 +221,13 @@ export type AuthApi = AuthApiBase & {
  * - `auth.sso` and `auth.scim` — only when `new SSO()` is in providers
  * - `auth.clientApi` — typed API refs for the client SDK with capabilities
  */
-export type ConvexAuthResult<P extends AuthProviderConfig[]> =
-  HasSSO<P> extends true ? AuthApi : AuthApiBase;
+export type ConvexAuthResult<
+  P extends AuthProviderConfig[],
+  TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+> =
+  HasSSO<P> extends true
+    ? AuthApi<TAuthorization>
+    : AuthApiBase<TAuthorization>;
 
 /**
  * Infer the typed `AuthApiRefs` for the client SDK from a `createAuth` call.
@@ -142,10 +267,16 @@ export type AuthLike = Pick<AuthApiBase, "user">;
  * are available on the returned object. Without it, those namespaces are
  * absent and accessing them is a TypeScript compile error.
  */
-export function createAuth<P extends AuthProviderConfig[]>(
+export function createAuth<
+  P extends AuthProviderConfig[],
+  TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+>(
   component: ConvexAuthConfig["component"],
-  config: Omit<AuthConfig, "providers"> & { providers: P },
-): ConvexAuthResult<P> {
+  config: Omit<AuthConfig, "providers" | "authorization"> & {
+    providers: P;
+    authorization?: TAuthorization;
+  },
+): ConvexAuthResult<P, TAuthorization> {
   const authResult = AuthFactory({
     ...config,
     component,
@@ -166,7 +297,6 @@ export function createAuth<P extends AuthProviderConfig[]>(
   type EnterpriseDomainInput = Array<{
     domain: string;
     isPrimary?: boolean;
-    verifiedAt?: number;
   }>;
   const setEnterpriseDomains: PublicSsoAdminApi["connection"]["domain"]["set"] =
     async (
@@ -233,24 +363,43 @@ export function createAuth<P extends AuthProviderConfig[]>(
 
       for (const nextDomain of nextDomains) {
         const current = currentByDomain.get(nextDomain.domain);
-        if (
-          current &&
-          current.isPrimary === Boolean(nextDomain.isPrimary) &&
-          current.verifiedAt === (nextDomain.verifiedAt ?? current.verifiedAt)
-        ) {
+        if (current && current.isPrimary === Boolean(nextDomain.isPrimary)) {
           continue;
         }
         if (current) {
           await domainApi.remove(ctx, current._id);
         }
-        await domainApi.add(ctx, {
+        const domainId = await domainApi.add(ctx, {
           enterpriseId: enterprise._id,
           groupId: enterprise.groupId,
           domain: nextDomain.domain,
           isPrimary: nextDomain.isPrimary,
-          verifiedAt: nextDomain.verifiedAt ?? current?.verifiedAt,
         });
+        if (current?.verifiedAt !== undefined) {
+          await (ctx as any).runMutation(
+            component.public.enterpriseDomainVerify,
+            {
+              domainId,
+              verifiedAt: current.verifiedAt,
+            },
+          );
+        }
       }
+
+      const updatedDomains = await domainApi.list(ctx, enterpriseId);
+      return {
+        ok: true as const,
+        enterpriseId,
+        domains: updatedDomains.map(
+          (domain: (typeof updatedDomains)[number]) => ({
+            domainId: domain._id,
+            domain: domain.domain,
+            isPrimary: domain.isPrimary,
+            verified: domain.verifiedAt !== undefined,
+            verifiedAt: domain.verifiedAt ?? null,
+          }),
+        ),
+      };
     };
 
   const publicSso: PublicSsoApi = {
@@ -268,6 +417,10 @@ export function createAuth<P extends AuthProviderConfig[]>(
           list: domainApi.list,
           validate: domainApi.validate,
           set: setEnterpriseDomains,
+          verification: {
+            request: domainApi.verification.request,
+            confirm: domainApi.verification.confirm,
+          },
         },
       },
       policy: restSso.policy,
@@ -276,6 +429,9 @@ export function createAuth<P extends AuthProviderConfig[]>(
       },
       webhook: {
         endpoint: webhookApi.endpoint,
+        delivery: {
+          list: webhookApi.delivery.list,
+        },
       },
     },
     client: {
@@ -294,6 +450,7 @@ export function createAuth<P extends AuthProviderConfig[]>(
     account: authResult.auth.account,
     group: authResult.auth.group,
     member: authResult.auth.member,
+    access: authResult.auth.access,
     invite: authResult.auth.invite,
     key: authResult.auth.key,
     sso: publicSso,
@@ -305,7 +462,7 @@ export function createAuth<P extends AuthProviderConfig[]>(
       },
     },
     http: authResult.auth.http,
-  } as ConvexAuthResult<P>;
+  } as unknown as ConvexAuthResult<P, TAuthorization>;
 }
 
 // ============================================================================
@@ -381,7 +538,7 @@ export function AuthCtx(auth: AuthLike, config?: AuthCtxConfig<any>) {
       const userContext = await Fx.run(
         Fx.match(modeDispatch, modeDispatch.mode, {
           optional: async () => {
-            const userId = await auth.user.current(ctx);
+            const userId = await auth.user.id(ctx);
             if (!userId) {
               return null;
             }
@@ -389,7 +546,10 @@ export function AuthCtx(auth: AuthLike, config?: AuthCtxConfig<any>) {
             return { userId, user };
           },
           required: async () => {
-            const userId = await auth.user.require(ctx);
+            const userId = await auth.user.id(ctx);
+            if (!userId) {
+              return null;
+            }
             const user = await auth.user.get(ctx, userId);
             return { userId, user };
           },

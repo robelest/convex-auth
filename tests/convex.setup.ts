@@ -46,12 +46,12 @@ if (!process.env.JWT_PRIVATE_KEY || !process.env.JWKS) {
 
 export * from "convex-test";
 
-export const convexTest: typeof baseConvexTest = (
-  schema,
+export const convexTest = ((
+  schema: Parameters<typeof baseConvexTest>[0],
   modules = import.meta.glob("../convex/**/*.*s"),
 ) => {
-  const t = baseConvexTest(schema, modules);
+  const t = baseConvexTest(schema as never, modules as never);
   authTest.register(t as any, "auth");
   resendTest.register(t as any, "resend");
   return t;
-};
+}) as typeof baseConvexTest;

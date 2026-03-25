@@ -1,15 +1,19 @@
 packages:
   - packages/*
+  - tests
+  - docs
 
 catalog:
   "@robelest/fx": ^0.0.1-preview.2
-  convex: ^1.33.1
+  convex: ^1.34.0
   convex-test: ^0.0.41
   tsdown: 0.20.0-beta.3
-  typescript: ^5.9.3
-  vite: npm:@voidzero-dev/vite-plus-core@latest
-  vite-plus: latest
+  typescript: ^6.0.2
+  vite: npm:@voidzero-dev/vite-plus-core@^0.1.13
+  vite-plus: ^0.1.13
   vitest: npm:@voidzero-dev/vite-plus-test@latest
+onlyBuiltDependencies:
+  - esbuild
 overrides:
   vite: "catalog:"
   vitest: "catalog:"
@@ -20,5 +24,3 @@ peerDependencyRules:
   allowedVersions:
     vite: "*"
     vitest: "*"
-onlyBuiltDependencies:
-  - esbuild

@@ -16,25 +16,29 @@ permissions and optional per-key rate limiting.
 
 ## Methods
 
-| Method   | Signature                                                             | Returns                     | Description                                                                       |
-| -------- | --------------------------------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------- |
-| `create` | `(ctx, { userId, name, scopes?, metadata?, rateLimit?, expiresAt? })` | `{ keyId, secret }`         | Creates a new API key. The raw `secret` (with `sk_` prefix) is returned once.     |
-| `verify` | `(ctx, secret)`                                                       | `{ keyId, userId, scopes }` | Verifies a raw key string and returns the associated key record.                  |
-| `list`   | `(ctx, { userId?, limit?, cursor? })`                                 | Paginated key list          | Lists keys for a user.                                                            |
-| `get`    | `(ctx, keyId)`                                                        | `Doc<"keys">`               | Fetches a key document by ID (does not include the raw secret).                   |
-| `update` | `(ctx, keyId, { name?, scopes?, metadata?, rateLimit? })`             | `void`                      | Updates key metadata, scopes, or rate limit.                                      |
-| `revoke` | `(ctx, keyId)`                                                        | `void`                      | Revokes a key (soft delete — the key still exists but can no longer be verified). |
-| `remove` | `(ctx, keyId)`                                                        | `void`                      | Permanently deletes a key.                                                        |
-| `rotate` | `(ctx, keyId)`                                                        | `{ secret }`                | Generates a new secret for an existing key. The old secret stops working.         |
+| Method   | Signature                                                             | Returns                                                      | Description                                                                       |
+| -------- | --------------------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `create` | `(ctx, { userId, name, scopes?, metadata?, rateLimit?, expiresAt? })` | `{ ok, keyId, secret }`                                      | Creates a new API key. The secret key (with `sk_` prefix) is returned once.       |
+| `verify` | `(ctx, secret)`                                                       | `{ ok: true, keyId, userId, scopes } \| { ok: false, code }` | Verifies a secret key string. Returns a structured result instead of throwing.    |
+| `list`   | `(ctx, { userId?, limit?, cursor? })`                                 | Paginated key list                                           | Lists keys for a user.                                                            |
+| `get`    | `(ctx, keyId)`                                                        | `Doc<"keys">`                                                | Fetches a key document by ID (does not include the secret).                       |
+| `update` | `(ctx, keyId, { name?, scopes?, metadata?, rateLimit? })`             | `{ ok, keyId }`                                              | Updates key metadata, scopes, or rate limit.                                      |
+| `revoke` | `(ctx, keyId)`                                                        | `{ ok, keyId }`                                              | Revokes a key (soft delete — the key still exists but can no longer be verified). |
+| `delete` | `(ctx, keyId)`                                                        | `{ ok, keyId }`                                              | Permanently deletes a key.                                                        |
+| `rotate` | `(ctx, keyId)`                                                        | `{ ok: true, keyId, secret } \| { ok: false, code }`         | Generates a new secret for an existing key. Returns a structured result.          |
 
 ## Scopes
 
 Keys can be scoped with fine-grained permissions. Use `scopes.can()` to check:
 
 ```ts
-const { scopes } = await auth.key.verify(ctx, secret);
+const result = await auth.key.verify(ctx, secret);
 
-if (!scopes.can("documents:read")) {
+if (!result.ok) {
+  throw new Error(`Key verification failed: ${result.code}`);
+}
+
+if (!result.scopes.can("documents:read")) {
   throw new Error("Insufficient permissions");
 }
 ```
@@ -64,7 +68,12 @@ if (!secret) {
   throw new Error("Missing API key");
 }
 
-const { userId, scopes } = await auth.key.verify(ctx, secret);
+const result = await auth.key.verify(ctx, secret);
+if (!result.ok) {
+  throw new Error(`Invalid API key: ${result.code}`);
+}
+
+const { userId, scopes } = result;
 ```
 
 ### Per-key rate limiting
@@ -83,8 +92,11 @@ const { keyId, secret } = await auth.key.create(ctx, {
 ### Rotate a key
 
 ```ts
-const { secret: newSecret } = await auth.key.rotate(ctx, keyId);
-// The old secret is immediately invalid
+const result = await auth.key.rotate(ctx, keyId);
+if (!result.ok) {
+  throw new Error(`Key rotation failed: ${result.code}`);
+}
+// result.secret is the new key; the old secret is immediately invalid
 ```
 
 ### Metadata

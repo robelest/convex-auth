@@ -16,12 +16,21 @@ All errors are `ConvexError` instances with `{ code, message }`. Use
 ```ts
 import { isAuthError, parseAuthError } from "@robelest/convex-auth/errors";
 
-try {
-  await auth.user.require(ctx);
-} catch (e) {
-  if (isAuthError(e)) {
-    const { code, message } = parseAuthError(e)!;
-    // code: "NOT_SIGNED_IN"
+const userId = await auth.user.id(ctx);
+if (userId === null) {
+  // handle not signed in
+}
+
+// For access checks:
+const result = await auth.access.check(ctx, {
+  userId,
+  groupId,
+  grants: ["some.grant"],
+});
+if (!result.ok) {
+  if (isAuthError(result.error)) {
+    const { code, message } = parseAuthError(result.error)!;
+    // code: "FORBIDDEN"
   }
 }
 ```

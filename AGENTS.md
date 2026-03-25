@@ -9,7 +9,7 @@ Monorepo for `@robelest/convex-auth` — a Convex authentication library. Uses
 | Package            | Purpose                                                         |
 | ------------------ | --------------------------------------------------------------- |
 | `packages/auth`    | Core library (server, client, providers, CLI, Convex component) |
-| `test/`            | Vitest test suite (convex, node, and samlify projects)          |
+| `tests/`           | Vitest test suite (convex, node, and samlify projects)          |
 | `packages/samlify` | Local SAML runtime fork used for enterprise auth work           |
 | `convex/`          | App-level Convex backend functions                              |
 
@@ -178,7 +178,8 @@ use options objects.
 ## Testing Conventions
 
 - **Framework**: Vitest + convex-test + edge-runtime environment.
-- Tests live under `test/` (root feature tests and `test/enterprise/*.test.ts`).
+- Tests live under `tests/` (root feature tests and
+  `tests/enterprise/*.test.ts`).
 - Use `test()` directly (no `describe()` blocks).
 - Each test creates an isolated environment via `convexTest(schema)`.
 - Call Convex functions: `t.action(api.auth.signIn, { ... })`.
@@ -288,9 +289,12 @@ documentation, features, and bugs.
   directly. Vite+ can handle all package manager operations.
 - **Always use Vite commands to run tools:** Don't attempt to run `vp vitest` or
   `vp oxlint`. They do not exist. Use `vp test` and `vp lint` instead.
-- **Running scripts:** Vite+ commands take precedence over `package.json`
-  scripts. If there is a `test` script defined in `scripts` that conflicts with
-  the built-in `vp test` command, run it using `vp run test`.
+- **Running scripts:** Vite+ built-in commands (`vp dev`, `vp build`, `vp test`,
+  etc.) always run the Vite+ built-in tool, not any `package.json` script of the
+  same name. To run a custom script that shares a name with a built-in command,
+  use `vp run <script>`. For example, if you have a custom `dev` script that
+  runs multiple services concurrently, run it with `vp run dev`, not `vp dev`
+  (which always starts Vite's dev server).
 - **Do not install Vitest, Oxlint, Oxfmt, or tsdown directly:** Vite+ wraps
   these tools. They must not be installed directly. You cannot upgrade these
   tools by installing their latest versions. Always use Vite+ commands.

@@ -142,6 +142,7 @@ function signInFx(
       passkey: (p) => handlePasskeyFx(ctx, p, args),
       totp: (p) => handleTotp(ctx, p, args),
       device: (p) => handleDevice(ctx, p, args),
+      sso: (_p) => handleSsoProviderFx(ctx, args),
     });
   });
 }
@@ -372,6 +373,57 @@ function handleOAuthProviderFx(
           ),
         ),
       );
+      redirect.searchParams.set("redirectTo", args.params.redirectTo);
+    }
+
+    return {
+      kind: "redirect" as const,
+      redirect: redirect.toString(),
+      verifier,
+    };
+  });
+}
+
+// ============================================================================
+// SSO (Enterprise OIDC / SAML)
+// ============================================================================
+
+function handleSsoProviderFx(
+  ctx: EnrichedActionCtx,
+  args: {
+    params?: Record<string, any>;
+  },
+): FxType<{ kind: "redirect"; redirect: string; verifier: string }, AuthError> {
+  return Fx.gen(function* () {
+    const enterpriseId = args.params?.enterpriseId;
+    if (!enterpriseId || typeof enterpriseId !== "string") {
+      return yield* Fx.fail(
+        new AuthError(
+          "SIGN_IN_MISSING_PARAMS",
+          "enterpriseId is required for SSO sign-in.",
+        ),
+      );
+    }
+
+    const protocol: "oidc" | "saml" = args.params?.protocol ?? "oidc";
+    if (protocol !== "oidc" && protocol !== "saml") {
+      return yield* Fx.fail(
+        new AuthError(
+          "SIGN_IN_MISSING_PARAMS",
+          `Invalid SSO protocol: ${protocol as string}. Expected "oidc" or "saml".`,
+        ),
+      );
+    }
+
+    const verifier = yield* Fx.promise(() => callVerifier(ctx));
+    const siteUrl =
+      process.env.CUSTOM_AUTH_SITE_URL ?? requireEnv("CONVEX_SITE_URL");
+    const redirect = new URL(
+      `${siteUrl}/api/auth/sso/${enterpriseId}/${protocol}/signin`,
+    );
+    redirect.searchParams.set("code", verifier);
+
+    if (typeof args.params?.redirectTo === "string") {
       redirect.searchParams.set("redirectTo", args.params.redirectTo);
     }
 

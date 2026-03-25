@@ -39,7 +39,7 @@ export const enterprisePolicyPatchValidator = v.object({
               v.literal("createUserAndMembership"),
             ),
           ),
-          defaultRole: v.optional(v.string()),
+          defaultRoleIds: v.optional(v.array(v.string())),
         }),
       ),
       deprovision: v.optional(
@@ -62,7 +62,12 @@ export const enterpriseConnectionWhereValidator = v.object({
 export const enterpriseDomainInputValidator = v.object({
   domain: v.string(),
   isPrimary: v.optional(v.boolean()),
-  verifiedAt: v.optional(v.number()),
+});
+
+/** @internal Input validator for enterprise domain verification actions. */
+export const enterpriseDomainVerificationInputValidator = v.object({
+  enterpriseId: v.string(),
+  domain: v.string(),
 });
 
 /** @internal SAML attribute mapping validator for mounted SSO admin APIs. */

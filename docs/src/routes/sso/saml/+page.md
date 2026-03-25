@@ -25,11 +25,11 @@ SAML.
 
 ## Methods
 
-| Method      | Signature                                                                                                   | Returns                        | Description                                                                                      |
-| ----------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `configure` | `(ctx, { enterpriseId, metadataXml?, metadataUrl?, domains?, signAuthnRequests?, attributeMapping?, sp? })` | `{ enterpriseId, groupId }`    | Configures SAML settings for a connection. Accepts a metadata URL or raw XML.                    |
-| `metadata`  | `(ctx, { enterpriseId, entityId?, acsUrl?, sloUrl? })`                                                      | `string`                       | Returns the SP metadata XML for the connection via [`auth.sso.client.metadata(...)`](/sso/rpc/). |
-| `validate`  | `(ctx, enterpriseId)`                                                                                       | `{ ok, enterpriseId, checks }` | Validates that the SAML configuration is complete and the IdP metadata is parseable.             |
+| Method      | Signature                                                                                                   | Returns                         | Description                                                                                      |
+| ----------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `configure` | `(ctx, { enterpriseId, metadataXml?, metadataUrl?, domains?, signAuthnRequests?, attributeMapping?, sp? })` | `{ ok, enterpriseId, groupId }` | Configures SAML settings for a connection. Accepts a metadata URL or raw XML.                    |
+| `metadata`  | `(ctx, { enterpriseId, entityId?, acsUrl?, sloUrl? })`                                                      | `string`                        | Returns the SP metadata XML for the connection via [`auth.sso.client.metadata(...)`](/sso/rpc/). |
+| `validate`  | `(ctx, enterpriseId)`                                                                                       | `{ ok, enterpriseId, checks }`  | Validates that the SAML configuration is complete and the IdP metadata is parseable.             |
 
 ## Example
 

@@ -41,22 +41,34 @@ const auth = createAuth(components.auth, {
       /* ... */
     },
   },
+  authorization: {
+    roles: {
+      member: {
+        label: "Member",
+        grants: [],
+      },
+    },
+  },
 });
 ```
 
 ## Config options
 
-| Option                                | Type                   | Default  | Description                            |
-| ------------------------------------- | ---------------------- | -------- | -------------------------------------- |
-| `providers`                           | `AuthProviderConfig[]` | required | Auth methods to enable                 |
-| `session.totalDurationMs`             | `number`               | 30 days  | Maximum session lifetime               |
-| `session.inactiveDurationMs`          | `number`               | varies   | Inactive session timeout               |
-| `jwt.durationMs`                      | `number`               | 60s      | JWT token lifetime                     |
-| `signIn.max_failed_attempts_per_hour` | `number`               | 10       | Rate limit for failed sign-in attempts |
-| `callbacks.afterUserCreatedOrUpdated` | `function`             | —        | Post-sign-in hook                      |
+| Option                                | Type                   | Default  | Description                             |
+| ------------------------------------- | ---------------------- | -------- | --------------------------------------- |
+| `providers`                           | `AuthProviderConfig[]` | required | Auth methods to enable                  |
+| `session.totalDurationMs`             | `number`               | 30 days  | Maximum session lifetime                |
+| `session.inactiveDurationMs`          | `number`               | varies   | Inactive session timeout                |
+| `jwt.durationMs`                      | `number`               | 60s      | JWT token lifetime                      |
+| `signIn.max_failed_attempts_per_hour` | `number`               | 10       | Rate limit for failed sign-in attempts  |
+| `callbacks.afterUserCreatedOrUpdated` | `function`             | —        | Post-sign-in hook                       |
+| `authorization.roles`                 | `Record<string, Role>` | `{}`     | App-defined role definitions and grants |
 
 > **Note:** Email transport is configured via `new Email({ from, send })` in the
 > providers array, not as a top-level config option.
+
+See [Authorization Patterns](/guides/authorization) for the recommended
+authorization model.
 
 ## Return value
 

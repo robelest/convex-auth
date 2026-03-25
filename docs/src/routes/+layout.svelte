@@ -21,7 +21,9 @@
 
 {#if isLanding}
 	<main class="landing" data-pagefind-body>
-		{@render children()}
+		{#key page.url.pathname}
+			{@render children()}
+		{/key}
 	</main>
 {:else}
 	<div class="docs-layout">
@@ -30,7 +32,9 @@
 		</div>
 		<main class="docs-main">
 			<div class="doc-content" data-pagefind-body {@attach tableOverflow}>
-				{@render children()}
+				{#key page.url.pathname}
+					{@render children()}
+				{/key}
 			</div>
 		</main>
 	</div>

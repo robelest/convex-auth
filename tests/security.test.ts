@@ -15,6 +15,16 @@ import { afterEach, expect, test, vi } from "vite-plus/test";
 
 const TEST_COOKIE_NAMESPACE = "server_security_tests";
 
+function expectNonRedirectRefreshResult(
+  result: Awaited<ReturnType<ReturnType<typeof server>["refresh"]>>,
+) {
+  expect(result.redirect).toBe(false);
+  if (result.redirect) {
+    throw new Error("Expected refresh() to return cookies and token");
+  }
+  return result;
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -117,9 +127,8 @@ test("refresh keeps existing session when code exchange fails transiently", asyn
     },
   });
 
-  const result = await auth.refresh(request);
+  const result = expectNonRedirectRefreshResult(await auth.refresh(request));
 
-  expect(result.redirect).toBeUndefined();
   expect(result.token).toBe("jwt-token");
   expect(result.cookies).toEqual([]);
 });
@@ -147,7 +156,7 @@ test("refresh recovers from malformed access token with valid refresh token", as
     },
   });
 
-  const result = await auth.refresh(request);
+  const result = expectNonRedirectRefreshResult(await auth.refresh(request));
 
   expect(result.token).toBe("new-jwt-token");
   expect(
@@ -175,7 +184,7 @@ test("refresh does not mutate cookies for CORS requests", async () => {
     },
   });
 
-  const result = await auth.refresh(request);
+  const result = expectNonRedirectRefreshResult(await auth.refresh(request));
   expect(result.cookies).toEqual([]);
   expect(result.token).toBeNull();
 });
@@ -204,7 +213,7 @@ test("refresh honors forwarded protocol when checking same-origin", async () => 
     },
   });
 
-  const result = await auth.refresh(request);
+  const result = expectNonRedirectRefreshResult(await auth.refresh(request));
   expect(result.cookies).toEqual([]);
   expect(result.token).toBe(token);
 });
@@ -355,7 +364,7 @@ test("refresh keeps valid convex.site issuer token for convex.cloud URL", async 
     },
   });
 
-  const result = await auth.refresh(request);
+  const result = expectNonRedirectRefreshResult(await auth.refresh(request));
   expect(result.cookies).toEqual([]);
   expect(result.token).toBe(siteToken);
   expect(actionSpy).not.toHaveBeenCalled();
@@ -383,7 +392,7 @@ test("refresh clears foreign issuer token before expiry checks", async () => {
     },
   });
 
-  const result = await auth.refresh(request);
+  const result = expectNonRedirectRefreshResult(await auth.refresh(request));
   expect(result.token).toBeNull();
   expect(
     result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value,
@@ -416,7 +425,7 @@ test("refresh clears malformed refresh token values", async () => {
     },
   });
 
-  const result = await auth.refresh(request);
+  const result = expectNonRedirectRefreshResult(await auth.refresh(request));
   expect(result.token).toBeNull();
   expect(
     result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value,

@@ -193,7 +193,7 @@ export const DEFAULT_ENTERPRISE_POLICY: EnterprisePolicy = {
     },
     jit: {
       mode: "createUserAndMembership",
-      defaultRole: "member",
+      defaultRoleIds: [],
     },
     deprovision: {
       mode: "soft",
@@ -240,10 +240,18 @@ export function normalizeEnterprisePolicy(policy: unknown): EnterprisePolicy {
           jit.mode === "createUserAndMembership"
             ? jit.mode
             : DEFAULT_ENTERPRISE_POLICY.provisioning.jit.mode,
-        defaultRole:
-          typeof jit.defaultRole === "string" && jit.defaultRole.length > 0
-            ? jit.defaultRole
-            : DEFAULT_ENTERPRISE_POLICY.provisioning.jit.defaultRole,
+        defaultRoleIds: Array.isArray(jit.defaultRoleIds)
+          ? Array.from(
+              new Set(
+                jit.defaultRoleIds.filter(
+                  (value): value is string =>
+                    typeof value === "string" && value.length > 0,
+                ),
+              ),
+            )
+          : typeof jit.defaultRole === "string" && jit.defaultRole.length > 0
+            ? [jit.defaultRole]
+            : DEFAULT_ENTERPRISE_POLICY.provisioning.jit.defaultRoleIds,
       },
       deprovision: {
         mode:

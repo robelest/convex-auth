@@ -42,7 +42,9 @@ export default defineSchema({
     extend: v.optional(v.any()),
   })
     .index("email", ["email"])
-    .index("phone", ["phone"]),
+    .index("email_verified", ["email", "emailVerificationTime"])
+    .index("phone", ["phone"])
+    .index("phone_verified", ["phone", "phoneVerificationTime"]),
 
   /**
    * Active sessions. A single user can have multiple concurrent sessions
@@ -86,6 +88,7 @@ export default defineSchema({
     parentRefreshTokenId: v.optional(v.id("RefreshToken")),
   })
     .index("session_id", ["sessionId"])
+    .index("session_id_first_used", ["sessionId", "firstUsedTime"])
     .index("session_id_parent_refresh_token_id", [
       "sessionId",
       "parentRefreshTokenId",
@@ -167,7 +170,9 @@ export default defineSchema({
     name: v.optional(v.string()),
     createdAt: v.number(),
     lastUsedAt: v.optional(v.number()),
-  }).index("user_id", ["userId"]),
+  })
+    .index("user_id", ["userId"])
+    .index("user_id_verified", ["userId", "verified"]),
 
   /**
    * Device authorization codes (RFC 8628). Each record tracks a pending
@@ -214,12 +219,18 @@ export default defineSchema({
     slug: v.optional(v.string()),
     type: v.optional(v.string()),
     parentGroupId: v.optional(v.id("Group")),
+    /** Denormalized root group ID. Self-referencing for root groups. */
+    rootGroupId: v.optional(v.id("Group")),
+    /** Denormalized flag: `true` when `parentGroupId` is absent. */
+    isRoot: v.optional(v.boolean()),
     /** Faceted classification tags. Normalized at write time (trimmed, lowercased). */
     tags: v.optional(v.array(vTag)),
     extend: v.optional(v.any()),
   })
     .index("slug", ["slug"])
     .index("parent_group_id", ["parentGroupId"])
+    .index("root_group_id", ["rootGroupId"])
+    .index("is_root", ["isRoot"])
     .index("type", ["type"])
     .index("type_parent_group_id", ["type", "parentGroupId"]),
 
@@ -246,11 +257,13 @@ export default defineSchema({
     groupId: v.id("Group"),
     userId: v.id("User"),
     role: v.optional(v.string()),
+    roleIds: v.optional(v.array(v.string())),
     status: v.optional(v.string()),
     extend: v.optional(v.any()),
   })
     .index("group_id", ["groupId"])
     .index("group_id_user_id", ["groupId", "userId"])
+    .index("group_id_status", ["groupId", "status"])
     .index("user_id", ["userId"]),
 
   /**
@@ -267,6 +280,7 @@ export default defineSchema({
     email: v.optional(v.string()),
     tokenHash: v.string(),
     role: v.optional(v.string()),
+    roleIds: v.optional(v.array(v.string())),
     status: vInviteStatus,
     expiresTime: v.optional(v.number()),
     acceptedByUserId: v.optional(v.id("User")),
@@ -278,12 +292,7 @@ export default defineSchema({
     .index("email_status", ["email", "status"])
     .index("invited_by_user_id_status", ["invitedByUserId", "status"])
     .index("group_id", ["groupId"])
-    .index("group_id_status", ["groupId", "status"])
-    .index("role_status_accepted_by_user_id", [
-      "role",
-      "status",
-      "acceptedByUserId",
-    ]),
+    .index("group_id_status", ["groupId", "status"]),
 
   /**
    * Enterprise configuration attached to a root group/organization.
@@ -318,6 +327,24 @@ export default defineSchema({
     .index("enterprise_id", ["enterpriseId"])
     .index("group_id", ["groupId"])
     .index("domain", ["domain"]),
+
+  /**
+   * Pending DNS TXT verification challenges for enterprise domains.
+   */
+  EnterpriseDomainVerification: defineTable({
+    enterpriseId: v.id("Enterprise"),
+    groupId: v.id("Group"),
+    domainId: v.id("EnterpriseDomain"),
+    domain: v.string(),
+    recordName: v.string(),
+    token: v.string(),
+    tokenHash: v.string(),
+    requestedAt: v.number(),
+    expiresAt: v.number(),
+  })
+    .index("enterprise_id", ["enterpriseId"])
+    .index("domain_id", ["domainId"])
+    .index("token_hash", ["tokenHash"]),
 
   /**
    * Encrypted enterprise secrets stored separately from protocol config.

@@ -42,6 +42,54 @@ export function createSsoDomain(deps: any) {
     patchEnterprisePolicy,
   } = deps;
 
+  const ENTERPRISE_DOMAIN_VERIFICATION_PREFIX = "_convex-auth-verification";
+  const ENTERPRISE_DOMAIN_VERIFICATION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+
+  const toDomainSummary = (domain: {
+    _id: string;
+    domain: string;
+    isPrimary: boolean;
+    verifiedAt?: number;
+  }) => ({
+    domainId: domain._id,
+    domain: domain.domain,
+    isPrimary: domain.isPrimary,
+    verified: domain.verifiedAt !== undefined,
+    verifiedAt: domain.verifiedAt ?? null,
+  });
+
+  const getDomainVerificationRecordName = (domain: string) =>
+    `${ENTERPRISE_DOMAIN_VERIFICATION_PREFIX}.${normalizeDomain(domain)}`;
+
+  const parseTxtAnswer = (value: string) => {
+    const quoted = [...value.matchAll(/"([^"]*)"/g)].map((match) => match[1]);
+    if (quoted.length > 0) {
+      return quoted.join("");
+    }
+    return value.replace(/^"|"$/g, "").trim();
+  };
+
+  const resolveTxtValues = async (recordName: string) => {
+    const url = new URL("https://dns.google/resolve");
+    url.searchParams.set("name", recordName);
+    url.searchParams.set("type", "TXT");
+
+    const response = await fetch(url, {
+      headers: { accept: "application/json" },
+    });
+    if (!response.ok) {
+      throw new Error(`DNS TXT lookup failed with status ${response.status}.`);
+    }
+    const data = (await response.json()) as {
+      Answer?: Array<{ data?: string }>;
+    };
+    return (data.Answer ?? [])
+      .map((answer) =>
+        typeof answer.data === "string" ? parseTxtAnswer(answer.data) : null,
+      )
+      .filter((value): value is string => value !== null && value.length > 0);
+  };
+
   return {
     connection: {
       create: async (
@@ -55,14 +103,19 @@ export function createSsoDomain(deps: any) {
           config?: Record<string, unknown>;
           extend?: Record<string, unknown>;
         },
-      ): Promise<string> => {
-        return (await ctx.runMutation(
+      ): Promise<{ ok: true; enterpriseId: string; groupId: string }> => {
+        const enterpriseId = (await ctx.runMutation(
           config.component.public.enterpriseCreate,
           {
             ...data,
             policy: normalizeEnterprisePolicy(data.policy),
           },
         )) as string;
+        return {
+          ok: true,
+          enterpriseId,
+          groupId: data.groupId,
+        };
       },
       get: async (ctx: ComponentReadCtx, enterpriseId: string) => {
         return await ctx.runQuery(config.component.public.enterpriseGet, {
@@ -116,11 +169,13 @@ export function createSsoDomain(deps: any) {
           enterpriseId,
           data,
         });
+        return { ok: true as const, enterpriseId };
       },
       delete: async (ctx: ComponentCtx, enterpriseId: string) => {
         await ctx.runMutation(config.component.public.enterpriseDelete, {
           enterpriseId,
         });
+        return { ok: true as const, enterpriseId };
       },
       /**
        * Aggregate readiness status across all configured protocols for an
@@ -212,7 +267,6 @@ export function createSsoDomain(deps: any) {
           groupId: string;
           domain: string;
           isPrimary?: boolean;
-          verifiedAt?: number;
         },
       ): Promise<string> => {
         return (await ctx.runMutation(
@@ -280,13 +334,9 @@ export function createSsoDomain(deps: any) {
             primaryCount: primaryDomains.length,
             verifiedCount: verifiedDomains.length,
           },
-          domains: domains.map((domain: (typeof domains)[number]) => ({
-            domainId: domain._id,
-            domain: domain.domain,
-            isPrimary: domain.isPrimary,
-            verified: domain.verifiedAt !== undefined,
-            verifiedAt: domain.verifiedAt ?? null,
-          })),
+          domains: domains.map((domain: (typeof domains)[number]) =>
+            toDomainSummary(domain),
+          ),
           warnings,
         };
       },
@@ -294,6 +344,226 @@ export function createSsoDomain(deps: any) {
         await ctx.runMutation(config.component.public.enterpriseDomainDelete, {
           domainId,
         });
+      },
+      verification: {
+        request: async (
+          ctx: ComponentCtx,
+          args: { enterpriseId: string; domain: string },
+        ) => {
+          const enterprise = await loadEnterpriseOrThrow(
+            ctx,
+            args.enterpriseId,
+          );
+          const normalizedDomain = normalizeDomain(args.domain);
+          const domains = await ctx.runQuery(
+            config.component.public.enterpriseDomainList,
+            { enterpriseId: enterprise._id },
+          );
+          const domain = domains.find(
+            (entry: (typeof domains)[number]) =>
+              entry.domain === normalizedDomain,
+          );
+          if (!domain) {
+            throw new AuthError(
+              "INVALID_PARAMETERS",
+              "Domain is not attached to this enterprise.",
+            ).toConvexError();
+          }
+
+          const requestedAt = Date.now();
+          const expiresAt = requestedAt + ENTERPRISE_DOMAIN_VERIFICATION_TTL_MS;
+          const token = generateRandomString(32, INVITE_TOKEN_ALPHABET);
+          const tokenHash = await sha256(token);
+          const recordName = getDomainVerificationRecordName(normalizedDomain);
+
+          await ctx.runMutation(
+            config.component.public.enterpriseDomainVerificationUpsert,
+            {
+              enterpriseId: enterprise._id,
+              groupId: enterprise.groupId,
+              domainId: domain._id,
+              domain: normalizedDomain,
+              recordName,
+              token,
+              tokenHash,
+              requestedAt,
+              expiresAt,
+            },
+          );
+
+          await recordEnterpriseAuditEvent(ctx, {
+            enterpriseId: enterprise._id,
+            groupId: enterprise.groupId,
+            eventType: "enterprise.domain.verification_requested",
+            actorType: "system",
+            subjectType: "enterprise_domain",
+            subjectId: domain._id,
+            ok: true,
+            metadata: { domain: normalizedDomain, recordName, expiresAt },
+          });
+
+          return {
+            ok: true as const,
+            enterpriseId: enterprise._id,
+            domain: normalizedDomain,
+            requestedAt,
+            expiresAt,
+            challenge: {
+              recordType: "TXT" as const,
+              recordName,
+              recordValue: token,
+            },
+          };
+        },
+        confirm: async (
+          ctx: ComponentCtx,
+          args: { enterpriseId: string; domain: string },
+        ) => {
+          const enterprise = await loadEnterpriseOrThrow(
+            ctx,
+            args.enterpriseId,
+          );
+          const normalizedDomain = normalizeDomain(args.domain);
+          const domains = await ctx.runQuery(
+            config.component.public.enterpriseDomainList,
+            { enterpriseId: enterprise._id },
+          );
+          const domain = domains.find(
+            (entry: (typeof domains)[number]) =>
+              entry.domain === normalizedDomain,
+          );
+          if (!domain) {
+            throw new AuthError(
+              "INVALID_PARAMETERS",
+              "Domain is not attached to this enterprise.",
+            ).toConvexError();
+          }
+
+          if (domain.verifiedAt !== undefined) {
+            return {
+              ok: true,
+              enterpriseId: enterprise._id,
+              domain: normalizedDomain,
+              verifiedAt: domain.verifiedAt,
+              checks: [
+                {
+                  name: "domain_verified",
+                  ok: true,
+                  message: "Domain is already verified.",
+                },
+              ],
+            };
+          }
+
+          const verification = await ctx.runQuery(
+            config.component.public.enterpriseDomainVerificationGet,
+            { domainId: domain._id },
+          );
+          const checks: Array<{ name: string; ok: boolean; message?: string }> =
+            [];
+          if (!verification) {
+            checks.push({
+              name: "verification_requested",
+              ok: false,
+              message: "No active domain verification challenge exists.",
+            });
+            return {
+              ok: false,
+              enterpriseId: enterprise._id,
+              domain: normalizedDomain,
+              checks,
+            };
+          }
+
+          checks.push({ name: "verification_requested", ok: true });
+
+          if (verification.expiresAt < Date.now()) {
+            await ctx.runMutation(
+              config.component.public.enterpriseDomainVerificationDelete,
+              { domainId: domain._id },
+            );
+            checks.push({
+              name: "challenge_active",
+              ok: false,
+              message: "The verification challenge expired. Request a new one.",
+            });
+            return {
+              ok: false,
+              enterpriseId: enterprise._id,
+              domain: normalizedDomain,
+              checks,
+            };
+          }
+
+          checks.push({ name: "challenge_active", ok: true });
+
+          let txtValues: string[];
+          try {
+            txtValues = await resolveTxtValues(verification.recordName);
+          } catch (error) {
+            throw new AuthError(
+              "INTERNAL_ERROR",
+              error instanceof Error
+                ? error.message
+                : "Failed to resolve DNS TXT records.",
+            ).toConvexError();
+          }
+
+          checks.push({
+            name: "dns_record_present",
+            ok: txtValues.length > 0,
+            message:
+              txtValues.length > 0
+                ? undefined
+                : `No TXT records found at ${verification.recordName}.`,
+          });
+
+          const matches = txtValues.includes(verification.token);
+          checks.push({
+            name: "dns_record_matches",
+            ok: matches,
+            message: matches
+              ? undefined
+              : `TXT record at ${verification.recordName} does not match the expected value.`,
+          });
+
+          if (!checks.every((check) => check.ok)) {
+            return {
+              ok: false,
+              enterpriseId: enterprise._id,
+              domain: normalizedDomain,
+              checks,
+            };
+          }
+
+          const verifiedAt = Date.now();
+          await ctx.runMutation(
+            config.component.public.enterpriseDomainVerify,
+            {
+              domainId: domain._id,
+              verifiedAt,
+            },
+          );
+
+          await recordEnterpriseAuditEvent(ctx, {
+            enterpriseId: enterprise._id,
+            groupId: enterprise.groupId,
+            eventType: "enterprise.domain.verified",
+            actorType: "system",
+            subjectType: "enterprise_domain",
+            subjectId: domain._id,
+            ok: true,
+            metadata: { domain: normalizedDomain, verifiedAt },
+          });
+
+          return {
+            ok: true,
+            enterpriseId: enterprise._id,
+            domain: normalizedDomain,
+            verifiedAt,
+            checks,
+          };
+        },
       },
     },
     saml: {
@@ -480,6 +750,7 @@ export function createSsoDomain(deps: any) {
             });
 
             return {
+              ok: true as const,
               enterpriseId: enterprise._id,
               groupId: enterprise.groupId,
             };
@@ -938,7 +1209,8 @@ export function createSsoDomain(deps: any) {
                         ),
                     }).pipe(
                       Fx.chain((result) =>
-                        result?.enterprise
+                        result?.enterprise &&
+                        result.domain?.verifiedAt !== undefined
                           ? Fx.succeed(result.enterprise)
                           : Fx.fail(
                               new AuthError(
@@ -1164,7 +1436,15 @@ export function createSsoDomain(deps: any) {
           auditEventId,
           payload: { enterpriseId: enterprise._id, scimConfigId: configId },
         });
-        return { token: rawToken, configId };
+        return {
+          ok: true as const,
+          enterpriseId: enterprise._id,
+          configId,
+          basePath:
+            data.basePath ??
+            `${requireEnv("CONVEX_SITE_URL")}/api/auth/sso/${enterprise._id}/scim/v2`,
+          token: rawToken,
+        };
       },
       get: async (ctx: ComponentReadCtx, enterpriseId: string) => {
         return await ctx.runQuery(
@@ -1327,6 +1607,12 @@ export function createSsoDomain(deps: any) {
     },
     webhook: {
       endpoint: {
+        get: async (ctx: ComponentReadCtx, endpointId: string) => {
+          return await ctx.runQuery(
+            config.component.public.enterpriseWebhookEndpointGet,
+            { endpointId },
+          );
+        },
         create: async (
           ctx: ComponentCtx,
           data: {
@@ -1371,7 +1657,7 @@ export function createSsoDomain(deps: any) {
             subjectId: endpointId,
             ok: true,
           });
-          return { endpointId };
+          return { ok: true as const, endpointId };
         },
         list: async (ctx: ComponentReadCtx, enterpriseId: string) => {
           return await ctx.runQuery(
@@ -1384,6 +1670,7 @@ export function createSsoDomain(deps: any) {
             config.component.public.enterpriseWebhookEndpointUpdate,
             { endpointId, data: { status: "disabled" } },
           );
+          return { ok: true as const, endpointId };
         },
       },
       emit: async (

@@ -15,6 +15,7 @@
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
     "paths": {
+      "@robelest/convex-auth/authorization": ["./src/authorization/index"],
       "@robelest/convex-auth/component": ["./src/component/index"],
       "@robelest/convex-auth/providers/*": ["./src/providers/*"],
       "@robelest/convex-auth/client": ["./src/client/index"],

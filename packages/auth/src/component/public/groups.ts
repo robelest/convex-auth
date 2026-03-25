@@ -39,10 +39,23 @@ export const groupCreate = mutation({
   handler: async (ctx, args) => {
     const { tags: rawTags, ...rest } = args;
     const normalizedTags = rawTags ? normalizeTags(rawTags) : undefined;
+    const isRoot = !args.parentGroupId;
+    // Compute rootGroupId: root groups self-reference, children inherit from parent
+    let rootGroupId: Id<"Group"> | undefined;
+    if (!isRoot && args.parentGroupId) {
+      const parent = await ctx.db.get(args.parentGroupId);
+      rootGroupId = parent?.rootGroupId ?? args.parentGroupId;
+    }
     const groupId = await ctx.db.insert("Group", {
       ...rest,
       tags: normalizedTags,
+      isRoot,
+      rootGroupId: isRoot ? undefined : rootGroupId,
     });
+    // Self-reference for root groups (need the ID after insert)
+    if (isRoot) {
+      await ctx.db.patch(groupId, { rootGroupId: groupId });
+    }
     // Sync companion group_tag rows
     if (normalizedTags) {
       for (const tag of normalizedTags) {
@@ -178,6 +191,10 @@ export const groupList = query({
         .withIndex("parent_group_id", (idx) =>
           idx.eq("parentGroupId", where.parentGroupId!),
         );
+    } else if (where.isRoot !== undefined) {
+      q = ctx.db
+        .query("Group")
+        .withIndex("is_root", (idx) => idx.eq("isRoot", where.isRoot!));
     } else {
       q = ctx.db.query("Group");
     }
@@ -186,10 +203,13 @@ export const groupList = query({
     if (where.name !== undefined) {
       q = q.filter((f) => f.eq(f.field("name"), where.name!));
     }
-    if (where.isRoot === true) {
-      q = q.filter((f) => f.eq(f.field("parentGroupId"), undefined));
-    } else if (where.isRoot === false) {
-      q = q.filter((f) => f.neq(f.field("parentGroupId"), undefined));
+    // isRoot filter when not already used as primary index
+    if (
+      where.isRoot !== undefined &&
+      where.parentGroupId === undefined &&
+      (where.type !== undefined || where.slug !== undefined)
+    ) {
+      q = q.filter((f) => f.eq(f.field("isRoot"), where.isRoot!));
     }
     // slug filter when not used as index
     if (where.slug !== undefined && where.type !== undefined) {
@@ -226,6 +246,38 @@ export const groupUpdate = mutation({
   args: { groupId: v.id("Group"), data: v.any() },
   returns: v.null(),
   handler: async (ctx, { groupId, data }) => {
+    // If parentGroupId is changing, recompute rootGroupId + isRoot for this group and descendants
+    if (data.parentGroupId !== undefined) {
+      const oldGroup = await ctx.db.get("Group", groupId);
+      const oldRootGroupId = oldGroup?.rootGroupId;
+      const newParentGroupId = data.parentGroupId as Id<"Group"> | undefined;
+      const newIsRoot = !newParentGroupId;
+      let newRootGroupId: Id<"Group">;
+      if (newIsRoot) {
+        newRootGroupId = groupId;
+      } else {
+        const parent = await ctx.db.get("Group", newParentGroupId!);
+        newRootGroupId = parent?.rootGroupId ?? newParentGroupId!;
+      }
+      data.isRoot = newIsRoot;
+      data.rootGroupId = newRootGroupId;
+      // Cascade to descendants if rootGroupId changed
+      if (oldRootGroupId && oldRootGroupId !== newRootGroupId) {
+        const descendants = await ctx.db
+          .query("Group")
+          .withIndex("root_group_id", (q) =>
+            q.eq("rootGroupId", oldRootGroupId),
+          )
+          .collect();
+        for (const desc of descendants) {
+          if (desc._id !== groupId) {
+            await ctx.db.patch("Group", desc._id, {
+              rootGroupId: newRootGroupId,
+            });
+          }
+        }
+      }
+    }
     // If tags are being updated, normalize and replace the full tag set
     if (data.tags !== undefined) {
       const normalizedTags: TagPair[] = Array.isArray(data.tags)
@@ -318,9 +370,9 @@ export const groupDelete = mutation({
 /**
  * Add a user as a member of a group.
  *
- * The `role` field is an application-defined string (e.g. "owner", "admin",
- * "member", "viewer"). The auth component stores it but does not enforce
- * access control — your application defines what each role means.
+ * The `roleIds` field stores application-defined role identifiers. The auth
+ * component stores assignments but does not enforce access control — your
+ * application defines what each role means.
  *
  * Throws `ConvexError` with code `DUPLICATE_MEMBERSHIP` when the user is
  * already a member of the target group.
@@ -331,7 +383,7 @@ export const memberAdd = mutation({
   args: {
     groupId: v.id("Group"),
     userId: v.id("User"),
-    role: v.optional(v.string()),
+    roleIds: v.optional(v.array(v.string())),
     status: v.optional(v.string()),
     extend: v.optional(v.any()),
   },
@@ -369,7 +421,7 @@ export const memberGet = query({
  * List members with optional filtering, sorting, and pagination.
  *
  * Returns `{ items, nextCursor }`. Supports filtering by `groupId`,
- * `userId`, `role`, and `status`.
+ * `userId`, `roleId`, and `status`.
  */
 export const memberList = query({
   args: {
@@ -377,18 +429,14 @@ export const memberList = query({
       v.object({
         groupId: v.optional(v.id("Group")),
         userId: v.optional(v.id("User")),
-        role: v.optional(v.string()),
+        roleId: v.optional(v.string()),
         status: v.optional(v.string()),
       }),
     ),
     limit: v.optional(v.number()),
     cursor: v.optional(v.union(v.string(), v.null())),
     orderBy: v.optional(
-      v.union(
-        v.literal("_creationTime"),
-        v.literal("role"),
-        v.literal("status"),
-      ),
+      v.union(v.literal("_creationTime"), v.literal("status")),
     ),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
@@ -405,6 +453,15 @@ export const memberList = query({
         .withIndex("group_id_user_id", (idx) =>
           idx.eq("groupId", where.groupId!).eq("userId", where.userId!),
         );
+      if (where.status !== undefined) {
+        q = q.filter((f) => f.eq(f.field("status"), where.status!));
+      }
+    } else if (where.groupId !== undefined && where.status !== undefined) {
+      q = ctx.db
+        .query("GroupMember")
+        .withIndex("group_id_status", (idx) =>
+          idx.eq("groupId", where.groupId!).eq("status", where.status!),
+        );
     } else if (where.groupId !== undefined) {
       q = ctx.db
         .query("GroupMember")
@@ -413,20 +470,22 @@ export const memberList = query({
       q = ctx.db
         .query("GroupMember")
         .withIndex("user_id", (idx) => idx.eq("userId", where.userId!));
+      if (where.status !== undefined) {
+        q = q.filter((f) => f.eq(f.field("status"), where.status!));
+      }
     } else {
       q = ctx.db.query("GroupMember");
-    }
-
-    if (where.role !== undefined) {
-      q = q.filter((f) => f.eq(f.field("role"), where.role!));
-    }
-    if (where.status !== undefined) {
-      q = q.filter((f) => f.eq(f.field("status"), where.status!));
+      if (where.status !== undefined) {
+        q = q.filter((f) => f.eq(f.field("status"), where.status!));
+      }
     }
 
     q = q.order(order);
 
-    const all = await q.collect();
+    let all = await q.collect();
+    if (where.roleId !== undefined) {
+      all = all.filter((doc) => (doc.roleIds ?? []).includes(where.roleId!));
+    }
     let startIdx = 0;
     if (args.cursor) {
       const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
@@ -474,6 +533,77 @@ export const memberGetByGroupAndUser = query({
   },
 });
 
+/**
+ * Resolve a user's membership by walking the group hierarchy from the
+ * requested group up to the root. Returns the first matching membership
+ * found. When `ancestry` is true, includes the list of traversed group IDs.
+ *
+ * This runs entirely inside the component (no cross-component RPCs per level).
+ */
+export const memberResolve = query({
+  args: {
+    userId: v.id("User"),
+    groupId: v.id("Group"),
+    maxDepth: v.optional(v.number()),
+    ancestry: v.optional(v.boolean()),
+  },
+  returns: v.object({
+    membership: v.union(vGroupMemberDoc, v.null()),
+    matchedGroupId: v.union(v.id("Group"), v.null()),
+    depth: v.union(v.number(), v.null()),
+    isDirect: v.boolean(),
+    isInherited: v.boolean(),
+    traversedGroupIds: v.optional(v.array(v.id("Group"))),
+  }),
+  handler: async (ctx, args) => {
+    const maxDepth = Math.max(0, Math.floor(args.maxDepth ?? 32));
+    const includeAncestry = args.ancestry ?? false;
+    const visited = new Set<string>();
+    const traversedGroupIds: Id<"Group">[] = [];
+    let currentGroupId: Id<"Group"> | undefined = args.groupId;
+    let depth = 0;
+
+    while (currentGroupId !== undefined && depth <= maxDepth) {
+      if (visited.has(currentGroupId)) break;
+      visited.add(currentGroupId);
+      if (includeAncestry) traversedGroupIds.push(currentGroupId);
+
+      const membership = await ctx.db
+        .query("GroupMember")
+        .withIndex("group_id_user_id", (q) =>
+          q.eq("groupId", currentGroupId!).eq("userId", args.userId),
+        )
+        .unique();
+
+      if (membership !== null) {
+        return {
+          membership,
+          matchedGroupId: currentGroupId,
+          depth,
+          isDirect: depth === 0,
+          isInherited: depth > 0,
+          ...(includeAncestry ? { traversedGroupIds } : {}),
+        };
+      }
+
+      const groupDoc: { parentGroupId?: Id<"Group"> } | null =
+        await ctx.db.get(currentGroupId);
+      if (!groupDoc?.parentGroupId) break;
+      currentGroupId = groupDoc.parentGroupId;
+      depth++;
+    }
+
+    return {
+      membership: null,
+      matchedGroupId: null,
+      depth: null,
+      isDirect: false,
+      isInherited: false,
+      ...(includeAncestry ? { traversedGroupIds } : {}),
+    };
+  },
+});
+
 /** Remove a member from a group by deleting the member record. */
 export const memberRemove = mutation({
   args: { memberId: v.id("GroupMember") },
@@ -485,9 +615,7 @@ export const memberRemove = mutation({
 });
 
 /**
- * Update a member record's fields (role, status, extend).
- *
- * Common usage: `memberUpdate({ memberId, data: { role: "admin" } })`
+ * Update a member record's fields (roleIds, status, extend).
  */
 export const memberUpdate = mutation({
   args: { memberId: v.id("GroupMember"), data: v.any() },
@@ -520,7 +648,7 @@ export const inviteCreate = mutation({
     invitedByUserId: v.optional(v.id("User")),
     email: v.optional(v.string()),
     tokenHash: v.string(),
-    role: v.optional(v.string()),
+    roleIds: v.optional(v.array(v.string())),
     status: vInviteStatus,
     expiresTime: v.optional(v.number()),
     extend: v.optional(v.any()),
@@ -617,7 +745,7 @@ export const inviteGetByTokenHash = query({
  * List invites with optional filtering, sorting, and pagination.
  *
  * Returns `{ items, nextCursor }`. Supports filtering by `groupId`,
- * `status`, `email`, `invitedByUserId`, `role`, `acceptedByUserId`, and `tokenHash`.
+ * `status`, `email`, `invitedByUserId`, `roleId`, `acceptedByUserId`, and `tokenHash`.
  */
 export const inviteList = query({
   args: {
@@ -628,7 +756,7 @@ export const inviteList = query({
         status: v.optional(vInviteStatus),
         email: v.optional(v.string()),
         invitedByUserId: v.optional(v.id("User")),
-        role: v.optional(v.string()),
+        roleId: v.optional(v.string()),
         acceptedByUserId: v.optional(v.id("User")),
       }),
     ),
@@ -658,19 +786,6 @@ export const inviteList = query({
         .query("GroupInvite")
         .withIndex("token_hash", (idx) =>
           idx.eq("tokenHash", where.tokenHash!),
-        );
-    } else if (
-      where.role !== undefined &&
-      where.status !== undefined &&
-      where.acceptedByUserId !== undefined
-    ) {
-      q = ctx.db
-        .query("GroupInvite")
-        .withIndex("role_status_accepted_by_user_id", (idx) =>
-          idx
-            .eq("role", where.role!)
-            .eq("status", where.status!)
-            .eq("acceptedByUserId", where.acceptedByUserId!),
         );
     } else if (where.groupId !== undefined && where.status !== undefined) {
       q = ctx.db
@@ -722,9 +837,6 @@ export const inviteList = query({
         f.eq(f.field("invitedByUserId"), where.invitedByUserId!),
       );
     }
-    if (where.role !== undefined) {
-      q = q.filter((f) => f.eq(f.field("role"), where.role!));
-    }
     if (where.acceptedByUserId !== undefined) {
       q = q.filter((f) =>
         f.eq(f.field("acceptedByUserId"), where.acceptedByUserId!),
@@ -736,7 +848,10 @@ export const inviteList = query({
 
     q = q.order(order);
 
-    const all = await q.collect();
+    let all = await q.collect();
+    if (where.roleId !== undefined) {
+      all = all.filter((doc) => (doc.roleIds ?? []).includes(where.roleId!));
+    }
     let startIdx = 0;
     if (args.cursor) {
       const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
@@ -891,7 +1006,7 @@ export const inviteAcceptByToken = mutation({
         memberId = await ctx.db.insert("GroupMember", {
           groupId: invite.groupId,
           userId: acceptedByUserId,
-          role: invite.role,
+          roleIds: invite.roleIds,
           status: "active",
         });
         membershipStatus = "joined";

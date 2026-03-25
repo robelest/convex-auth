@@ -13,6 +13,7 @@ import type { AuthApi } from "./auth";
 import {
   enterpriseConnectionWhereValidator,
   enterpriseDomainInputValidator,
+  enterpriseDomainVerificationInputValidator,
   enterprisePolicyPatchValidator,
   enterpriseSamlAttributeMappingValidator,
   enterpriseSamlSpValidator,
@@ -24,6 +25,7 @@ import type {
   SignOutAction,
 } from "./factory";
 import { Fx } from "./fx";
+import type { AuthAuthorizationConfig, AuthRoleId } from "./types";
 import { isLocalHost } from "./utils";
 
 const signInActionRef: SignInAction = makeFunctionReference("auth:signIn");
@@ -51,14 +53,22 @@ export type EnterpriseAdminAuthorizationInput = {
 export type EnterpriseAuthorizer = (
   ctx: { auth: import("convex/server").Auth },
   input: EnterpriseAdminAuthorizationInput,
-) => Promise<void>;
+) => Promise<void | { ok: false }>;
 
-type MountedEnterpriseOptions = {
-  authorized?: EnterpriseAuthorizer;
+type RoleRef<TRoleId extends string> = { id: TRoleId };
+
+type MountedEnterpriseOptions<TRoleId extends string = string> = {
+  admin?: {
+    authorized?: EnterpriseAuthorizer;
+    roles?: Array<TRoleId | RoleRef<TRoleId>>;
+  };
 };
 
-export type EnterpriseMountOptions = {
-  authorized: EnterpriseAuthorizer;
+export type EnterpriseMountOptions<TRoleId extends string = string> = {
+  admin: {
+    authorized: EnterpriseAuthorizer;
+    roles?: Array<TRoleId | RoleRef<TRoleId>>;
+  };
 };
 
 type MountedEnterpriseTarget = {
@@ -68,9 +78,17 @@ type MountedEnterpriseTarget = {
 };
 
 function requireSignedInUser(auth: Pick<AuthApi, "user">) {
-  return async (ctx: { auth: import("convex/server").Auth }) => {
-    return await auth.user.require(ctx as never);
+  return async (ctx: {
+    auth: import("convex/server").Auth;
+  }): Promise<string | null> => {
+    return await auth.user.id(ctx as never);
   };
+}
+
+function normalizeCreatorRoleIds<TRoleId extends string>(
+  roles?: Array<TRoleId | RoleRef<TRoleId>>,
+) {
+  return roles?.map((role) => (typeof role === "string" ? role : role.id));
 }
 
 async function resolveMountedEnterpriseTarget(
@@ -141,22 +159,24 @@ function createMountedAdminAuthorizer(
     target: MountedEnterpriseTarget = {},
   ) => {
     const userId = await requireUserId(ctx);
-    if (!options?.authorized) {
-      throw new ConvexError({
-        code: "FORBIDDEN",
-        message:
-          "Mounted enterprise admin APIs require an authorized callback.",
-      });
+    if (userId === null) {
+      return { ok: false as const, code: "NOT_SIGNED_IN" as const };
+    }
+    if (!options?.admin?.authorized) {
+      return { ok: false as const, code: "FORBIDDEN" as const };
     }
     const resolved = await resolveMountedEnterpriseTarget(auth, ctx, target);
-    await options.authorized(ctx, {
+    const authResult = await options.admin.authorized(ctx, {
       userId,
       permission,
       enterpriseId: resolved.enterpriseId,
       groupId: resolved.groupId,
       resolvedGroupId: resolved.resolvedGroupId,
     });
-    return { userId, ...resolved };
+    if (authResult && !authResult.ok) {
+      return { ok: false as const, code: "FORBIDDEN" as const };
+    }
+    return { ok: true as const, userId, ...resolved };
   };
 }
 
@@ -168,11 +188,14 @@ function createMountedAdminAuthorizer(
  * with an explicit authorization policy. `client` is for end-user sign-in
  * helpers and does not require tenant-admin authorization.
  */
-export function sso(
-  auth: Pick<AuthApi, "group" | "member" | "sso" | "user">,
-  options?: MountedEnterpriseOptions,
+export function sso<
+  TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+>(
+  auth: Pick<AuthApi<TAuthorization>, "group" | "member" | "sso" | "user">,
+  options?: MountedEnterpriseOptions<AuthRoleId<TAuthorization>>,
 ) {
   const authorize = createMountedAdminAuthorizer(auth, options);
+  const adminRoleIds = normalizeCreatorRoleIds(options?.admin?.roles);
 
   return {
     admin: {
@@ -186,25 +209,30 @@ export function sso(
             domain: v.optional(v.string()),
           },
           handler: async (ctx, args) => {
-            const { userId } = await authorize(ctx, "sso.connection.create", {
+            const authResult = await authorize(ctx, "sso.connection.create", {
               groupId: args.groupId,
             });
+            if (!authResult.ok)
+              return { ok: false as const, code: authResult.code };
+            const { userId } = authResult;
             const createsGroup = args.groupId === undefined;
             const groupId =
               args.groupId ??
-              (await auth.group.create(ctx as never, {
-                name: args.name?.trim() || args.slug?.trim() || "Enterprise",
-                slug: args.slug,
-                type: "enterprise",
-              }));
+              (
+                await auth.group.create(ctx as never, {
+                  name: args.name?.trim() || args.slug?.trim() || "Enterprise",
+                  slug: args.slug,
+                  type: "enterprise",
+                })
+              ).groupId;
             if (createsGroup) {
-              await auth.member.add(ctx as never, {
+              await auth.member.create(ctx as never, {
                 groupId,
                 userId,
-                role: "admin",
+                roleIds: adminRoleIds,
               });
             }
-            const enterpriseId = await auth.sso.admin.connection.create(
+            const created = await auth.sso.admin.connection.create(
               ctx as never,
               {
                 groupId,
@@ -216,19 +244,24 @@ export function sso(
             if (args.domain) {
               await auth.sso.admin.connection.domain.set(
                 ctx as never,
-                enterpriseId,
+                created.enterpriseId,
                 [{ domain: args.domain, isPrimary: true }],
               );
             }
-            return { enterpriseId, groupId };
+            return {
+              ...created,
+              groupId,
+              createdGroup: createsGroup,
+            };
           },
         }),
         get: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.connection.read", {
+            const _auth = await authorize(ctx, "sso.connection.read", {
               enterpriseId: args.enterpriseId,
             });
+            if (!_auth.ok) return null;
             return await auth.sso.admin.connection.get(
               ctx as never,
               args.enterpriseId,
@@ -238,9 +271,10 @@ export function sso(
         getByGroup: queryGeneric({
           args: { groupId: v.string() },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.connection.read", {
+            const _auth = await authorize(ctx, "sso.connection.read", {
               groupId: args.groupId,
             });
+            if (!_auth.ok) return null;
             return await auth.sso.admin.connection.getByGroup(
               ctx as never,
               args.groupId,
@@ -250,9 +284,10 @@ export function sso(
         getByDomain: queryGeneric({
           args: { domain: v.string() },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.connection.read", {
+            const _auth = await authorize(ctx, "sso.connection.read", {
               domain: args.domain,
             });
+            if (!_auth.ok) return null;
             return await auth.sso.admin.connection.getByDomain(
               ctx as never,
               args.domain,
@@ -268,9 +303,10 @@ export function sso(
             order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
           },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.connection.read", {
+            const _auth = await authorize(ctx, "sso.connection.read", {
               groupId: args.where?.groupId,
             });
+            if (!_auth.ok) return null;
             return await auth.sso.admin.connection.list(
               ctx as never,
               args as never,
@@ -287,36 +323,38 @@ export function sso(
             }),
           },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.connection.manage", {
+            const _auth = await authorize(ctx, "sso.connection.manage", {
               enterpriseId: args.enterpriseId,
             });
+            if (!_auth.ok) return { ok: false as const, code: _auth.code };
             await auth.sso.admin.connection.update(
               ctx as never,
               args.enterpriseId,
               args.data,
             );
-            return null;
+            return { ok: true as const, enterpriseId: args.enterpriseId };
           },
         }),
         delete: mutationGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.connection.manage", {
+            const _auth = await authorize(ctx, "sso.connection.manage", {
               enterpriseId: args.enterpriseId,
             });
-            await auth.sso.admin.connection.delete(
+            if (!_auth.ok) return { ok: false as const, code: _auth.code };
+            return await auth.sso.admin.connection.delete(
               ctx as never,
               args.enterpriseId,
             );
-            return null;
           },
         }),
         status: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.connection.read", {
+            const _auth = await authorize(ctx, "sso.connection.read", {
               enterpriseId: args.enterpriseId,
             });
+            if (!_auth.ok) return null;
             return await auth.sso.admin.connection.status(
               ctx as never,
               args.enterpriseId,
@@ -327,9 +365,10 @@ export function sso(
           list: queryGeneric({
             args: { enterpriseId: v.string() },
             handler: async (ctx, args) => {
-              await authorize(ctx, "sso.connection.read", {
+              const _auth = await authorize(ctx, "sso.connection.read", {
                 enterpriseId: args.enterpriseId,
               });
+              if (!_auth.ok) return null;
               return await auth.sso.admin.connection.domain.list(
                 ctx as never,
                 args.enterpriseId,
@@ -339,9 +378,10 @@ export function sso(
           validate: queryGeneric({
             args: { enterpriseId: v.string() },
             handler: async (ctx, args) => {
-              await authorize(ctx, "sso.domain.manage", {
+              const _auth = await authorize(ctx, "sso.domain.manage", {
                 enterpriseId: args.enterpriseId,
               });
+              if (!_auth.ok) return null;
               return await auth.sso.admin.connection.domain.validate(
                 ctx as never,
                 args.enterpriseId,
@@ -354,17 +394,45 @@ export function sso(
               domains: v.array(enterpriseDomainInputValidator),
             },
             handler: async (ctx, args) => {
-              await authorize(ctx, "sso.domain.manage", {
+              const _auth = await authorize(ctx, "sso.domain.manage", {
                 enterpriseId: args.enterpriseId,
               });
-              await auth.sso.admin.connection.domain.set(
+              if (!_auth.ok) return { ok: false as const, code: _auth.code };
+              return await auth.sso.admin.connection.domain.set(
                 ctx as never,
                 args.enterpriseId,
                 args.domains,
               );
-              return null;
             },
           }),
+          verification: {
+            request: mutationGeneric({
+              args: enterpriseDomainVerificationInputValidator,
+              handler: async (ctx, args) => {
+                const _auth = await authorize(ctx, "sso.domain.manage", {
+                  enterpriseId: args.enterpriseId,
+                });
+                if (!_auth.ok) return { ok: false as const, code: _auth.code };
+                return await auth.sso.admin.connection.domain.verification.request(
+                  ctx as never,
+                  args,
+                );
+              },
+            }),
+            confirm: actionGeneric({
+              args: enterpriseDomainVerificationInputValidator,
+              handler: async (ctx, args) => {
+                const _auth = await authorize(ctx, "sso.domain.manage", {
+                  enterpriseId: args.enterpriseId,
+                });
+                if (!_auth.ok) return { ok: false as const, code: _auth.code };
+                return await auth.sso.admin.connection.domain.verification.confirm(
+                  ctx as never,
+                  args,
+                );
+              },
+            }),
+          },
         },
       },
       oidc: {
@@ -382,18 +450,20 @@ export function sso(
             extraFields: v.optional(v.record(v.string(), v.string())),
           },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.protocol.manage", {
+            const _auth = await authorize(ctx, "sso.protocol.manage", {
               enterpriseId: args.enterpriseId,
             });
+            if (!_auth.ok) return { ok: false as const, code: _auth.code };
             return await auth.sso.admin.oidc.configure(ctx as never, args);
           },
         }),
         get: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.connection.read", {
+            const _auth = await authorize(ctx, "sso.connection.read", {
               enterpriseId: args.enterpriseId,
             });
+            if (!_auth.ok) return null;
             return await auth.sso.admin.oidc.get(
               ctx as never,
               args.enterpriseId,
@@ -403,9 +473,10 @@ export function sso(
         validate: actionGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.protocol.manage", {
+            const _auth = await authorize(ctx, "sso.protocol.manage", {
               enterpriseId: args.enterpriseId,
             });
+            if (!_auth.ok) return { ok: false as const, code: _auth.code };
             return await auth.sso.admin.oidc.validate(
               ctx as never,
               args.enterpriseId,
@@ -427,18 +498,20 @@ export function sso(
             sp: v.optional(enterpriseSamlSpValidator),
           },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.protocol.manage", {
+            const _auth = await authorize(ctx, "sso.protocol.manage", {
               enterpriseId: args.enterpriseId,
             });
+            if (!_auth.ok) return { ok: false as const, code: _auth.code };
             return await auth.sso.admin.saml.configure(ctx as never, args);
           },
         }),
         validate: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.protocol.manage", {
+            const _auth = await authorize(ctx, "sso.protocol.manage", {
               enterpriseId: args.enterpriseId,
             });
+            if (!_auth.ok) return null;
             return await auth.sso.admin.saml.validate(
               ctx as never,
               args.enterpriseId,
@@ -450,9 +523,10 @@ export function sso(
         get: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.connection.read", {
+            const _auth = await authorize(ctx, "sso.connection.read", {
               enterpriseId: args.enterpriseId,
             });
+            if (!_auth.ok) return null;
             return await auth.sso.admin.policy.get(
               ctx as never,
               args.enterpriseId,
@@ -465,9 +539,10 @@ export function sso(
             patch: enterprisePolicyPatchValidator,
           },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.policy.manage", {
+            const _auth = await authorize(ctx, "sso.policy.manage", {
               enterpriseId: args.enterpriseId,
             });
+            if (!_auth.ok) return { ok: false as const, code: _auth.code };
             return await auth.sso.admin.policy.update(
               ctx as never,
               args.enterpriseId,
@@ -478,9 +553,10 @@ export function sso(
         validate: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.policy.manage", {
+            const _auth = await authorize(ctx, "sso.policy.manage", {
               enterpriseId: args.enterpriseId,
             });
+            if (!_auth.ok) return null;
             return await auth.sso.admin.policy.validate(
               ctx as never,
               args.enterpriseId,
@@ -496,15 +572,34 @@ export function sso(
             limit: v.optional(v.number()),
           },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.audit.read", {
+            const _auth = await authorize(ctx, "sso.audit.read", {
               enterpriseId: args.enterpriseId,
               groupId: args.groupId,
             });
+            if (!_auth.ok) return null;
             return await auth.sso.admin.audit.list(ctx as never, args);
           },
         }),
       },
       webhook: {
+        delivery: {
+          list: queryGeneric({
+            args: {
+              enterpriseId: v.string(),
+              limit: v.optional(v.number()),
+            },
+            handler: async (ctx, args) => {
+              const _auth = await authorize(ctx, "sso.webhook.manage", {
+                enterpriseId: args.enterpriseId,
+              });
+              if (!_auth.ok) return null;
+              return await (auth.sso.admin.webhook as any).delivery.list(
+                ctx as never,
+                args,
+              );
+            },
+          }),
+        },
         endpoint: {
           create: mutationGeneric({
             args: {
@@ -515,9 +610,12 @@ export function sso(
               createdByUserId: v.optional(v.string()),
             },
             handler: async (ctx, args) => {
-              const { userId } = await authorize(ctx, "sso.webhook.manage", {
+              const authResult = await authorize(ctx, "sso.webhook.manage", {
                 enterpriseId: args.enterpriseId,
               });
+              if (!authResult.ok)
+                return { ok: false as const, code: authResult.code };
+              const { userId } = authResult;
               const result = await auth.sso.admin.webhook.endpoint.create(
                 ctx as never,
                 {
@@ -539,9 +637,10 @@ export function sso(
           list: queryGeneric({
             args: { enterpriseId: v.string() },
             handler: async (ctx, args) => {
-              await authorize(ctx, "sso.webhook.manage", {
+              const _auth = await authorize(ctx, "sso.webhook.manage", {
                 enterpriseId: args.enterpriseId,
               });
+              if (!_auth.ok) return null;
               const endpoints = await auth.sso.admin.webhook.endpoint.list(
                 ctx as never,
                 args.enterpriseId,
@@ -555,12 +654,25 @@ export function sso(
           disable: mutationGeneric({
             args: { endpointId: v.string() },
             handler: async (ctx, args) => {
-              await authorize(ctx, "sso.webhook.manage");
-              await auth.sso.admin.webhook.endpoint.disable(
+              const endpoint = await auth.sso.admin.webhook.endpoint.get(
                 ctx as never,
                 args.endpointId,
               );
-              return null;
+              if (!endpoint) {
+                return {
+                  ok: false as const,
+                  code: "INVALID_PARAMETERS" as const,
+                };
+              }
+              const _auth = await authorize(ctx, "sso.webhook.manage", {
+                enterpriseId: endpoint.enterpriseId,
+                groupId: endpoint.groupId,
+              });
+              if (!_auth.ok) return { ok: false as const, code: _auth.code };
+              return await auth.sso.admin.webhook.endpoint.disable(
+                ctx as never,
+                args.endpointId,
+              );
             },
           }),
         },
@@ -597,9 +709,11 @@ export function sso(
  * Build optional public SCIM management actions that apps can mount under
  * `convex/auth/scim/**` when they want client-callable enterprise admin APIs.
  */
-export function scim(
-  auth: Pick<AuthApi, "scim" | "sso" | "user">,
-  options?: MountedEnterpriseOptions,
+export function scim<
+  TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+>(
+  auth: Pick<AuthApi<TAuthorization>, "scim" | "sso" | "user">,
+  options?: MountedEnterpriseOptions<AuthRoleId<TAuthorization>>,
 ) {
   const authorize = createMountedAdminAuthorizer(auth, options);
 
@@ -612,27 +726,30 @@ export function scim(
           status: v.optional(enterpriseStatusValidator),
         },
         handler: async (ctx, args) => {
-          await authorize(ctx, "scim.manage", {
+          const _auth = await authorize(ctx, "scim.manage", {
             enterpriseId: args.enterpriseId,
           });
+          if (!_auth.ok) return { ok: false as const, code: _auth.code };
           return await auth.scim.admin.configure(ctx as never, args);
         },
       }),
       get: queryGeneric({
         args: { enterpriseId: v.string() },
         handler: async (ctx, args) => {
-          await authorize(ctx, "scim.manage", {
+          const _auth = await authorize(ctx, "scim.manage", {
             enterpriseId: args.enterpriseId,
           });
+          if (!_auth.ok) return null;
           return await auth.scim.admin.get(ctx as never, args.enterpriseId);
         },
       }),
       validate: queryGeneric({
         args: { enterpriseId: v.string() },
         handler: async (ctx, args) => {
-          await authorize(ctx, "scim.manage", {
+          const _auth = await authorize(ctx, "scim.manage", {
             enterpriseId: args.enterpriseId,
           });
+          if (!_auth.ok) return null;
           return await auth.scim.admin.validate(
             ctx as never,
             args.enterpriseId,
@@ -650,12 +767,21 @@ export function scim(
  * functions plus end-user enterprise sign-in helpers. The `authorized`
  * callback is required for admin operations.
  */
-export function enterprise(
-  auth: Pick<AuthApi, "group" | "member" | "scim" | "sso" | "user">,
-  options: EnterpriseMountOptions,
+export function enterprise<
+  TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+>(
+  auth: Pick<
+    AuthApi<TAuthorization>,
+    "group" | "member" | "scim" | "sso" | "user"
+  >,
+  options: EnterpriseMountOptions<AuthRoleId<TAuthorization>>,
 ) {
-  const mountedSso = sso(auth, { authorized: options.authorized });
-  const mountedScim = scim(auth, { authorized: options.authorized });
+  const mountedSso = sso(auth, {
+    admin: options.admin,
+  });
+  const mountedScim = scim(auth, {
+    admin: { authorized: options.admin.authorized },
+  });
 
   return {
     createConnection: mountedSso.admin.connection.create,
@@ -669,6 +795,10 @@ export function enterprise(
     listDomains: mountedSso.admin.connection.domain.list,
     validateDomains: mountedSso.admin.connection.domain.validate,
     setDomains: mountedSso.admin.connection.domain.set,
+    requestDomainVerification:
+      mountedSso.admin.connection.domain.verification.request,
+    confirmDomainVerification:
+      mountedSso.admin.connection.domain.verification.confirm,
     configureOidc: mountedSso.admin.oidc.configure,
     getOidc: mountedSso.admin.oidc.get,
     validateOidc: mountedSso.admin.oidc.validate,
@@ -680,6 +810,7 @@ export function enterprise(
     listAudit: mountedSso.admin.audit.list,
     createWebhookEndpoint: mountedSso.admin.webhook.endpoint.create,
     listWebhookEndpoints: mountedSso.admin.webhook.endpoint.list,
+    listWebhookDeliveries: mountedSso.admin.webhook.delivery.list,
     disableWebhookEndpoint: mountedSso.admin.webhook.endpoint.disable,
     configureScim: mountedScim.admin.configure,
     getScim: mountedScim.admin.get,
@@ -760,14 +891,21 @@ export type ServerOptions = {
     | boolean;
 };
 
-export type RefreshResult = {
-  /** Structured cookies to set on the response. */
-  cookies: AuthCookie[];
-  /** URL to redirect to (set after OAuth code exchange). */
-  redirect?: string;
-  /** JWT for SSR hydration, or `null` if not authenticated. */
-  token: string | null;
-};
+export type RefreshResult =
+  | {
+      /** Code exchange occurred — return the pre-built redirect `Response`. */
+      redirect: true;
+      /** 302 redirect with Set-Cookie headers already serialized. */
+      response: Response;
+    }
+  | {
+      /** No redirect — apply cookies and read the token. */
+      redirect: false;
+      /** Structured cookies to set on the response. */
+      cookies: AuthCookie[];
+      /** JWT for SSR hydration, or `null` if not authenticated. */
+      token: string | null;
+    };
 
 const TOKEN_COOKIE_BASE_NAME = "__convexAuthJWT";
 const REFRESH_COOKIE_BASE_NAME = "__convexAuthRefreshToken";
@@ -1030,6 +1168,33 @@ function canParseUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+function serializeAuthCookie(cookie: AuthCookie): string {
+  const parts = [
+    `${cookie.name}=${cookie.value}`,
+    `Path=${cookie.options.path}`,
+  ];
+  if (cookie.options.httpOnly) parts.push("HttpOnly");
+  if (cookie.options.secure) parts.push("Secure");
+  if (cookie.options.sameSite)
+    parts.push(`SameSite=${cookie.options.sameSite}`);
+  if (cookie.options.maxAge !== undefined)
+    parts.push(`Max-Age=${cookie.options.maxAge}`);
+  if (cookie.options.expires)
+    parts.push(`Expires=${cookie.options.expires.toUTCString()}`);
+  return parts.join("; ");
+}
+
+function buildRedirectResponse(
+  location: string,
+  cookies: AuthCookie[],
+): Response {
+  const headers = new Headers({ Location: location });
+  for (const cookie of cookies) {
+    headers.append("Set-Cookie", serializeAuthCookie(cookie));
+  }
+  return new Response(null, { status: 302, headers });
 }
 
 function deriveCookieNamespaceFromUrl(url: string) {
@@ -1772,7 +1937,11 @@ export function server(options: ServerOptions) {
       const corsRefreshResult = await Fx.run(
         Fx.match(corsDispatch, corsDispatch.kind, {
           crossOrigin: () =>
-            ({ cookies: [], token: null }) satisfies RefreshResult,
+            ({
+              redirect: false,
+              cookies: [],
+              token: null,
+            }) satisfies RefreshResult,
           sameOrigin: () => null,
         }),
       );
@@ -1860,19 +2029,22 @@ export function server(options: ServerOptions) {
                 Fx.fold({
                   ok: (result): RefreshResult => {
                     redirectUrl.searchParams.delete("code");
+                    const cookies = structuredAuthCookies(
+                      {
+                        token: result.tokens?.token ?? null,
+                        refreshToken: result.tokens?.refreshToken ?? null,
+                        verifier: null,
+                      },
+                      host,
+                      cookieConfig,
+                      cookieNamespace,
+                    );
                     return {
-                      cookies: structuredAuthCookies(
-                        {
-                          token: result.tokens?.token ?? null,
-                          refreshToken: result.tokens?.refreshToken ?? null,
-                          verifier: null,
-                        },
-                        host,
-                        cookieConfig,
-                        cookieNamespace,
+                      redirect: true,
+                      response: buildRedirectResponse(
+                        redirectUrl.toString(),
+                        cookies,
                       ),
-                      redirect: redirectUrl.toString(),
-                      token: result.tokens?.token ?? null,
                     };
                   },
                   err: (error: unknown): RefreshResult => {
@@ -1899,24 +2071,28 @@ export function server(options: ServerOptions) {
                       errorCode === "INVALID_VERIFICATION_CODE";
                     if (!terminalCodeExchangeError) {
                       return {
+                        redirect: false,
                         cookies: [],
                         token: currentCookies.token,
                       };
                     }
                     redirectUrl.searchParams.delete("code");
+                    const cookies = structuredAuthCookies(
+                      {
+                        token: currentCookies.token,
+                        refreshToken: currentCookies.refreshToken,
+                        verifier: null,
+                      },
+                      host,
+                      cookieConfig,
+                      cookieNamespace,
+                    );
                     return {
-                      cookies: structuredAuthCookies(
-                        {
-                          token: currentCookies.token,
-                          refreshToken: currentCookies.refreshToken,
-                          verifier: null,
-                        },
-                        host,
-                        cookieConfig,
-                        cookieNamespace,
+                      redirect: true,
+                      response: buildRedirectResponse(
+                        redirectUrl.toString(),
+                        cookies,
                       ),
-                      redirect: redirectUrl.toString(),
-                      token: currentCookies.token,
                     };
                   },
                 }),
@@ -2407,10 +2583,11 @@ export function server(options: ServerOptions) {
         }),
       );
       if (tokens === undefined) {
-        return { cookies: [], token: currentToken };
+        return { redirect: false, cookies: [], token: currentToken };
       }
 
       return {
+        redirect: false,
         cookies: structuredAuthCookies(
           {
             token: tokens?.token ?? null,

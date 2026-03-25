@@ -1,6 +1,6 @@
 {
   "name": "@robelest/convex-auth",
-  "version": "0.0.4-preview.15",
+  "version": "0.0.4-preview.18",
   "description": "Authentication for Convex",
   "keywords": [
     "auth",
@@ -10,7 +10,7 @@
     "login",
     "sign"
   ],
-  "homepage": "https://convex-auth.pages.dev/",
+  "homepage": "https://auth.estifanos.com/",
   "bugs": "https://github.com/robelest/convex-auth/issues",
   "license": "Apache-2.0",
   "author": "robelest",
@@ -41,6 +41,10 @@
     "./component": {
       "types": "./dist/component/index.d.ts",
       "import": "./dist/component/index.js"
+    },
+    "./authorization": {
+      "types": "./dist/authorization/index.d.ts",
+      "import": "./dist/authorization/index.js"
     },
     "./convex.config": {
       "types": "./dist/component/convex.config.d.ts",

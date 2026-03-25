@@ -63,7 +63,7 @@ For subsequent requests:
 
 - Queries/mutations call `ctx.auth.getUserIdentity()` which returns
   `{ subject: "userId|sessionId" }`
-- `auth.user.current(ctx)` extracts the `userId` from the subject
+- `auth.user.id(ctx)` extracts the `userId` from the subject
 
 ## Key design constraints
 
@@ -91,7 +91,7 @@ For subsequent requests:
 | Layer                  | What it is                                                        | Typical usage                                                               |
 | ---------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | Auth-flow actions      | Required client-callable functions exported from `convex/auth.ts` | `api.auth.signIn`, `api.auth.signOut`, `api.auth.store`                     |
-| Helper namespaces      | Server-side helper APIs returned by `createAuth(...)`             | `auth.user.require(ctx)`, `auth.sso.admin.connection.create(ctx, ...)`      |
+| Helper namespaces      | Server-side helper APIs returned by `createAuth(...)`             | `auth.user.id(ctx)`, `auth.sso.admin.connection.create(ctx, ...)`           |
 | Mounted enterprise RPC | Optional app-owned public RPC for enterprise/admin UI             | `api.auth.enterprise.createConnection`, `api.auth.enterprise.configureScim` |
 
 Only the first layer is required for the frontend auth client. The third layer
@@ -106,13 +106,13 @@ part of the current stable surface yet.
 
 Every auth path resolves to the same `userId`:
 
-| Access pattern                     | How `userId` is available                             |
-| ---------------------------------- | ----------------------------------------------------- |
-| Browser (password, OAuth, passkey) | `auth.user.current(ctx)`                              |
-| Enterprise SSO (OIDC / SAML)       | Same as browser — SSO completes as a session          |
-| Device flow (CLI / IoT)            | Same as browser — device poll returns session tokens  |
-| API key (machine / automation)     | `ctx.key.userId` or `auth.user.current(ctx, request)` |
+| Access pattern                     | How `userId` is available                            |
+| ---------------------------------- | ---------------------------------------------------- |
+| Browser (password, OAuth, passkey) | `auth.user.id(ctx)`                                  |
+| Enterprise SSO (OIDC / SAML)       | Same as browser — SSO completes as a session         |
+| Device flow (CLI / IoT)            | Same as browser — device poll returns session tokens |
+| API key (machine / automation)     | `ctx.key.userId` or `auth.user.id(ctx, request)`     |
 
 The `userId` is the single shared anchor — server logic works regardless of how
-the caller authenticated. Use `auth.user.current(ctx, request?)` or
-`auth.user.require(ctx, request?)` to resolve it universally.
+the caller authenticated. Use `auth.user.id(ctx, request?)` to resolve it
+universally.

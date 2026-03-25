@@ -114,8 +114,9 @@ export const userFindByVerifiedEmail = query({
   handler: async (ctx, { email }) => {
     const users = await ctx.db
       .query("User")
-      .withIndex("email", (q) => q.eq("email", email))
-      .filter((q) => q.neq(q.field("emailVerificationTime"), undefined))
+      .withIndex("email_verified", (q) =>
+        q.eq("email", email).gt("emailVerificationTime", undefined),
+      )
       .take(2);
     return users.length === 1 ? users[0] : null;
   },
@@ -132,8 +133,9 @@ export const userFindByVerifiedPhone = query({
   handler: async (ctx, { phone }) => {
     const users = await ctx.db
       .query("User")
-      .withIndex("phone", (q) => q.eq("phone", phone))
-      .filter((q) => q.neq(q.field("phoneVerificationTime"), undefined))
+      .withIndex("phone_verified", (q) =>
+        q.eq("phone", phone).gt("phoneVerificationTime", undefined),
+      )
       .take(2);
     return users.length === 1 ? users[0] : null;
   },
@@ -558,8 +560,9 @@ export const refreshTokenGetActive = query({
   handler: async (ctx, { sessionId }) => {
     return await ctx.db
       .query("RefreshToken")
-      .withIndex("session_id", (q) => q.eq("sessionId", sessionId as any))
-      .filter((q) => q.eq(q.field("firstUsedTime"), undefined))
+      .withIndex("session_id_first_used", (q) =>
+        q.eq("sessionId", sessionId as any).eq("firstUsedTime", undefined),
+      )
       .order("desc")
       .first();
   },

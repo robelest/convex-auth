@@ -44,7 +44,7 @@ policy.identity.accountLinking.oidc; // "verifiedEmail"
 policy.identity.accountLinking.saml; // "verifiedEmail"
 policy.provisioning.scimReuse.user; // "externalId"
 policy.provisioning.jit.mode; // "createUserAndMembership"
-policy.provisioning.jit.defaultRole; // "member"
+policy.provisioning.jit.defaultRoleIds; // ["member"]
 policy.provisioning.deprovision.mode; // "soft"
 ```
 
@@ -60,7 +60,7 @@ await auth.sso.admin.policy.update(ctx, enterpriseId, {
   provisioning: {
     jit: {
       mode: "createUser",
-      defaultRole: "member",
+      defaultRoleIds: ["member"],
     },
     deprovision: {
       mode: "hard",

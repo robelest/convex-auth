@@ -321,15 +321,26 @@ export function Auth(config_: ConvexAuthConfig) {
 
     checks.push({ name: "policy_version", ok: policy.version === 1 });
     checks.push({
-      name: "jit_default_role_present",
+      name: "jit_default_role_ids_present",
       ok:
         policy.provisioning.jit.mode !== "createUserAndMembership" ||
-        policy.provisioning.jit.defaultRole.length > 0,
+        policy.provisioning.jit.defaultRoleIds.length > 0,
       message:
         policy.provisioning.jit.mode === "createUserAndMembership" &&
-        policy.provisioning.jit.defaultRole.length === 0
-          ? "A default role is required when JIT membership provisioning is enabled."
+        policy.provisioning.jit.defaultRoleIds.length === 0
+          ? "At least one default roleId is required when JIT membership provisioning is enabled."
           : undefined,
+    });
+    checks.push({
+      name: "jit_default_role_ids_known",
+      ok: policy.provisioning.jit.defaultRoleIds.every(
+        (roleId) => config.authorization.roles[roleId] !== undefined,
+      ),
+      message: policy.provisioning.jit.defaultRoleIds.every(
+        (roleId) => config.authorization.roles[roleId] !== undefined,
+      )
+        ? undefined
+        : "JIT defaultRoleIds contains unknown roleIds.",
     });
     checks.push({
       name: "scim_reuse_supported",
@@ -1007,10 +1018,10 @@ export function Auth(config_: ConvexAuthConfig) {
                   },
                 )) as string;
                 try {
-                  await auth.member.add(state.ctx, {
+                  await auth.member.create(state.ctx, {
                     groupId: state.enterprise.groupId,
                     userId,
-                    role: "member",
+                    roleIds: state.policy.provisioning.jit.defaultRoleIds,
                     status: body.active === false ? "inactive" : "active",
                   });
                 } catch {}
@@ -1193,7 +1204,7 @@ export function Auth(config_: ConvexAuthConfig) {
                   },
                 );
                 if (membership) {
-                  await auth.member.remove(state.ctx, membership._id);
+                  await auth.member.delete(state.ctx, membership._id);
                 }
                 const identity = await state.ctx.runQuery(
                   config.component.public
@@ -1318,7 +1329,7 @@ export function Auth(config_: ConvexAuthConfig) {
 
               const handleGroupsPost: ScimHandler = async (state) => {
                 const body = await readScimJson(state.request);
-                const groupId = await auth.group.create(state.ctx, {
+                const { groupId } = await auth.group.create(state.ctx, {
                   name: String(body.displayName ?? "Group"),
                   parentGroupId: state.enterprise.groupId,
                   type: "organization",
@@ -1340,10 +1351,10 @@ export function Auth(config_: ConvexAuthConfig) {
                   ? body.members
                   : []) {
                   try {
-                    await auth.member.add(state.ctx, {
+                    await auth.member.create(state.ctx, {
                       groupId,
                       userId: String(member.value),
-                      role: "member",
+                      roleIds: state.policy.provisioning.jit.defaultRoleIds,
                       status: "active",
                     });
                   } catch {}
@@ -1395,10 +1406,10 @@ export function Auth(config_: ConvexAuthConfig) {
                       ? operation.value
                       : []) {
                       try {
-                        await auth.member.add(state.ctx, {
+                        await auth.member.create(state.ctx, {
                           groupId,
                           userId: String(member.value),
-                          role: "member",
+                          roleIds: state.policy.provisioning.jit.defaultRoleIds,
                           status: "active",
                         });
                       } catch {}
@@ -1425,16 +1436,17 @@ export function Auth(config_: ConvexAuthConfig) {
                     );
                     for (const member of currentMembers) {
                       if (!nextUserIds.has(member.userId)) {
-                        await auth.member.remove(state.ctx, member._id);
+                        await auth.member.delete(state.ctx, member._id);
                       }
                     }
                     for (const userId of nextUserIds.values()) {
                       if (!currentUserIds.has(userId)) {
                         try {
-                          await auth.member.add(state.ctx, {
+                          await auth.member.create(state.ctx, {
                             groupId,
                             userId,
-                            role: "member",
+                            roleIds:
+                              state.policy.provisioning.jit.defaultRoleIds,
                             status: "active",
                           });
                         } catch {}
@@ -1456,7 +1468,7 @@ export function Auth(config_: ConvexAuthConfig) {
                         { groupId, userId },
                       );
                       if (membership) {
-                        await auth.member.remove(state.ctx, membership._id);
+                        await auth.member.delete(state.ctx, membership._id);
                       }
                     }
                   }
@@ -2054,6 +2066,7 @@ export function Auth(config_: ConvexAuthConfig) {
       config,
       account: auth.account,
       session: auth.session,
+      access: auth.access,
       provider: auth.provider,
     },
   });

@@ -234,7 +234,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               provisioning: {
                 deprovision: { mode: "soft" | "hard" };
                 jit: {
-                  defaultRole: string;
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
                   mode: "off" | "createUser" | "createUserAndMembership";
                 };
                 scimReuse: { user: "externalId" | "none" };
@@ -262,7 +263,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             enterpriseId: string;
             groupId: string;
             isPrimary?: boolean;
-            verifiedAt?: number;
           },
           string,
           Name
@@ -289,6 +289,64 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           }>,
           Name
         >;
+        enterpriseDomainVerificationDelete: FunctionReference<
+          "mutation",
+          "internal",
+          { domainId: string },
+          null,
+          Name
+        >;
+        enterpriseDomainVerificationGet: FunctionReference<
+          "query",
+          "internal",
+          { domainId: string },
+          {
+            _creationTime: number;
+            _id: string;
+            domain: string;
+            domainId: string;
+            enterpriseId: string;
+            expiresAt: number;
+            groupId: string;
+            recordName: string;
+            requestedAt: number;
+            token: string;
+            tokenHash: string;
+          } | null,
+          Name
+        >;
+        enterpriseDomainVerificationUpsert: FunctionReference<
+          "mutation",
+          "internal",
+          {
+            domain: string;
+            domainId: string;
+            enterpriseId: string;
+            expiresAt: number;
+            groupId: string;
+            recordName: string;
+            requestedAt: number;
+            token: string;
+            tokenHash: string;
+          },
+          string,
+          Name
+        >;
+        enterpriseDomainVerify: FunctionReference<
+          "mutation",
+          "internal",
+          { domainId: string; verifiedAt: number },
+          {
+            _creationTime: number;
+            _id: string;
+            domain: string;
+            enterpriseId: string;
+            groupId: string;
+            isPrimary: boolean;
+            verifiedAt?: number;
+          },
+          Name
+        >;
         enterpriseGet: FunctionReference<
           "query",
           "internal",
@@ -311,7 +369,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               provisioning: {
                 deprovision: { mode: "soft" | "hard" };
                 jit: {
-                  defaultRole: string;
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
                   mode: "off" | "createUser" | "createUserAndMembership";
                 };
                 scimReuse: { user: "externalId" | "none" };
@@ -355,7 +414,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 provisioning: {
                   deprovision: { mode: "soft" | "hard" };
                   jit: {
-                    defaultRole: string;
+                    defaultRole?: string;
+                    defaultRoleIds?: Array<string>;
                     mode: "off" | "createUser" | "createUserAndMembership";
                   };
                   scimReuse: { user: "externalId" | "none" };
@@ -390,7 +450,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               provisioning: {
                 deprovision: { mode: "soft" | "hard" };
                 jit: {
-                  defaultRole: string;
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
                   mode: "off" | "createUser" | "createUserAndMembership";
                 };
                 scimReuse: { user: "externalId" | "none" };
@@ -435,7 +496,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 provisioning: {
                   deprovision: { mode: "soft" | "hard" };
                   jit: {
-                    defaultRole: string;
+                    defaultRole?: string;
+                    defaultRoleIds?: Array<string>;
                     mode: "off" | "createUser" | "createUserAndMembership";
                   };
                   scimReuse: { user: "externalId" | "none" };
@@ -742,6 +804,27 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           string,
           Name
         >;
+        enterpriseWebhookEndpointGet: FunctionReference<
+          "query",
+          "internal",
+          { endpointId: string },
+          {
+            _creationTime: number;
+            _id: string;
+            createdByUserId?: string;
+            enterpriseId: string;
+            extend?: any;
+            failureCount: number;
+            groupId: string;
+            lastFailureAt?: number;
+            lastSuccessAt?: number;
+            secretHash: string;
+            status: "active" | "disabled";
+            subscriptions: Array<string>;
+            url: string;
+          } | null,
+          Name
+        >;
         enterpriseWebhookEndpointList: FunctionReference<
           "query",
           "internal",
@@ -832,7 +915,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             provisioning: {
               deprovision: { mode: "soft" | "hard" };
               jit: {
-                defaultRole: string;
+                defaultRole?: string;
+                defaultRoleIds?: Array<string>;
                 mode: "off" | "createUser" | "createUserAndMembership";
               };
               scimReuse: { user: "externalId" | "none" };
@@ -860,7 +944,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           enterpriseId: string;
           groupId: string;
           isPrimary?: boolean;
-          verifiedAt?: number;
         },
         string,
         Name
@@ -887,6 +970,64 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         }>,
         Name
       >;
+      enterpriseDomainVerificationDelete: FunctionReference<
+        "mutation",
+        "internal",
+        { domainId: string },
+        null,
+        Name
+      >;
+      enterpriseDomainVerificationGet: FunctionReference<
+        "query",
+        "internal",
+        { domainId: string },
+        {
+          _creationTime: number;
+          _id: string;
+          domain: string;
+          domainId: string;
+          enterpriseId: string;
+          expiresAt: number;
+          groupId: string;
+          recordName: string;
+          requestedAt: number;
+          token: string;
+          tokenHash: string;
+        } | null,
+        Name
+      >;
+      enterpriseDomainVerificationUpsert: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          domain: string;
+          domainId: string;
+          enterpriseId: string;
+          expiresAt: number;
+          groupId: string;
+          recordName: string;
+          requestedAt: number;
+          token: string;
+          tokenHash: string;
+        },
+        string,
+        Name
+      >;
+      enterpriseDomainVerify: FunctionReference<
+        "mutation",
+        "internal",
+        { domainId: string; verifiedAt: number },
+        {
+          _creationTime: number;
+          _id: string;
+          domain: string;
+          enterpriseId: string;
+          groupId: string;
+          isPrimary: boolean;
+          verifiedAt?: number;
+        },
+        Name
+      >;
       enterpriseGet: FunctionReference<
         "query",
         "internal",
@@ -909,7 +1050,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             provisioning: {
               deprovision: { mode: "soft" | "hard" };
               jit: {
-                defaultRole: string;
+                defaultRole?: string;
+                defaultRoleIds?: Array<string>;
                 mode: "off" | "createUser" | "createUserAndMembership";
               };
               scimReuse: { user: "externalId" | "none" };
@@ -953,7 +1095,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               provisioning: {
                 deprovision: { mode: "soft" | "hard" };
                 jit: {
-                  defaultRole: string;
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
                   mode: "off" | "createUser" | "createUserAndMembership";
                 };
                 scimReuse: { user: "externalId" | "none" };
@@ -988,7 +1131,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             provisioning: {
               deprovision: { mode: "soft" | "hard" };
               jit: {
-                defaultRole: string;
+                defaultRole?: string;
+                defaultRoleIds?: Array<string>;
                 mode: "off" | "createUser" | "createUserAndMembership";
               };
               scimReuse: { user: "externalId" | "none" };
@@ -1033,7 +1177,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               provisioning: {
                 deprovision: { mode: "soft" | "hard" };
                 jit: {
-                  defaultRole: string;
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
                   mode: "off" | "createUser" | "createUserAndMembership";
                 };
                 scimReuse: { user: "externalId" | "none" };
@@ -1338,6 +1483,27 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           url: string;
         },
         string,
+        Name
+      >;
+      enterpriseWebhookEndpointGet: FunctionReference<
+        "query",
+        "internal",
+        { endpointId: string },
+        {
+          _creationTime: number;
+          _id: string;
+          createdByUserId?: string;
+          enterpriseId: string;
+          extend?: any;
+          failureCount: number;
+          groupId: string;
+          lastFailureAt?: number;
+          lastSuccessAt?: number;
+          secretHash: string;
+          status: "active" | "disabled";
+          subscriptions: Array<string>;
+          url: string;
+        } | null,
         Name
       >;
       enterpriseWebhookEndpointList: FunctionReference<
@@ -1676,8 +1842,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           _creationTime: number;
           _id: string;
           extend?: any;
+          isRoot?: boolean;
           name: string;
           parentGroupId?: string;
+          rootGroupId?: string;
           slug?: string;
           tags?: Array<{ key: string; value: string }>;
           type?: string;
@@ -1707,8 +1875,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             _creationTime: number;
             _id: string;
             extend?: any;
+            isRoot?: boolean;
             name: string;
             parentGroupId?: string;
+            rootGroupId?: string;
             slug?: string;
             tags?: Array<{ key: string; value: string }>;
             type?: string;
@@ -1747,8 +1917,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             _creationTime: number;
             _id: string;
             extend?: any;
+            isRoot?: boolean;
             name: string;
             parentGroupId?: string;
+            rootGroupId?: string;
             slug?: string;
             tags?: Array<{ key: string; value: string }>;
             type?: string;
@@ -1778,8 +1950,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               _creationTime: number;
               _id: string;
               extend?: any;
+              isRoot?: boolean;
               name: string;
               parentGroupId?: string;
+              rootGroupId?: string;
               slug?: string;
               tags?: Array<{ key: string; value: string }>;
               type?: string;
@@ -1824,7 +1998,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             extend?: any;
             groupId?: string;
             invitedByUserId?: string;
-            role?: string;
+            roleIds?: Array<string>;
             status: "pending" | "accepted" | "revoked" | "expired";
             tokenHash: string;
           },
@@ -1846,6 +2020,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             groupId?: string;
             invitedByUserId?: string;
             role?: string;
+            roleIds?: Array<string>;
             status: "pending" | "accepted" | "revoked" | "expired";
             tokenHash: string;
           } | null,
@@ -1866,6 +2041,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             groupId?: string;
             invitedByUserId?: string;
             role?: string;
+            roleIds?: Array<string>;
             status: "pending" | "accepted" | "revoked" | "expired";
             tokenHash: string;
           } | null,
@@ -1889,7 +2065,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               email?: string;
               groupId?: string;
               invitedByUserId?: string;
-              role?: string;
+              roleId?: string;
               status?: "pending" | "accepted" | "revoked" | "expired";
               tokenHash?: string;
             };
@@ -1906,6 +2082,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               groupId?: string;
               invitedByUserId?: string;
               role?: string;
+              roleIds?: Array<string>;
               status: "pending" | "accepted" | "revoked" | "expired";
               tokenHash: string;
             }>;
@@ -1926,7 +2103,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           {
             extend?: any;
             groupId: string;
-            role?: string;
+            roleIds?: Array<string>;
             status?: string;
             userId: string;
           },
@@ -1943,6 +2120,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             extend?: any;
             groupId: string;
             role?: string;
+            roleIds?: Array<string>;
             status?: string;
             userId: string;
           } | null,
@@ -1958,6 +2136,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             extend?: any;
             groupId: string;
             role?: string;
+            roleIds?: Array<string>;
             status?: string;
             userId: string;
           } | null,
@@ -1970,10 +2149,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             cursor?: string | null;
             limit?: number;
             order?: "asc" | "desc";
-            orderBy?: "_creationTime" | "role" | "status";
+            orderBy?: "_creationTime" | "status";
             where?: {
               groupId?: string;
-              role?: string;
+              roleId?: string;
               status?: string;
               userId?: string;
             };
@@ -1985,6 +2164,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               extend?: any;
               groupId: string;
               role?: string;
+              roleIds?: Array<string>;
               status?: string;
               userId: string;
             }>;
@@ -2002,6 +2182,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             extend?: any;
             groupId: string;
             role?: string;
+            roleIds?: Array<string>;
             status?: string;
             userId: string;
           }>,
@@ -2012,6 +2193,34 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           "internal",
           { memberId: string },
           null,
+          Name
+        >;
+        memberResolve: FunctionReference<
+          "query",
+          "internal",
+          {
+            ancestry?: boolean;
+            groupId: string;
+            maxDepth?: number;
+            userId: string;
+          },
+          {
+            depth: number | null;
+            isDirect: boolean;
+            isInherited: boolean;
+            matchedGroupId: string | null;
+            membership: {
+              _creationTime: number;
+              _id: string;
+              extend?: any;
+              groupId: string;
+              role?: string;
+              roleIds?: Array<string>;
+              status?: string;
+              userId: string;
+            } | null;
+            traversedGroupIds?: Array<string>;
+          },
           Name
         >;
         memberUpdate: FunctionReference<
@@ -2492,7 +2701,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           extend?: any;
           groupId?: string;
           invitedByUserId?: string;
-          role?: string;
+          roleIds?: Array<string>;
           status: "pending" | "accepted" | "revoked" | "expired";
           tokenHash: string;
         },
@@ -2514,6 +2723,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           groupId?: string;
           invitedByUserId?: string;
           role?: string;
+          roleIds?: Array<string>;
           status: "pending" | "accepted" | "revoked" | "expired";
           tokenHash: string;
         } | null,
@@ -2534,6 +2744,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           groupId?: string;
           invitedByUserId?: string;
           role?: string;
+          roleIds?: Array<string>;
           status: "pending" | "accepted" | "revoked" | "expired";
           tokenHash: string;
         } | null,
@@ -2557,7 +2768,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             email?: string;
             groupId?: string;
             invitedByUserId?: string;
-            role?: string;
+            roleId?: string;
             status?: "pending" | "accepted" | "revoked" | "expired";
             tokenHash?: string;
           };
@@ -2574,6 +2785,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             groupId?: string;
             invitedByUserId?: string;
             role?: string;
+            roleIds?: Array<string>;
             status: "pending" | "accepted" | "revoked" | "expired";
             tokenHash: string;
           }>;
@@ -2896,7 +3108,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           extend?: any;
           groupId: string;
-          role?: string;
+          roleIds?: Array<string>;
           status?: string;
           userId: string;
         },
@@ -2913,6 +3125,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           extend?: any;
           groupId: string;
           role?: string;
+          roleIds?: Array<string>;
           status?: string;
           userId: string;
         } | null,
@@ -2928,6 +3141,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           extend?: any;
           groupId: string;
           role?: string;
+          roleIds?: Array<string>;
           status?: string;
           userId: string;
         } | null,
@@ -2940,10 +3154,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           cursor?: string | null;
           limit?: number;
           order?: "asc" | "desc";
-          orderBy?: "_creationTime" | "role" | "status";
+          orderBy?: "_creationTime" | "status";
           where?: {
             groupId?: string;
-            role?: string;
+            roleId?: string;
             status?: string;
             userId?: string;
           };
@@ -2955,6 +3169,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             extend?: any;
             groupId: string;
             role?: string;
+            roleIds?: Array<string>;
             status?: string;
             userId: string;
           }>;
@@ -2972,6 +3187,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           extend?: any;
           groupId: string;
           role?: string;
+          roleIds?: Array<string>;
           status?: string;
           userId: string;
         }>,
@@ -2982,6 +3198,34 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         { memberId: string },
         null,
+        Name
+      >;
+      memberResolve: FunctionReference<
+        "query",
+        "internal",
+        {
+          ancestry?: boolean;
+          groupId: string;
+          maxDepth?: number;
+          userId: string;
+        },
+        {
+          depth: number | null;
+          isDirect: boolean;
+          isInherited: boolean;
+          matchedGroupId: string | null;
+          membership: {
+            _creationTime: number;
+            _id: string;
+            extend?: any;
+            groupId: string;
+            role?: string;
+            roleIds?: Array<string>;
+            status?: string;
+            userId: string;
+          } | null;
+          traversedGroupIds?: Array<string>;
+        },
         Name
       >;
       memberUpdate: FunctionReference<

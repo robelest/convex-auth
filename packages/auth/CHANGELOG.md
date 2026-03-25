@@ -18,6 +18,12 @@
   the CLI provision `AUTH_SECRET_ENCRYPTION_KEY` automatically.
 - Refresh enterprise docs to reflect the current policy scope and provider-mode
   status.
+- Add first-class enterprise domain verification with
+  `auth.sso.admin.connection.domain.verification.request/confirm` and flat
+  `requestDomainVerification` / `confirmDomainVerification` RPC helpers.
+- Require verified enterprise domains for
+  `auth.sso.client.signIn({ email | domain })` routing while keeping explicit
+  `enterpriseId` sign-in available for setup.
 
 ## 0.0.4-preview.12
 

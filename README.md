@@ -9,8 +9,8 @@
 - **Groups and memberships** — Hierarchical groups, roles, invites, cascade
   operations
 - **SSR** — Cookie-based auth for SvelteKit, TanStack Start, Next.js
-- **Multi-access** — `auth.user.current(ctx, request?)` resolves session JWT or
-  API key universally
+- **Multi-access** — `auth.user.id(ctx, request?)` resolves session JWT or API
+  key universally
 - **Convex component** — Isolated tables, typed helpers, zero-config defaults
 
 ## Documentation
@@ -38,7 +38,7 @@ vp test --run --project convex
 | ------------------ | ---------------------------------------------- |
 | `packages/auth`    | Auth component, server helpers, providers, CLI |
 | `packages/samlify` | Edge-compatible SAML runtime (local fork)      |
-| `test/`            | Vitest test suite (convex + node projects)     |
+| `tests/`           | Vitest test suite (convex + node projects)     |
 | `docs/`            | Starlight documentation site                   |
 
 ## License

@@ -60,7 +60,13 @@ const convex = createBuilder<DataModel>();
 
 const withRequiredAuth = convex.createMiddleware<any, { auth: any }>(
   async (ctx, next) => {
-    const userId = await auth.user.require(ctx);
+    const userId = await auth.user.id(ctx);
+    if (userId === null) {
+      throw new ConvexError({
+        code: "NOT_SIGNED_IN",
+        message: "Authentication required",
+      });
+    }
     const user = await auth.user.get(ctx, userId);
     if (user === null) {
       throw new ConvexError({

@@ -104,7 +104,7 @@ test("enterprise domain validation reports onboarding diagnostics", async () => 
     });
   });
 
-  const enterpriseId = await t.run(async (ctx) => {
+  const created = await t.run(async (ctx) => {
     return await auth.sso.admin.connection.create(ctx as any, {
       groupId,
       slug: "acme-onboarding",
@@ -112,6 +112,8 @@ test("enterprise domain validation reports onboarding diagnostics", async () => 
       status: "active",
     });
   });
+  const enterpriseId = created.enterpriseId;
+  expect(created.ok).toBe(true);
 
   await t.run(async (ctx) => {
     await auth.sso.admin.connection.domain.set(ctx as any, enterpriseId, [
@@ -131,15 +133,48 @@ test("enterprise domain validation reports onboarding diagnostics", async () => 
   expect(missingVerification.summary.verifiedCount).toBe(0);
   expect(missingVerification.warnings).toContain("No verified domains yet.");
 
-  await t.run(async (ctx) => {
-    await auth.sso.admin.connection.domain.set(ctx as any, enterpriseId, [
+  const request = await t.run(async (ctx) => {
+    return await auth.sso.admin.connection.domain.verification.request(
+      ctx as any,
       {
+        enterpriseId,
         domain: "acme.example",
-        isPrimary: true,
-        verifiedAt: Date.now(),
       },
-    ]);
+    );
   });
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: unknown) => {
+      const url = String(input);
+      if (
+        url ===
+        "https://dns.google/resolve?name=_convex-auth-verification.acme.example&type=TXT"
+      ) {
+        return new Response(
+          JSON.stringify({
+            Answer: [{ data: `"${request.challenge.recordValue}"` }],
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    }),
+  );
+
+  const confirmation = await t.run(async (ctx) => {
+    return await auth.sso.admin.connection.domain.verification.confirm(
+      ctx as any,
+      {
+        enterpriseId,
+        domain: "acme.example",
+      },
+    );
+  });
+  expect(confirmation.ok).toBe(true);
 
   const verified = await t.run(async (ctx) => {
     return await auth.sso.admin.connection.domain.validate(
@@ -628,7 +663,7 @@ test("mounted enterprise helpers expose only the narrowed public surface", () =>
   const mountedSso = sso(auth);
   const mountedScim = scim(auth);
   const mountedEnterprise = enterprise(auth, {
-    authorized: async () => {},
+    admin: { authorized: async () => {} },
   });
 
   expect(Object.keys(mountedSso.admin.oidc).sort()).toEqual([
@@ -642,8 +677,11 @@ test("mounted enterprise helpers expose only the narrowed public surface", () =>
   ]);
   expect(Object.keys(mountedSso.client).sort()).toEqual(["metadata", "signIn"]);
   expect(Object.keys(mountedSso.admin.audit)).toEqual(["list"]);
-  expect(Object.keys(mountedSso.admin.webhook).sort()).toEqual(["endpoint"]);
-  expect("delivery" in mountedSso.admin.webhook).toBe(false);
+  expect(Object.keys(mountedSso.admin.webhook).sort()).toEqual([
+    "delivery",
+    "endpoint",
+  ]);
+  expect("delivery" in mountedSso.admin.webhook).toBe(true);
 
   expect(Object.keys(mountedScim.admin).sort()).toEqual([
     "configure",
@@ -657,6 +695,7 @@ test("mounted enterprise helpers expose only the narrowed public surface", () =>
     "configureOidc",
     "configureSaml",
     "configureScim",
+    "confirmDomainVerification",
     "createConnection",
     "createWebhookEndpoint",
     "deleteConnection",
@@ -671,8 +710,10 @@ test("mounted enterprise helpers expose only the narrowed public surface", () =>
     "listAudit",
     "listConnections",
     "listDomains",
+    "listWebhookDeliveries",
     "listWebhookEndpoints",
     "metadata",
+    "requestDomainVerification",
     "setDomains",
     "signIn",
     "updateConnection",
@@ -711,7 +752,7 @@ test("enterprise policy defaults and updates are normalized through auth.sso.pol
     return await auth.sso.admin.policy.update(ctx as any, enterpriseId, {
       identity: { accountLinking: { saml: "none" } },
       provisioning: {
-        jit: { mode: "createUser", defaultRole: "admin" },
+        jit: { mode: "createUser", defaultRoleIds: ["orgAdmin"] },
         deprovision: { mode: "hard" },
       },
     });
@@ -724,12 +765,12 @@ test("enterprise policy defaults and updates are normalized through auth.sso.pol
   expect(defaults.provisioning.deprovision.mode).toBe("soft");
   expect(updated.identity.accountLinking.saml).toBe("none");
   expect(updated.provisioning.jit.mode).toBe("createUser");
-  expect(updated.provisioning.jit.defaultRole).toBe("admin");
+  expect(updated.provisioning.jit.defaultRoleIds).toEqual(["orgAdmin"]);
   expect(updated.provisioning.deprovision.mode).toBe("hard");
   expect(validation.ok).toBe(true);
 });
 
-test("enterprise oidc.register merges config and client.signIn returns enterprise paths", async () => {
+test("enterprise oidc.register merges config and client.signIn requires verified domains for domain lookup", async () => {
   savedEnv.CONVEX_SITE_URL = process.env.CONVEX_SITE_URL;
   process.env.CONVEX_SITE_URL = ENTERPRISE_SITE_URL;
   const t = convexTest(schema);
@@ -789,6 +830,65 @@ test("enterprise oidc.register merges config and client.signIn returns enterpris
       limit: 10,
     });
   });
+  const explicitResolved = await t.run(async (ctx) => {
+    return await auth.sso.client.signIn(ctx as any, {
+      enterpriseId,
+      redirectTo: "/dashboard",
+    });
+  });
+  await expect(
+    t.run(async (ctx) => {
+      return await auth.sso.client.signIn(ctx as any, {
+        domain: "oidc.example.com",
+        redirectTo: "/dashboard",
+      });
+    }),
+  ).rejects.toThrow(
+    "No enterprise OIDC connection matched the provided input.",
+  );
+
+  const request = await t.run(async (ctx) => {
+    return await auth.sso.admin.connection.domain.verification.request(
+      ctx as any,
+      {
+        enterpriseId,
+        domain: "oidc.example.com",
+      },
+    );
+  });
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: unknown) => {
+      const url = String(input);
+      if (
+        url ===
+        "https://dns.google/resolve?name=_convex-auth-verification.oidc.example.com&type=TXT"
+      ) {
+        return new Response(
+          JSON.stringify({
+            Answer: [{ data: `"${request.challenge.recordValue}"` }],
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    }),
+  );
+
+  const confirmation = await t.run(async (ctx) => {
+    return await auth.sso.admin.connection.domain.verification.confirm(
+      ctx as any,
+      {
+        enterpriseId,
+        domain: "oidc.example.com",
+      },
+    );
+  });
+
   const resolved = await t.run(async (ctx) => {
     return await auth.sso.client.signIn(ctx as any, {
       domain: "oidc.example.com",
@@ -809,6 +909,8 @@ test("enterprise oidc.register merges config and client.signIn returns enterpris
   expect(secret?.ciphertext).toBeDefined();
   expect(auditEvents[0]?.eventType).toBe("enterprise.oidc.registered");
   expect(auditEvents[0]?.metadata?.issuer).toBe("https://issuer.example.com");
+  expect(explicitResolved.providerId).toBe("enterprise:oidc:" + enterpriseId);
+  expect(confirmation.ok).toBe(true);
   expect(resolved.providerId).toBe("enterprise:oidc:" + enterpriseId);
   expect(resolved.signInPath).toBe(
     `${ENTERPRISE_SITE_URL}/api/auth/sso/${enterpriseId}/oidc/signin`,

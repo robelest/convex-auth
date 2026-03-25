@@ -9,8 +9,8 @@ import { exportJWK, exportPKCS8, generateKeyPair } from "jose";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.join(import.meta.dirname, "../../..");
-const composePath = path.join(repoRoot, "test/infra/docker/compose.yml");
-const composeEnvPath = path.join(repoRoot, "test/infra/docker/test.env");
+const composePath = path.join(repoRoot, "tests/infra/docker/compose.yml");
+const composeEnvPath = path.join(repoRoot, "tests/infra/docker/test.env");
 const runtimeDir = path.join(repoRoot, ".tmp");
 const buildReadyFile = path.join(runtimeDir, "full-test-build-ready");
 const envLocalPath = path.join(repoRoot, ".env.local");

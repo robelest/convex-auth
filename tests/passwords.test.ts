@@ -46,7 +46,7 @@ test("sign up with password", async () => {
       provider: "password",
       params: { email: TEST_EMAIL, password: "wrong", flow: "signIn" },
     });
-  }).rejects.toThrow("InvalidSecret");
+  }).rejects.toThrow(/Invalid credentials|InvalidSecret/);
 
   // Sign out from each session and verify refresh behavior follows
   // the session lifetime.

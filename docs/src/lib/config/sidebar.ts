@@ -18,10 +18,27 @@ export const sidebar: SidebarGroup[] = [
     ],
   },
   {
-    label: "Integration",
+    label: "Guides",
     items: [
+      { title: "Authorization Patterns", slug: "/guides/authorization" },
+      { title: "Multi-Access", slug: "/guides/multi-access" },
       { title: "Context Enrichment", slug: "/integration/context" },
       { title: "Fluent Convex", slug: "/integration/fluent-convex" },
+      { title: "Device Flow (RFC 8628)", slug: "/guides/device-flow" },
+      { title: "Production Deploy", slug: "/guides/production" },
+    ],
+  },
+  {
+    label: "Enterprise",
+    items: [
+      { title: "SSO Overview", slug: "/sso/overview" },
+      { title: "Enterprise RPC", slug: "/sso/rpc" },
+      { title: "auth.sso.connection", slug: "/sso/connection" },
+      { title: "auth.sso.oidc", slug: "/sso/oidc" },
+      { title: "auth.sso.saml", slug: "/sso/saml" },
+      { title: "auth.scim", slug: "/sso/scim" },
+      { title: "auth.sso.audit", slug: "/sso/audit" },
+      { title: "auth.sso.webhook", slug: "/sso/webhook" },
     ],
   },
   {
@@ -41,35 +58,9 @@ export const sidebar: SidebarGroup[] = [
       { title: "auth.account", slug: "/api/account" },
       { title: "auth.group", slug: "/api/group" },
       { title: "auth.member", slug: "/api/member" },
+      { title: "auth.access", slug: "/api/access" },
       { title: "auth.invite", slug: "/api/invite" },
       { title: "auth.key", slug: "/api/key" },
-    ],
-  },
-  {
-    label: "Enterprise SSO",
-    items: [
-      { title: "SSO Overview", slug: "/sso/overview" },
-      { title: "Enterprise RPC", slug: "/sso/rpc" },
-      { title: "auth.sso.connection", slug: "/sso/connection" },
-      { title: "auth.sso.oidc", slug: "/sso/oidc" },
-      { title: "auth.sso.saml", slug: "/sso/saml" },
-      { title: "auth.scim", slug: "/sso/scim" },
-      { title: "auth.sso.audit", slug: "/sso/audit" },
-      { title: "auth.sso.webhook", slug: "/sso/webhook" },
-    ],
-  },
-  {
-    label: "Guides",
-    items: [
-      { title: "Multi-Access", slug: "/guides/multi-access" },
-      { title: "Device Flow (RFC 8628)", slug: "/guides/device-flow" },
-      { title: "Authorization Patterns", slug: "/guides/authorization" },
-      { title: "Production Deploy", slug: "/guides/production" },
-    ],
-  },
-  {
-    label: "Reference",
-    items: [
       { title: "Configuration", slug: "/reference/config" },
       { title: "Error Codes", slug: "/reference/errors" },
       { title: "CLI Reference", slug: "/reference/cli" },

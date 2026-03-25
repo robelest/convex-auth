@@ -1,7 +1,6 @@
 import { Auth, GenericActionCtx, GenericDataModel } from "convex/server";
 import { GenericId } from "convex/values";
 
-import { AuthError, Fx } from "../fx";
 import {
   buildScopeChecker,
   checkKeyRateLimit,
@@ -86,8 +85,59 @@ export function createCoreDomains(deps: CoreDeps) {
     inviteTokenLength,
   } = deps;
 
+  const roleDefinitions = config.authorization.roles as Record<
+    string,
+    { label?: string; grants: string[] }
+  >;
+
+  const getRoleDefinition = (roleId: string) => {
+    return roleDefinitions[roleId] ?? null;
+  };
+
+  const normalizeRoleIds = (
+    roleIds?: string[],
+  ):
+    | { ok: true; roleIds: string[] }
+    | { ok: false; invalidRoleIds: string[] } => {
+    const normalized = Array.from(new Set(roleIds ?? []));
+    const invalid = normalized.filter((id) => getRoleDefinition(id) === null);
+    if (invalid.length > 0) {
+      return { ok: false, invalidRoleIds: invalid };
+    }
+    return { ok: true, roleIds: normalized };
+  };
+
+  const resolveGrantedPermissions = (roleIds?: string[]) => {
+    const grants = new Set<string>();
+    for (const roleId of roleIds ?? []) {
+      const role = getRoleDefinition(roleId);
+      if (role === null) continue;
+      for (const grant of role.grants) {
+        grants.add(grant);
+      }
+    }
+    return Array.from(grants).sort();
+  };
+
+  // Per-execution cache — attached to ctx so each function invocation has its own.
+  // Eliminates redundant cross-component RPCs for the same entity within a handler.
+  type CtxCache = {
+    users: Map<string, any>;
+    groups: Map<string, any>;
+  };
+  const AUTH_CACHE = Symbol("__convexAuthCache");
+  function cache(ctx: any): CtxCache {
+    if (!ctx[AUTH_CACHE]) {
+      ctx[AUTH_CACHE] = {
+        users: new Map(),
+        groups: new Map(),
+      } satisfies CtxCache;
+    }
+    return ctx[AUTH_CACHE];
+  }
+
   const user = {
-    current: async (
+    id: async (
       ctx: { auth: Auth } & Partial<ComponentCtx>,
       request?: Request,
     ): Promise<string | null> => {
@@ -100,33 +150,26 @@ export function createCoreDomains(deps: CoreDeps) {
         const authHeader = request.headers.get("Authorization");
         if (authHeader?.startsWith("Bearer sk_")) {
           const rawKey = authHeader.slice(7);
-          try {
-            const result = await getAuth().key.verify(
-              ctx as ComponentCtx,
-              rawKey,
-            );
+          const result = await getAuth().key.verify(
+            ctx as ComponentCtx,
+            rawKey,
+          );
+          if (result.ok) {
             return result.userId;
-          } catch {
-            return null;
           }
+          return null;
         }
       }
       return null;
     },
-    require: async (
-      ctx: { auth: Auth } & Partial<ComponentCtx>,
-      request?: Request,
-    ): Promise<string> => {
-      const userId = await user.current(ctx, request);
-      if (userId === null) {
-        throw new AuthError("NOT_SIGNED_IN").toConvexError();
-      }
-      return userId;
-    },
     get: async (ctx: ComponentReadCtx, userId: string) => {
-      return await ctx.runQuery(config.component.public.userGetById, {
+      const c = cache(ctx);
+      if (c.users.has(userId)) return c.users.get(userId);
+      const result = await ctx.runQuery(config.component.public.userGetById, {
         userId,
       });
+      c.users.set(userId, result);
+      return result;
     },
     list: async (
       ctx: ComponentReadCtx,
@@ -141,13 +184,11 @@ export function createCoreDomains(deps: CoreDeps) {
       return await ctx.runQuery(config.component.public.userList, opts);
     },
     viewer: async (ctx: ComponentAuthReadCtx) => {
-      const userId = await user.current(ctx);
+      const userId = await user.id(ctx);
       if (userId === null) return null;
-      return await ctx.runQuery(config.component.public.userGetById, {
-        userId,
-      });
+      return await user.get(ctx, userId);
     },
-    patch: async (
+    update: async (
       ctx: ComponentCtx,
       userId: string,
       data: Record<string, unknown>,
@@ -156,6 +197,7 @@ export function createCoreDomains(deps: CoreDeps) {
         userId,
         data,
       });
+      return { ok: true as const, userId };
     },
     setActiveGroup: async (
       ctx: ComponentCtx,
@@ -171,12 +213,13 @@ export function createCoreDomains(deps: CoreDeps) {
           : {};
       if (opts.groupId === null) {
         const { lastActiveGroup: _omit, ...rest } = existingExtend;
-        await user.patch(ctx, opts.userId, { extend: rest });
-        return;
+        await user.update(ctx, opts.userId, { extend: rest });
+        return { ok: true as const, userId: opts.userId, groupId: null };
       }
-      await user.patch(ctx, opts.userId, {
+      await user.update(ctx, opts.userId, {
         extend: { ...existingExtend, lastActiveGroup: opts.groupId },
       });
+      return { ok: true as const, userId: opts.userId, groupId: opts.groupId };
     },
     getActiveGroup: async (
       ctx: ComponentReadCtx,
@@ -194,11 +237,11 @@ export function createCoreDomains(deps: CoreDeps) {
       }
       return null;
     },
-    remove: async (
+    delete: async (
       ctx: ComponentCtx,
       userId: string,
       opts?: { cascade?: boolean },
-    ): Promise<void> => {
+    ) => {
       const cascade = opts?.cascade !== false;
       const [sessions, accounts, keys, members, passkeys, totps] =
         await Promise.all([
@@ -229,10 +272,7 @@ export function createCoreDomains(deps: CoreDeps) {
         passkeys.length +
         totps.length;
       if (!cascade && totalLinked > 0) {
-        throw new AuthError(
-          "INVALID_PARAMETERS",
-          `Cannot delete user with ${totalLinked} linked records. Pass { cascade: true } to delete all linked records, or remove them manually first.`,
-        ).toConvexError();
+        return { ok: false as const, code: "INVALID_PARAMETERS" as const };
       }
       const deletions: Promise<unknown>[] = [];
       for (const s of sessions)
@@ -271,6 +311,7 @@ export function createCoreDomains(deps: CoreDeps) {
         );
       await Promise.all(deletions);
       await ctx.runMutation(config.component.public.userDelete, { userId });
+      return { ok: true as const, userId };
     },
   };
 
@@ -284,7 +325,14 @@ export function createCoreDomains(deps: CoreDeps) {
     invalidate: async <DataModel extends GenericDataModel>(
       ctx: GenericActionCtx<DataModel>,
       args: { userId: GenericId<"User">; except?: GenericId<"Session">[] },
-    ) => callInvalidateSessions(ctx, args),
+    ) => {
+      await callInvalidateSessions(ctx, args);
+      return {
+        ok: true as const,
+        userId: args.userId,
+        except: args.except ?? [],
+      };
+    },
     get: async (ctx: ComponentReadCtx, sessionId: string) => {
       return await ctx.runQuery(config.component.public.sessionGetById, {
         sessionId,
@@ -302,7 +350,8 @@ export function createCoreDomains(deps: CoreDeps) {
       ctx: GenericActionCtx<DataModel>,
       args: CreateAccountArgs,
     ) => {
-      return await callCreateAccountFromCredentials(ctx, args);
+      const created = await callCreateAccountFromCredentials(ctx, args);
+      return { ok: true as const, ...created };
     },
     get: async <DataModel extends GenericDataModel>(
       ctx: GenericActionCtx<DataModel>,
@@ -310,39 +359,35 @@ export function createCoreDomains(deps: CoreDeps) {
     ) => {
       const result = await callRetrieveAccountWithCredentials(ctx, args);
       if (typeof result === "string") {
-        throw new AuthError("ACCOUNT_NOT_FOUND", result).toConvexError();
+        return null;
       }
       return result;
     },
     update: async <DataModel extends GenericDataModel>(
       ctx: GenericActionCtx<DataModel>,
       args: UpdateAccountCredentialsArgs,
-    ): Promise<void> => {
-      return await callModifyAccount(ctx, args);
+    ) => {
+      await callModifyAccount(ctx, args);
+      return { ok: true as const, accountId: args.account.id };
     },
-    remove: async (ctx: ComponentCtx, accountId: string): Promise<void> => {
+    delete: async (ctx: ComponentCtx, accountId: string) => {
       const doc = await ctx.runQuery(config.component.public.accountGetById, {
         accountId,
       });
       if (doc === null) {
-        throw new AuthError(
-          "ACCOUNT_NOT_FOUND",
-          "Account not found.",
-        ).toConvexError();
+        return { ok: false as const, code: "ACCOUNT_NOT_FOUND" as const };
       }
       const allAccounts = (await ctx.runQuery(
         config.component.public.accountListByUser,
         { userId: (doc as any).userId },
       )) as Array<{ _id: string }>;
       if (allAccounts.length <= 1) {
-        throw new AuthError(
-          "INVALID_PARAMETERS",
-          "Cannot unlink the user's only account. This would lock them out.",
-        ).toConvexError();
+        return { ok: false as const, code: "INVALID_PARAMETERS" as const };
       }
       await ctx.runMutation(config.component.public.accountDelete, {
         accountId,
       });
+      return { ok: true as const, accountId };
     },
     listPasskeys: async (ctx: ComponentReadCtx, opts: { userId: string }) => {
       return await ctx.runQuery(
@@ -359,17 +404,20 @@ export function createCoreDomains(deps: CoreDeps) {
         passkeyId,
         data: { name },
       });
+      return { ok: true as const, passkeyId };
     },
-    removePasskey: async (ctx: ComponentCtx, passkeyId: string) => {
+    deletePasskey: async (ctx: ComponentCtx, passkeyId: string) => {
       await ctx.runMutation(config.component.public.passkeyDelete, {
         passkeyId,
       });
+      return { ok: true as const, passkeyId };
     },
     listTotps: async (ctx: ComponentReadCtx, opts: { userId: string }) => {
       return await ctx.runQuery(config.component.public.totpListByUserId, opts);
     },
-    removeTotp: async (ctx: ComponentCtx, totpId: string) => {
+    deleteTotp: async (ctx: ComponentCtx, totpId: string) => {
       await ctx.runMutation(config.component.public.totpDelete, { totpId });
+      return { ok: true as const, totpId };
     },
   };
 
@@ -413,14 +461,21 @@ export function createCoreDomains(deps: CoreDeps) {
         tags?: Array<{ key: string; value: string }>;
         extend?: Record<string, unknown>;
       },
-    ): Promise<string> => {
-      return (await ctx.runMutation(
+    ): Promise<{ ok: true; groupId: string }> => {
+      const groupId = (await ctx.runMutation(
         config.component.public.groupCreate,
         data,
       )) as string;
+      return { ok: true, groupId };
     },
     get: async (ctx: ComponentReadCtx, groupId: string) => {
-      return await ctx.runQuery(config.component.public.groupGet, { groupId });
+      const c = cache(ctx);
+      if (c.groups.has(groupId)) return c.groups.get(groupId);
+      const result = await ctx.runQuery(config.component.public.groupGet, {
+        groupId,
+      });
+      c.groups.set(groupId, result);
+      return result;
     },
     list: async (
       ctx: ComponentReadCtx,
@@ -457,9 +512,11 @@ export function createCoreDomains(deps: CoreDeps) {
         groupId,
         data,
       });
+      return { ok: true as const, groupId };
     },
     delete: async (ctx: ComponentCtx, groupId: string) => {
       await ctx.runMutation(config.component.public.groupDelete, { groupId });
+      return { ok: true as const, groupId };
     },
     ancestors: async (
       ctx: ComponentReadCtx,
@@ -501,20 +558,28 @@ export function createCoreDomains(deps: CoreDeps) {
   };
 
   const member = {
-    add: async (
+    create: async (
       ctx: ComponentCtx,
       data: {
         groupId: string;
         userId: string;
-        role?: string;
+        roleIds?: string[];
         status?: string;
         extend?: Record<string, unknown>;
       },
-    ): Promise<string> => {
-      return (await ctx.runMutation(
+    ) => {
+      const normalized = normalizeRoleIds(data.roleIds);
+      if (!normalized.ok)
+        return {
+          ok: false as const,
+          code: "INVALID_ROLE_IDS" as const,
+          invalidRoleIds: normalized.invalidRoleIds,
+        };
+      const memberId = (await ctx.runMutation(
         config.component.public.memberAdd,
-        data,
+        { ...data, roleIds: normalized.roleIds },
       )) as string;
+      return { ok: true as const, memberId };
     },
     get: async (ctx: ComponentReadCtx, memberId: string) => {
       return await ctx.runQuery(config.component.public.memberGet, {
@@ -536,12 +601,12 @@ export function createCoreDomains(deps: CoreDeps) {
         where?: {
           groupId?: string;
           userId?: string;
-          role?: string;
+          roleId?: string;
           status?: string;
         };
         limit?: number;
         cursor?: string | null;
-        orderBy?: "_creationTime" | "role" | "status";
+        orderBy?: "_creationTime" | "status";
         order?: "asc" | "desc";
       },
     ) => {
@@ -553,106 +618,189 @@ export function createCoreDomains(deps: CoreDeps) {
         order: opts?.order,
       });
     },
-    remove: async (ctx: ComponentCtx, memberId: string) => {
+    delete: async (ctx: ComponentCtx, memberId: string) => {
       await ctx.runMutation(config.component.public.memberRemove, { memberId });
+      return { ok: true as const, memberId };
     },
     update: async (
       ctx: ComponentCtx,
       memberId: string,
       data: Record<string, unknown>,
     ) => {
+      const nextData = { ...data };
+      if ("roleIds" in nextData) {
+        const normalized = normalizeRoleIds(
+          Array.isArray(nextData.roleIds)
+            ? (nextData.roleIds as string[])
+            : undefined,
+        );
+        if (!normalized.ok)
+          return {
+            ok: false as const,
+            code: "INVALID_ROLE_IDS" as const,
+            invalidRoleIds: normalized.invalidRoleIds,
+          };
+        nextData.roleIds = normalized.roleIds;
+      }
       await ctx.runMutation(config.component.public.memberUpdate, {
         memberId,
-        data,
+        data: nextData,
       });
+      return { ok: true as const, memberId };
     },
-    inherit: async (
+    resolve: async (
       ctx: ComponentReadCtx,
       opts: {
         userId: string;
         groupId: string;
-        roles?: string[];
+        roleIds?: string[];
+        grants?: string[];
         maxDepth?: number;
       },
     ) => {
+      const normalized = normalizeRoleIds(opts.roleIds);
+      if (!normalized.ok)
+        return {
+          ok: false as const,
+          code: "INVALID_ROLE_IDS" as const,
+          invalidRoleIds: normalized.invalidRoleIds,
+        };
+      const requestedRoleIds = normalized.roleIds;
       const roleFilter =
-        opts.roles !== undefined && opts.roles.length > 0
-          ? new Set(opts.roles)
-          : null;
+        requestedRoleIds.length > 0 ? new Set(requestedRoleIds) : null;
+      const requiredGrants = Array.from(new Set(opts.grants ?? []));
       const maxDepth = Math.max(0, Math.floor(opts.maxDepth ?? 32));
-      const visited = new Set<string>();
-      const traversedGroupIds: string[] = [];
-      let currentGroupId: string | undefined = opts.groupId;
-      let depth = 0;
-      let cycleDetected = false;
-      let maxDepthReached = false;
-      while (currentGroupId !== undefined) {
-        if (depth > maxDepth) {
-          maxDepthReached = true;
-          break;
-        }
-        if (visited.has(currentGroupId)) {
-          cycleDetected = true;
-          break;
-        }
-        visited.add(currentGroupId);
-        traversedGroupIds.push(currentGroupId);
-        const membership = await member.getByUserAndGroup(ctx, {
-          userId: opts.userId,
-          groupId: currentGroupId,
-        });
-        if (
-          membership !== null &&
-          (roleFilter === null || roleFilter.has(membership.role))
-        ) {
-          return {
-            requestedGroupId: opts.groupId,
-            matchedGroupId: currentGroupId,
-            membership,
-            depth,
-            isDirect: depth === 0,
-            isInherited: depth > 0,
-            traversedGroupIds,
-            cycleDetected: false,
-            maxDepthReached: false,
-          };
-        }
-        const doc = await group.get(ctx, currentGroupId);
-        if (doc === null || doc.parentGroupId === undefined) break;
-        currentGroupId = doc.parentGroupId;
-        depth += 1;
+
+      // Single cross-component RPC — hierarchy walk happens inside the component
+      const result = await ctx.runQuery(config.component.public.memberResolve, {
+        userId: opts.userId,
+        groupId: opts.groupId,
+        maxDepth,
+        ancestry: true,
+      });
+
+      const traversedGroupIds = result.traversedGroupIds ?? [];
+
+      if (result.membership === null) {
+        return {
+          requestedGroupId: opts.groupId,
+          matchedGroupId: null,
+          membership: null,
+          roleIds: [] as string[],
+          grants: [] as string[],
+          missingGrants: requiredGrants,
+          depth: null,
+          isDirect: false,
+          isInherited: false,
+          traversedGroupIds,
+          cycleDetected: false,
+          maxDepthReached: false,
+        };
       }
+
+      // Grant resolution uses app-defined roles — stays server-side
+      const membershipRoleIds = (result.membership as any).roleIds ?? [];
+      const membershipGrants = resolveGrantedPermissions(membershipRoleIds);
+
+      // Check role filter
+      if (
+        roleFilter !== null &&
+        !membershipRoleIds.some((roleId: string) => roleFilter.has(roleId))
+      ) {
+        return {
+          requestedGroupId: opts.groupId,
+          matchedGroupId: null,
+          membership: null,
+          roleIds: [] as string[],
+          grants: [] as string[],
+          missingGrants: requiredGrants,
+          depth: null,
+          isDirect: false,
+          isInherited: false,
+          traversedGroupIds,
+          cycleDetected: false,
+          maxDepthReached: false,
+        };
+      }
+
+      // Check required grants
+      const missingGrants = requiredGrants.filter(
+        (grant) => !membershipGrants.includes(grant),
+      );
+      if (missingGrants.length > 0) {
+        return {
+          requestedGroupId: opts.groupId,
+          matchedGroupId: result.matchedGroupId,
+          membership: result.membership,
+          roleIds: membershipRoleIds,
+          grants: membershipGrants,
+          missingGrants,
+          depth: result.depth,
+          isDirect: result.isDirect,
+          isInherited: result.isInherited,
+          traversedGroupIds,
+          cycleDetected: false,
+          maxDepthReached: false,
+        };
+      }
+
       return {
         requestedGroupId: opts.groupId,
-        matchedGroupId: null,
-        membership: null,
-        depth: null,
-        isDirect: false,
-        isInherited: false,
+        matchedGroupId: result.matchedGroupId,
+        membership: result.membership,
+        roleIds: membershipRoleIds,
+        grants: membershipGrants,
+        missingGrants: [] as string[],
+        depth: result.depth,
+        isDirect: result.isDirect,
+        isInherited: result.isInherited,
         traversedGroupIds,
-        cycleDetected,
-        maxDepthReached,
+        cycleDetected: false,
+        maxDepthReached: false,
       };
     },
-    require: async (
+  };
+
+  const access = {
+    check: async (
       ctx: ComponentReadCtx,
       opts: {
         userId: string;
         groupId: string;
-        roles?: string[];
+        grants: string[];
         maxDepth?: number;
       },
     ) => {
-      const result = await member.inherit(ctx, opts);
-      if (result.membership === null) {
-        throw new AuthError(
-          "FORBIDDEN",
-          `User ${opts.userId} has no membership on group ${opts.groupId} or its ancestors.`,
-        ).toConvexError();
+      const requiredGrants = Array.from(new Set(opts.grants));
+      const result = await member.resolve(ctx, {
+        userId: opts.userId,
+        groupId: opts.groupId,
+        grants: requiredGrants,
+        maxDepth: opts.maxDepth,
+      });
+      if ("code" in result && result.code === "INVALID_ROLE_IDS") {
+        return {
+          ok: false,
+          membership: null,
+          matchedGroupId: null,
+          roleIds: [] as string[],
+          grants: [] as string[],
+          missingGrants: requiredGrants,
+          isDirect: false,
+          isInherited: false,
+          depth: null,
+        };
       }
+      const missingGrants = requiredGrants.filter(
+        (grant) => !result.grants.includes(grant),
+      );
       return {
+        ok: result.membership !== null && missingGrants.length === 0,
         membership: result.membership,
         matchedGroupId: result.matchedGroupId,
+        roleIds: result.roleIds,
+        grants: result.grants,
+        missingGrants,
         isDirect: result.isDirect,
         isInherited: result.isInherited,
         depth: result.depth,
@@ -667,11 +815,18 @@ export function createCoreDomains(deps: CoreDeps) {
         groupId?: string;
         invitedByUserId?: string;
         email?: string;
-        role?: string;
+        roleIds?: string[];
         expiresTime?: number;
         extend?: Record<string, unknown>;
       },
-    ): Promise<{ inviteId: string; token: string }> => {
+    ) => {
+      const normalized = normalizeRoleIds(data.roleIds);
+      if (!normalized.ok)
+        return {
+          ok: false as const,
+          code: "INVALID_ROLE_IDS" as const,
+          invalidRoleIds: normalized.invalidRoleIds,
+        };
       const token = generateRandomString(
         inviteTokenLength,
         inviteTokenAlphabet,
@@ -679,9 +834,9 @@ export function createCoreDomains(deps: CoreDeps) {
       const tokenHash = await sha256(token);
       const inviteId = (await ctx.runMutation(
         config.component.public.inviteCreate,
-        { ...data, tokenHash, status: "pending" },
+        { ...data, roleIds: normalized.roleIds, tokenHash, status: "pending" },
       )) as string;
-      return { inviteId, token };
+      return { ok: true as const, inviteId, token };
     },
     get: async (ctx: ComponentReadCtx, inviteId: string) => {
       return await ctx.runQuery(config.component.public.inviteGet, {
@@ -701,10 +856,11 @@ export function createCoreDomains(deps: CoreDeps) {
         args: { token: string; acceptedByUserId: string },
       ) => {
         const tokenHash = await sha256(args.token);
-        return await ctx.runMutation(
+        const result = await ctx.runMutation(
           config.component.public.inviteAcceptByToken,
           { tokenHash, acceptedByUserId: args.acceptedByUserId },
         );
+        return { ok: true as const, ...result };
       },
     },
     list: async (
@@ -716,7 +872,7 @@ export function createCoreDomains(deps: CoreDeps) {
           status?: "pending" | "accepted" | "revoked" | "expired";
           email?: string;
           invitedByUserId?: string;
-          role?: string;
+          roleId?: string;
           acceptedByUserId?: string;
         };
         limit?: number;
@@ -747,9 +903,15 @@ export function createCoreDomains(deps: CoreDeps) {
         inviteId,
         ...(acceptedByUserId ? { acceptedByUserId } : {}),
       });
+      return {
+        ok: true as const,
+        inviteId,
+        acceptedByUserId: acceptedByUserId ?? null,
+      };
     },
     revoke: async (ctx: ComponentCtx, inviteId: string) => {
       await ctx.runMutation(config.component.public.inviteRevoke, { inviteId });
+      return { ok: true as const, inviteId };
     },
   };
 
@@ -764,7 +926,7 @@ export function createCoreDomains(deps: CoreDeps) {
         expiresAt?: number;
         metadata?: Record<string, unknown>;
       },
-    ): Promise<{ keyId: string; raw: string }> => {
+    ): Promise<{ ok: true; keyId: string; secret: string }> => {
       const { raw, hashedKey, displayPrefix } = await generateApiKey("sk_");
       const keyId = (await ctx.runMutation(config.component.public.keyInsert, {
         userId: opts.userId,
@@ -776,51 +938,58 @@ export function createCoreDomains(deps: CoreDeps) {
         expiresAt: opts.expiresAt,
         metadata: opts.metadata,
       })) as string;
-      return { keyId, raw };
+      return { ok: true, keyId, secret: raw };
     },
     verify: async (
       ctx: ComponentCtx,
       rawKey: string,
-    ): Promise<{ userId: string; keyId: string; scopes: ScopeChecker }> => {
+    ): Promise<
+      | { ok: true; userId: string; keyId: string; scopes: ScopeChecker }
+      | {
+          ok: false;
+          code:
+            | "INVALID_API_KEY"
+            | "API_KEY_REVOKED"
+            | "API_KEY_EXPIRED"
+            | "API_KEY_RATE_LIMITED";
+        }
+    > => {
       const hashedKey = await hashApiKey(rawKey);
       const doc = (await ctx.runQuery(
         config.component.public.keyGetByHashedKey,
         { hashedKey },
       )) as KeyDoc | null;
-      return Fx.run(
-        Fx.gen(function* () {
-          yield* Fx.guard(!doc, Fx.fail(new AuthError("INVALID_API_KEY")));
-          const k = doc!;
-          yield* Fx.guard(k.revoked, Fx.fail(new AuthError("API_KEY_REVOKED")));
-          yield* Fx.guard(
-            !!(k.expiresAt && k.expiresAt < Date.now()),
-            Fx.fail(new AuthError("API_KEY_EXPIRED")),
-          );
-          const patchData: Record<string, unknown> = { lastUsedAt: Date.now() };
-          if (k.rateLimit) {
-            const { limited, newState } = checkKeyRateLimit(
-              k.rateLimit,
-              k.rateLimitState ?? undefined,
-            );
-            yield* Fx.guard(
-              limited,
-              Fx.fail(new AuthError("API_KEY_RATE_LIMITED")),
-            );
-            patchData.rateLimitState = newState;
-          }
-          yield* Fx.promise(() =>
-            ctx.runMutation(config.component.public.keyPatch, {
-              keyId: k._id,
-              data: patchData,
-            }),
-          );
-          return {
-            userId: k.userId,
-            keyId: k._id,
-            scopes: buildScopeChecker(k.scopes),
-          };
-        }).pipe(Fx.recover((e) => Fx.fatal(e.toConvexError()))),
-      );
+      if (!doc) {
+        return { ok: false as const, code: "INVALID_API_KEY" as const };
+      }
+      const k = doc;
+      if (k.revoked) {
+        return { ok: false as const, code: "API_KEY_REVOKED" as const };
+      }
+      if (k.expiresAt && k.expiresAt < Date.now()) {
+        return { ok: false as const, code: "API_KEY_EXPIRED" as const };
+      }
+      const patchData: Record<string, unknown> = { lastUsedAt: Date.now() };
+      if (k.rateLimit) {
+        const { limited, newState } = checkKeyRateLimit(
+          k.rateLimit,
+          k.rateLimitState ?? undefined,
+        );
+        if (limited) {
+          return { ok: false as const, code: "API_KEY_RATE_LIMITED" as const };
+        }
+        patchData.rateLimitState = newState;
+      }
+      await ctx.runMutation(config.component.public.keyPatch, {
+        keyId: k._id,
+        data: patchData,
+      });
+      return {
+        ok: true as const,
+        userId: k.userId,
+        keyId: k._id,
+        scopes: buildScopeChecker(k.scopes),
+      };
     },
     list: async (
       ctx: ComponentReadCtx,
@@ -868,34 +1037,35 @@ export function createCoreDomains(deps: CoreDeps) {
       },
     ) => {
       await ctx.runMutation(config.component.public.keyPatch, { keyId, data });
+      return { ok: true as const, keyId };
     },
     revoke: async (ctx: ComponentCtx, keyId: string) => {
       await ctx.runMutation(config.component.public.keyPatch, {
         keyId,
         data: { revoked: true },
       });
+      return { ok: true as const, keyId };
     },
-    remove: async (ctx: ComponentCtx, keyId: string) => {
+    delete: async (ctx: ComponentCtx, keyId: string) => {
       await ctx.runMutation(config.component.public.keyDelete, { keyId });
+      return { ok: true as const, keyId };
     },
     rotate: async (
       ctx: ComponentCtx,
       keyId: string,
       opts?: { name?: string; expiresAt?: number },
-    ): Promise<{ keyId: string; raw: string }> => {
+    ): Promise<
+      | { ok: true; keyId: string; secret: string }
+      | { ok: false; code: "INVALID_PARAMETERS" | "API_KEY_REVOKED" }
+    > => {
       const existing = await ctx.runQuery(config.component.public.keyGetById, {
         keyId,
       });
-      if (!existing)
-        throw new AuthError(
-          "INVALID_PARAMETERS",
-          "API key not found.",
-        ).toConvexError();
+      if (!existing) {
+        return { ok: false as const, code: "INVALID_PARAMETERS" as const };
+      }
       if ((existing as any).revoked === true) {
-        throw new AuthError(
-          "API_KEY_REVOKED",
-          "Cannot rotate a key that is already revoked.",
-        ).toConvexError();
+        return { ok: false as const, code: "API_KEY_REVOKED" as const };
       }
       await ctx.runMutation(config.component.public.keyPatch, {
         keyId,
@@ -912,5 +1082,15 @@ export function createCoreDomains(deps: CoreDeps) {
     },
   };
 
-  return { user, session, account, provider, group, member, invite, key };
+  return {
+    user,
+    session,
+    account,
+    provider,
+    group,
+    member,
+    access,
+    invite,
+    key,
+  };
 }

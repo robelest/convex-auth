@@ -97,6 +97,10 @@ Convex database. There is no app-level configuration file needed. Each tenant
 `auth.sso.admin.connection.create(...)` returns an object with `enterpriseId`
 and `groupId`. Use `enterpriseId` for the rest of the `auth.sso.*` APIs.
 
+If you use the mounted flat enterprise RPC builder, configure `admin.roles` so
+the creator of a newly auto-created enterprise group gets the initial grants
+required to manage that tenant.
+
 This means you can:
 
 - Onboard new enterprise customers without redeploying.

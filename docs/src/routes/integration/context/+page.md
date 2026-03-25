@@ -82,10 +82,10 @@ const authCtx = AuthCtx(auth, {
       userId: user._id,
       groupId,
     });
-    return { groupId, role: membership?.role ?? "member" };
+    return { groupId, roleIds: membership?.roleIds ?? ["member"] };
   },
 });
-// ctx.auth.groupId and ctx.auth.role available in all handlers
+// ctx.auth.groupId and ctx.auth.roleIds available in all handlers
 ```
 
 ## What's on `ctx.auth`

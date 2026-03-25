@@ -78,6 +78,64 @@ const auth = server({
 });
 ```
 
+## Client-side auth
+
+The `client()` function from `@robelest/convex-auth/client` creates the
+client-side auth state manager. It works with any Convex client transport.
+
+```ts
+import { client as createAuthClient } from "@robelest/convex-auth/client";
+
+const auth = createAuthClient({
+  convex: convexClient,
+  proxyPath: "/api/auth",
+  tokenSeed: serverToken,
+  location: () => currentUrl, // SSR-safe URL source
+});
+```
+
+### `location` option
+
+Pass a URL source so the client can safely read query parameters during SSR
+(where `window` is not available). Each framework provides this differently:
+
+- **SvelteKit:** `location: () => page.url` (from `$app/state`)
+- **Next.js:** pass from server props or `useSearchParams()`
+- **TanStack Start:** pass from `useServerFn()` or loader data
+- **SPA:** omit (defaults to `window.location` with SSR guard)
+
+### `auth.param(name)`
+
+SSR-safe URL parameter reader. Uses the `location` option, falls back to
+`window.location` when available:
+
+```ts
+const workspaceId = auth.param("workspace");
+```
+
+### `auth.invite`
+
+The client automatically detects invite tokens from `?invite=` URL parameters
+and persists them across OAuth redirects. After authentication, the app can
+consume the invite:
+
+```ts
+if (auth.invite) {
+  const { ok, token } = await auth.invite.accept();
+  if (ok) {
+    // Use the token to call your accept mutation
+    await client.mutation(api.acceptInvite, { token });
+  }
+}
+```
+
+The client handles:
+
+- Reading `?invite=` and `?email=` from the URL
+- Persisting the token to storage before `signIn()` (survives OAuth redirects)
+- Recovering the token from storage after redirect
+- Cleaning up URL parameters after `accept()`
+
 ## Next steps
 
 See the framework-specific guides for full integration examples:

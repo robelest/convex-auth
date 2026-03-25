@@ -8,6 +8,7 @@ import {
   vEnterpriseAuditEventDoc,
   vEnterpriseDoc,
   vEnterpriseDomainDoc,
+  vEnterpriseDomainVerificationDoc,
   vEnterprisePolicy,
   vEnterpriseScimConfigDoc,
   vEnterpriseScimIdentityDoc,
@@ -194,6 +195,13 @@ export const enterpriseDelete = mutation({
       .withIndex("enterprise_id", (idx) => idx.eq("enterpriseId", enterpriseId))
       .collect();
     for (const domain of domains) {
+      const verification = await ctx.db
+        .query("EnterpriseDomainVerification")
+        .withIndex("domain_id", (idx) => idx.eq("domainId", domain._id))
+        .first();
+      if (verification) {
+        await ctx.db.delete(verification._id);
+      }
       await ctx.db.delete(domain._id);
     }
     const secrets = await ctx.db
@@ -215,7 +223,6 @@ export const enterpriseDomainAdd = mutation({
     groupId: v.id("Group"),
     domain: v.string(),
     isPrimary: v.optional(v.boolean()),
-    verifiedAt: v.optional(v.number()),
   },
   returns: v.id("EnterpriseDomain"),
   handler: async (ctx, args) => {
@@ -244,7 +251,6 @@ export const enterpriseDomainAdd = mutation({
       if (row.domain === args.domain) {
         await ctx.db.patch(row._id, {
           isPrimary: args.isPrimary ?? row.isPrimary,
-          verifiedAt: args.verifiedAt ?? row.verifiedAt,
         });
         return row._id;
       }
@@ -282,8 +288,93 @@ export const enterpriseDomainDelete = mutation({
   args: { domainId: v.id("EnterpriseDomain") },
   returns: v.null(),
   handler: async (ctx, { domainId }) => {
+    const verification = await ctx.db
+      .query("EnterpriseDomainVerification")
+      .withIndex("domain_id", (idx) => idx.eq("domainId", domainId))
+      .first();
+    if (verification) {
+      await ctx.db.delete(verification._id);
+    }
     await ctx.db.delete(domainId);
     return null;
+  },
+});
+
+export const enterpriseDomainVerificationGet = query({
+  args: { domainId: v.id("EnterpriseDomain") },
+  returns: v.union(vEnterpriseDomainVerificationDoc, v.null()),
+  handler: async (ctx, { domainId }) => {
+    return await ctx.db
+      .query("EnterpriseDomainVerification")
+      .withIndex("domain_id", (idx) => idx.eq("domainId", domainId))
+      .first();
+  },
+});
+
+export const enterpriseDomainVerificationUpsert = mutation({
+  args: {
+    enterpriseId: v.id("Enterprise"),
+    groupId: v.id("Group"),
+    domainId: v.id("EnterpriseDomain"),
+    domain: v.string(),
+    recordName: v.string(),
+    token: v.string(),
+    tokenHash: v.string(),
+    requestedAt: v.number(),
+    expiresAt: v.number(),
+  },
+  returns: v.id("EnterpriseDomainVerification"),
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("EnterpriseDomainVerification")
+      .withIndex("domain_id", (idx) => idx.eq("domainId", args.domainId))
+      .first();
+    if (existing) {
+      await ctx.db.patch(existing._id, args);
+      return existing._id;
+    }
+    return await ctx.db.insert("EnterpriseDomainVerification", args);
+  },
+});
+
+export const enterpriseDomainVerificationDelete = mutation({
+  args: { domainId: v.id("EnterpriseDomain") },
+  returns: v.null(),
+  handler: async (ctx, { domainId }) => {
+    const existing = await ctx.db
+      .query("EnterpriseDomainVerification")
+      .withIndex("domain_id", (idx) => idx.eq("domainId", domainId))
+      .first();
+    if (existing) {
+      await ctx.db.delete(existing._id);
+    }
+    return null;
+  },
+});
+
+export const enterpriseDomainVerify = mutation({
+  args: {
+    domainId: v.id("EnterpriseDomain"),
+    verifiedAt: v.number(),
+  },
+  returns: vEnterpriseDomainDoc,
+  handler: async (ctx, { domainId, verifiedAt }) => {
+    await ctx.db.patch(domainId, { verifiedAt });
+    const domain = await ctx.db.get("EnterpriseDomain", domainId);
+    if (!domain) {
+      throw new ConvexError({
+        code: "INVALID_PARAMETERS",
+        message: "Enterprise domain not found.",
+      });
+    }
+    const verification = await ctx.db
+      .query("EnterpriseDomainVerification")
+      .withIndex("domain_id", (idx) => idx.eq("domainId", domainId))
+      .first();
+    if (verification) {
+      await ctx.db.delete(verification._id);
+    }
+    return domain;
   },
 });
 
@@ -588,6 +679,14 @@ export const enterpriseWebhookEndpointList = query({
       .query("EnterpriseWebhookEndpoint")
       .withIndex("enterprise_id", (idx) => idx.eq("enterpriseId", enterpriseId))
       .collect();
+  },
+});
+
+export const enterpriseWebhookEndpointGet = query({
+  args: { endpointId: v.id("EnterpriseWebhookEndpoint") },
+  returns: v.union(vEnterpriseWebhookEndpointDoc, v.null()),
+  handler: async (ctx, { endpointId }) => {
+    return await ctx.db.get(endpointId);
   },
 });
 

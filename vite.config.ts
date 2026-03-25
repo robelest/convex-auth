@@ -1,12 +1,11 @@
 import path from "node:path";
 
-import { varlockVitePlugin } from "@varlock/vite-integration";
 import { defineConfig } from "vite-plus";
 
 const convexApp = path.resolve(import.meta.dirname, "./convex");
 const authSrc = path.resolve(import.meta.dirname, "./packages/auth/src");
 const samlifyRoot = path.resolve(import.meta.dirname, "./packages/samlify");
-const samlifyTest = path.resolve(import.meta.dirname, "./test/samlify");
+const samlifyTest = path.resolve(import.meta.dirname, "./tests/samlify");
 
 const testProjectAliases = {
   "@convex": convexApp,
@@ -21,7 +20,6 @@ const testProjectAliases = {
 } as const;
 
 export default defineConfig({
-  plugins: [varlockVitePlugin()],
   staged: {
     "*": "vp check --fix",
   },
@@ -69,7 +67,7 @@ export default defineConfig({
         input: [
           "convex/**",
           "packages/**",
-          "test/**",
+          "tests/**",
           "scripts/**",
           "docs/**",
           "package.json",
@@ -88,7 +86,7 @@ export default defineConfig({
         input: [
           "convex/**",
           "packages/**",
-          "test/**",
+          "tests/**",
           "package.json",
           "pnpm-lock.yaml",
           "pnpm-workspace.yaml",
@@ -105,7 +103,7 @@ export default defineConfig({
         input: [
           "convex/**",
           "packages/**",
-          "test/**",
+          "tests/**",
           "package.json",
           "pnpm-lock.yaml",
           "pnpm-workspace.yaml",
@@ -121,7 +119,7 @@ export default defineConfig({
     passWithNoTests: true,
     projects: [
       {
-        root: "./test",
+        root: "./tests",
         resolve: {
           alias: testProjectAliases,
         },
@@ -137,7 +135,7 @@ export default defineConfig({
         },
       },
       {
-        root: "./test",
+        root: "./tests",
         resolve: {
           alias: testProjectAliases,
         },
@@ -153,7 +151,7 @@ export default defineConfig({
         },
       },
       {
-        root: "./test",
+        root: "./tests",
         resolve: {
           alias: testProjectAliases,
         },
@@ -172,7 +170,7 @@ export default defineConfig({
         },
       },
       {
-        root: "./test",
+        root: "./tests",
         resolve: {
           alias: testProjectAliases,
         },

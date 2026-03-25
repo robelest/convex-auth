@@ -119,8 +119,9 @@ export const totpGetVerifiedByUserId = query({
   handler: async (ctx, { userId }) => {
     return await ctx.db
       .query("TotpFactor")
-      .withIndex("user_id", (q) => q.eq("userId", userId))
-      .filter((q) => q.eq(q.field("verified"), true))
+      .withIndex("user_id_verified", (q) =>
+        q.eq("userId", userId).eq("verified", true),
+      )
       .first();
   },
 });

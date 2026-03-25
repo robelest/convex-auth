@@ -25,9 +25,10 @@ import {
   requestJson,
 } from "./_helpers.js";
 
-type ConvexPasskeyStartResult = {
-  kind: string;
-  verifier?: string | null;
+type ConvexSsoStartResult = {
+  kind: "redirect";
+  redirect: string;
+  verifier: string;
 };
 
 type ZitadelProjectResponse = {
@@ -106,20 +107,6 @@ test("enterprise oidc login interoperates with zitadel through api-driven flow",
     skipConvexDeploymentUrlCheck: true,
     logger: false,
   });
-
-  const passkeyStart = (await convexClient.action((api as any).auth.signIn, {
-    provider: "passkey",
-    params: {
-      flow: "authOptions",
-    },
-  })) as ConvexPasskeyStartResult;
-
-  expect(passkeyStart.kind).toBe("passkeyOptions");
-  const verifier = passkeyStart.verifier;
-  expect(verifier).toBeTruthy();
-  if (!verifier) {
-    throw new Error("Passkey flow did not return a verifier.");
-  }
 
   const sessionStart = (await convexClient.action((api as any).auth.signIn, {
     provider: "anonymous",
@@ -251,7 +238,12 @@ test("enterprise oidc login interoperates with zitadel through api-driven flow",
     scopes: ["openid", "profile", "email"],
   });
 
-  const signInUrl = `${convexSiteUrl}/api/auth/sso/${enterpriseId}/oidc/signin?code=${encodeURIComponent(verifier)}&redirectTo=${encodeURIComponent(redirectTo)}`;
+  const ssoResult = (await convexClient.action((api as any).auth.signIn, {
+    provider: "enterprise-sso",
+    params: { enterpriseId },
+  })) as ConvexSsoStartResult;
+  expect(ssoResult.kind).toBe("redirect");
+  const { redirect: signInUrl, verifier } = ssoResult;
   const convexCookies = new Map<string, string>();
 
   const signInResponse = await requestHttp(signInUrl);
@@ -393,20 +385,7 @@ test("enterprise saml login interoperates with zitadel through api-driven flow",
     logger: false,
   });
 
-  // Step 1: Get verifier via passkey authOptions
-  const passkeyStart = (await convexClient.action((api as any).auth.signIn, {
-    provider: "passkey",
-    params: { flow: "authOptions" },
-  })) as ConvexPasskeyStartResult;
-
-  expect(passkeyStart.kind).toBe("passkeyOptions");
-  const verifier = passkeyStart.verifier;
-  expect(verifier).toBeTruthy();
-  if (!verifier) {
-    throw new Error("Passkey flow did not return a verifier.");
-  }
-
-  // Step 2: Get admin bearer token via anonymous sign-in
+  // Step 1: Get admin bearer token via anonymous sign-in
   const sessionStart = (await convexClient.action((api as any).auth.signIn, {
     provider: "anonymous",
   })) as ConvexSessionStartResult;
@@ -416,8 +395,6 @@ test("enterprise saml login interoperates with zitadel through api-driven flow",
   expect(convexUserToken).toBeTruthy();
 
   const runId = randomSlug("saml-interop");
-  const redirectTo = "https://example.com/callback";
-
   // Step 3: Create enterprise
   const enterpriseCreated = await enterpriseConnectionCreateRpc(
     convexClient,
@@ -560,8 +537,13 @@ test("enterprise saml login interoperates with zitadel through api-driven flow",
     },
   );
 
-  // Step 10: Start Convex SAML sign-in
-  const signInUrl = `${convexSiteUrl}/api/auth/sso/${enterpriseId}/saml/signin?code=${encodeURIComponent(verifier)}&redirectTo=${encodeURIComponent(redirectTo)}`;
+  // Step 10: Start Convex SAML sign-in via enterprise-sso provider
+  const ssoResult = (await convexClient.action((api as any).auth.signIn, {
+    provider: "enterprise-sso",
+    params: { enterpriseId, protocol: "saml" },
+  })) as ConvexSsoStartResult;
+  expect(ssoResult.kind).toBe("redirect");
+  const { redirect: signInUrl, verifier } = ssoResult;
   const convexCookies = new Map<string, string>();
 
   const signInResponse = await requestHttp(signInUrl);

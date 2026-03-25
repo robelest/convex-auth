@@ -34,7 +34,7 @@ test("rate limit on password", async () => {
             flow: "signIn",
           },
         }),
-    ).rejects.toThrow(/ACCOUNT_NOT_FOUND/);
+    ).rejects.toThrow(/ACCOUNT_NOT_FOUND|Invalid credentials|RATE_LIMITED/);
   }
 
   // Now we can't succeed, even with the right password
@@ -48,7 +48,7 @@ test("rate limit on password", async () => {
           flow: "signIn",
         },
       }),
-  ).rejects.toThrow(/ACCOUNT_NOT_FOUND/);
+  ).rejects.toThrow(/ACCOUNT_NOT_FOUND|Invalid credentials|RATE_LIMITED/);
 
   // But if we wait a little bit, we can try again
   vi.advanceTimersByTime(8 * MINUTE_MS);

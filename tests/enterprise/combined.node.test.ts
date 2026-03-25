@@ -27,9 +27,10 @@ import {
   requestJson,
 } from "./_helpers.js";
 
-type ConvexPasskeyStartResult = {
-  kind: string;
-  verifier?: string | null;
+type ConvexSsoStartResult = {
+  kind: "redirect";
+  redirect: string;
+  verifier: string;
 };
 
 type ZitadelProjectResponse = {
@@ -126,17 +127,6 @@ async function startEnterpriseContext(prefix: string) {
     logger: false,
   });
 
-  const passkeyStart = (await convexClient.action((api as any).auth.signIn, {
-    provider: "passkey",
-    params: { flow: "authOptions" },
-  })) as ConvexPasskeyStartResult;
-  expect(passkeyStart.kind).toBe("passkeyOptions");
-  const verifier = passkeyStart.verifier;
-  expect(verifier).toBeTruthy();
-  if (!verifier) {
-    throw new Error("Passkey flow did not return a verifier.");
-  }
-
   const sessionStart = (await convexClient.action((api as any).auth.signIn, {
     provider: "anonymous",
   })) as ConvexSessionStartResult;
@@ -166,8 +156,22 @@ async function startEnterpriseContext(prefix: string) {
     convexUserToken,
     enterpriseId: enterpriseCreated.enterpriseId,
     runId,
-    verifier,
   };
+}
+
+async function startSsoSignIn(
+  convexClient: ConvexHttpClient,
+  enterpriseId: string,
+  protocol?: "oidc" | "saml",
+) {
+  const ssoResult = (await convexClient.action((api as any).auth.signIn, {
+    provider: "enterprise-sso",
+    params: { enterpriseId, ...(protocol ? { protocol } : {}) },
+  })) as ConvexSsoStartResult;
+  expect(ssoResult.kind).toBe("redirect");
+  expect(ssoResult.redirect).toBeTruthy();
+  expect(ssoResult.verifier).toBeTruthy();
+  return ssoResult;
 }
 
 async function configureScimAndProvisionUser(args: {
@@ -216,14 +220,8 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
   const { zitadelBaseUrl, zitadelRuntimeBaseUrl, managementToken, loginToken } =
     getInteropRuntime();
 
-  const {
-    convexSiteUrl,
-    convexClient,
-    convexUserToken,
-    enterpriseId,
-    runId,
-    verifier,
-  } = await startEnterpriseContext("combined-oidc");
+  const { convexSiteUrl, convexClient, convexUserToken, enterpriseId, runId } =
+    await startEnterpriseContext("combined-oidc");
 
   const email = `${runId}@example.com`;
 
@@ -336,7 +334,11 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
     scopes: ["openid", "profile", "email"],
   });
 
-  const signInUrl = `${convexSiteUrl}/api/auth/sso/${enterpriseId}/oidc/signin?code=${encodeURIComponent(verifier)}&redirectTo=${encodeURIComponent(redirectTo)}`;
+  const { redirect: signInUrl, verifier } = await startSsoSignIn(
+    convexClient,
+    enterpriseId,
+    "oidc",
+  );
   const convexCookies = new Map<string, string>();
   const signInResponse = await requestHttp(signInUrl);
   if (signInResponse.status !== 302) {
@@ -445,18 +447,11 @@ test("SCIM + SAML reuses provisioned userId", async () => {
   const { zitadelBaseUrl, zitadelRuntimeBaseUrl, managementToken, loginToken } =
     getInteropRuntime();
 
-  const {
-    convexSiteUrl,
-    convexClient,
-    convexUserToken,
-    enterpriseId,
-    runId,
-    verifier,
-  } = await startEnterpriseContext("combined-saml");
+  const { convexSiteUrl, convexClient, convexUserToken, enterpriseId, runId } =
+    await startEnterpriseContext("combined-saml");
 
   const email = `${runId}@example.com`;
 
-  const redirectTo = "https://example.com/callback";
   const convexAcsUrl = `${convexSiteUrl}/api/auth/sso/${enterpriseId}/saml/acs`;
   const convexEntityId = `${convexSiteUrl}/api/auth/sso/${enterpriseId}/saml/metadata`;
   const spMetadataXml = [
@@ -569,7 +564,11 @@ test("SCIM + SAML reuses provisioned userId", async () => {
     },
   );
 
-  const signInUrl = `${convexSiteUrl}/api/auth/sso/${enterpriseId}/saml/signin?code=${encodeURIComponent(verifier)}&redirectTo=${encodeURIComponent(redirectTo)}`;
+  const { redirect: signInUrl, verifier } = await startSsoSignIn(
+    convexClient,
+    enterpriseId,
+    "saml",
+  );
   const convexCookies = new Map<string, string>();
   const signInResponse = await requestHttp(signInUrl);
   updateCookieJar(convexCookies, parseSetCookieHeaders(signInResponse));

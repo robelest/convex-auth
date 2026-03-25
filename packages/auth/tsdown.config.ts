@@ -28,6 +28,19 @@ export default defineConfig([
     outExtensions: jsExtensions,
   },
   {
+    entry: {
+      "authorization/index": "src/authorization/index.ts",
+    },
+    format: "esm",
+    outDir: "dist",
+    dts: true,
+    clean: false,
+    unbundle: true,
+    platform: "node",
+    external: [/^convex/],
+    outExtensions: jsExtensions,
+  },
+  {
     entry: ["src/component/**/*.ts"],
     format: "esm",
     outDir: "dist/component",

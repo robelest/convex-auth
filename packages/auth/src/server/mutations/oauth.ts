@@ -190,7 +190,7 @@ export function userOAuthImpl(
               ctx.runMutation(config.component.public.memberAdd, {
                 groupId,
                 userId,
-                role: enterprisePolicy.provisioning.jit.defaultRole,
+                roleIds: enterprisePolicy.provisioning.jit.defaultRoleIds,
                 status: "active",
               }),
             );

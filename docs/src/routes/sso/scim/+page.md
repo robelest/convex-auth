@@ -26,11 +26,11 @@ SCIM.
 
 ## Methods
 
-| Method      | Signature                                     | Returns                             | Description                                                          |
-| ----------- | --------------------------------------------- | ----------------------------------- | -------------------------------------------------------------------- |
-| `configure` | `(ctx, { enterpriseId, basePath?, status? })` | `{ token, configId }`               | Configures SCIM provisioning and returns the SCIM bearer token once. |
-| `get`       | `(ctx, enterpriseId)`                         | SCIM config document                | Returns the current SCIM configuration for a connection.             |
-| `validate`  | `(ctx, enterpriseId)`                         | `{ ok, enterpriseId, checks, ... }` | Validates that the SCIM configuration is complete.                   |
+| Method      | Signature                                     | Returns                                           | Description                                                          |
+| ----------- | --------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------- |
+| `configure` | `(ctx, { enterpriseId, basePath?, status? })` | `{ ok, enterpriseId, token, configId, basePath }` | Configures SCIM provisioning and returns the SCIM bearer token once. |
+| `get`       | `(ctx, enterpriseId)`                         | SCIM config document                              | Returns the current SCIM configuration for a connection.             |
+| `validate`  | `(ctx, enterpriseId)`                         | `{ ok, enterpriseId, checks, ... }`               | Validates that the SCIM configuration is complete.                   |
 
 ## Example
 

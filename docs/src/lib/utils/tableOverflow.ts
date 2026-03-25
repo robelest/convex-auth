@@ -9,7 +9,11 @@ function updateTableOverflow(wrapper: HTMLDivElement, table: HTMLTableElement) {
 }
 
 export function tableOverflow(node: HTMLElement) {
+  let mutationObserver: MutationObserver;
+
   function enhanceTables() {
+    mutationObserver?.disconnect();
+
     const tables = node.querySelectorAll("table");
 
     for (const table of tables) {
@@ -36,11 +40,16 @@ export function tableOverflow(node: HTMLElement) {
         resizeObserver.disconnect();
       };
     }
+
+    mutationObserver?.observe(node, {
+      childList: true,
+      subtree: true,
+    });
   }
 
   enhanceTables();
 
-  const mutationObserver = new MutationObserver(() => {
+  mutationObserver = new MutationObserver(() => {
     enhanceTables();
   });
 

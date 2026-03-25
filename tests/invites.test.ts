@@ -217,7 +217,7 @@ async function createInvite(
       tokenHash,
       status: "pending",
       email: args.email,
-      role: "member",
+      roleIds: ["member"],
     });
   });
 }

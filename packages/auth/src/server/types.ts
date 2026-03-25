@@ -33,6 +33,30 @@ import { CredentialsUserConfig } from "../providers/credentials";
 /** A value that is either `T` or a `PromiseLike<T>`. */
 export type Awaitable<T> = T | PromiseLike<T>;
 
+export type AuthRoleDefinition = {
+  id?: string;
+  label?: string;
+  grants: string[];
+};
+
+export type AuthAuthorizationConfig = {
+  roles: Record<string, AuthRoleDefinition>;
+};
+
+export type AuthRoleId<
+  TAuthorization extends AuthAuthorizationConfig | undefined,
+> = TAuthorization extends { roles: infer TRoles extends Record<string, any> }
+  ? keyof TRoles & string
+  : string;
+
+export type AuthGrant<
+  TAuthorization extends AuthAuthorizationConfig | undefined,
+> = TAuthorization extends {
+  roles: infer TRoles extends Record<string, { grants: readonly any[] }>;
+}
+  ? TRoles[keyof TRoles]["grants"][number] & string
+  : string;
+
 /**
  * The config for the Convex Auth library, passed to `createAuth`.
  */
@@ -247,6 +271,18 @@ export type ConvexAuthConfig = {
       },
     ) => Promise<void>;
   };
+  /**
+   * Application-defined role and grant model used by membership access checks.
+   */
+  authorization?: {
+    roles: Record<
+      string,
+      {
+        label?: string;
+        grants: string[];
+      }
+    >;
+  };
 };
 
 /**
@@ -316,7 +352,7 @@ export interface EnterprisePolicy {
     };
     jit: {
       mode: EnterpriseJitProvisioningMode;
-      defaultRole: string;
+      defaultRoleIds: string[];
     };
     deprovision: {
       mode: EnterpriseDeprovisionMode;
@@ -338,7 +374,7 @@ export interface EnterprisePolicyPatch {
     };
     jit?: {
       mode?: EnterpriseJitProvisioningMode;
-      defaultRole?: string;
+      defaultRoleIds?: string[];
     };
     deprovision?: {
       mode?: EnterpriseDeprovisionMode;
@@ -632,6 +668,7 @@ export type AuthServerHelpers = {
       ctx: GenericActionCtx<any>,
       args: AuthCreateAccountArgs,
     ) => Promise<{
+      ok: true;
       account: GenericDoc<GenericDataModel, "Account">;
       user: GenericDoc<GenericDataModel, "User">;
     }>;
@@ -645,7 +682,7 @@ export type AuthServerHelpers = {
     update: (
       ctx: GenericActionCtx<any>,
       args: AuthUpdateAccountArgs,
-    ) => Promise<void>;
+    ) => Promise<{ ok: true; accountId: GenericId<"Account"> }>;
   };
   session: {
     current: (ctx: {
@@ -654,7 +691,32 @@ export type AuthServerHelpers = {
     invalidate: (
       ctx: GenericActionCtx<any>,
       args: AuthInvalidateSessionsArgs,
-    ) => Promise<void>;
+    ) => Promise<{
+      ok: true;
+      userId: GenericId<"User">;
+      except: GenericId<"Session">[];
+    }>;
+  };
+  access: {
+    check: (
+      ctx: GenericActionCtx<any>,
+      args: {
+        userId: GenericId<"User">;
+        groupId: GenericId<"Group">;
+        grants: string[];
+        maxDepth?: number;
+      },
+    ) => Promise<{
+      ok: boolean;
+      grants: string[];
+      missingGrants: string[];
+      roleIds: string[];
+      matchedGroupId: GenericId<"Group"> | null;
+      membership: GenericDoc<GenericDataModel, "GroupMember"> | null;
+      isDirect: boolean;
+      isInherited: boolean;
+      depth: number | null;
+    }>;
   };
   provider: {
     signIn: (
@@ -686,7 +748,7 @@ export type ConvexAuthMaterializedConfig = {
   providers: AuthProviderMaterializedConfig[];
 } & Pick<
   ConvexAuthConfig,
-  "component" | "session" | "jwt" | "signIn" | "callbacks"
+  "component" | "session" | "jwt" | "signIn" | "callbacks" | "authorization"
 >;
 
 export interface SAMLAttributeMapping {
@@ -922,12 +984,12 @@ export type GroupOrderBy = "_creationTime" | "name" | "slug" | "type";
 export type MemberWhere = {
   groupId?: string;
   userId?: string;
-  role?: string;
+  roleId?: string;
   status?: string;
 };
 
 /** Sortable fields for `auth.member.list()`. */
-export type MemberOrderBy = "_creationTime" | "role" | "status";
+export type MemberOrderBy = "_creationTime" | "status";
 
 /** Filter fields for `auth.invite.list()`. All optional. */
 export type InviteWhere = {
@@ -936,7 +998,7 @@ export type InviteWhere = {
   status?: "pending" | "accepted" | "revoked" | "expired";
   email?: string;
   invitedByUserId?: string;
-  role?: string;
+  roleId?: string;
   acceptedByUserId?: string;
 };
 
@@ -1120,6 +1182,25 @@ export type AuthComponentApi = {
     enterpriseDomainAdd: FunctionReference<"mutation", "internal", any, any>;
     enterpriseDomainList: FunctionReference<"query", "internal", any, any>;
     enterpriseDomainDelete: FunctionReference<"mutation", "internal", any, any>;
+    enterpriseDomainVerificationGet: FunctionReference<
+      "query",
+      "internal",
+      any,
+      any
+    >;
+    enterpriseDomainVerificationUpsert: FunctionReference<
+      "mutation",
+      "internal",
+      any,
+      any
+    >;
+    enterpriseDomainVerificationDelete: FunctionReference<
+      "mutation",
+      "internal",
+      any,
+      any
+    >;
+    enterpriseDomainVerify: FunctionReference<"mutation", "internal", any, any>;
     enterpriseSecretUpsert: FunctionReference<"mutation", "internal", any, any>;
     enterpriseSecretGet: FunctionReference<"query", "internal", any, any>;
     enterpriseSecretDelete: FunctionReference<"mutation", "internal", any, any>;
@@ -1192,6 +1273,12 @@ export type AuthComponentApi = {
       any
     >;
     enterpriseWebhookEndpointList: FunctionReference<
+      "query",
+      "internal",
+      any,
+      any
+    >;
+    enterpriseWebhookEndpointGet: FunctionReference<
       "query",
       "internal",
       any,

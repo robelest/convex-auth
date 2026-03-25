@@ -3,6 +3,7 @@ import {
   type OAuthProviderInstance,
 } from "../providers/oauth";
 import {
+  AuthAuthorizationConfig,
   AuthProviderConfig,
   AuthProviderMaterializedConfig,
   ConvexAuthConfig,
@@ -44,6 +45,7 @@ export function configDefaults(config_: ConvexAuthConfig) {
     .filter((p) => p !== undefined);
   return {
     ...config,
+    authorization: normalizeAuthorizationConfig(config.authorization),
     extraProviders: materializeProviders(extraProviders),
   };
 }
@@ -165,6 +167,21 @@ function materializeAndDefaultProviders(config_: ConvexAuthConfig) {
   });
 
   return config;
+}
+
+function normalizeAuthorizationConfig(
+  authorization: ConvexAuthConfig["authorization"],
+): AuthAuthorizationConfig {
+  const roles = Object.fromEntries(
+    Object.entries(authorization?.roles ?? {}).map(([roleId, role]) => [
+      roleId,
+      {
+        ...(role.label ? { label: role.label } : {}),
+        grants: Array.from(new Set(role.grants)).sort(),
+      },
+    ]),
+  );
+  return { roles };
 }
 
 /**

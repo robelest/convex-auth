@@ -353,6 +353,7 @@ export async function requestJson<T>(
 async function enterpriseRpc<T>(
   convexClient: ConvexHttpClient,
   userToken: string,
+  kind: "action" | "mutation" | "query",
   functionPath: string[],
   args: Record<string, unknown>,
 ): Promise<T> {
@@ -366,7 +367,14 @@ async function enterpriseRpc<T>(
       `Enterprise RPC function not found: ${functionPath.join(".")}`,
     );
   }
-  return (await convexClient.action(reference, args)) as T;
+  switch (kind) {
+    case "mutation":
+      return (await convexClient.mutation(reference, args)) as T;
+    case "query":
+      return (await convexClient.query(reference, args)) as T;
+    default:
+      return (await convexClient.action(reference, args)) as T;
+  }
 }
 
 export async function enterpriseConnectionCreateRpc(
@@ -383,7 +391,8 @@ export async function enterpriseConnectionCreateRpc(
   return await enterpriseRpc(
     convexClient,
     userToken,
-    ["auth", "sso", "connection", "create"],
+    "mutation",
+    ["auth", "enterprise", "createConnection"],
     args as any,
   );
 }
@@ -406,7 +415,8 @@ export async function enterpriseOidcConfigureRpc(
   return await enterpriseRpc(
     convexClient,
     userToken,
-    ["auth", "sso", "oidc", "configure"],
+    "mutation",
+    ["auth", "enterprise", "configureOidc"],
     args as any,
   );
 }
@@ -432,7 +442,8 @@ export async function enterpriseSamlConfigureRpc(
   return await enterpriseRpc(
     convexClient,
     userToken,
-    ["auth", "sso", "saml", "configure"],
+    "action",
+    ["auth", "enterprise", "configureSaml"],
     args as any,
   );
 }
@@ -449,7 +460,8 @@ export async function enterpriseScimConfigureRpc(
   return await enterpriseRpc(
     convexClient,
     userToken,
-    ["auth", "scim", "configure"],
+    "mutation",
+    ["auth", "enterprise", "configureScim"],
     args as any,
   );
 }
@@ -467,7 +479,8 @@ export async function enterpriseWebhookEndpointCreateRpc(
   return await enterpriseRpc(
     convexClient,
     userToken,
-    ["auth", "sso", "webhook", "endpoint", "create"],
+    "mutation",
+    ["auth", "enterprise", "createWebhookEndpoint"],
     args as any,
   );
 }
@@ -480,7 +493,8 @@ export async function enterpriseWebhookDeliveryListRpc(
   return await enterpriseRpc(
     convexClient,
     userToken,
-    ["auth", "sso", "webhook", "delivery", "list"],
+    "query",
+    ["auth", "enterprise", "listWebhookDeliveries"],
     args as any,
   );
 }
@@ -493,7 +507,8 @@ export async function enterpriseWebhookEndpointListRpc(
   return await enterpriseRpc(
     convexClient,
     userToken,
-    ["auth", "sso", "webhook", "endpoint", "list"],
+    "query",
+    ["auth", "enterprise", "listWebhookEndpoints"],
     { enterpriseId },
   );
 }
@@ -506,7 +521,8 @@ export async function enterpriseAuditListRpc(
   return await enterpriseRpc(
     convexClient,
     userToken,
-    ["auth", "sso", "audit", "list"],
+    "query",
+    ["auth", "enterprise", "listAudit"],
     args as any,
   );
 }
