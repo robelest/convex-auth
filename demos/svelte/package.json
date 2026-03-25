@@ -1,0 +1,35 @@
+{
+  "name": "svelte",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev",
+    "build": "vp build",
+    "preview": "wrangler dev .svelte-kit/cloudflare/_worker.js --port 4173",
+    "prepare": "vp exec svelte-kit sync || true",
+    "check": "vp exec svelte-kit sync && vp exec svelte-check --tsconfig ./tsconfig.json",
+    "check:watch": "vp exec svelte-kit sync && vp exec svelte-check --tsconfig ./tsconfig.json --watch",
+    "gen": "wrangler types"
+  },
+  "dependencies": {
+    "@robelest/convex-auth": "workspace:*",
+    "convex": "catalog:",
+    "convex-svelte": "^0.0.12",
+    "phosphor-svelte": "^2.0.1"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-cloudflare": "^7.2.8",
+    "@sveltejs/kit": "^2.55.0",
+    "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/node": "^25.5.0",
+    "svelte": "^5.55.0",
+    "svelte-check": "^4.4.5",
+    "tailwindcss": "^4.2.2",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "wrangler": "^4.77.0"
+  }
+}

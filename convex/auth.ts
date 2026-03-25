@@ -9,6 +9,7 @@ import { Totp } from "@robelest/convex-auth/providers/totp";
 import { Google } from "arctic";
 
 import { components } from "./_generated/api";
+import { roles } from "./roles";
 
 function maybeGoogleProvider() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -32,7 +33,6 @@ const resend = new Resend(components.resend, {
 });
 
 const googleProvider = maybeGoogleProvider();
-
 const auth = createAuth(components.auth, {
   providers: [
     new SSO(),
@@ -80,20 +80,28 @@ const auth = createAuth(components.auth, {
       },
     }),
   ],
+  authorization: {
+    roles,
+  },
 });
 
 export async function authorized(
   ctx: any,
-  input: { userId: string; resolvedGroupId: string | null },
+  input: {
+    userId: string;
+    permission: (typeof roles)[keyof typeof roles]["grants"][number];
+    resolvedGroupId: string | null;
+  },
 ) {
   if (input.resolvedGroupId === null) {
     return;
   }
-  await auth.member.require(ctx, {
+  const result = await auth.access.check(ctx, {
     userId: input.userId,
     groupId: input.resolvedGroupId,
-    roles: ["admin"],
+    grants: [input.permission],
   });
+  if (!result.ok) return { ok: false as const };
 }
 
 export { auth };

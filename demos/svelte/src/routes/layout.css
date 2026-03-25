@@ -1,0 +1,215 @@
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("/fonts/inter.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Crimson Pro";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("/fonts/crimson-pro.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Newsreader";
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url("/fonts/newsreader.woff2") format("woff2");
+}
+
+@import "tailwindcss";
+
+@theme {
+  --color-accent-300: #e8a070;
+  --color-accent-400: #d4764a;
+  --color-accent-500: #c25d3a;
+  --color-accent-600: #a34a2a;
+  --color-gray-50: #fdfcfa;
+  --color-gray-100: #faf8f5;
+  --color-gray-200: #f5f2ed;
+  --color-gray-300: #e8e2d8;
+  --color-gray-400: #b5aea3;
+  --color-gray-500: #8c8780;
+  --color-gray-600: #6b665f;
+  --color-gray-700: #4a453e;
+  --color-gray-800: #2d2a26;
+  --color-gray-900: #1a1816;
+  --font-sans: "Crimson Pro", Georgia, serif;
+  --font-display: "Newsreader", Georgia, serif;
+  --font-label:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --color-green-600: #16a34a;
+}
+
+/* ── Base ── */
+
+html {
+  @apply scroll-smooth bg-gray-50;
+}
+
+body {
+  @apply m-0 min-h-dvh bg-gray-50 text-gray-900 font-sans text-sm leading-relaxed antialiased;
+}
+
+* {
+  @apply box-border border-gray-300;
+}
+
+a {
+  @apply text-accent-500 no-underline;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+/* ── Typography ── */
+
+.label {
+  @apply mb-1.5 font-label text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-gray-500;
+}
+
+.heading {
+  @apply m-0 font-display font-medium leading-tight tracking-tight;
+}
+
+.muted {
+  @apply m-0 text-gray-600 text-[0.8125rem];
+}
+
+.section-header {
+  @apply font-label text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-gray-500 pb-1.5 mb-3 border-b border-gray-300 m-0;
+}
+
+/* ── Buttons ── */
+
+.button {
+  @apply inline-flex items-center justify-center h-9 px-3 border border-transparent bg-transparent font-label text-[0.8125rem] font-semibold cursor-pointer leading-none;
+}
+
+.button--accent {
+  @apply bg-accent-500 text-white;
+}
+
+.button--accent:hover {
+  @apply bg-accent-600;
+}
+
+.button--secondary {
+  @apply border-gray-300 text-gray-800 bg-white;
+}
+
+.button--secondary:hover {
+  @apply bg-gray-100;
+}
+
+.button--ghost {
+  @apply p-0 border-0 text-accent-600 bg-transparent text-[0.72rem] h-auto;
+}
+
+.button--ghost:hover {
+  @apply text-accent-500;
+}
+
+.button--block {
+  @apply w-full;
+}
+
+.button--compact {
+  @apply h-7 px-2 text-xs;
+}
+
+.button:disabled {
+  @apply opacity-45 cursor-not-allowed;
+}
+
+/* ── Inputs ── */
+
+.input,
+.select {
+  @apply h-9 px-2.5 border border-gray-300 bg-white text-gray-900 font-label text-[0.8125rem];
+}
+
+.input--compact,
+.select--compact {
+  @apply h-7 px-2 text-xs;
+}
+
+.input::placeholder {
+  @apply text-gray-400;
+}
+
+/* ── Chips ── */
+
+.chip {
+  @apply inline-flex items-center px-1.5 py-0.5 border border-gray-300 font-label text-[0.6875rem] font-semibold leading-snug;
+}
+
+.chip--high {
+  color: #8d2d13;
+  border-color: rgba(194, 93, 58, 0.28);
+  background: rgba(194, 93, 58, 0.08);
+}
+
+.chip--medium {
+  color: #8d5c13;
+  border-color: rgba(212, 118, 74, 0.28);
+  background: rgba(232, 160, 112, 0.12);
+}
+
+.chip--urgent {
+  color: #991b1b;
+  border-color: rgba(185, 28, 28, 0.28);
+  background: rgba(185, 28, 28, 0.08);
+}
+
+.chip--low {
+  @apply text-gray-700;
+}
+
+.chip--role {
+  @apply text-gray-600 bg-gray-100;
+}
+
+.chip--grant {
+  @apply text-gray-700 bg-gray-100;
+}
+
+/* ── Error ── */
+
+.error-banner {
+  @apply m-0 px-2.5 py-2 font-label text-xs font-semibold text-accent-600;
+  background: rgba(194, 93, 58, 0.08);
+  border: 1px solid rgba(194, 93, 58, 0.22);
+}
+
+/* ── Divider ── */
+
+.divider {
+  @apply relative flex justify-center items-center font-label text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-gray-500;
+}
+
+.divider::before {
+  content: "";
+  @apply absolute inset-x-0 top-1/2 border-t border-gray-300;
+}
+
+.divider span {
+  @apply relative px-2 bg-white;
+}
+
+/* ── Scrollbars ── */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-gray-400) transparent;
+}

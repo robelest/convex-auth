@@ -4,6 +4,7 @@
   "workspaces": {
     "packages": [
       "packages/*",
+      "demos/*",
       "tests",
       "docs"
     ],
@@ -37,6 +38,7 @@
     "fmt": "vp fmt .",
     "fmt:check": "vp fmt --check .",
     "deploy:docs": "vp run --filter docs build && vpx wrangler pages deploy ./docs/build --project-name=convex-auth",
+    "dev:svelte": "vp run --filter svelte dev",
     "codegen:convex": "vp exec varlock run -- vp exec convex codegen && vp exec varlock run -- vp exec convex codegen --component-dir ./packages/auth/src/component",
     "codegen:convex:component": "vp exec varlock run -- vp exec convex codegen --component-dir ./packages/auth/src/component",
     "prepare": "vp config"
@@ -61,6 +63,8 @@
     "convex-test": "latest",
     "jose": "latest",
     "node-html-parser": "latest",
+    "svelte": "",
+    "svelte-dnd-action": "",
     "timekeeper": "latest",
     "uuid": "latest",
     "varlock": "latest",

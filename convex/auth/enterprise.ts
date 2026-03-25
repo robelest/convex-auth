@@ -1,6 +1,7 @@
 import { enterprise } from "@robelest/convex-auth/server";
 
 import { auth, authorized } from "../auth";
+import { roles } from "../roles";
 
 export const {
   createConnection,
@@ -14,6 +15,8 @@ export const {
   listDomains,
   validateDomains,
   setDomains,
+  requestDomainVerification,
+  confirmDomainVerification,
   configureOidc,
   getOidc,
   validateOidc,
@@ -25,10 +28,16 @@ export const {
   listAudit,
   createWebhookEndpoint,
   listWebhookEndpoints,
+  listWebhookDeliveries,
   disableWebhookEndpoint,
   configureScim,
   getScim,
   validateScim,
   signIn,
   metadata,
-} = enterprise(auth, { authorized });
+} = enterprise(auth, {
+  admin: {
+    authorized,
+    roles: [roles.orgAdmin],
+  },
+});

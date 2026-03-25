@@ -10,7 +10,9 @@
 
 import type * as auth from "../auth.js";
 import type * as auth_enterprise from "../auth/enterprise.js";
+import type * as demo from "../demo.js";
 import type * as http from "../http.js";
+import type * as roles from "../roles.js";
 
 import type {
   ApiFromModules,
@@ -21,7 +23,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   "auth/enterprise": typeof auth_enterprise;
+  demo: typeof demo;
   http: typeof http;
+  roles: typeof roles;
 }>;
 
 /**
@@ -249,7 +253,8 @@ export declare const components: {
               provisioning: {
                 deprovision: { mode: "soft" | "hard" };
                 jit: {
-                  defaultRole: string;
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
                   mode: "off" | "createUser" | "createUserAndMembership";
                 };
                 scimReuse: { user: "externalId" | "none" };
@@ -275,7 +280,6 @@ export declare const components: {
             enterpriseId: string;
             groupId: string;
             isPrimary?: boolean;
-            verifiedAt?: number;
           },
           string
         >;
@@ -299,6 +303,60 @@ export declare const components: {
             verifiedAt?: number;
           }>
         >;
+        enterpriseDomainVerificationDelete: FunctionReference<
+          "mutation",
+          "internal",
+          { domainId: string },
+          null
+        >;
+        enterpriseDomainVerificationGet: FunctionReference<
+          "query",
+          "internal",
+          { domainId: string },
+          {
+            _creationTime: number;
+            _id: string;
+            domain: string;
+            domainId: string;
+            enterpriseId: string;
+            expiresAt: number;
+            groupId: string;
+            recordName: string;
+            requestedAt: number;
+            token: string;
+            tokenHash: string;
+          } | null
+        >;
+        enterpriseDomainVerificationUpsert: FunctionReference<
+          "mutation",
+          "internal",
+          {
+            domain: string;
+            domainId: string;
+            enterpriseId: string;
+            expiresAt: number;
+            groupId: string;
+            recordName: string;
+            requestedAt: number;
+            token: string;
+            tokenHash: string;
+          },
+          string
+        >;
+        enterpriseDomainVerify: FunctionReference<
+          "mutation",
+          "internal",
+          { domainId: string; verifiedAt: number },
+          {
+            _creationTime: number;
+            _id: string;
+            domain: string;
+            enterpriseId: string;
+            groupId: string;
+            isPrimary: boolean;
+            verifiedAt?: number;
+          }
+        >;
         enterpriseGet: FunctionReference<
           "query",
           "internal",
@@ -321,7 +379,8 @@ export declare const components: {
               provisioning: {
                 deprovision: { mode: "soft" | "hard" };
                 jit: {
-                  defaultRole: string;
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
                   mode: "off" | "createUser" | "createUserAndMembership";
                 };
                 scimReuse: { user: "externalId" | "none" };
@@ -364,7 +423,8 @@ export declare const components: {
                 provisioning: {
                   deprovision: { mode: "soft" | "hard" };
                   jit: {
-                    defaultRole: string;
+                    defaultRole?: string;
+                    defaultRoleIds?: Array<string>;
                     mode: "off" | "createUser" | "createUserAndMembership";
                   };
                   scimReuse: { user: "externalId" | "none" };
@@ -398,7 +458,8 @@ export declare const components: {
               provisioning: {
                 deprovision: { mode: "soft" | "hard" };
                 jit: {
-                  defaultRole: string;
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
                   mode: "off" | "createUser" | "createUserAndMembership";
                 };
                 scimReuse: { user: "externalId" | "none" };
@@ -442,7 +503,8 @@ export declare const components: {
                 provisioning: {
                   deprovision: { mode: "soft" | "hard" };
                   jit: {
-                    defaultRole: string;
+                    defaultRole?: string;
+                    defaultRoleIds?: Array<string>;
                     mode: "off" | "createUser" | "createUserAndMembership";
                   };
                   scimReuse: { user: "externalId" | "none" };
@@ -729,6 +791,26 @@ export declare const components: {
           },
           string
         >;
+        enterpriseWebhookEndpointGet: FunctionReference<
+          "query",
+          "internal",
+          { endpointId: string },
+          {
+            _creationTime: number;
+            _id: string;
+            createdByUserId?: string;
+            enterpriseId: string;
+            extend?: any;
+            failureCount: number;
+            groupId: string;
+            lastFailureAt?: number;
+            lastSuccessAt?: number;
+            secretHash: string;
+            status: "active" | "disabled";
+            subscriptions: Array<string>;
+            url: string;
+          } | null
+        >;
         enterpriseWebhookEndpointList: FunctionReference<
           "query",
           "internal",
@@ -815,7 +897,8 @@ export declare const components: {
             provisioning: {
               deprovision: { mode: "soft" | "hard" };
               jit: {
-                defaultRole: string;
+                defaultRole?: string;
+                defaultRoleIds?: Array<string>;
                 mode: "off" | "createUser" | "createUserAndMembership";
               };
               scimReuse: { user: "externalId" | "none" };
@@ -841,7 +924,6 @@ export declare const components: {
           enterpriseId: string;
           groupId: string;
           isPrimary?: boolean;
-          verifiedAt?: number;
         },
         string
       >;
@@ -865,6 +947,60 @@ export declare const components: {
           verifiedAt?: number;
         }>
       >;
+      enterpriseDomainVerificationDelete: FunctionReference<
+        "mutation",
+        "internal",
+        { domainId: string },
+        null
+      >;
+      enterpriseDomainVerificationGet: FunctionReference<
+        "query",
+        "internal",
+        { domainId: string },
+        {
+          _creationTime: number;
+          _id: string;
+          domain: string;
+          domainId: string;
+          enterpriseId: string;
+          expiresAt: number;
+          groupId: string;
+          recordName: string;
+          requestedAt: number;
+          token: string;
+          tokenHash: string;
+        } | null
+      >;
+      enterpriseDomainVerificationUpsert: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          domain: string;
+          domainId: string;
+          enterpriseId: string;
+          expiresAt: number;
+          groupId: string;
+          recordName: string;
+          requestedAt: number;
+          token: string;
+          tokenHash: string;
+        },
+        string
+      >;
+      enterpriseDomainVerify: FunctionReference<
+        "mutation",
+        "internal",
+        { domainId: string; verifiedAt: number },
+        {
+          _creationTime: number;
+          _id: string;
+          domain: string;
+          enterpriseId: string;
+          groupId: string;
+          isPrimary: boolean;
+          verifiedAt?: number;
+        }
+      >;
       enterpriseGet: FunctionReference<
         "query",
         "internal",
@@ -887,7 +1023,8 @@ export declare const components: {
             provisioning: {
               deprovision: { mode: "soft" | "hard" };
               jit: {
-                defaultRole: string;
+                defaultRole?: string;
+                defaultRoleIds?: Array<string>;
                 mode: "off" | "createUser" | "createUserAndMembership";
               };
               scimReuse: { user: "externalId" | "none" };
@@ -930,7 +1067,8 @@ export declare const components: {
               provisioning: {
                 deprovision: { mode: "soft" | "hard" };
                 jit: {
-                  defaultRole: string;
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
                   mode: "off" | "createUser" | "createUserAndMembership";
                 };
                 scimReuse: { user: "externalId" | "none" };
@@ -964,7 +1102,8 @@ export declare const components: {
             provisioning: {
               deprovision: { mode: "soft" | "hard" };
               jit: {
-                defaultRole: string;
+                defaultRole?: string;
+                defaultRoleIds?: Array<string>;
                 mode: "off" | "createUser" | "createUserAndMembership";
               };
               scimReuse: { user: "externalId" | "none" };
@@ -1008,7 +1147,8 @@ export declare const components: {
               provisioning: {
                 deprovision: { mode: "soft" | "hard" };
                 jit: {
-                  defaultRole: string;
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
                   mode: "off" | "createUser" | "createUserAndMembership";
                 };
                 scimReuse: { user: "externalId" | "none" };
@@ -1294,6 +1434,26 @@ export declare const components: {
           url: string;
         },
         string
+      >;
+      enterpriseWebhookEndpointGet: FunctionReference<
+        "query",
+        "internal",
+        { endpointId: string },
+        {
+          _creationTime: number;
+          _id: string;
+          createdByUserId?: string;
+          enterpriseId: string;
+          extend?: any;
+          failureCount: number;
+          groupId: string;
+          lastFailureAt?: number;
+          lastSuccessAt?: number;
+          secretHash: string;
+          status: "active" | "disabled";
+          subscriptions: Array<string>;
+          url: string;
+        } | null
       >;
       enterpriseWebhookEndpointList: FunctionReference<
         "query",
@@ -1604,8 +1764,10 @@ export declare const components: {
           _creationTime: number;
           _id: string;
           extend?: any;
+          isRoot?: boolean;
           name: string;
           parentGroupId?: string;
+          rootGroupId?: string;
           slug?: string;
           tags?: Array<{ key: string; value: string }>;
           type?: string;
@@ -1634,8 +1796,10 @@ export declare const components: {
             _creationTime: number;
             _id: string;
             extend?: any;
+            isRoot?: boolean;
             name: string;
             parentGroupId?: string;
+            rootGroupId?: string;
             slug?: string;
             tags?: Array<{ key: string; value: string }>;
             type?: string;
@@ -1671,8 +1835,10 @@ export declare const components: {
             _creationTime: number;
             _id: string;
             extend?: any;
+            isRoot?: boolean;
             name: string;
             parentGroupId?: string;
+            rootGroupId?: string;
             slug?: string;
             tags?: Array<{ key: string; value: string }>;
             type?: string;
@@ -1701,8 +1867,10 @@ export declare const components: {
               _creationTime: number;
               _id: string;
               extend?: any;
+              isRoot?: boolean;
               name: string;
               parentGroupId?: string;
+              rootGroupId?: string;
               slug?: string;
               tags?: Array<{ key: string; value: string }>;
               type?: string;
@@ -1743,7 +1911,7 @@ export declare const components: {
             extend?: any;
             groupId?: string;
             invitedByUserId?: string;
-            role?: string;
+            roleIds?: Array<string>;
             status: "pending" | "accepted" | "revoked" | "expired";
             tokenHash: string;
           },
@@ -1764,6 +1932,7 @@ export declare const components: {
             groupId?: string;
             invitedByUserId?: string;
             role?: string;
+            roleIds?: Array<string>;
             status: "pending" | "accepted" | "revoked" | "expired";
             tokenHash: string;
           } | null
@@ -1783,6 +1952,7 @@ export declare const components: {
             groupId?: string;
             invitedByUserId?: string;
             role?: string;
+            roleIds?: Array<string>;
             status: "pending" | "accepted" | "revoked" | "expired";
             tokenHash: string;
           } | null
@@ -1805,7 +1975,7 @@ export declare const components: {
               email?: string;
               groupId?: string;
               invitedByUserId?: string;
-              role?: string;
+              roleId?: string;
               status?: "pending" | "accepted" | "revoked" | "expired";
               tokenHash?: string;
             };
@@ -1822,6 +1992,7 @@ export declare const components: {
               groupId?: string;
               invitedByUserId?: string;
               role?: string;
+              roleIds?: Array<string>;
               status: "pending" | "accepted" | "revoked" | "expired";
               tokenHash: string;
             }>;
@@ -1840,7 +2011,7 @@ export declare const components: {
           {
             extend?: any;
             groupId: string;
-            role?: string;
+            roleIds?: Array<string>;
             status?: string;
             userId: string;
           },
@@ -1856,6 +2027,7 @@ export declare const components: {
             extend?: any;
             groupId: string;
             role?: string;
+            roleIds?: Array<string>;
             status?: string;
             userId: string;
           } | null
@@ -1870,6 +2042,7 @@ export declare const components: {
             extend?: any;
             groupId: string;
             role?: string;
+            roleIds?: Array<string>;
             status?: string;
             userId: string;
           } | null
@@ -1881,10 +2054,10 @@ export declare const components: {
             cursor?: string | null;
             limit?: number;
             order?: "asc" | "desc";
-            orderBy?: "_creationTime" | "role" | "status";
+            orderBy?: "_creationTime" | "status";
             where?: {
               groupId?: string;
-              role?: string;
+              roleId?: string;
               status?: string;
               userId?: string;
             };
@@ -1896,6 +2069,7 @@ export declare const components: {
               extend?: any;
               groupId: string;
               role?: string;
+              roleIds?: Array<string>;
               status?: string;
               userId: string;
             }>;
@@ -1912,6 +2086,7 @@ export declare const components: {
             extend?: any;
             groupId: string;
             role?: string;
+            roleIds?: Array<string>;
             status?: string;
             userId: string;
           }>
@@ -1921,6 +2096,33 @@ export declare const components: {
           "internal",
           { memberId: string },
           null
+        >;
+        memberResolve: FunctionReference<
+          "query",
+          "internal",
+          {
+            ancestry?: boolean;
+            groupId: string;
+            maxDepth?: number;
+            userId: string;
+          },
+          {
+            depth: number | null;
+            isDirect: boolean;
+            isInherited: boolean;
+            matchedGroupId: string | null;
+            membership: {
+              _creationTime: number;
+              _id: string;
+              extend?: any;
+              groupId: string;
+              role?: string;
+              roleIds?: Array<string>;
+              status?: string;
+              userId: string;
+            } | null;
+            traversedGroupIds?: Array<string>;
+          }
         >;
         memberUpdate: FunctionReference<
           "mutation",
@@ -2361,7 +2563,7 @@ export declare const components: {
           extend?: any;
           groupId?: string;
           invitedByUserId?: string;
-          role?: string;
+          roleIds?: Array<string>;
           status: "pending" | "accepted" | "revoked" | "expired";
           tokenHash: string;
         },
@@ -2382,6 +2584,7 @@ export declare const components: {
           groupId?: string;
           invitedByUserId?: string;
           role?: string;
+          roleIds?: Array<string>;
           status: "pending" | "accepted" | "revoked" | "expired";
           tokenHash: string;
         } | null
@@ -2401,6 +2604,7 @@ export declare const components: {
           groupId?: string;
           invitedByUserId?: string;
           role?: string;
+          roleIds?: Array<string>;
           status: "pending" | "accepted" | "revoked" | "expired";
           tokenHash: string;
         } | null
@@ -2423,7 +2627,7 @@ export declare const components: {
             email?: string;
             groupId?: string;
             invitedByUserId?: string;
-            role?: string;
+            roleId?: string;
             status?: "pending" | "accepted" | "revoked" | "expired";
             tokenHash?: string;
           };
@@ -2440,6 +2644,7 @@ export declare const components: {
             groupId?: string;
             invitedByUserId?: string;
             role?: string;
+            roleIds?: Array<string>;
             status: "pending" | "accepted" | "revoked" | "expired";
             tokenHash: string;
           }>;
@@ -2746,7 +2951,7 @@ export declare const components: {
         {
           extend?: any;
           groupId: string;
-          role?: string;
+          roleIds?: Array<string>;
           status?: string;
           userId: string;
         },
@@ -2762,6 +2967,7 @@ export declare const components: {
           extend?: any;
           groupId: string;
           role?: string;
+          roleIds?: Array<string>;
           status?: string;
           userId: string;
         } | null
@@ -2776,6 +2982,7 @@ export declare const components: {
           extend?: any;
           groupId: string;
           role?: string;
+          roleIds?: Array<string>;
           status?: string;
           userId: string;
         } | null
@@ -2787,10 +2994,10 @@ export declare const components: {
           cursor?: string | null;
           limit?: number;
           order?: "asc" | "desc";
-          orderBy?: "_creationTime" | "role" | "status";
+          orderBy?: "_creationTime" | "status";
           where?: {
             groupId?: string;
-            role?: string;
+            roleId?: string;
             status?: string;
             userId?: string;
           };
@@ -2802,6 +3009,7 @@ export declare const components: {
             extend?: any;
             groupId: string;
             role?: string;
+            roleIds?: Array<string>;
             status?: string;
             userId: string;
           }>;
@@ -2818,6 +3026,7 @@ export declare const components: {
           extend?: any;
           groupId: string;
           role?: string;
+          roleIds?: Array<string>;
           status?: string;
           userId: string;
         }>
@@ -2827,6 +3036,33 @@ export declare const components: {
         "internal",
         { memberId: string },
         null
+      >;
+      memberResolve: FunctionReference<
+        "query",
+        "internal",
+        {
+          ancestry?: boolean;
+          groupId: string;
+          maxDepth?: number;
+          userId: string;
+        },
+        {
+          depth: number | null;
+          isDirect: boolean;
+          isInherited: boolean;
+          matchedGroupId: string | null;
+          membership: {
+            _creationTime: number;
+            _id: string;
+            extend?: any;
+            groupId: string;
+            role?: string;
+            roleIds?: Array<string>;
+            status?: string;
+            userId: string;
+          } | null;
+          traversedGroupIds?: Array<string>;
+        }
       >;
       memberUpdate: FunctionReference<
         "mutation",
