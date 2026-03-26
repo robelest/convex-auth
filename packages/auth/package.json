@@ -1,6 +1,6 @@
 {
   "name": "@robelest/convex-auth",
-  "version": "0.0.4-preview.20",
+  "version": "0.0.4-preview.21",
   "description": "Authentication for Convex",
   "keywords": [
     "auth",
@@ -18,7 +18,7 @@
     "type": "git",
     "url": "git+https://github.com/robelest/convex-auth.git"
   },
-  "bin": "./dist/bin.cjs",
+  "bin": "./dist/bin.js",
   "files": [
     "dist",
     "src"

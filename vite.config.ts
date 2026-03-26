@@ -98,7 +98,7 @@ export default defineConfig({
       },
       "cache:validate": {
         command:
-          "vp run '@robelest/convex-auth#typecheck:consumer' && vp run '@robelest/convex-auth#check:packaging' && vp run --filter @robelest/samlify check:runtime-imports && vp run --filter @robelest/samlify report:edge-gaps",
+          "vp run '@robelest/convex-auth#typecheck:consumer' && vp run '@robelest/convex-auth#check:packaging' && vp run --filter @robelest/samlify check:packaging && vp run --filter @robelest/samlify check:runtime-imports && vp run --filter @robelest/samlify report:edge-gaps",
         cache: true,
         input: [
           "convex/**",

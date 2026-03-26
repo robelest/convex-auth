@@ -1,6 +1,6 @@
 {
   "name": "@robelest/samlify",
-  "version": "0.0.1-preview.1",
+  "version": "0.0.1-preview.2",
   "files": [
     "dist",
     "README.md"
@@ -20,11 +20,16 @@
     "access": "public"
   },
   "scripts": {
-    "build": "vp exec tsc -p ./tsconfig.build.json",
+    "build": "rm -rf dist && vp exec tsdown",
+    "typecheck": "vp exec tsc --project tsconfig.json --noEmit",
     "test": "vp test --root ../.. --project samlify",
     "test:once": "vp test --root ../.. --run --project samlify",
+    "check:dist-import": "vp exec node ./scripts/check-dist-import.mjs",
+    "check:publint": "vp exec publint --strict",
+    "check:packaging": "vp run check:publint && vp run check:dist-import",
     "check:runtime-imports": "vp exec node ./scripts/check-forbidden-runtime-imports.mjs",
-    "report:edge-gaps": "vp exec node ./scripts/report-edge-runtime-gaps.mjs"
+    "report:edge-gaps": "vp exec node ./scripts/report-edge-runtime-gaps.mjs",
+    "prepublishOnly": "vp run build && vp run typecheck && vp run check:packaging"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.8.11",
@@ -37,7 +42,9 @@
   },
   "devDependencies": {
     "@types/node": "^25.2.2",
+    "publint": "^0.3.17",
     "timekeeper": "^2.3.1",
+    "tsdown": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:",
     "vitest": "catalog:"

@@ -55,12 +55,12 @@ export default defineConfig([
     entry: {
       bin: "src/cli/bin.ts",
     },
-    format: "cjs",
+    format: "esm",
     outDir: "dist",
     dts: false,
     clean: false,
     platform: "node",
     external: [/^convex/],
-    outExtensions: () => ({ js: ".cjs", dts: ".d.ts" }),
+    outExtensions: jsExtensions,
   },
 ]);
