@@ -12,6 +12,7 @@ export type {
   AuthApi,
   AuthConfig,
   AuthCtxConfig,
+  AuthResolvedContext,
   InferAuth,
   UserDoc,
 } from "../server/auth";

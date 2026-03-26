@@ -1,6 +1,6 @@
 {
   "name": "@robelest/convex-auth",
-  "version": "0.0.4-preview.21",
+  "version": "0.0.4-preview.22",
   "description": "Authentication for Convex",
   "keywords": [
     "auth",
@@ -124,7 +124,7 @@
   },
   "@comment devDependencies": [
     "The CLI deps (@clack/prompts, @commander-js/extra-typings, dotenv,",
-    "valibot) are devDependencies because they are bundled into dist/bin.cjs",
+    "valibot) are devDependencies because they are bundled into dist/bin.js",
     "via esbuild."
   ]
 }

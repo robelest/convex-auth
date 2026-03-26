@@ -47,7 +47,7 @@ vp run codegen:convex
 The library builds in four stages:
 
 1. `build:version` — generates `src/server/version.ts` from `package.json`
-2. `build:bin` — esbuild bundles CLI to `dist/bin.cjs`
+2. `build:bin` — tsdown bundles CLI to `dist/bin.js`
 3. `build:server` — tsc with `tsconfig.server.json` (server + providers)
 4. `build:client` — tsc with `tsconfig.client.json` (client + error types)
 5. `build:component` — tsc with `tsconfig.component.json` (Convex component)

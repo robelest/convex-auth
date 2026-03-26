@@ -9,7 +9,6 @@ import type { GenericId } from "convex/values";
 
 import type { AuthApiRefs } from "../client/index";
 import { Auth as AuthFactory } from "./runtime";
-import { Fx } from "@robelest/fx";
 import { AuthError } from "./authError";
 import type { Doc } from "./types";
 import type {
@@ -34,6 +33,9 @@ import type {
  * minus `component` (which is passed as the first constructor argument).
  */
 export type AuthConfig = Omit<ConvexAuthConfig, "component">;
+
+/** Canonical user document type exposed by Convex Auth. */
+export type UserDoc = Doc<"User">;
 
 type MemberApiWithAuthorization<
   TAuthorization extends AuthAuthorizationConfig | undefined,
@@ -197,22 +199,51 @@ export type AuthApiBase<
 };
 
 /**
- * Resolved auth context injected into `ctx.auth` by `auth.ctx()`.
+ * Resolved auth context injected into `ctx.auth` by `auth.ctx()` and
+ * {@link AuthCtx}. Also the expected return shape for custom
+ * {@link AuthCtxConfig.authResolve | authResolve} hooks.
  *
  * - `null` when unauthenticated.
  * - `groupId` is `null` when the user has no active group set.
  * - `role` / `grants` are `null` / `[]` when no active group or no membership.
+ *
+ * @example
+ * ```ts
+ * import type { AuthResolvedContext } from "@robelest/convex-auth/server";
+ *
+ * const mockAuth: AuthResolvedContext = {
+ *   userId: "user123" as Id<"User">,
+ *   user: { _id: "user123", email: "test@example.com" },
+ *   groupId: "group456",
+ *   role: "admin",
+ *   grants: ["read", "write"],
+ * };
+ * ```
  */
 export type AuthResolvedContext = {
   /** The authenticated user's document ID. */
-  userId: string;
+  userId: GenericId<"User">;
   /** The authenticated user's full document. */
-  user: any;
+  user: UserDoc;
   /** The user's active group ID, or `null` if none set. */
   groupId: string | null;
   /** The user's primary role in the active group, or `null`. */
   role: string | null;
   /** Resolved grant strings from the user's role definitions. */
+  grants: string[];
+};
+
+type AuthCtxBase = {
+  getUserIdentity: () => Promise<UserIdentity | null>;
+};
+
+type RequiredAuthCtxState = AuthCtxBase & AuthResolvedContext;
+
+type OptionalAuthCtxState = AuthCtxBase & {
+  userId: GenericId<"User"> | null;
+  user: UserDoc | null;
+  groupId: string | null;
+  role: string | null;
   grants: string[];
 };
 
@@ -370,7 +401,7 @@ export type InferClientApi<T> =
     : AuthApiRefs;
 
 /** @internal */
-export type AuthLike = Pick<AuthApiBase, "user">;
+export type AuthLike = Pick<AuthApiBase, "user" | "member">;
 
 // ============================================================================
 // Auth setup APIs
@@ -417,7 +448,7 @@ export type AuthLike = Pick<AuthApiBase, "user">;
  * 3. `user.getActiveGroup(ctx, { userId })` → groupId or null
  * 4. If groupId → `member.resolve(ctx, { userId, groupId })` → role + grants
  */
-async function resolveAuthContext(auth: any, ctx: any) {
+async function resolveAuthContext(auth: AuthLike, ctx: any) {
   const userId = await auth.user.id(ctx);
   if (!userId) return null;
   const user = await auth.user.get(ctx, userId);
@@ -645,9 +676,6 @@ export function createAuth<
 // AuthCtx — ctx enrichment for customQuery / customMutation
 // ============================================================================
 
-/** Canonical user document type exposed by Convex Auth. */
-export type UserDoc = Doc<"User">;
-
 /**
  * Configuration for {@link AuthCtx} context enrichment.
  *
@@ -660,17 +688,54 @@ export type AuthCtxConfig<
   /** Allow unauthenticated callers and return `userId: null` / `user: null`. */
   optional?: boolean;
   /**
-   * Attach additional derived fields to the auth context after the user is resolved.
+   * Attach additional derived fields to the auth context after the base auth
+   * context is resolved.
    */
-  resolve?: (ctx: any, user: UserDoc) => Promise<TResolve> | TResolve;
+  resolve?: (
+    ctx: any,
+    user: UserDoc,
+    auth: AuthResolvedContext,
+  ) => Promise<TResolve> | TResolve;
+  /**
+   * Override or wrap the base auth resolution used by {@link AuthCtx}.
+   *
+   * Return `undefined` to fall back to the built-in resolver,
+   * `null` for an explicit unauthenticated state, or an
+   * {@link AuthResolvedContext} object to provide a pre-resolved auth state.
+   * This is useful for tests, proxy auth, impersonation flows, or any
+   * environment that needs to inject auth without depending on the standard
+   * Convex auth tables.
+   *
+   * @param ctx - The Convex function context.
+   * @param fallback - The built-in auth resolver used by {@link AuthCtx}.
+   * @returns Resolved auth state, `null`, or `undefined` to use the fallback.
+   *
+   * @example
+   * ```ts
+   * const authCtx = AuthCtx(auth, {
+   *   authResolve: async (ctx, fallback) => {
+   *     const injected = getInjectedAuth(ctx);
+   *     return injected ?? (await fallback());
+   *   },
+   * });
+   * ```
+   */
+  authResolve?: (
+    ctx: any,
+    fallback: () => Promise<AuthResolvedContext | null>,
+  ) =>
+    | Promise<AuthResolvedContext | null | undefined>
+    | AuthResolvedContext
+    | null
+    | undefined;
 };
 
 /**
  * Create a context enrichment for `customQuery` / `customMutation` — optional auth.
  *
  * When `optional: true` is set, unauthenticated requests are allowed.
- * The enriched `ctx.auth` will have `userId: null` and `user: null`
- * for unauthenticated callers.
+ * The enriched `ctx.auth` will have `userId: null`, `user: null`,
+ * `groupId: null`, `role: null`, and `grants: []` for unauthenticated callers.
  *
  * @param auth - The auth API object returned by {@link createAuth}.
  * @param config - Configuration with `optional: true` and an optional
@@ -701,11 +766,7 @@ export function AuthCtx<
     _extra?: any,
   ) => Promise<{
     ctx: {
-      auth: {
-        getUserIdentity: () => Promise<UserIdentity | null>;
-        userId: GenericId<"User"> | null;
-        user: UserDoc | null;
-      } & TResolve;
+      auth: OptionalAuthCtxState & TResolve;
     };
     args: {};
   }>;
@@ -715,8 +776,9 @@ export function AuthCtx<
  *
  * When `optional` is omitted or `false`, the inferred type is the authenticated
  * auth shape. At runtime this helper still resolves instead of throwing, so if
- * no user is signed in the returned `ctx.auth.userId` and `ctx.auth.user` are
- * `null`.
+ * no user is signed in the returned `ctx.auth.userId` / `ctx.auth.user` are
+ * `null`, `ctx.auth.groupId` / `ctx.auth.role` are `null`, and
+ * `ctx.auth.grants` is `[]`.
  *
  * @param auth - The auth API object returned by {@link createAuth}.
  * @param config - Optional configuration with a `resolve` callback
@@ -746,11 +808,7 @@ export function AuthCtx<
     _extra?: any,
   ) => Promise<{
     ctx: {
-      auth: {
-        getUserIdentity: () => Promise<UserIdentity | null>;
-        userId: GenericId<"User">;
-        user: UserDoc;
-      } & TResolve;
+      auth: RequiredAuthCtxState & TResolve;
     };
     args: {};
   }>;
@@ -761,39 +819,25 @@ export function AuthCtx(auth: AuthLike, config?: AuthCtxConfig<any>) {
     args: {},
     input: async (ctx: any, _args: any, _extra?: any) => {
       const nativeAuth = ctx.auth;
-      const modeDispatch =
-        config?.optional === true
-          ? { mode: "optional" as const }
-          : { mode: "required" as const };
+      const getUserIdentity = nativeAuth.getUserIdentity.bind(nativeAuth);
+      const fallback = () => resolveAuthContext(auth, ctx);
 
-      const userContext = await Fx.run(
-        Fx.match(modeDispatch, modeDispatch.mode, {
-          optional: async () => {
-            const userId = await auth.user.id(ctx);
-            if (!userId) {
-              return null;
-            }
-            const user = await auth.user.get(ctx, userId);
-            return { userId, user };
-          },
-          required: async () => {
-            const userId = await auth.user.id(ctx);
-            if (!userId) {
-              return null;
-            }
-            const user = await auth.user.get(ctx, userId);
-            return { userId, user };
-          },
-        }),
-      );
+      const authOverride = config?.authResolve
+        ? await config.authResolve(ctx, fallback)
+        : undefined;
+      const resolved =
+        authOverride === undefined ? await fallback() : authOverride;
 
-      if (userContext === null) {
+      if (resolved === null) {
         return {
           ctx: {
             auth: {
-              getUserIdentity: nativeAuth.getUserIdentity.bind(nativeAuth),
+              getUserIdentity,
               userId: null,
               user: null,
+              groupId: null,
+              role: null,
+              grants: [],
             },
           },
           args: {},
@@ -801,15 +845,14 @@ export function AuthCtx(auth: AuthLike, config?: AuthCtxConfig<any>) {
       }
 
       const extra = config?.resolve
-        ? await config.resolve(ctx, userContext.user)
+        ? await config.resolve(ctx, resolved.user, resolved)
         : {};
 
       return {
         ctx: {
           auth: {
-            getUserIdentity: nativeAuth.getUserIdentity.bind(nativeAuth),
-            userId: userContext.userId,
-            user: userContext.user,
+            getUserIdentity,
+            ...resolved,
             ...extra,
           },
         },
@@ -824,9 +867,10 @@ export function AuthCtx(auth: AuthLike, config?: AuthCtxConfig<any>) {
  *
  * Use this to type function parameters or variables that receive the
  * enriched auth context produced by `AuthCtx`. The inferred type includes
- * `userId`, `user`, `getUserIdentity`, and any additional fields added
- * by the `resolve` callback. This is the generic utility for reusing the
- * enriched auth shape without manually duplicating conditional auth types.
+ * `userId`, `user`, `groupId`, `role`, `grants`, `getUserIdentity`, and any
+ * additional fields added by the `resolve` callback. This is the generic
+ * utility for reusing the enriched auth shape without manually duplicating
+ * conditional auth types.
  *
  * @typeParam T - An `AuthCtx` return value (must have an `input` method
  *   that returns `{ ctx: { auth: ... } }`).

@@ -22,7 +22,7 @@ import { generateKeys } from "./keys";
 // ---------------------------------------------------------------------------
 
 function getPackageVersion(): string {
-  // When bundled to dist/bin.cjs the package.json is one level up
+  // When bundled to dist/bin.js the package.json is one level up
   for (const relative of ["..", "../.."]) {
     try {
       const pkgPath = path.resolve(__dirname, relative, "package.json");

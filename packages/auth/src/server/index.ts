@@ -3,6 +3,8 @@ export type {
   AuthApi,
   AuthApiBase,
   AuthConfig,
+  AuthCtxConfig,
+  AuthResolvedContext,
   ConvexAuthResult,
   InferAuth,
   InferClientApi,
