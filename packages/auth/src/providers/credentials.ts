@@ -25,6 +25,8 @@ import type {
 
 /**
  * Configuration for the Credentials provider.
+ *
+ * @typeParam DataModel - The Convex data model.
  */
 export interface CredentialsConfig<
   DataModel extends GenericDataModel = GenericDataModel,
@@ -63,6 +65,8 @@ export interface CredentialsConfig<
  * This is the escape hatch for fully custom auth logic. For email/password
  * flows, use the `Password` class instead.
  *
+ * @typeParam DataModel - The Convex data model.
+ *
  * @example
  * ```ts
  * import { Credentials } from "@robelest/convex-auth/providers";
@@ -96,8 +100,3 @@ export class Credentials<
     } as ConvexCredentialsConfig;
   }
 }
-
-// Re-export the old type name for backward compat
-export type CredentialsUserConfig<
-  DataModel extends GenericDataModel = GenericDataModel,
-> = CredentialsConfig<DataModel>;

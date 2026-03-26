@@ -12,21 +12,21 @@ description:
 # auth.member
 
 The `auth.member` namespace manages the relationship between users and groups.
-Each membership stores assigned `roleIds`, while authorization checks should use
-grants via `auth.access`.
+Each membership stores assigned `roleIds`, and `auth.member.resolve(...)`
+combines membership lookup, role filtering, inheritance, and grant checks.
 
 See [Authorization Patterns](/guides/authorization) for the full model.
 
 ## Methods
 
-| Method              | Signature                                         | Returns                  | Description                                                                                                                                             |
-| ------------------- | ------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `create`            | `(ctx, { userId, groupId, roleIds? })`            | `{ ok, memberId }`       | Creates a user membership in a group with optional assigned role IDs.                                                                                   |
-| `getByUserAndGroup` | `(ctx, { userId, groupId })`                      | `Doc<"members"> \| null` | Returns the membership record for a user in a group, or `null` if they are not a member.                                                                |
-| `list`              | `(ctx, { groupId?, userId?, limit?, cursor? })`   | Paginated member list    | Lists members by group, by user, or both.                                                                                                               |
-| `update`            | `(ctx, memberId, { roleIds?, status?, extend? })` | `{ ok, memberId }`       | Updates a membership's assigned role IDs or metadata.                                                                                                   |
-| `delete`            | `(ctx, memberId)`                                 | `{ ok, memberId }`       | Deletes a user membership from a group.                                                                                                                 |
-| `resolve`           | `(ctx, { userId, groupId, ancestry? })`           | Inheritance result       | Walks up the group hierarchy and returns structured membership/inheritance details. Pass `ancestry: true` to include `traversedGroupIds` in the result. |
+| Method    | Signature                                                               | Returns               | Description                                                                                                           |
+| --------- | ----------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `create`  | `(ctx, { userId, groupId, roleIds? })`                                  | `{ ok, memberId }`    | Creates a user membership in a group with optional assigned role IDs.                                                 |
+| `get`     | `(ctx, memberId)`                                                       | `Doc<"members"> \| null` | Returns the membership record for a given membership ID, or `null` if it does not exist.                             |
+| `list`    | `(ctx, { groupId?, userId?, limit?, cursor? })`                         | Paginated member list | Lists members by group, by user, or both.                                                                             |
+| `update`  | `(ctx, memberId, { roleIds?, status?, extend? })`                       | `{ ok, memberId }`    | Updates a membership's assigned role IDs or metadata.                                                                 |
+| `delete`  | `(ctx, memberId)`                                                       | `{ ok, memberId }`    | Deletes a user membership from a group.                                                                               |
+| `resolve` | `(ctx, { userId, groupId, ancestry?, roleIds?, grants?, maxDepth? })` | Resolution result     | Resolves membership, optional inheritance, role filters, and grant checks in one call.                               |
 
 ## Examples
 
@@ -40,23 +40,20 @@ const { memberId } = await auth.member.create(ctx, {
 });
 ```
 
-### Check membership
+### Check membership by record ID
 
 ```ts
-const member = await auth.member.getByUserAndGroup(ctx, {
-  userId,
-  groupId: orgId,
-});
+const member = await auth.member.get(ctx, memberId);
 
 if (!member) {
-  throw new Error("Not a member of this organization");
+  throw new Error("Membership not found");
 }
 ```
 
-### Check access with grants
+### Check grants with `resolve`
 
 ```ts
-const result = await auth.access.check(ctx, {
+const result = await auth.member.resolve(ctx, {
   userId,
   groupId: orgId,
   grants: ["members.update"],

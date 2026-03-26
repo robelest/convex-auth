@@ -19,19 +19,23 @@ pnpx @robelest/convex-auth [options]
 The wizard runs 6 steps: configure `SITE_URL`, generate key pair, configure
 `tsconfig.json`, create `convex.config`, create `auth.ts`, create `http.ts`.
 
+The CLI expects typed deployment identifiers such as `dev:my-deployment`,
+`prod:my-deployment`, or `preview:my-deployment` for Convex Cloud. Use `--url`
+for explicit or self-hosted targets.
+
 ## Options
 
-| Option                     | Description                                     |
-| -------------------------- | ----------------------------------------------- |
-| `--site-url <url>`         | Value for `SITE_URL`; avoids interactive prompt |
-| `--prod`                   | Target production deployment                    |
-| `--preview-name <name>`    | Target preview deployment                       |
-| `--deployment-name <name>` | Target specific named deployment                |
-| `--url <url>`              | Target deployment by URL                        |
-| `--admin-key <key>`        | Use explicit Convex admin key                   |
-| `--variables <json>`       | Additional variables for configuration          |
-| `--skip-git-check`         | Skip the "outside Git repo" warning             |
-| `--allow-dirty-git-state`  | Skip all source-control checks                  |
+| Option                     | Description                                               |
+| -------------------------- | --------------------------------------------------------- |
+| `--site-url <url>`         | Value for `SITE_URL`; avoids interactive prompt           |
+| `--prod`                   | Target production deployment                              |
+| `--preview-name <name>`    | Target preview deployment                                 |
+| `--deployment-name <name>` | Target specific named deployment                          |
+| `--url <url>`              | Target deployment by explicit URL or self-hosted endpoint |
+| `--admin-key <key>`        | Use explicit admin key (typed for Convex Cloud)           |
+| `--variables <json>`       | Additional variables for configuration                    |
+| `--skip-git-check`         | Skip the "outside Git repo" warning                       |
+| `--allow-dirty-git-state`  | Skip all source-control checks                            |
 
 ## Enterprise API
 

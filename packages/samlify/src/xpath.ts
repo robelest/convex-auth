@@ -1,4 +1,4 @@
-import { evaluateXPathToNodes, evaluateXPathToString } from "fontoxpath";
+import { evaluateXPathToNodes, evaluateXPathToString } from "./fontoxpath";
 
 export type SelectedValue = Node | Attr | string | null;
 

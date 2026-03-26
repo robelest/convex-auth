@@ -1,6 +1,6 @@
 import { Fx } from "@robelest/fx";
 
-import { AuthError } from "./fx";
+import { AuthError } from "./authError";
 import { AuthProviderMaterializedConfig } from "./types";
 import { ConvexAuthMaterializedConfig } from "./types";
 import { errorMessage } from "./utils";

@@ -52,7 +52,22 @@ test("authCookieNames isolates cookie namespaces", () => {
   expect(first.verifier).not.toBe(second.verifier);
 });
 
-test("parseAuthCookies prefers namespaced cookies over legacy names", () => {
+test("parseAuthCookies only reads the active cookie namespace", () => {
+  const host = "localhost";
+  const namespace = "tenant";
+  const namespaced = authCookieNames(host, namespace);
+  const parsed = parseAuthCookies(
+    `${namespaced.token}=namespaced-token; ${namespaced.refreshToken}=namespaced-refresh; ${namespaced.verifier}=namespaced-verifier`,
+    host,
+    namespace,
+  );
+
+  expect(parsed.token).toBe("namespaced-token");
+  expect(parsed.refreshToken).toBe("namespaced-refresh");
+  expect(parsed.verifier).toBe("namespaced-verifier");
+});
+
+test("parseAuthCookies ignores unnamespaced cookies for namespaced auth", () => {
   const host = "localhost";
   const namespace = "tenant";
   const namespaced = authCookieNames(host, namespace);
@@ -67,6 +82,21 @@ test("parseAuthCookies prefers namespaced cookies over legacy names", () => {
   expect(parsed.token).toBe("namespaced-token");
   expect(parsed.refreshToken).toBe("namespaced-refresh");
   expect(parsed.verifier).toBe("namespaced-verifier");
+});
+
+test("parseAuthCookies does not fall back to old cookie names", () => {
+  const host = "localhost";
+  const namespace = "tenant";
+  const legacy = authCookieNames(host);
+  const parsed = parseAuthCookies(
+    `${legacy.token}=legacy-token; ${legacy.refreshToken}=legacy-refresh; ${legacy.verifier}=legacy-verifier`,
+    host,
+    namespace,
+  );
+
+  expect(parsed.token).toBeNull();
+  expect(parsed.refreshToken).toBeNull();
+  expect(parsed.verifier).toBeNull();
 });
 
 test("OAuth callback rejects PKCE provider when verifier cookie is missing", async () => {

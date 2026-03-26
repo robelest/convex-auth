@@ -1,17 +1,14 @@
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
-import type { QueryCtx, MutationCtx } from "./_generated/server";
-import { action, internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 import { auth } from "./auth";
+import { authAction, authMutation, authQuery } from "./functions";
 import { roles } from "./roles";
 import {
   demoIssueStatus as issueStatusValidator,
   demoIssuePriority as issuePriorityValidator,
 } from "./schema";
-
-type AppCtx = QueryCtx | MutationCtx;
-type AppGrant = (typeof roles)[keyof typeof roles]["grants"][number];
 
 // ── Shared return validators ──
 
@@ -127,73 +124,6 @@ type WorkspaceSummary = {
   isInherited: boolean;
 };
 
-async function listAccessibleWorkspaces(ctx: AppCtx, userId: string) {
-  const roots = await auth.group.list(ctx, {
-    where: { isRoot: true },
-    orderBy: "name",
-    order: "asc",
-    limit: 20,
-  });
-
-  const results = await Promise.all(
-    roots.items.map(async (group: (typeof roots.items)[number]) => {
-      const membership = await auth.member.resolve(ctx, {
-        userId,
-        groupId: group._id,
-      });
-      if (membership.membership === null) {
-        return null;
-      }
-      return {
-        groupId: group._id,
-        name: group.name,
-        roleIds: membership.roleIds,
-        grants: membership.grants,
-        matchedGroupId: membership.matchedGroupId ?? null,
-        isInherited: membership.isInherited,
-      } satisfies WorkspaceSummary;
-    }),
-  );
-
-  return results.filter((workspace) => workspace !== null);
-}
-
-async function requireUserId(ctx: AppCtx) {
-  const userId = await auth.user.id(ctx);
-  if (userId === null) return { ok: false as const };
-  return { ok: true as const, userId };
-}
-
-async function getCurrentUser(ctx: AppCtx) {
-  const result = await requireUserId(ctx);
-  if (!result.ok) return { ok: false as const };
-  const user = await auth.user.get(ctx, result.userId);
-  return { ok: true as const, userId: result.userId, user };
-}
-
-async function checkWorkspaceAccess(
-  ctx: AppCtx,
-  userId: string,
-  groupId: string,
-  grants: AppGrant[],
-) {
-  return await auth.access.check(ctx, {
-    userId,
-    groupId,
-    grants,
-  });
-}
-
-async function getUserSummary(ctx: AppCtx, userId: string) {
-  const user = await auth.user.get(ctx, userId);
-  return {
-    userId,
-    name: user?.name ?? user?.email ?? "Unknown user",
-    email: user?.email ?? null,
-    image: user?.image ?? null,
-  };
-}
-
 function toSlug(value: string) {
   return value
     .trim()
@@ -203,32 +133,9 @@ function toSlug(value: string) {
     .slice(0, 48);
 }
 
-// ── Workspace scaffold ──
-
-async function createWorkspaceScaffold(
-  ctx: MutationCtx,
-  userId: string,
-  workspaceName: string,
-) {
-  const slugBase = toSlug(workspaceName);
-  const { groupId } = await auth.group.create(ctx, {
-    name: workspaceName,
-    slug: slugBase,
-    type: "workspace",
-  });
-
-  await auth.member.create(ctx, {
-    userId,
-    groupId,
-    roleIds: [roles.orgAdmin.id],
-  });
-
-  return { groupId };
-}
-
 // ── Queries ──
 
-export const checkEmailExists = query({
+export const checkEmailExists = authQuery({
   args: { email: v.string() },
   returns: v.boolean(),
   handler: async (ctx, args) => {
@@ -240,7 +147,7 @@ export const checkEmailExists = query({
   },
 });
 
-export const dashboard = query({
+export const dashboard = authQuery({
   args: {
     workspaceId: v.optional(v.string()),
   },
@@ -263,12 +170,49 @@ export const dashboard = query({
     ),
   }),
   handler: async (ctx, args) => {
-    const currentUser = await getCurrentUser(ctx);
-    if (!currentUser.ok) {
+    if (!ctx.auth) {
       return { user: null, workspaces: [], selectedWorkspace: null };
     }
-    const { userId, user } = currentUser;
-    const workspaces = await listAccessibleWorkspaces(ctx, userId);
+    const { userId, user } = ctx.auth;
+    const roots = await auth.group.list(ctx, {
+      where: { isRoot: true },
+      orderBy: "name",
+      order: "asc",
+      limit: 20,
+    });
+
+    const workspaces = (
+      await Promise.all(
+        roots.items.map(async (group: (typeof roots.items)[number]) => {
+          const resolution = await auth.member.resolve(ctx, {
+            userId,
+            groupId: group._id,
+          });
+          if (resolution.membership === null) {
+            return null;
+          }
+          return {
+            groupId: group._id,
+            name: group.name,
+            roleIds: resolution.roleIds,
+            grants: resolution.grants,
+            matchedGroupId: resolution.matchedGroupId ?? null,
+            isInherited: resolution.isInherited,
+          } satisfies WorkspaceSummary;
+        }),
+      )
+    ).filter((workspace) => workspace !== null);
+
+    const getUserSummary = async (userId: string) => {
+      const user = await auth.user.get(ctx, userId);
+      return {
+        userId,
+        name: user?.name ?? user?.email ?? "Unknown user",
+        email: user?.email ?? null,
+        image: user?.image ?? null,
+      };
+    };
+
     if (workspaces.length === 0) {
       return {
         user: {
@@ -371,7 +315,7 @@ export const dashboard = query({
     });
     const memberSummaries = await Promise.all(
       members.items.map(async (member: (typeof members.items)[number]) => {
-        const summary = await getUserSummary(ctx, member.userId);
+        const summary = await getUserSummary(member.userId);
         return {
           memberId: member._id,
           userId: member.userId,
@@ -414,7 +358,7 @@ export const dashboard = query({
   },
 });
 
-export const projectIssues = query({
+export const projectIssues = authQuery({
   args: {
     workspaceId: v.string(),
     projectId: v.id("demoProjects"),
@@ -434,9 +378,8 @@ export const projectIssues = query({
     issues: v.array(issueSummary),
   }),
   handler: async (ctx, args) => {
-    const currentUser = await requireUserId(ctx);
-    if (!currentUser.ok) return { project: null, issues: [] };
-    const { userId } = currentUser;
+    if (!ctx.auth) return { project: null, issues: [] };
+    const { userId } = ctx.auth;
 
     const project = await ctx.db.get(args.projectId);
     if (project === null || project.groupId !== args.workspaceId) {
@@ -444,9 +387,11 @@ export const projectIssues = query({
     }
 
     const scopeGroupId = project.teamGroupId ?? project.groupId;
-    const access = await checkWorkspaceAccess(ctx, userId, scopeGroupId, [
-      "projects.read",
-    ]);
+    const access = await auth.member.resolve(ctx, {
+      userId,
+      groupId: scopeGroupId,
+      grants: ["projects.read"],
+    });
     if (!access.ok) return { project: null, issues: [] };
 
     const teamGroup = project.teamGroupId
@@ -458,26 +403,46 @@ export const projectIssues = query({
       .withIndex("by_projectId", (q) => q.eq("projectId", project._id))
       .take(200);
 
+    const getUserSummary = async (userId: string) => {
+      const user = await auth.user.get(ctx, userId);
+      return {
+        userId,
+        name: user?.name ?? user?.email ?? "Unknown user",
+        email: user?.email ?? null,
+        image: user?.image ?? null,
+      };
+    };
+
     const assigneeMap = new Map<
       string,
-      Awaited<ReturnType<typeof getUserSummary>>
+      {
+        userId: string;
+        name: string;
+        email: string | null;
+        image: string | null;
+      }
     >();
     const creatorMap = new Map<
       string,
-      Awaited<ReturnType<typeof getUserSummary>>
+      {
+        userId: string;
+        name: string;
+        email: string | null;
+        image: string | null;
+      }
     >();
 
     for (const issue of issues) {
       if (issue.assigneeUserId && !assigneeMap.has(issue.assigneeUserId)) {
         assigneeMap.set(
           issue.assigneeUserId,
-          await getUserSummary(ctx, issue.assigneeUserId),
+          await getUserSummary(issue.assigneeUserId),
         );
       }
       if (!creatorMap.has(issue.createdByUserId)) {
         creatorMap.set(
           issue.createdByUserId,
-          await getUserSummary(ctx, issue.createdByUserId),
+          await getUserSummary(issue.createdByUserId),
         );
       }
     }
@@ -515,23 +480,24 @@ export const projectIssues = query({
   },
 });
 
-export const issueComments = query({
+export const issueComments = authQuery({
   args: {
     workspaceId: v.string(),
     issueId: v.id("demoIssues"),
   },
   returns: v.array(commentSummary),
   handler: async (ctx, args) => {
-    const currentUser = await requireUserId(ctx);
-    if (!currentUser.ok) return [];
-    const { userId } = currentUser;
+    if (!ctx.auth) return [];
+    const { userId } = ctx.auth;
 
     const issue = await ctx.db.get(args.issueId);
     if (issue === null || issue.groupId !== args.workspaceId) return [];
 
-    const access = await checkWorkspaceAccess(ctx, userId, issue.scopeGroupId, [
-      "projects.read",
-    ]);
+    const access = await auth.member.resolve(ctx, {
+      userId,
+      groupId: issue.scopeGroupId,
+      grants: ["projects.read"],
+    });
     if (!access.ok) return [];
 
     const comments = await ctx.db
@@ -539,9 +505,19 @@ export const issueComments = query({
       .withIndex("by_issueId", (q) => q.eq("issueId", issue._id))
       .take(100);
 
+    const getUserSummary = async (userId: string) => {
+      const user = await auth.user.get(ctx, userId);
+      return {
+        userId,
+        name: user?.name ?? user?.email ?? "Unknown user",
+        email: user?.email ?? null,
+        image: user?.image ?? null,
+      };
+    };
+
     const summaries = await Promise.all(
       comments.map(async (comment) => {
-        const authorSummary = await getUserSummary(ctx, comment.authorUserId);
+        const authorSummary = await getUserSummary(comment.authorUserId);
         return {
           commentId: comment._id,
           authorName: authorSummary.name,
@@ -558,7 +534,7 @@ export const issueComments = query({
 
 // ── Mutations ──
 
-export const createWorkspace = mutation({
+export const createWorkspace = authMutation({
   args: {
     name: v.string(),
   },
@@ -567,10 +543,9 @@ export const createWorkspace = mutation({
     mutationError,
   ),
   handler: async (ctx, args) => {
-    const currentUser = await requireUserId(ctx);
-    if (!currentUser.ok)
+    if (!ctx.auth)
       return { ok: false as const, code: "NOT_SIGNED_IN" as const };
-    const { userId } = currentUser;
+    const { userId } = ctx.auth;
     const name = args.name.trim();
     if (name.length < 3) {
       return {
@@ -580,7 +555,35 @@ export const createWorkspace = mutation({
       };
     }
 
-    const existing = await listAccessibleWorkspaces(ctx, userId);
+    const roots = await auth.group.list(ctx, {
+      where: { isRoot: true },
+      orderBy: "name",
+      order: "asc",
+      limit: 20,
+    });
+
+    const existing = (
+      await Promise.all(
+        roots.items.map(async (group: (typeof roots.items)[number]) => {
+          const resolution = await auth.member.resolve(ctx, {
+            userId,
+            groupId: group._id,
+          });
+          if (resolution.membership === null) {
+            return null;
+          }
+          return {
+            groupId: group._id,
+            name: group.name,
+            roleIds: resolution.roleIds,
+            grants: resolution.grants,
+            matchedGroupId: resolution.matchedGroupId ?? null,
+            isInherited: resolution.isInherited,
+          } satisfies WorkspaceSummary;
+        }),
+      )
+    ).filter((workspace) => workspace !== null);
+
     if (
       existing.some(
         (workspace) => workspace.name.toLowerCase() === name.toLowerCase(),
@@ -593,12 +596,24 @@ export const createWorkspace = mutation({
       };
     }
 
-    const result = await createWorkspaceScaffold(ctx, userId, name);
-    return { ok: true as const, workspaceId: result.groupId };
+    const slugBase = toSlug(name);
+    const { groupId } = await auth.group.create(ctx, {
+      name,
+      slug: slugBase,
+      type: "workspace",
+    });
+
+    await auth.member.create(ctx, {
+      userId,
+      groupId,
+      roleIds: [roles.orgAdmin.id],
+    });
+
+    return { ok: true as const, workspaceId: groupId };
   },
 });
 
-export const createProject = mutation({
+export const createProject = authMutation({
   args: {
     workspaceId: v.string(),
     teamGroupId: v.optional(v.string()),
@@ -611,14 +626,15 @@ export const createProject = mutation({
     mutationError,
   ),
   handler: async (ctx, args) => {
-    const currentUser = await requireUserId(ctx);
-    if (!currentUser.ok)
+    if (!ctx.auth)
       return { ok: false as const, code: "NOT_SIGNED_IN" as const };
-    const { userId } = currentUser;
+    const { userId } = ctx.auth;
 
-    const access = await checkWorkspaceAccess(ctx, userId, args.workspaceId, [
-      "projects.create",
-    ]);
+    const access = await auth.member.resolve(ctx, {
+      userId,
+      groupId: args.workspaceId,
+      grants: ["projects.create"],
+    });
     if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
 
     const identifier = args.identifier
@@ -681,7 +697,7 @@ export const createProject = mutation({
   },
 });
 
-export const createIssue = mutation({
+export const createIssue = authMutation({
   args: {
     workspaceId: v.string(),
     projectId: v.id("demoProjects"),
@@ -695,10 +711,9 @@ export const createIssue = mutation({
     mutationError,
   ),
   handler: async (ctx, args) => {
-    const currentUser = await requireUserId(ctx);
-    if (!currentUser.ok)
+    if (!ctx.auth)
       return { ok: false as const, code: "NOT_SIGNED_IN" as const };
-    const { userId } = currentUser;
+    const { userId } = ctx.auth;
 
     const project = await ctx.db.get(args.projectId);
     if (project === null || project.groupId !== args.workspaceId) {
@@ -710,9 +725,11 @@ export const createIssue = mutation({
     }
 
     const scopeGroupId = project.teamGroupId ?? project.groupId;
-    const access = await checkWorkspaceAccess(ctx, userId, scopeGroupId, [
-      "issues.create",
-    ]);
+    const access = await auth.member.resolve(ctx, {
+      userId,
+      groupId: scopeGroupId,
+      grants: ["issues.create"],
+    });
     if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
 
     const nextNumber = project.issueCounter + 1;
@@ -740,7 +757,7 @@ export const createIssue = mutation({
   },
 });
 
-export const updateIssue = mutation({
+export const updateIssue = authMutation({
   args: {
     workspaceId: v.string(),
     issueId: v.id("demoIssues"),
@@ -756,10 +773,9 @@ export const updateIssue = mutation({
     mutationError,
   ),
   handler: async (ctx, args) => {
-    const currentUser = await requireUserId(ctx);
-    if (!currentUser.ok)
+    if (!ctx.auth)
       return { ok: false as const, code: "NOT_SIGNED_IN" as const };
-    const { userId } = currentUser;
+    const { userId } = ctx.auth;
 
     const issue = await ctx.db.get(args.issueId);
     if (issue === null || issue.groupId !== args.workspaceId) {
@@ -780,22 +796,20 @@ export const updateIssue = mutation({
     const needsAssign = args.assigneeUserId !== undefined;
 
     if (needsEdit) {
-      const editAccess = await checkWorkspaceAccess(
-        ctx,
+      const editAccess = await auth.member.resolve(ctx, {
         userId,
-        issue.scopeGroupId,
-        ["issues.edit"],
-      );
+        groupId: issue.scopeGroupId,
+        grants: ["issues.edit"],
+      });
       if (!editAccess.ok)
         return { ok: false as const, code: "FORBIDDEN" as const };
 
       // Members can only edit their own or assigned issues
-      const assignAccess = await checkWorkspaceAccess(
-        ctx,
+      const assignAccess = await auth.member.resolve(ctx, {
         userId,
-        issue.scopeGroupId,
-        ["issues.assign"],
-      );
+        groupId: issue.scopeGroupId,
+        grants: ["issues.assign"],
+      });
       if (!assignAccess.ok) {
         const isOwnerOrAssignee =
           issue.createdByUserId === userId || issue.assigneeUserId === userId;
@@ -805,12 +819,11 @@ export const updateIssue = mutation({
     }
 
     if (needsMove) {
-      const moveAccess = await checkWorkspaceAccess(
-        ctx,
+      const moveAccess = await auth.member.resolve(ctx, {
         userId,
-        issue.scopeGroupId,
-        ["issues.move"],
-      );
+        groupId: issue.scopeGroupId,
+        grants: ["issues.move"],
+      });
       if (!moveAccess.ok)
         return { ok: false as const, code: "FORBIDDEN" as const };
     }
@@ -818,22 +831,20 @@ export const updateIssue = mutation({
     if (needsAssign) {
       const isSelfAssign = args.assigneeUserId === userId;
       if (!isSelfAssign) {
-        const assignAccess = await checkWorkspaceAccess(
-          ctx,
+        const assignAccess = await auth.member.resolve(ctx, {
           userId,
-          issue.scopeGroupId,
-          ["issues.assign"],
-        );
+          groupId: issue.scopeGroupId,
+          grants: ["issues.assign"],
+        });
         if (!assignAccess.ok)
           return { ok: false as const, code: "FORBIDDEN" as const };
       } else {
         // Self-assignment requires at least issues.move
-        const moveAccess = await checkWorkspaceAccess(
-          ctx,
+        const moveAccess = await auth.member.resolve(ctx, {
           userId,
-          issue.scopeGroupId,
-          ["issues.move"],
-        );
+          groupId: issue.scopeGroupId,
+          grants: ["issues.move"],
+        });
         if (!moveAccess.ok)
           return { ok: false as const, code: "FORBIDDEN" as const };
       }
@@ -870,17 +881,16 @@ export const updateIssue = mutation({
   },
 });
 
-export const deleteIssue = mutation({
+export const deleteIssue = authMutation({
   args: {
     workspaceId: v.string(),
     issueId: v.id("demoIssues"),
   },
   returns: v.union(v.object({ ok: v.literal(true) }), mutationError),
   handler: async (ctx, args) => {
-    const currentUser = await requireUserId(ctx);
-    if (!currentUser.ok)
+    if (!ctx.auth)
       return { ok: false as const, code: "NOT_SIGNED_IN" as const };
-    const { userId } = currentUser;
+    const { userId } = ctx.auth;
 
     const issue = await ctx.db.get(args.issueId);
     if (issue === null || issue.groupId !== args.workspaceId) {
@@ -891,9 +901,11 @@ export const deleteIssue = mutation({
       };
     }
 
-    const access = await checkWorkspaceAccess(ctx, userId, issue.scopeGroupId, [
-      "issues.delete",
-    ]);
+    const access = await auth.member.resolve(ctx, {
+      userId,
+      groupId: issue.scopeGroupId,
+      grants: ["issues.delete"],
+    });
     if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
 
     // Delete comments first (bounded to avoid hitting read limits)
@@ -928,7 +940,7 @@ export const deleteIssue = mutation({
   },
 });
 
-export const createComment = mutation({
+export const createComment = authMutation({
   args: {
     workspaceId: v.string(),
     issueId: v.id("demoIssues"),
@@ -939,10 +951,9 @@ export const createComment = mutation({
     mutationError,
   ),
   handler: async (ctx, args) => {
-    const currentUser = await requireUserId(ctx);
-    if (!currentUser.ok)
+    if (!ctx.auth)
       return { ok: false as const, code: "NOT_SIGNED_IN" as const };
-    const { userId } = currentUser;
+    const { userId } = ctx.auth;
 
     const issue = await ctx.db.get(args.issueId);
     if (issue === null || issue.groupId !== args.workspaceId) {
@@ -962,9 +973,11 @@ export const createComment = mutation({
       };
     }
 
-    const access = await checkWorkspaceAccess(ctx, userId, issue.scopeGroupId, [
-      "comments.create",
-    ]);
+    const access = await auth.member.resolve(ctx, {
+      userId,
+      groupId: issue.scopeGroupId,
+      grants: ["comments.create"],
+    });
     if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
 
     const commentId = await ctx.db.insert("demoComments", {
@@ -978,17 +991,16 @@ export const createComment = mutation({
   },
 });
 
-export const deleteComment = mutation({
+export const deleteComment = authMutation({
   args: {
     workspaceId: v.string(),
     commentId: v.id("demoComments"),
   },
   returns: v.union(v.object({ ok: v.literal(true) }), mutationError),
   handler: async (ctx, args) => {
-    const currentUser = await requireUserId(ctx);
-    if (!currentUser.ok)
+    if (!ctx.auth)
       return { ok: false as const, code: "NOT_SIGNED_IN" as const };
-    const { userId } = currentUser;
+    const { userId } = ctx.auth;
 
     const comment = await ctx.db.get(args.commentId);
     if (comment === null || comment.groupId !== args.workspaceId) {
@@ -1009,12 +1021,11 @@ export const deleteComment = mutation({
           message: "Issue not found.",
         };
       }
-      const access = await checkWorkspaceAccess(
-        ctx,
+      const access = await auth.member.resolve(ctx, {
         userId,
-        issue.scopeGroupId,
-        ["comments.delete"],
-      );
+        groupId: issue.scopeGroupId,
+        grants: ["comments.delete"],
+      });
       if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
     }
 
@@ -1023,7 +1034,7 @@ export const deleteComment = mutation({
   },
 });
 
-export const createTeam = mutation({
+export const createTeam = authMutation({
   args: {
     workspaceId: v.string(),
     name: v.string(),
@@ -1034,10 +1045,9 @@ export const createTeam = mutation({
     mutationError,
   ),
   handler: async (ctx, args) => {
-    const currentUser = await requireUserId(ctx);
-    if (!currentUser.ok)
+    if (!ctx.auth)
       return { ok: false as const, code: "NOT_SIGNED_IN" as const };
-    const { userId } = currentUser;
+    const { userId } = ctx.auth;
     const teamName = args.name.trim();
     if (teamName.length < 2) {
       return {
@@ -1047,9 +1057,11 @@ export const createTeam = mutation({
       };
     }
 
-    const access = await checkWorkspaceAccess(ctx, userId, args.workspaceId, [
-      "teams.manage",
-    ]);
+    const access = await auth.member.resolve(ctx, {
+      userId,
+      groupId: args.workspaceId,
+      grants: ["teams.manage"],
+    });
     if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
     const { groupId } = await auth.group.create(ctx, {
       name: teamName,
@@ -1061,7 +1073,7 @@ export const createTeam = mutation({
   },
 });
 
-export const updateMemberRole = mutation({
+export const updateMemberRole = authMutation({
   args: {
     workspaceId: v.string(),
     memberId: v.string(),
@@ -1069,14 +1081,15 @@ export const updateMemberRole = mutation({
   },
   returns: v.union(v.object({ ok: v.literal(true) }), mutationError),
   handler: async (ctx, args) => {
-    const currentUser = await requireUserId(ctx);
-    if (!currentUser.ok)
+    if (!ctx.auth)
       return { ok: false as const, code: "NOT_SIGNED_IN" as const };
-    const { userId } = currentUser;
+    const { userId } = ctx.auth;
 
-    const access = await checkWorkspaceAccess(ctx, userId, args.workspaceId, [
-      "members.manage",
-    ]);
+    const access = await auth.member.resolve(ctx, {
+      userId,
+      groupId: args.workspaceId,
+      grants: ["members.manage"],
+    });
     if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
 
     // Validate the role ID
@@ -1137,12 +1150,11 @@ export const createInviteInternal = internalMutation({
     mutationError,
   ),
   handler: async (ctx, args) => {
-    const access = await checkWorkspaceAccess(
-      ctx,
-      args.invitedByUserId,
-      args.workspaceId,
-      ["members.manage"],
-    );
+    const access = await auth.member.resolve(ctx, {
+      userId: args.invitedByUserId,
+      groupId: args.workspaceId,
+      grants: ["members.manage"],
+    });
     if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
 
     const validRoleIds = [
@@ -1182,7 +1194,7 @@ export const createInviteInternal = internalMutation({
   },
 });
 
-export const inviteMember = action({
+export const inviteMember = authAction({
   args: {
     workspaceId: v.string(),
     email: v.string(),
@@ -1197,8 +1209,8 @@ export const inviteMember = action({
     }),
   ),
   handler: async (ctx, args) => {
-    const userId = await auth.user.id(ctx);
-    if (userId === null) return { ok: false as const, code: "NOT_SIGNED_IN" };
+    const userId = ctx.auth?.userId;
+    if (!userId) return { ok: false as const, code: "NOT_SIGNED_IN" };
 
     const email = args.email.trim().toLowerCase();
 
@@ -1252,16 +1264,15 @@ export const inviteMember = action({
   },
 });
 
-export const acceptInvite = mutation({
+export const acceptInvite = authMutation({
   args: {
     token: v.string(),
   },
   returns: v.union(v.object({ ok: v.literal(true) }), mutationError),
   handler: async (ctx, args) => {
-    const currentUser = await requireUserId(ctx);
-    if (!currentUser.ok)
+    if (!ctx.auth)
       return { ok: false as const, code: "NOT_SIGNED_IN" as const };
-    const { userId } = currentUser;
+    const { userId } = ctx.auth;
 
     try {
       await auth.invite.token.accept(ctx, {
@@ -1279,19 +1290,20 @@ export const acceptInvite = mutation({
   },
 });
 
-export const listInvites = query({
+export const listInvites = authQuery({
   args: {
     workspaceId: v.string(),
   },
   returns: v.array(inviteSummary),
   handler: async (ctx, args) => {
-    const currentUser = await requireUserId(ctx);
-    if (!currentUser.ok) return [];
-    const { userId } = currentUser;
+    if (!ctx.auth) return [];
+    const { userId } = ctx.auth;
 
-    const access = await checkWorkspaceAccess(ctx, userId, args.workspaceId, [
-      "members.manage",
-    ]);
+    const access = await auth.member.resolve(ctx, {
+      userId,
+      groupId: args.workspaceId,
+      grants: ["members.manage"],
+    });
     if (!access.ok) return [];
 
     const result = await auth.invite.list(ctx, {
@@ -1310,21 +1322,22 @@ export const listInvites = query({
   },
 });
 
-export const revokeInvite = mutation({
+export const revokeInvite = authMutation({
   args: {
     workspaceId: v.string(),
     inviteId: v.string(),
   },
   returns: v.union(v.object({ ok: v.literal(true) }), mutationError),
   handler: async (ctx, args) => {
-    const currentUser = await requireUserId(ctx);
-    if (!currentUser.ok)
+    if (!ctx.auth)
       return { ok: false as const, code: "NOT_SIGNED_IN" as const };
-    const { userId } = currentUser;
+    const { userId } = ctx.auth;
 
-    const access = await checkWorkspaceAccess(ctx, userId, args.workspaceId, [
-      "members.manage",
-    ]);
+    const access = await auth.member.resolve(ctx, {
+      userId,
+      groupId: args.workspaceId,
+      grants: ["members.manage"],
+    });
     if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
 
     await auth.invite.revoke(ctx, args.inviteId);

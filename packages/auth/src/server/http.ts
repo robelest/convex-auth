@@ -8,7 +8,9 @@ import { ConvexError } from "convex/values";
 import { parse as parseCookies } from "cookie";
 
 import { isAuthError } from "./errors";
-import { AuthError, Fx } from "./fx";
+import { Fx } from "@robelest/fx";
+
+import { AuthError } from "./authError";
 import type { CorsConfig, HttpKeyContext } from "./types";
 import { logError } from "./utils";
 

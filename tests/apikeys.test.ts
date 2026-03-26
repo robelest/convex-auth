@@ -9,6 +9,12 @@ import { convexTest } from "./convex.setup";
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** Unwrap a key.get result, asserting ok and returning the key doc. */
+function expectKey(result: { ok: boolean; key?: any }) {
+  expect(result.ok).toBe(true);
+  return result.key;
+}
+
 /** Create a test user and return their userId. */
 async function createUser(t: any, email = "test@example.com") {
   return await t.run(async (ctx: any) => {
@@ -71,11 +77,11 @@ test("key.create with freeform scopes stores them as-is", async () => {
     });
   });
 
-  const record = await t.run(async (ctx) => {
+  const result = await t.run(async (ctx) => {
     return await auth.key.get(ctx, keyId);
   });
 
-  expect(record?.scopes).toEqual(scopes);
+  expect(expectKey(result).scopes).toEqual(scopes);
 });
 
 test("key.create with expiry stores expiresAt", async () => {
@@ -92,11 +98,11 @@ test("key.create with expiry stores expiresAt", async () => {
     });
   });
 
-  const record = await t.run(async (ctx) => {
+  const expiryResult = await t.run(async (ctx) => {
     return await auth.key.get(ctx, keyId);
   });
 
-  expect(record?.expiresAt).toBe(expiresAt);
+  expect(expectKey(expiryResult).expiresAt).toBe(expiresAt);
 });
 
 test("key.create with per-key rateLimit stores it", async () => {
@@ -113,11 +119,11 @@ test("key.create with per-key rateLimit stores it", async () => {
     });
   });
 
-  const record = await t.run(async (ctx) => {
+  const rateResult = await t.run(async (ctx) => {
     return await auth.key.get(ctx, keyId);
   });
 
-  expect(record?.rateLimit).toEqual(rateLimit);
+  expect(expectKey(rateResult).rateLimit).toEqual(rateLimit);
 });
 
 // ---------------------------------------------------------------------------
@@ -302,15 +308,15 @@ test("key.get returns record without secret", async () => {
     return await auth.key.create(ctx, { userId, name: "Get Test", scopes: [] });
   });
 
-  const record = await t.run(async (ctx) => {
+  const getResult = await t.run(async (ctx) => {
     return await auth.key.get(ctx, keyId);
   });
 
-  expect(record).not.toBeNull();
-  expect(record?._id).toBe(keyId);
-  expect(record?.userId).toBe(userId);
-  expect(record?.name).toBe("Get Test");
-  expect(record?.prefix).toMatch(/^sk_/);
+  const record = expectKey(getResult);
+  expect(record._id).toBe(keyId);
+  expect(record.userId).toBe(userId);
+  expect(record.name).toBe("Get Test");
+  expect(record.prefix).toMatch(/^sk_/);
   // Raw key must not be stored
   expect(JSON.stringify(record)).not.toContain(secret);
 });
@@ -331,12 +337,11 @@ test("key.get after revoke still returns record with revoked: true", async () =>
     await auth.key.revoke(ctx, keyId);
   });
 
-  const record = await t.run(async (ctx) => {
+  const revokeResult = await t.run(async (ctx) => {
     return await auth.key.get(ctx, keyId);
   });
 
-  expect(record).not.toBeNull();
-  expect(record?.revoked).toBe(true);
+  expect(expectKey(revokeResult).revoked).toBe(true);
 });
 
 // ---------------------------------------------------------------------------
@@ -359,11 +364,11 @@ test("key.revoke sets revoked flag and verify returns ok: false", async () => {
     await auth.key.revoke(ctx, keyId);
   });
 
-  const record = await t.run(async (ctx) => {
+  const revokedGet = await t.run(async (ctx) => {
     return await auth.key.get(ctx, keyId);
   });
 
-  expect(record?.revoked).toBe(true);
+  expect(expectKey(revokedGet).revoked).toBe(true);
 
   const result = await t.run(async (ctx) => {
     return await auth.key.verify(ctx, secret);
@@ -674,10 +679,11 @@ test("key.rotate: new key inherits scopes and rateLimit", async () => {
     return await auth.key.rotate(ctx, oldKeyId);
   });
 
-  const record = await t.run(async (ctx) => auth.key.get(ctx, newKeyId));
+  const rotateGet = await t.run(async (ctx) => auth.key.get(ctx, newKeyId));
 
-  expect(record?.scopes).toEqual(scopes);
-  expect(record?.rateLimit).toEqual(rateLimit);
+  const rotated = expectKey(rotateGet);
+  expect(rotated.scopes).toEqual(scopes);
+  expect(rotated.rateLimit).toEqual(rateLimit);
 });
 
 test("key.rotate: rotating already-revoked key returns ok: false", async () => {

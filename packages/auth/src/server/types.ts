@@ -24,31 +24,74 @@ import {
   vUserDoc,
 } from "../component/model";
 import schema from "../component/schema";
-import { CredentialsUserConfig } from "../providers/credentials";
+import type { CredentialsConfig } from "../providers/credentials";
 
 // ============================================================================
 // Utility types
 // ============================================================================
 
-/** A value that is either `T` or a `PromiseLike<T>`. */
+/**
+ * A value that is either `T` or a `PromiseLike<T>`.
+ *
+ * @typeParam T - The underlying value type.
+ */
 export type Awaitable<T> = T | PromiseLike<T>;
 
+/**
+ * A single role definition within the authorization config.
+ *
+ * Each role has an optional human-readable label and a list of grant strings
+ * that members with this role receive.
+ *
+ * @see {@link AuthAuthorizationConfig}
+ */
 export type AuthRoleDefinition = {
+  /** Optional stable identifier (defaults to the record key). */
   id?: string;
+  /** Human-readable label for admin UIs. */
   label?: string;
+  /** Permission grant strings conferred by this role. */
   grants: string[];
 };
 
+/**
+ * Authorization configuration mapping role IDs to {@link AuthRoleDefinition}s.
+ *
+ * Passed as `authorization.roles` in {@link ConvexAuthConfig}.
+ *
+ * @see {@link AuthRoleDefinition}
+ * @see {@link ConvexAuthConfig}
+ */
 export type AuthAuthorizationConfig = {
   roles: Record<string, AuthRoleDefinition>;
 };
 
+/**
+ * Extracts the union of role ID strings from an authorization config.
+ *
+ * When `TAuthorization` is defined, this resolves to the literal key union
+ * of the `roles` record. Otherwise falls back to `string`.
+ *
+ * @typeParam TAuthorization - The authorization config type, or `undefined`.
+ *
+ * @see {@link AuthGrant}
+ */
 export type AuthRoleId<
   TAuthorization extends AuthAuthorizationConfig | undefined,
 > = TAuthorization extends { roles: infer TRoles extends Record<string, any> }
   ? keyof TRoles & string
   : string;
 
+/**
+ * Extracts the union of grant strings from all roles in an authorization config.
+ *
+ * When `TAuthorization` is defined, this resolves to the literal union
+ * of all `grants` array elements across every role. Otherwise falls back to `string`.
+ *
+ * @typeParam TAuthorization - The authorization config type, or `undefined`.
+ *
+ * @see {@link AuthRoleId}
+ */
 export type AuthGrant<
   TAuthorization extends AuthAuthorizationConfig | undefined,
 > = TAuthorization extends {
@@ -83,12 +126,16 @@ export type ConvexAuthConfig = {
      * How long can a user session last without the user reauthenticating.
      *
      * Defaults to 30 days.
+     *
+     * @defaultValue 2_592_000_000
      */
     totalDurationMs?: number;
     /**
      * How long can a user session last without the user being active.
      *
      * Defaults to 30 days.
+     *
+     * @defaultValue 2_592_000_000
      */
     inactiveDurationMs?: number;
   };
@@ -100,6 +147,8 @@ export type ConvexAuthConfig = {
      * How long is the JWT valid for after it is signed initially.
      *
      * Defaults to 1 hour.
+     *
+     * @defaultValue 3_600_000
      */
     durationMs?: number;
   };
@@ -113,6 +162,8 @@ export type ConvexAuthConfig = {
      *
      * Defaults to 10 times per hour (that is 10 failed attempts, and then
      * allow another one every 6 minutes).
+     *
+     * @defaultValue 10
      */
     maxFailedAttemptsPerHour?: number;
   };
@@ -327,17 +378,50 @@ export interface SSOProviderConfig {
   type: "sso";
 }
 
+/**
+ * Account linking strategy for enterprise SSO sign-in.
+ *
+ * - `"verifiedEmail"` — link accounts when the IdP-provided email matches a verified email on an existing user.
+ * - `"none"` — never auto-link; always create a new account.
+ */
 export type EnterpriseAccountLinkingPolicy = "verifiedEmail" | "none";
 
+/**
+ * Policy for reusing existing users during SCIM provisioning.
+ *
+ * - `"externalId"` — match by the SCIM `externalId` to reuse a previously provisioned user.
+ * - `"none"` — always create a new user for each SCIM provision request.
+ */
 export type EnterpriseScimReuseUserPolicy = "externalId" | "none";
 
+/**
+ * Just-in-time provisioning mode for enterprise SSO.
+ *
+ * - `"off"` — no JIT provisioning; users must be pre-provisioned.
+ * - `"createUser"` — create a user record on first SSO sign-in.
+ * - `"createUserAndMembership"` — create a user and add them to the enterprise group on first SSO sign-in.
+ */
 export type EnterpriseJitProvisioningMode =
   | "off"
   | "createUser"
   | "createUserAndMembership";
 
+/**
+ * Deprovisioning strategy when a SCIM user is deleted.
+ *
+ * - `"soft"` — mark the user as inactive but preserve the record.
+ * - `"hard"` — permanently delete the user and associated data.
+ */
 export type EnterpriseDeprovisionMode = "soft" | "hard";
 
+/**
+ * Effective enterprise policy document stored for an SSO/SCIM tenant.
+ *
+ * Controls account linking, JIT provisioning, SCIM reuse behavior,
+ * deprovisioning, and any app-defined extension metadata.
+ *
+ * @see {@link EnterprisePolicyPatch}
+ */
 export interface EnterprisePolicy {
   version: 1;
   identity: {
@@ -361,6 +445,12 @@ export interface EnterprisePolicy {
   extend?: Record<string, unknown>;
 }
 
+/**
+ * Partial update payload for {@link EnterprisePolicy}.
+ *
+ * Use this when patching only selected enterprise policy sections without
+ * replacing the entire stored policy document.
+ */
 export interface EnterprisePolicyPatch {
   identity?: {
     accountLinking?: {
@@ -385,6 +475,8 @@ export interface EnterprisePolicyPatch {
 
 /**
  * Email provider config for magic link / OTP sign-in.
+ *
+ * @typeParam DataModel - The Convex data model for typed action contexts.
  */
 export interface EmailConfig<
   DataModel extends GenericDataModel = GenericDataModel,
@@ -397,7 +489,11 @@ export interface EmailConfig<
   name?: string;
   /** Sender address (e.g. `"My App <noreply@example.com>"`). */
   from?: string;
-  /** Token expiration in seconds. Defaults to 86 400 (24 hours). */
+  /**
+   * Token expiration in seconds. Defaults to 86 400 (24 hours).
+   *
+   * @defaultValue 86400
+   */
   maxAge?: number;
   /**
    * Send the verification token to the user.
@@ -446,7 +542,11 @@ export interface EmailConfig<
 }
 
 /**
- * Configurable options for an email provider config.
+ * User-facing configuration shape accepted by the email provider.
+ *
+ * Equivalent to `Partial<EmailConfig>` without internal runtime-only fields.
+ *
+ * @typeParam DataModel - The Convex data model.
  */
 export type EmailUserConfig<
   DataModel extends GenericDataModel = GenericDataModel,
@@ -455,6 +555,8 @@ export type EmailUserConfig<
 /**
  * Same as email provider config, but verifies
  * phone number instead of the email address.
+ *
+ * @typeParam DataModel - The Convex data model for typed action contexts.
  */
 export interface PhoneConfig<
   DataModel extends GenericDataModel = GenericDataModel,
@@ -515,7 +617,11 @@ export interface PhoneConfig<
 }
 
 /**
- * Configurable options for a phone provider config.
+ * User-facing configuration shape accepted by the phone provider.
+ *
+ * Equivalent to `Partial<PhoneConfig>` without internal runtime-only fields.
+ *
+ * @typeParam DataModel - The Convex data model.
  */
 export type PhoneUserConfig<
   DataModel extends GenericDataModel = GenericDataModel,
@@ -524,7 +630,7 @@ export type PhoneUserConfig<
 /**
  * Credentials provider config used by Convex Auth.
  */
-export type ConvexCredentialsConfig = CredentialsUserConfig<any> & {
+export type ConvexCredentialsConfig = CredentialsConfig<any> & {
   type: "credentials";
   id: string;
 };
@@ -542,17 +648,37 @@ export interface PasskeyProviderConfig {
     rpId?: string;
     /** Allowed origins for credential verification. Defaults to SITE_URL. */
     origin?: string | string[];
-    /** Attestation conveyance preference. Defaults to "none". */
+    /**
+     * Attestation conveyance preference. Defaults to "none".
+     *
+     * @defaultValue "none"
+     */
     attestation?: "none" | "direct";
-    /** User verification requirement. Defaults to "required". */
+    /**
+     * User verification requirement. Defaults to "required".
+     *
+     * @defaultValue "required"
+     */
     userVerification?: "required" | "preferred" | "discouraged";
-    /** Resident key (discoverable credential) preference. Defaults to "preferred". */
+    /**
+     * Resident key (discoverable credential) preference. Defaults to "preferred".
+     *
+     * @defaultValue "preferred"
+     */
     residentKey?: "required" | "preferred" | "discouraged";
     /** Restrict to platform or cross-platform authenticators. */
     authenticatorAttachment?: "platform" | "cross-platform";
-    /** Supported COSE algorithms. Defaults to [-7 (ES256), -257 (RS256)]. */
+    /**
+     * Supported COSE algorithms. Defaults to [-7 (ES256), -257 (RS256)].
+     *
+     * @defaultValue [-7, -257]
+     */
     algorithms?: number[];
-    /** Challenge expiration in ms. Defaults to 300_000 (5 minutes). */
+    /**
+     * Challenge expiration in ms. Defaults to 300_000 (5 minutes).
+     *
+     * @defaultValue 300_000
+     */
     challengeExpirationMs?: number;
   };
 }
@@ -566,9 +692,17 @@ export interface TotpProviderConfig {
   options: {
     /** Issuer name shown in authenticator apps (e.g. "My App"). */
     issuer: string;
-    /** Number of digits in each code (default: 6). */
+    /**
+     * Number of digits in each code (default: 6).
+     *
+     * @defaultValue 6
+     */
     digits: number;
-    /** Time period in seconds for code rotation (default: 30). */
+    /**
+     * Time period in seconds for code rotation (default: 30).
+     *
+     * @defaultValue 30
+     */
     period: number;
   };
 }
@@ -661,8 +795,52 @@ export type AuthProviderSignInResult = {
   sessionId: GenericId<"Session">;
 } | null;
 
-/** Server-side auth helpers available on enriched action contexts. */
+/** Arguments for `auth.member.resolve()`. */
+export type AuthMemberResolveArgs = {
+  userId: GenericId<"User">;
+  groupId: GenericId<"Group">;
+  ancestry?: boolean;
+  roleIds?: string[];
+  grants?: string[];
+  maxDepth?: number;
+};
+
+/** Result of `auth.member.resolve()` — membership check with role and grant details. */
+export type AuthMemberResolveResult = {
+  ok: boolean;
+  membership: GenericDoc<GenericDataModel, "GroupMember"> | null;
+  matchedGroupId: GenericId<"Group"> | null;
+  roleIds: string[];
+  grants: string[];
+  missingGrants: string[];
+  depth: number | null;
+  isDirect: boolean;
+  isInherited: boolean;
+  traversedGroupIds: GenericId<"Group">[];
+  code?: "INVALID_ROLE_IDS";
+  invalidRoleIds?: string[];
+};
+
+/**
+ * Server-side auth helper methods injected into `ctx.auth` within provider actions.
+ *
+ * Provides programmatic access to account management, session lifecycle,
+ * membership resolution, and provider sign-in from within Convex actions
+ * that use {@link GenericActionCtxWithAuthConfig}.
+ *
+ * @see {@link GenericActionCtxWithAuthConfig}
+ *
+ * @example
+ * ```ts
+ * // Inside a credentials provider's authorize callback:
+ * const { account, user } = await ctx.auth.account.get(ctx, {
+ *   provider: "password",
+ *   account: { id: email },
+ * });
+ * ```
+ */
 export type AuthServerHelpers = {
+  /** Account management: create, retrieve, and update provider-linked accounts. */
   account: {
     create: (
       ctx: GenericActionCtx<any>,
@@ -697,26 +875,11 @@ export type AuthServerHelpers = {
       except: GenericId<"Session">[];
     }>;
   };
-  access: {
-    check: (
+  member: {
+    resolve: (
       ctx: GenericActionCtx<any>,
-      args: {
-        userId: GenericId<"User">;
-        groupId: GenericId<"Group">;
-        grants: string[];
-        maxDepth?: number;
-      },
-    ) => Promise<{
-      ok: boolean;
-      grants: string[];
-      missingGrants: string[];
-      roleIds: string[];
-      matchedGroupId: GenericId<"Group"> | null;
-      membership: GenericDoc<GenericDataModel, "GroupMember"> | null;
-      isDirect: boolean;
-      isInherited: boolean;
-      depth: number | null;
-    }>;
+      args: AuthMemberResolveArgs,
+    ) => Promise<AuthMemberResolveResult>;
   };
   provider: {
     signIn: (
@@ -730,6 +893,8 @@ export type AuthServerHelpers = {
 /**
  * Your `ActionCtx` enriched with `ctx.auth.config` field with
  * the config passed to `createAuth`.
+ *
+ * @typeParam DataModel - The Convex data model.
  */
 export type GenericActionCtxWithAuthConfig<DataModel extends GenericDataModel> =
   GenericActionCtx<DataModel> & {
@@ -751,11 +916,22 @@ export type ConvexAuthMaterializedConfig = {
   "component" | "session" | "jwt" | "signIn" | "callbacks" | "authorization"
 >;
 
+/**
+ * Maps SAML assertion attribute names to user profile fields.
+ *
+ * Use this to tell the SSO flow which SAML attributes correspond to
+ * the user's subject identifier, email, and display name fields.
+ */
 export interface SAMLAttributeMapping {
+  /** SAML attribute for the unique subject identifier (NameID). */
   subject?: string;
+  /** SAML attribute for the user's email address. */
   email?: string;
+  /** SAML attribute for the user's full display name. */
   name?: string;
+  /** SAML attribute for the user's first / given name. */
   firstName?: string;
+  /** SAML attribute for the user's last / family name. */
   lastName?: string;
 }
 
@@ -763,20 +939,40 @@ export interface SAMLAttributeMapping {
  * Materialized OAuth provider config (Arctic-based).
  *
  * Carries the Arctic provider instance along with scopes and profile config.
- * Produced by materializing an `OAuthProviderInstance` during `configDefaults`.
+  * Produced by materializing an `OAuthProviderInstance` during `configDefaults`.
  */
 export interface OAuthMaterializedConfig {
+  /**
+   * Provider identifier (e.g. `"google"`, `"github"`).
+   * @readonly
+   */
   readonly id: string;
+  /**
+   * Discriminant for provider type routing.
+   * @readonly
+   */
   readonly type: "oauth";
-  /** The Arctic provider instance. */
+  /**
+   * The Arctic provider instance.
+   * @readonly
+   */
   readonly provider: any;
-  /** OAuth scopes to request. */
+  /**
+   * OAuth scopes to request.
+   * @readonly
+   */
   readonly scopes: string[];
-  /** User-provided profile extraction callback. */
+  /**
+   * User-provided profile extraction callback.
+   * @readonly
+   */
   readonly profile?: (
     tokens: import("arctic").OAuth2Tokens,
   ) => Promise<OAuthProfile>;
-  /** Account-linking policy for OAuth identities. Defaults to verified email linking. */
+  /**
+   * Account-linking policy for OAuth identities. Defaults to verified email linking.
+   * @readonly
+   */
   readonly accountLinking?: "verifiedEmail" | "none";
 }
 
@@ -909,6 +1105,9 @@ export interface KeyRecord {
  * Options for paginated list queries. Every entity list method uses this
  * same shape with entity-specific `TWhere` and `TOrderBy` type parameters.
  *
+ * @typeParam TWhere - The type of the optional filter object.
+ * @typeParam TOrderBy - The union of sortable field names.
+ *
  * ```ts
  * const result = await auth.group.list(ctx, {
  *   where: { type: "team" },
@@ -936,6 +1135,8 @@ export type ListOptions<
 
 /**
  * Paginated list result returned by every entity list method.
+ *
+ * @typeParam T - The type of items in the result array.
  */
 export type ListResult<T> = {
   /** The page of items. */
@@ -1135,7 +1336,6 @@ export type AuthComponentApi = {
     memberAdd: FunctionReference<"mutation", "internal">;
     memberGet: FunctionReference<"query", "internal">;
     memberList: FunctionReference<"query", "internal">;
-    memberListByUser: FunctionReference<"query", "internal">;
     memberGetByGroupAndUser: FunctionReference<"query", "internal">;
     memberRemove: FunctionReference<"mutation", "internal">;
     memberUpdate: FunctionReference<"mutation", "internal">;
@@ -1150,7 +1350,6 @@ export type AuthComponentApi = {
     keyGetByHashedKey: FunctionReference<"query", "internal">;
     keyGetById: FunctionReference<"query", "internal">;
     keyList: FunctionReference<"query", "internal">;
-    keyListByUserId: FunctionReference<"query", "internal">;
     keyPatch: FunctionReference<"mutation", "internal">;
     keyDelete: FunctionReference<"mutation", "internal">;
     passkeyInsert: FunctionReference<"mutation", "internal">;
@@ -1627,9 +1826,21 @@ export async function queryKeysByUserId(
   ctx: ComponentCallCtx,
   userId: string,
 ): Promise<KeyDoc[]> {
-  return (await ctx.runQuery(ctx.auth.config.component.public.keyListByUserId, {
-    userId,
-  })) as KeyDoc[];
+  const items: KeyDoc[] = [];
+  let cursor: string | null = null;
+  do {
+    const page = (await ctx.runQuery(ctx.auth.config.component.public.keyList, {
+      where: { userId },
+      limit: 100,
+      cursor,
+    })) as {
+      items: KeyDoc[];
+      nextCursor: string | null;
+    };
+    items.push(...page.items);
+    cursor = page.nextCursor;
+  } while (cursor !== null);
+  return items;
 }
 
 export async function queryKeyById(

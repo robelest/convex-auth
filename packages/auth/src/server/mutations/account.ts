@@ -3,12 +3,12 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { Infer, v } from "convex/values";
 
 import { authDb } from "../db";
-import { AuthError } from "../fx";
-import { GetProviderOrThrowFunc, hash } from "../provider";
-import * as Provider from "../provider";
+import { AuthError } from "../authError";
+import { GetProviderOrThrowFunc, hash } from "../crypto";
+import * as Provider from "../crypto";
 import { MutationCtx } from "../types";
 import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils";
-import { AUTH_STORE_REF } from "./store";
+import { AUTH_STORE_REF } from "./store/refs";
 
 export const modifyAccountArgs = v.object({
   provider: v.string(),

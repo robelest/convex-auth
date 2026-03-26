@@ -1,4 +1,4 @@
-import { AuthError } from "./fx";
+import { AuthError } from "./authError";
 import { ConvexAuthMaterializedConfig } from "./types";
 import { requireEnv } from "./utils";
 

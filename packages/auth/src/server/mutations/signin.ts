@@ -1,14 +1,14 @@
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { GenericId, Infer, v } from "convex/values";
 
-import * as Provider from "../provider";
+import * as Provider from "../crypto";
 import {
   createNewAndDeleteExistingSession,
   maybeGenerateTokensForSession,
 } from "../sessions";
 import { MutationCtx, SessionInfo } from "../types";
 import { LOG_LEVELS, logWithLevel } from "../utils";
-import { AUTH_STORE_REF } from "./store";
+import { AUTH_STORE_REF } from "./store/refs";
 
 export const signInArgs = v.object({
   userId: v.string(),

@@ -1,4 +1,4 @@
-import { AuthError } from "./fx";
+import { AuthError } from "./authError";
 
 /** @internal */
 export function userIdFromIdentitySubject(subject: string): string {

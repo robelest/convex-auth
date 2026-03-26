@@ -3,20 +3,22 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { Infer, v } from "convex/values";
 
 import { authDb } from "../db";
-import { AuthError } from "../fx";
-import * as Provider from "../provider";
+import { AuthError } from "../authError";
+import * as Provider from "../crypto";
+import {
+  createSyntheticOAuthMaterializedConfig,
+} from "../enterprise/oidc";
+import { normalizeEnterprisePolicy } from "../enterprise/policy";
 import {
   ENTERPRISE_OIDC_PROVIDER_PREFIX,
   ENTERPRISE_SAML_PROVIDER_PREFIX,
-  createSyntheticOAuthMaterializedConfig,
   isEnterpriseProviderId,
-  normalizeEnterprisePolicy,
-} from "../sso";
+} from "../enterprise/shared";
 import { MutationCtx } from "../types";
 import type { AuthProviderMaterializedConfig } from "../types";
 import { upsertUserAndAccount } from "../users";
 import { generateRandomString, logWithLevel, sha256 } from "../utils";
-import { AUTH_STORE_REF } from "./store";
+import { AUTH_STORE_REF } from "./store/refs";
 
 const OAUTH_SIGN_IN_EXPIRATION_MS = 1000 * 60 * 2; // 2 minutes
 

@@ -2,7 +2,7 @@ import { Fx } from "@robelest/fx";
 import { GenericId } from "convex/values";
 
 import { authDb } from "./db";
-import { AuthError } from "./fx";
+import { AuthError } from "./authError";
 import { Doc, MutationCtx } from "./types";
 import { ConvexAuthConfig } from "./types";
 import {

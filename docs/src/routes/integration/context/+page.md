@@ -78,11 +78,17 @@ export const publicQuery = customQuery(
 const authCtx = AuthCtx(auth, {
   resolve: async (ctx, user) => {
     const groupId = user?.extend?.lastActiveGroup;
-    const membership = await auth.member.getByUserAndGroup(ctx, {
+    if (!groupId) {
+      return { groupId: null, roleIds: ["member"] };
+    }
+    const resolution = await auth.member.resolve(ctx, {
       userId: user._id,
       groupId,
     });
-    return { groupId, roleIds: membership?.roleIds ?? ["member"] };
+    return {
+      groupId,
+      roleIds: resolution.membership?.roleIds ?? ["member"],
+    };
   },
 });
 // ctx.auth.groupId and ctx.auth.roleIds available in all handlers

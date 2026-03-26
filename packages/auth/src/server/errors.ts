@@ -191,6 +191,8 @@ export type AuthErrorCode = keyof typeof AUTH_ERRORS;
  *   throwAuthError("FORBIDDEN");
  * }
  * ```
+ *
+ * @throws {ConvexError} Always — throws a `ConvexError` with `{ code, message }` payload.
  */
 export function throwAuthError(
   code: AuthErrorCode,

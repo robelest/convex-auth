@@ -133,7 +133,7 @@ export async function authorized(
     return;
   }
 
-  const result = await auth.access.check(ctx, {
+  const result = await auth.member.resolve(ctx, {
     userId: input.userId,
     groupId: input.resolvedGroupId,
     grants: [input.permission],

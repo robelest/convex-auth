@@ -1,6 +1,6 @@
 import { DOMParser } from "@xmldom/xmldom";
 import { BigInteger, KEYUTIL, KJUR } from "jsrsasign";
-import { evaluateXPathToNodes } from "fontoxpath";
+import { evaluateXPathToNodes } from "./fontoxpath";
 
 const XMLENC_NS = "http://www.w3.org/2001/04/xmlenc#";
 

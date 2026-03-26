@@ -1,7 +1,7 @@
 import { DOMParser } from "@xmldom/xmldom";
 import { C14nNode, C14nProcessOptions, getTransformByAlgorithm } from "./c14n";
 import { b64tohex, hextob64, KJUR, KEYUTIL, Signature } from "jsrsasign";
-import { evaluateXPathToNodes } from "fontoxpath";
+import { evaluateXPathToNodes } from "./fontoxpath";
 
 export type BinaryLike = string | Uint8Array;
 

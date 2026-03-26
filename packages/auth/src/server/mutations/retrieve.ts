@@ -3,16 +3,16 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { Infer, v } from "convex/values";
 
 import { authDb } from "../db";
-import { AuthError } from "../fx";
-import * as Provider from "../provider";
+import { AuthError } from "../authError";
+import * as Provider from "../crypto";
 import {
   isSignInRateLimited,
   recordFailedSignIn,
   resetSignInRateLimit,
-} from "../ratelimit";
+} from "../limits";
 import { Doc, MutationCtx } from "../types";
 import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils";
-import { AUTH_STORE_REF } from "./store";
+import { AUTH_STORE_REF } from "./store/refs";
 
 export const retrieveAccountWithCredentialsArgs = v.object({
   provider: v.string(),
@@ -107,7 +107,3 @@ export const callRetrieveAccountWithCredentials = async <
     },
   });
 };
-
-/** @deprecated Typo kept for backward compatibility. */
-export const callRetreiveAccountWithCredentials =
-  callRetrieveAccountWithCredentials;

@@ -29,6 +29,12 @@ export const TABLES = {
 
 export const vTag = v.object({ key: v.string(), value: v.string() });
 
+export const vPaginated = (item: any) =>
+  v.object({
+    items: v.array(item),
+    nextCursor: v.union(v.string(), v.null()),
+  });
+
 export const vInviteStatus = v.union(
   v.literal("pending"),
   v.literal("accepted"),

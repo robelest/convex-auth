@@ -36,9 +36,12 @@ bun add @robelest/convex-auth
 Before running setup:
 
 - Run from your app project root (must include `package.json`).
-- Make sure a Convex deployment can be resolved. By default the CLI reads
-  `CONVEX_DEPLOYMENT` (usually set by `npx convex dev`), or you can pass
-  `--prod`, `--preview-name`, `--deployment-name`, `--url`, or `--admin-key`.
+- Make sure a Convex deployment can be resolved. By default the CLI reads a
+  typed `CONVEX_DEPLOYMENT` like `dev:my-deployment` (usually set by
+  `npx convex dev`), or you can pass `--prod`, `--preview-name`,
+  `--deployment-name`, `--url`, or `--admin-key`.
+- Use `--url` for explicit or self-hosted targets. Typed deployment and
+  admin-key parsing only applies to Convex Cloud selections.
 
 ```bash
 bunx @robelest/convex-auth

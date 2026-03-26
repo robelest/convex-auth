@@ -3,10 +3,10 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { GenericId, Infer, v } from "convex/values";
 
 import { authDb } from "../db";
-import { AuthError } from "../fx";
-import * as Provider from "../provider";
+import { AuthError } from "../authError";
+import * as Provider from "../crypto";
 import { MutationCtx } from "../types";
-import { AUTH_STORE_REF } from "./store";
+import { AUTH_STORE_REF } from "./store/refs";
 
 export const verifierSignatureArgs = v.object({
   verifier: v.string(),

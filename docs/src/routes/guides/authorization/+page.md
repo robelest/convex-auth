@@ -14,7 +14,7 @@ Convex Auth's authorization model is:
 
 - app-defined roles in `createAuth({ authorization: { roles } })`
 - per-group membership assignment via `roleIds`
-- grant-based enforcement via `auth.access.check(...)`
+- grant-based enforcement via `auth.member.resolve(...)`
 
 ## Define roles
 
@@ -109,7 +109,7 @@ This is intentional:
 Read identity from `auth.user.*`, then read profile fields from the user
 document.
 
-## Access check pattern
+## Authorization pattern
 
 ```ts
 import { query } from "./_generated/server";
@@ -122,7 +122,7 @@ export const canAccessAdminTools = query({
     if (userId === null) {
       return false;
     }
-    const result = await auth.access.check(ctx, {
+    const result = await auth.member.resolve(ctx, {
       userId,
       groupId: "group_id_here",
       grants: ["admin.tools.read"],
@@ -135,7 +135,7 @@ export const canAccessAdminTools = query({
 Prefer checking grants instead of checking role names directly.
 
 ```ts
-const result = await auth.access.check(ctx, {
+const result = await auth.member.resolve(ctx, {
   userId,
   groupId: orgId,
   grants: ["sso.connection.manage"],
@@ -152,7 +152,7 @@ inherited membership, but access decisions should usually be expressed in
 grants.
 
 ```ts
-const membership = await auth.member.resolve(ctx, {
+const resolution = await auth.member.resolve(ctx, {
   userId,
   groupId: teamId,
   grants: ["members.read"],
@@ -162,7 +162,7 @@ const membership = await auth.member.resolve(ctx, {
 ## Performance: derive permissions from resolved grants
 
 When you already have a user's resolved grants (e.g. from `member.resolve`), you
-can derive permissions locally instead of making separate `access.check` calls:
+can derive permissions locally instead of making separate authorization calls:
 
 ```ts
 const workspace = await auth.member.resolve(ctx, { userId, groupId });
@@ -223,6 +223,5 @@ This is why authorization should be keyed on `userId`, not provider account IDs.
 
 See also:
 
-- [`auth.access`](/api/access)
 - [`auth.member`](/api/member)
 - [Enterprise RPC](/sso/rpc)

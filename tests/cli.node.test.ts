@@ -1,4 +1,5 @@
 import {
+  readConvexDeployment,
   deploymentTypeFromAdminKey,
   doesAlreadyMatchTemplate,
   isPreviewDeployKey,
@@ -6,7 +7,20 @@ import {
   templateToSource,
 } from "@robelest/convex-auth/cli/index";
 import { generateKeys } from "@robelest/convex-auth/cli/keys";
-import { expect, test } from "vite-plus/test";
+import { expect, test, vi } from "vite-plus/test";
+
+function expectProcessExit(fn: () => unknown) {
+  const exit = vi.spyOn(process, "exit").mockImplementation(((
+    code?: string | number | null,
+  ) => {
+    throw new Error(`process.exit:${code ?? ""}`);
+  }) as never);
+  try {
+    expect(fn).toThrow(/process\.exit:1/);
+  } finally {
+    exit.mockRestore();
+  }
+}
 
 // ---- templateToSource ----
 
@@ -59,10 +73,8 @@ test("stripDeploymentTypePrefix strips prod: prefix", () => {
   );
 });
 
-test("stripDeploymentTypePrefix returns raw string without prefix", () => {
-  expect(stripDeploymentTypePrefix("tall-forest-1234")).toBe(
-    "tall-forest-1234",
-  );
+test("stripDeploymentTypePrefix rejects untyped deployments", () => {
+  expectProcessExit(() => stripDeploymentTypePrefix("tall-forest-1234"));
 });
 
 // ---- deploymentTypeFromAdminKey ----
@@ -79,8 +91,20 @@ test("deploymentTypeFromAdminKey extracts dev type", () => {
   );
 });
 
-test("deploymentTypeFromAdminKey returns null for legacy keys", () => {
-  expect(deploymentTypeFromAdminKey("legacyKeyWithoutColons")).toBeNull();
+test("deploymentTypeFromAdminKey rejects untyped keys", () => {
+  expectProcessExit(() => deploymentTypeFromAdminKey("legacyKeyWithoutColons"));
+});
+
+test("readConvexDeployment allows self-hosted admin keys with explicit url", () => {
+  expect(
+    readConvexDeployment({
+      url: "http://127.0.0.1:3210",
+      adminKey: "convex-self-hosted|secretkey",
+    }),
+  ).toMatchObject({
+    name: "http://127.0.0.1:3210",
+    type: null,
+  });
 });
 
 // ---- isPreviewDeployKey ----

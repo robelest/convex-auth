@@ -2,7 +2,9 @@ import type { Fx as FxType } from "@robelest/fx";
 import { GenericId } from "convex/values";
 
 import { handleDevice } from "./device";
-import { AuthError, Fx } from "./fx";
+import { Fx } from "@robelest/fx";
+
+import { AuthError } from "./authError";
 import {
   callCreateVerificationCode,
   callRefreshSession,

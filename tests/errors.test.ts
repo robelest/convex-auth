@@ -4,7 +4,7 @@ import {
   parseAuthError,
   throwAuthError,
 } from "@robelest/convex-auth/server/errors";
-import { AuthError } from "@robelest/convex-auth/server/fx";
+import { AuthError } from "../packages/auth/src/server/authError";
 import { ConvexError } from "convex/values";
 import { expect, test } from "vite-plus/test";
 

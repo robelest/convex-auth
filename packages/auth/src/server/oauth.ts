@@ -13,7 +13,7 @@ import { Fx } from "@robelest/fx";
 import * as arctic from "arctic";
 
 import { SHARED_COOKIE_OPTIONS } from "./cookies";
-import { AuthError } from "./fx";
+import { AuthError } from "./authError";
 import type { OAuthProfile } from "./types";
 import { logWithLevel } from "./utils";
 import { isLocalHost } from "./utils";

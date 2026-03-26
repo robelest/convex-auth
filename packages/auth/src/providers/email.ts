@@ -7,6 +7,12 @@
 import { defaultMagicLinkEmail } from "../server/templates";
 import type { EmailConfig } from "../server/types";
 
+/**
+ * User-facing configuration for the {@link Email} provider.
+ *
+ * Use this to wire your email delivery service into Convex Auth's magic-link
+ * or OTP flow.
+ */
 export interface EmailProviderConfig {
   /** Sender address (e.g. "My App <noreply@example.com>"). */
   from: string;
@@ -23,10 +29,34 @@ export interface EmailProviderConfig {
   maxAge?: number;
 }
 
+/**
+ * Email provider for magic-link or one-time-code sign-in.
+ *
+ * Sends verification emails through your `send()` implementation and converts
+ * the result into Convex Auth's internal email-provider runtime shape.
+ *
+ * @example
+ * ```ts
+ * import { Email } from "@robelest/convex-auth/providers";
+ *
+ * const email = new Email({
+ *   from: "My App <noreply@example.com>",
+ *   send: async (_ctx, { to, subject, html }) => {
+ *     await resend.emails.send({ from: "noreply@example.com", to, subject, html });
+ *   },
+ * });
+ * ```
+ */
 export class Email {
   readonly id: string;
   readonly type = "email" as const;
 
+  /**
+   * Create an email provider instance.
+   *
+   * @param config - Email transport and provider settings.
+   * @throws {Error} When `config.from` is empty or whitespace-only.
+   */
   constructor(public readonly config: EmailProviderConfig) {
     const from = config.from.trim();
     if (from.length === 0) {

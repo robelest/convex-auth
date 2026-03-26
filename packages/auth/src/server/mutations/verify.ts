@@ -3,12 +3,12 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { Infer, v } from "convex/values";
 
 import { authDb } from "../db";
-import * as Provider from "../provider";
+import * as Provider from "../crypto";
 import {
   isSignInRateLimited,
   recordFailedSignIn,
   resetSignInRateLimit,
-} from "../ratelimit";
+} from "../limits";
 import {
   createNewAndDeleteExistingSession,
   getAuthSessionId,
@@ -16,13 +16,13 @@ import {
 } from "../sessions";
 import {
   createSyntheticOAuthMaterializedConfig,
-  isEnterpriseProviderId,
-} from "../sso";
+} from "../enterprise/oidc";
+import { isEnterpriseProviderId } from "../enterprise/shared";
 import { MutationCtx, SessionInfo } from "../types";
 import { upsertUserAndAccount } from "../users";
 import { LOG_LEVELS, logWithLevel, sha256 } from "../utils";
 import { requireEnv } from "../utils";
-import { AUTH_STORE_REF } from "./store";
+import { AUTH_STORE_REF } from "./store/refs";
 
 export const verifyCodeAndSignInArgs = v.object({
   params: v.any(),

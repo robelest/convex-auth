@@ -4,17 +4,23 @@ import schema from "@convex/schema";
 import { enterprise, scim, sso } from "@robelest/convex-auth/server";
 import {
   createEnterpriseOidcProvider,
+} from "@robelest/convex-auth/server/enterprise/oidc";
+import {
   getEnterpriseOidcUrls,
-  getPublicOidcConfig,
   getEnterpriseSamlUrls,
   isEnterpriseSamlSourceActive,
   enterpriseOidcProviderId,
   enterpriseSamlProviderId,
-  parseScimListRequest,
+} from "@robelest/convex-auth/server/enterprise/shared";
+import {
+  getPublicOidcConfig,
+  upsertProtocolConfig,
+} from "@robelest/convex-auth/server/enterprise/config";
+import {
   createServiceProviderMetadata,
   parseSamlIdpMetadata,
-  upsertProtocolConfig,
-} from "@robelest/convex-auth/server/sso";
+} from "@robelest/convex-auth/server/enterprise/saml";
+import { parseScimListRequest } from "@robelest/convex-auth/server/enterprise/scim";
 import { sha256 } from "@robelest/convex-auth/server/utils";
 import idpMetadataXml from "@robelest/samlify/test/misc/idpmeta.xml?raw";
 import { SignJWT } from "jose";

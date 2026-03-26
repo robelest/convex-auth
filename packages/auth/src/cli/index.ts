@@ -836,7 +836,7 @@ function readConvexJson(): ConvexJSON {
 // Deployment selection
 // ---------------------------------------------------------------------------
 
-function readConvexDeployment(options: {
+export function readConvexDeployment(options: {
   url?: string;
   adminKey?: string;
   prod?: boolean;
@@ -844,11 +844,19 @@ function readConvexDeployment(options: {
   deploymentName?: string;
 }) {
   const { adminKey, url, prod, previewName, deploymentName } = options;
+
+  if (url) {
+    return {
+      name: url,
+      type: null,
+      options,
+    };
+  }
+
   const adminKeyName = adminKey ? deploymentNameFromAdminKey(adminKey) : null;
   const adminKeyType = adminKey ? deploymentTypeFromAdminKey(adminKey) : null;
 
   const explicitSelection = [
-    url ? { name: adminKeyName ?? url, type: adminKeyType } : null,
     prod ? { name: adminKeyName, type: "prod" as const } : null,
     previewName ? { name: previewName, type: "preview" as const } : null,
     deploymentName ? { name: deploymentName, type: adminKeyType } : null,
@@ -869,11 +877,12 @@ function readConvexDeployment(options: {
   loadEnvFile({ path: ".env.local" });
   loadEnvFile();
   if (process.env.CONVEX_DEPLOYMENT) {
+    const type = getDeploymentTypeFromConfiguredDeployment(
+      process.env.CONVEX_DEPLOYMENT,
+    );
     return {
       name: stripDeploymentTypePrefix(process.env.CONVEX_DEPLOYMENT),
-      type: getDeploymentTypeFromConfiguredDeployment(
-        process.env.CONVEX_DEPLOYMENT,
-      ),
+      type,
       options,
     };
   }
@@ -886,20 +895,27 @@ function readConvexDeployment(options: {
 // NOTE: CONVEX CLI DEP
 // Given a deployment string like "dev:tall-forest-1234"
 // returns only the slug "tall-forest-1234".
-// If there's no prefix returns the original string.
 export function stripDeploymentTypePrefix(deployment: string) {
-  return deployment.split(":").at(-1)!;
+  const [type, name] = deployment.split(":");
+  if ((type !== "prod" && type !== "dev" && type !== "preview") || !name) {
+    logErrorAndExit(
+      "Invalid CONVEX_DEPLOYMENT.",
+      'Expected a typed deployment like "dev:my-deployment", "prod:my-deployment", or "preview:my-deployment".',
+    );
+  }
+  return name;
 }
 
 // NOTE: CONVEX CLI DEP
-// Handling legacy CONVEX_DEPLOYMENT without type prefix as well
 function getDeploymentTypeFromConfiguredDeployment(raw: string) {
   const typeRaw = raw.split(":")[0];
-  const type =
-    typeRaw === "prod" || typeRaw === "dev" || typeRaw === "preview"
-      ? typeRaw
-      : null;
-  return type;
+  if (typeRaw === "prod" || typeRaw === "dev" || typeRaw === "preview") {
+    return typeRaw;
+  }
+  logErrorAndExit(
+    "Invalid CONVEX_DEPLOYMENT.",
+    'Expected a typed deployment like "dev:my-deployment", "prod:my-deployment", or "preview:my-deployment".',
+  );
 }
 
 // NOTE: CONVEX CLI DEP
@@ -911,18 +927,20 @@ function deploymentNameFromAdminKey(adminKey: string) {
     : null;
 }
 
-// NOTE: CONVEX CLI DEP - but modified to not default to "prod"
-//
-// For current keys returns prod|dev|preview,
-// for legacy keys returns "prod".
+// NOTE: CONVEX CLI DEP
 // Examples:
 //  "prod:deploymentName|key" -> "prod"
 //  "preview:deploymentName|key" -> "preview"
 //  "dev:deploymentName|key" -> "dev"
-//  "key" -> "prod"
 export function deploymentTypeFromAdminKey(adminKey: string) {
-  const parts = adminKey.split(":");
-  return parts.length > 1 ? parts.at(0)! : null;
+  const type = adminKey.split(":")[0];
+  if (type === "prod" || type === "dev" || type === "preview") {
+    return type;
+  }
+  logErrorAndExit(
+    "Invalid admin key.",
+    'Expected a typed key like "dev:deployment|...", "prod:deployment|...", or "preview:...".',
+  );
 }
 
 // NOTE: CONVEX CLI DEP

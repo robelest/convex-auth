@@ -8,6 +8,12 @@ import { Fx } from "@robelest/fx";
 
 import type { PhoneConfig } from "../server/types";
 
+/**
+ * User-facing configuration for the {@link Phone} provider.
+ *
+ * Use this to send SMS or other phone-based verification messages during
+ * sign-in.
+ */
 export interface PhoneProviderConfig {
   /** Send the verification code to the user's phone. */
   send: PhoneConfig["sendVerificationRequest"];
@@ -17,10 +23,32 @@ export interface PhoneProviderConfig {
   maxAge?: number;
 }
 
+/**
+ * Phone provider for SMS or phone-number verification flows.
+ *
+ * Wraps your `send()` implementation and materializes the runtime behavior
+ * Convex Auth needs for short-code or magic-link-style phone verification.
+ *
+ * @example
+ * ```ts
+ * import { Phone } from "@robelest/convex-auth/providers";
+ *
+ * const phone = new Phone({
+ *   send: async ({ identifier, token }) => {
+ *     await sms.send({ to: identifier, body: `Your sign-in code is ${token}` });
+ *   },
+ * });
+ * ```
+ */
 export class Phone {
   readonly id: string;
   readonly type = "phone" as const;
 
+  /**
+   * Create a phone provider instance.
+   *
+   * @param config - Phone delivery and provider settings.
+   */
   constructor(public readonly config: PhoneProviderConfig) {
     this.id = config.id ?? "phone";
   }

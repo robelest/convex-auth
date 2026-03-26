@@ -3,8 +3,8 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { Infer, v } from "convex/values";
 
 import { authDb } from "../db";
-import { AuthError } from "../fx";
-import * as Provider from "../provider";
+import { AuthError } from "../authError";
+import * as Provider from "../crypto";
 import {
   invalidateRefreshTokensInSubtree,
   parseRefreshToken,
@@ -14,7 +14,7 @@ import {
 import { generateTokensForSession } from "../sessions";
 import { MutationCtx } from "../types";
 import { logWithLevel, maybeRedact } from "../utils";
-import { AUTH_STORE_REF } from "./store";
+import { AUTH_STORE_REF } from "./store/refs";
 
 export const refreshSessionArgs = v.object({
   refreshToken: v.string(),

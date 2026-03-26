@@ -3,10 +3,10 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { GenericId } from "convex/values";
 
 import { authDb } from "../db";
-import * as Provider from "../provider";
+import * as Provider from "../crypto";
 import { getAuthSessionId } from "../sessions";
 import { MutationCtx } from "../types";
-import { AUTH_STORE_REF } from "./store";
+import { AUTH_STORE_REF } from "./store/refs";
 
 type ReturnType = GenericId<"AuthVerifier">;
 

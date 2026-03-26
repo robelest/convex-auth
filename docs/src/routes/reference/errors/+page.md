@@ -21,8 +21,8 @@ if (userId === null) {
   // handle not signed in
 }
 
-// For access checks:
-const result = await auth.access.check(ctx, {
+// For authorization checks:
+const result = await auth.member.resolve(ctx, {
   userId,
   groupId,
   grants: ["some.grant"],

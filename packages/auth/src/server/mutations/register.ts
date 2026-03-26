@@ -3,14 +3,14 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { Infer, v } from "convex/values";
 
 import { authDb } from "../db";
-import { AuthError } from "../fx";
-import * as Provider from "../provider";
+import { AuthError } from "../authError";
+import * as Provider from "../crypto";
 import { getAuthSessionId } from "../sessions";
 import { Doc, MutationCtx } from "../types";
 import { ConvexCredentialsConfig } from "../types";
 import { upsertUserAndAccount } from "../users";
 import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils";
-import { AUTH_STORE_REF } from "./store";
+import { AUTH_STORE_REF } from "./store/refs";
 
 export const createAccountFromCredentialsArgs = v.object({
   provider: v.string(),

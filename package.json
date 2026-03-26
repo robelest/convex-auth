@@ -9,7 +9,7 @@
       "docs"
     ],
     "catalog": {
-      "@robelest/fx": "^0.0.1-preview.2",
+      "@robelest/fx": "^0.0.1-preview.4",
       "convex": "^1.34.0",
       "convex-test": "^0.0.41",
       "tsdown": "0.20.0-beta.3",
@@ -55,7 +55,7 @@
   "devDependencies": {
     "@edge-runtime/vm": "latest",
     "@oxlint/plugins": "latest",
-    "@robelest/fx": "latest",
+    "@robelest/fx": "catalog:",
     "@trestleinc/convex-oxlint": "latest",
     "@types/node": "latest",
     "@typescript/native-preview": "latest",

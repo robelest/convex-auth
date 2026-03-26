@@ -11,7 +11,9 @@ import { encodeBase32LowerCaseNoPadding } from "@oslojs/encoding";
 import { verifyTOTPWithGracePeriod, createTOTPKeyURI } from "@oslojs/otp";
 import type { Fx as FxType } from "@robelest/fx";
 
-import { AuthError, Fx } from "./fx";
+import { Fx } from "@robelest/fx";
+
+import { AuthError } from "./authError";
 import { userIdFromIdentitySubject } from "./identity";
 import { callSignIn, callVerifier } from "./mutations/index";
 import { callVerifierSignature } from "./mutations/signature";

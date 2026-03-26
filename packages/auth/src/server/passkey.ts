@@ -45,7 +45,9 @@ import {
 import type { Fx as FxType } from "@robelest/fx";
 
 import { authDb } from "./db";
-import { AuthError, Fx } from "./fx";
+import { Fx } from "@robelest/fx";
+
+import { AuthError } from "./authError";
 import { userIdFromIdentitySubject } from "./identity";
 import { callSignIn, callVerifier } from "./mutations/index";
 import { callVerifierSignature } from "./mutations/signature";
@@ -780,6 +782,3 @@ export function handlePasskeyFx(
     }),
   );
 }
-
-// Keep backward-compatible export name — callers can migrate to handlePasskeyFx
-export { handlePasskeyFx as handlePasskey };

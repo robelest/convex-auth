@@ -96,7 +96,7 @@ export async function authorized(
   if (input.resolvedGroupId === null) {
     return;
   }
-  const result = await auth.access.check(ctx, {
+  const result = await auth.member.resolve(ctx, {
     userId: input.userId,
     groupId: input.resolvedGroupId,
     grants: [input.permission],

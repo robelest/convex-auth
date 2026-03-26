@@ -58,7 +58,6 @@ export const sidebar: SidebarGroup[] = [
       { title: "auth.account", slug: "/api/account" },
       { title: "auth.group", slug: "/api/group" },
       { title: "auth.member", slug: "/api/member" },
-      { title: "auth.access", slug: "/api/access" },
       { title: "auth.invite", slug: "/api/invite" },
       { title: "auth.key", slug: "/api/key" },
       { title: "Configuration", slug: "/reference/config" },

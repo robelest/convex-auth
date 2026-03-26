@@ -12,7 +12,7 @@
 
 import { Fx } from "@robelest/fx";
 
-import { AuthError } from "./fx";
+import { AuthError } from "./authError";
 import { userIdFromIdentitySubject } from "./identity";
 import { callSignIn } from "./mutations/index";
 import { DeviceProviderConfig, GenericActionCtxWithAuthConfig } from "./types";

@@ -9,7 +9,7 @@ import {
   encodeHexLowerCase,
 } from "@oslojs/encoding";
 
-import { AuthError } from "./fx";
+import { AuthError } from "./authError";
 
 /**
  * Require an environment variable to be set, throwing at config time if missing.

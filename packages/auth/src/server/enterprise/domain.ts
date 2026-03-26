@@ -1,6 +1,8 @@
 import { GenericActionCtx, GenericDataModel } from "convex/server";
 
-import { AuthError, Fx } from "../fx";
+import { Fx } from "@robelest/fx";
+
+import { AuthError } from "../authError";
 import type { EnterprisePolicyPatch } from "../types";
 
 type ComponentCtx = Pick<
@@ -12,7 +14,7 @@ type ComponentReadCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
 /**
  * Build the enterprise and SSO management domain.
  */
-export function createSsoDomain(deps: any) {
+export function createEnterpriseDomain(deps: any) {
   const {
     config,
     normalizeEnterprisePolicy,

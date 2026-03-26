@@ -1,6 +1,6 @@
 {
   "name": "@robelest/convex-auth",
-  "version": "0.0.4-preview.18",
+  "version": "0.0.4-preview.20",
   "description": "Authentication for Convex",
   "keywords": [
     "auth",
@@ -68,10 +68,9 @@
     }
   },
   "scripts": {
-    "build:version": "vp exec node ../../scripts/generate-version.js",
     "build:lib": "vp exec tsdown",
     "build:component:dts": "vp exec node ../../scripts/fix-component-entrypoint-dts.js",
-    "build": "rm -rf dist && vp run build:version && vp run build:lib && vp run build:component:dts",
+    "build": "rm -rf dist && vp run build:lib && vp run build:component:dts",
     "typecheck": "vp exec tsc --project tsconfig.server.json --noEmit && vp exec tsc --project tsconfig.client.json --noEmit && vp exec tsc --project tsconfig.component.json --noEmit",
     "typecheck:consumer": "vp exec tsc --project tsconfig.consumer.json --noEmit",
     "check:attw": "vp exec attw --pack . --profile esm-only --exclude-entrypoints ./test ./_generated/component.js",
