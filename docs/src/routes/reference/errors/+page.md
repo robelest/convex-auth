@@ -10,27 +10,34 @@ description: Structured error codes returned by convex-auth.
 
 # Error Codes
 
-All errors are `ConvexError` instances with `{ code, message }`. Use
-`isAuthError(error)` or `parseAuthError(error)` to detect and parse them.
+All auth errors are plain `ConvexError` instances with a `{ code, message }`
+payload. There are no special helpers needed - catch them directly with
+`ConvexError` from the `convex/values` package.
 
 ```ts
-import { isAuthError, parseAuthError } from "@robelest/convex-auth/errors";
+// Unauthenticated callers never reach the handler.
+export const authQuery = customQuery(query, auth.ctx());
+```
 
-const userId = await auth.user.id(ctx);
-if (userId === null) {
-  // handle not signed in
-}
+`auth.ctx()` throws `NOT_SIGNED_IN` before your handler runs. In lower-level
+middleware or custom integrations, `auth.context(ctx)` throws the same
+structured error.
 
-// For authorization checks:
-const result = await auth.member.resolve(ctx, {
-  userId,
-  groupId,
-  grants: ["some.grant"],
-});
-if (!result.ok) {
-  if (isAuthError(result.error)) {
-    const { code, message } = parseAuthError(result.error)!;
-    // code: "FORBIDDEN"
+For authorization checks, `auth.member.require(...)` also throws a `ConvexError`
+on failure:
+
+```ts
+import { ConvexError } from "convex/values";
+
+try {
+  await auth.member.require(ctx, {
+    userId,
+    groupId,
+    grants: ["some.grant"],
+  });
+} catch (e) {
+  if (e instanceof ConvexError) {
+    console.log(e.data.code); // e.g. "NOT_A_MEMBER" or "MISSING_GRANTS"
   }
 }
 ```
@@ -39,13 +46,17 @@ if (!result.ok) {
 
 | Code                      | Description                      |
 | ------------------------- | -------------------------------- |
-| `NOT_SIGNED_IN`           | No valid session or API key      |
-| `FORBIDDEN`               | Authenticated but not authorized |
+| `NOT_SIGNED_IN`           | No valid session                 |
+| `NOT_A_MEMBER`            | User is not a member of the group |
+| `MISSING_GRANTS`          | User is missing required grants   |
 | `ACCOUNT_NOT_FOUND`       | Account does not exist           |
 | `USER_NOT_FOUND`          | User does not exist              |
 | `INVALID_PARAMETERS`      | Bad input arguments              |
 | `INTERNAL_ERROR`          | Unexpected server error          |
 | `PROVIDER_NOT_CONFIGURED` | Provider not in config           |
+
+Mounted enterprise admin APIs may also throw `FORBIDDEN` when the app-level
+authorization callback rejects the caller.
 
 ## API key errors
 

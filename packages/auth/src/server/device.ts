@@ -11,8 +11,9 @@
  */
 
 import { Fx } from "@robelest/fx";
+import { Cv } from "@robelest/fx/convex";
+import { ConvexError } from "convex/values";
 
-import { AuthError } from "./authError";
 import { userIdFromIdentitySubject } from "./identity";
 import { callSignIn } from "./mutations/index";
 import { DeviceProviderConfig, GenericActionCtxWithAuthConfig } from "./types";
@@ -69,7 +70,7 @@ export const handleDevice = (
   ctx: EnrichedActionCtx,
   provider: DeviceProviderConfig,
   args: { params?: Record<string, any> },
-): Fx<DeviceResult, AuthError> =>
+): Fx<DeviceResult, ConvexError<any>> =>
   Fx.from({
     ok: async () => {
       const params = (args.params ?? {}) as Record<string, unknown>;
@@ -79,10 +80,11 @@ export const handleDevice = (
         | "verify";
 
       if (!DEVICE_FLOWS.some((candidate) => candidate === flow)) {
-        throw new AuthError(
-          "DEVICE_MISSING_FLOW",
-          "Missing `flow` parameter. Expected one of: create, poll, verify",
-        );
+        throw Cv.error({
+          code: "DEVICE_MISSING_FLOW",
+          message:
+            "Missing `flow` parameter. Expected one of: create, poll, verify",
+        });
       }
 
       if (flow === "create") {
@@ -126,43 +128,61 @@ export const handleDevice = (
 
       if (flow === "poll") {
         if (typeof params.deviceCode !== "string") {
-          throw new AuthError(
-            "DEVICE_MISSING_FLOW",
-            "Missing `deviceCode` parameter for poll flow.",
-          );
+          throw Cv.error({
+            code: "DEVICE_MISSING_FLOW",
+            message: "Missing `deviceCode` parameter for poll flow.",
+          });
         }
 
         const hash = await sha256(params.deviceCode);
         const doc = await queryDeviceByCodeHash(ctx, hash);
         if (doc === null) {
-          throw new AuthError("DEVICE_CODE_EXPIRED");
+          throw Cv.error({
+            code: "DEVICE_CODE_EXPIRED",
+            message:
+              "The device code has expired. Please start a new authorization request.",
+          });
         }
         if (Date.now() > doc.expiresAt) {
           await mutateDeviceDelete(ctx, doc._id);
-          throw new AuthError("DEVICE_CODE_EXPIRED");
+          throw Cv.error({
+            code: "DEVICE_CODE_EXPIRED",
+            message:
+              "The device code has expired. Please start a new authorization request.",
+          });
         }
         if (
           doc.lastPolledAt !== undefined &&
           (Date.now() - doc.lastPolledAt) / 1000 < doc.interval
         ) {
-          throw new AuthError("DEVICE_SLOW_DOWN");
+          throw Cv.error({
+            code: "DEVICE_SLOW_DOWN",
+            message:
+              "Polling too frequently. Increase the interval between requests.",
+          });
         }
 
         await mutateDeviceUpdateLastPolled(ctx, doc._id, Date.now());
 
         if (doc.status === "pending") {
-          throw new AuthError("DEVICE_AUTHORIZATION_PENDING");
+          throw Cv.error({
+            code: "DEVICE_AUTHORIZATION_PENDING",
+            message: "The user has not yet authorized this device.",
+          });
         }
         if (doc.status === "denied") {
           await mutateDeviceDelete(ctx, doc._id);
-          throw new AuthError("DEVICE_CODE_DENIED");
+          throw Cv.error({
+            code: "DEVICE_CODE_DENIED",
+            message: "The authorization request was denied.",
+          });
         }
 
         if (!doc.userId || !doc.sessionId) {
-          throw new AuthError(
-            "INTERNAL_ERROR",
-            "Authorized device code missing userId or sessionId",
-          );
+          throw Cv.error({
+            code: "INTERNAL_ERROR",
+            message: "Authorized device code missing userId or sessionId",
+          });
         }
 
         await mutateDeviceDelete(ctx, doc._id);
@@ -175,31 +195,41 @@ export const handleDevice = (
       }
 
       if (typeof params.userCode !== "string") {
-        throw new AuthError(
-          "DEVICE_INVALID_USER_CODE",
-          "Missing `userCode` parameter for verify flow.",
-        );
+        throw Cv.error({
+          code: "DEVICE_INVALID_USER_CODE",
+          message: "Missing `userCode` parameter for verify flow.",
+        });
       }
 
       const identity = await ctx.auth.getUserIdentity();
       if (identity === null) {
-        throw new AuthError(
-          "NOT_SIGNED_IN",
-          "You must be signed in to authorize a device.",
-        );
+        throw Cv.error({
+          code: "NOT_SIGNED_IN",
+          message: "You must be signed in to authorize a device.",
+        });
       }
 
       const userId = userIdFromIdentitySubject(identity.subject);
       const doc = await queryDeviceByUserCode(ctx, params.userCode);
       if (doc === null) {
-        throw new AuthError("DEVICE_INVALID_USER_CODE");
+        throw Cv.error({
+          code: "DEVICE_INVALID_USER_CODE",
+          message: "Invalid or expired user code.",
+        });
       }
       if (Date.now() > doc.expiresAt) {
         await mutateDeviceDelete(ctx, doc._id);
-        throw new AuthError("DEVICE_CODE_EXPIRED");
+        throw Cv.error({
+          code: "DEVICE_CODE_EXPIRED",
+          message:
+            "The device code has expired. Please start a new authorization request.",
+        });
       }
       if (doc.status !== "pending") {
-        throw new AuthError("DEVICE_ALREADY_AUTHORIZED");
+        throw Cv.error({
+          code: "DEVICE_ALREADY_AUTHORIZED",
+          message: "This device code has already been authorized.",
+        });
       }
 
       const signInResult = await callSignIn(ctx, {
@@ -215,7 +245,10 @@ export const handleDevice = (
       return { kind: "signedIn" as const, signedIn: null };
     },
     err: (e) =>
-      e instanceof AuthError
+      e instanceof ConvexError
         ? e
-        : new AuthError("INTERNAL_ERROR", `Device flow failed: ${String(e)}`),
+        : Cv.error({
+            code: "INTERNAL_ERROR",
+            message: `Device flow failed: ${String(e)}`,
+          }),
   });

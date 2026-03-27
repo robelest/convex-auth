@@ -10,10 +10,10 @@
 import { encodeBase32LowerCaseNoPadding } from "@oslojs/encoding";
 import { verifyTOTPWithGracePeriod, createTOTPKeyURI } from "@oslojs/otp";
 import type { Fx as FxType } from "@robelest/fx";
-
 import { Fx } from "@robelest/fx";
+import { Cv } from "@robelest/fx/convex";
+import type { ConvexError } from "convex/values";
 
-import { AuthError } from "./authError";
 import { userIdFromIdentitySubject } from "./identity";
 import { callSignIn, callVerifier } from "./mutations/index";
 import { callVerifierSignature } from "./mutations/signature";
@@ -70,43 +70,48 @@ type TotpDispatch =
 
 const resolveTotpFlowFx = (
   params: Record<string, unknown>,
-): FxType<TotpFlow, AuthError> => {
+): FxType<TotpFlow, ConvexError<any>> => {
   const flow = params.flow;
   return typeof flow === "string" && TOTP_FLOWS.includes(flow as never)
     ? Fx.succeed(flow as TotpFlow)
-    : Fx.fail(
-        new AuthError(
-          "TOTP_MISSING_FLOW",
+    : Cv.fail({
+        code: "TOTP_MISSING_FLOW",
+        message:
           "Missing `flow` parameter. Expected one of: setup, confirm, verify",
-        ),
-      );
+      });
 };
 
 const requireTotpVerifierFx = (
   verifier: string | undefined,
-): FxType<string, AuthError> =>
+): FxType<string, ConvexError<any>> =>
   verifier != null
     ? Fx.succeed(verifier)
-    : Fx.fail(new AuthError("TOTP_MISSING_VERIFIER"));
+    : Cv.fail({
+        code: "TOTP_MISSING_VERIFIER",
+        message: "Missing verifier for TOTP operation.",
+      });
 
 const requireTotpCodeFx = (
   params: Record<string, unknown>,
-): FxType<string, AuthError> =>
+): FxType<string, ConvexError<any>> =>
   typeof params.code === "string"
     ? Fx.succeed(params.code)
-    : Fx.fail(new AuthError("TOTP_MISSING_CODE"));
+    : Cv.fail({ code: "TOTP_MISSING_CODE", message: "Missing TOTP code." });
 
 const requireTotpIdFx = (
   params: Record<string, unknown>,
-): FxType<string, AuthError> =>
+): FxType<string, ConvexError<any>> =>
   typeof params.totpId === "string"
     ? Fx.succeed(params.totpId)
-    : Fx.fail(new AuthError("TOTP_MISSING_ID"));
+    : Cv.fail({
+        code: "TOTP_MISSING_ID",
+        message: "Missing TOTP enrollment ID.",
+      });
 
 const resolveTotpDispatchFx = (
   params: Record<string, unknown>,
   verifier: string | undefined,
-): FxType<TotpDispatch, AuthError> =>
+): FxType<TotpDispatch, ConvexError<any>> =>
   resolveTotpFlowFx(params).pipe(
     Fx.chain((flow) =>
       Fx.match({ flow }).on("flow", {
@@ -142,7 +147,7 @@ export const handleTotp = (
   ctx: EnrichedActionCtx,
   provider: TotpProviderConfig,
   args: { params?: Record<string, any>; verifier?: string },
-): FxType<TotpResult, AuthError> => {
+): FxType<TotpResult, ConvexError<any>> => {
   const params = (args.params ?? {}) as Record<string, unknown>;
 
   return resolveTotpDispatchFx(params, args.verifier).pipe(
@@ -151,11 +156,16 @@ export const handleTotp = (
         setup: ({ params }) =>
           Fx.from({
             ok: () => ctx.auth.getUserIdentity(),
-            err: (e) => new AuthError("INTERNAL_ERROR", String(e)),
+            err: (e) =>
+              Cv.error({ code: "INTERNAL_ERROR", message: String(e) }),
           }).pipe(
             Fx.chain((identity) =>
               identity === null
-                ? Fx.fail(new AuthError("TOTP_AUTH_REQUIRED"))
+                ? Cv.fail({
+                    code: "TOTP_AUTH_REQUIRED",
+                    message:
+                      "Sign in first, then set up two-factor authentication.",
+                  })
                 : Fx.succeed(userIdFromIdentitySubject(identity.subject)),
             ),
             Fx.chain((userId) =>
@@ -213,37 +223,52 @@ export const handleTotp = (
                   };
                 },
                 err: (e) =>
-                  new AuthError(
-                    "INTERNAL_ERROR",
-                    `TOTP setup failed: ${String(e)}`,
-                  ),
+                  Cv.error({
+                    code: "INTERNAL_ERROR",
+                    message: `TOTP setup failed: ${String(e)}`,
+                  }),
               }),
             ),
           ),
         confirm: ({ code, totpId, verifier }) =>
           Fx.from({
             ok: () => ctx.auth.getUserIdentity(),
-            err: (e) => new AuthError("INTERNAL_ERROR", String(e)),
+            err: (e) =>
+              Cv.error({ code: "INTERNAL_ERROR", message: String(e) }),
           }).pipe(
             Fx.chain((identity) =>
               identity === null
-                ? Fx.fail(new AuthError("TOTP_AUTH_REQUIRED"))
+                ? Cv.fail({
+                    code: "TOTP_AUTH_REQUIRED",
+                    message:
+                      "Sign in first, then set up two-factor authentication.",
+                  })
                 : Fx.succeed(userIdFromIdentitySubject(identity.subject)),
             ),
             Fx.chain((userId) =>
               Fx.from({
                 ok: () => queryTotpById(ctx, totpId),
-                err: () => new AuthError("TOTP_NOT_FOUND"),
+                err: () =>
+                  Cv.error({
+                    code: "TOTP_NOT_FOUND",
+                    message: "TOTP enrollment not found.",
+                  }),
               })
                 .pipe(
                   Fx.chain((doc) =>
                     doc === null
-                      ? Fx.fail(new AuthError("TOTP_NOT_FOUND"))
+                      ? Cv.fail({
+                          code: "TOTP_NOT_FOUND",
+                          message: "TOTP enrollment not found.",
+                        })
                       : Fx.succeed(doc),
                   ),
                   Fx.chain((totpDoc) =>
                     totpDoc.verified
-                      ? Fx.fail(new AuthError("TOTP_ALREADY_VERIFIED"))
+                      ? Cv.fail({
+                          code: "TOTP_ALREADY_VERIFIED",
+                          message: "TOTP enrollment is already verified.",
+                        })
                       : Fx.succeed(totpDoc),
                   ),
                 )
@@ -257,7 +282,10 @@ export const handleTotp = (
                       30,
                     )
                       ? Fx.succeed(totpDoc)
-                      : Fx.fail(new AuthError("TOTP_INVALID_CODE")),
+                      : Cv.fail({
+                          code: "TOTP_INVALID_CODE",
+                          message: "Invalid TOTP code.",
+                        }),
                   ),
                 )
                 .pipe(
@@ -271,7 +299,11 @@ export const handleTotp = (
                           generateTokens: true,
                         });
                       },
-                      err: (e) => new AuthError("INTERNAL_ERROR", String(e)),
+                      err: (e) =>
+                        Cv.error({
+                          code: "INTERNAL_ERROR",
+                          message: String(e),
+                        }),
                     }),
                   ),
                 )
@@ -286,11 +318,18 @@ export const handleTotp = (
         verify: ({ code, verifier }) =>
           Fx.from({
             ok: () => queryVerifierById(ctx, verifier),
-            err: () => new AuthError("TOTP_INVALID_VERIFIER"),
+            err: () =>
+              Cv.error({
+                code: "TOTP_INVALID_VERIFIER",
+                message: "Invalid or expired TOTP verifier.",
+              }),
           }).pipe(
             Fx.chain((doc) =>
               doc === null
-                ? Fx.fail(new AuthError("TOTP_INVALID_VERIFIER"))
+                ? Cv.fail({
+                    code: "TOTP_INVALID_VERIFIER",
+                    message: "Invalid or expired TOTP verifier.",
+                  })
                 : Fx.succeed(doc),
             ),
             Fx.map((doc) => {
@@ -300,11 +339,18 @@ export const handleTotp = (
             Fx.chain(({ userId, code, verifier }) =>
               Fx.from({
                 ok: () => queryTotpVerifiedByUserId(ctx, userId),
-                err: () => new AuthError("TOTP_NO_ENROLLMENT"),
+                err: () =>
+                  Cv.error({
+                    code: "TOTP_NO_ENROLLMENT",
+                    message: "No verified TOTP enrollment found.",
+                  }),
               }).pipe(
                 Fx.chain((totpDoc) =>
                   totpDoc === null
-                    ? Fx.fail(new AuthError("TOTP_NO_ENROLLMENT"))
+                    ? Cv.fail({
+                        code: "TOTP_NO_ENROLLMENT",
+                        message: "No verified TOTP enrollment found.",
+                      })
                     : Fx.succeed(totpDoc),
                 ),
                 Fx.chain((totpDoc) =>
@@ -316,7 +362,10 @@ export const handleTotp = (
                     30,
                   )
                     ? Fx.succeed(totpDoc)
-                    : Fx.fail(new AuthError("TOTP_INVALID_CODE")),
+                    : Cv.fail({
+                        code: "TOTP_INVALID_CODE",
+                        message: "Invalid TOTP code.",
+                      }),
                 ),
                 Fx.chain((totpDoc) =>
                   Fx.from({
@@ -329,7 +378,8 @@ export const handleTotp = (
                       await mutateVerifierDelete(ctx, verifier);
                       return callSignIn(ctx, { userId, generateTokens: true });
                     },
-                    err: (e) => new AuthError("INTERNAL_ERROR", String(e)),
+                    err: (e) =>
+                      Cv.error({ code: "INTERNAL_ERROR", message: String(e) }),
                   }),
                 ),
                 Fx.map((signInResult) => ({

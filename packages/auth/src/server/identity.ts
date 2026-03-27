@@ -1,4 +1,4 @@
-import { AuthError } from "./authError";
+import { Cv } from "@robelest/fx/convex";
 
 /** @internal */
 export function userIdFromIdentitySubject(subject: string): string {
@@ -9,10 +9,10 @@ export function userIdFromIdentitySubject(subject: string): string {
     rest.length === 0 ||
     rest.some((segment) => segment.length === 0)
   ) {
-    throw new AuthError(
-      "INTERNAL_ERROR",
-      "Authenticated identity subject is malformed.",
-    );
+    throw Cv.error({
+      code: "INTERNAL_ERROR",
+      message: "Authenticated identity subject is malformed.",
+    });
   }
   return userId;
 }

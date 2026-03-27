@@ -1,6 +1,7 @@
 import { Fx } from "@robelest/fx";
+import { Cv } from "@robelest/fx/convex";
+import { ConvexError } from "convex/values";
 
-import { AuthError } from "./authError";
 import { AuthProviderMaterializedConfig } from "./types";
 import { ConvexAuthMaterializedConfig } from "./types";
 import { errorMessage } from "./utils";
@@ -12,33 +13,35 @@ import { errorMessage } from "./utils";
  * required crypto function, returning typed errors through the Fx channel.
  */
 /** @internal */
-export const hash = (provider: any, secret: string): Fx<string, AuthError> =>
+export const hash = (
+  provider: any,
+  secret: string,
+): Fx<string, ConvexError<any>> =>
   Fx.gen(function* () {
     if (provider.type !== "credentials") {
-      return yield* Fx.fail(
-        new AuthError(
-          "INVALID_CREDENTIALS_PROVIDER",
-          `Provider ${provider.id} is not a credentials provider`,
-        ),
-      );
+      return yield* Cv.fail({
+        code: "INVALID_CREDENTIALS_PROVIDER",
+        message: `Provider ${provider.id} is not a credentials provider`,
+      });
     }
 
     const hashSecretFn = provider.crypto?.hashSecret as
       | ((s: string) => Promise<string>)
       | undefined;
     if (!hashSecretFn) {
-      return yield* Fx.fail(
-        new AuthError(
-          "MISSING_CRYPTO_FUNCTION",
-          `Provider ${provider.id} does not have a \`crypto.hashSecret\` function`,
-        ),
-      );
+      return yield* Cv.fail({
+        code: "MISSING_CRYPTO_FUNCTION",
+        message: `Provider ${provider.id} does not have a \`crypto.hashSecret\` function`,
+      });
     }
 
     return yield* Fx.from({
       ok: () => hashSecretFn(secret),
       err: (e) =>
-        new AuthError("INTERNAL_ERROR", `Hash failed: ${errorMessage(e)}`),
+        Cv.error({
+          code: "INTERNAL_ERROR",
+          message: `Hash failed: ${errorMessage(e)}`,
+        }),
     });
   });
 
@@ -50,33 +53,32 @@ export const verify = (
   provider: AuthProviderMaterializedConfig,
   secret: string,
   hashValue: string,
-): Fx<boolean, AuthError> =>
+): Fx<boolean, ConvexError<any>> =>
   Fx.gen(function* () {
     if (provider.type !== "credentials") {
-      return yield* Fx.fail(
-        new AuthError(
-          "INVALID_CREDENTIALS_PROVIDER",
-          `Provider ${provider.id} is not a credentials provider`,
-        ),
-      );
+      return yield* Cv.fail({
+        code: "INVALID_CREDENTIALS_PROVIDER",
+        message: `Provider ${provider.id} is not a credentials provider`,
+      });
     }
 
     const verifySecretFn = (provider as any).crypto?.verifySecret as
       | ((s: string, h: string) => Promise<boolean>)
       | undefined;
     if (!verifySecretFn) {
-      return yield* Fx.fail(
-        new AuthError(
-          "MISSING_CRYPTO_FUNCTION",
-          `Provider ${provider.id} does not have a \`crypto.verifySecret\` function`,
-        ),
-      );
+      return yield* Cv.fail({
+        code: "MISSING_CRYPTO_FUNCTION",
+        message: `Provider ${provider.id} does not have a \`crypto.verifySecret\` function`,
+      });
     }
 
     return yield* Fx.from({
       ok: () => verifySecretFn(secret, hashValue),
       err: (e) =>
-        new AuthError("INTERNAL_ERROR", `Verify failed: ${errorMessage(e)}`),
+        Cv.error({
+          code: "INTERNAL_ERROR",
+          message: `Verify failed: ${errorMessage(e)}`,
+        }),
     });
   });
 

@@ -49,7 +49,7 @@ Set `AUTH_<PROVIDER>_ID` and `AUTH_<PROVIDER>_SECRET` on your deployment.
 ## Password
 
 ```ts
-import { Password } from "@robelest/convex-auth/providers/password";
+import { Password } from "@robelest/convex-auth/providers";
 
 createAuth(components.auth, {
   providers: [new Password()],
@@ -77,7 +77,7 @@ createAuth(components.auth, {
 ## Passkeys / WebAuthn
 
 ```ts
-import { Passkey } from "@robelest/convex-auth/providers/passkey";
+import { Passkey } from "@robelest/convex-auth/providers";
 
 createAuth(components.auth, {
   providers: [new Passkey()],
@@ -87,7 +87,7 @@ createAuth(components.auth, {
 ## TOTP (Authenticator Apps)
 
 ```ts
-import { Totp } from "@robelest/convex-auth/providers/totp";
+import { Totp } from "@robelest/convex-auth/providers";
 
 createAuth(components.auth, {
   providers: [new Totp({ issuer: "My App" })],
@@ -97,7 +97,7 @@ createAuth(components.auth, {
 ## Anonymous
 
 ```ts
-import { Anonymous } from "@robelest/convex-auth/providers/anonymous";
+import { Anonymous } from "@robelest/convex-auth/providers";
 
 createAuth(components.auth, {
   providers: [new Anonymous()],

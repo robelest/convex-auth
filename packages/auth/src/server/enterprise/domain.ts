@@ -1,8 +1,7 @@
+import { Fx } from "@robelest/fx";
+import { Cv } from "@robelest/fx/convex";
 import { GenericActionCtx, GenericDataModel } from "convex/server";
 
-import { Fx } from "@robelest/fx";
-
-import { AuthError } from "../authError";
 import type { EnterprisePolicyPatch } from "../types";
 
 type ComponentCtx = Pick<
@@ -105,7 +104,7 @@ export function createEnterpriseDomain(deps: any) {
           config?: Record<string, unknown>;
           extend?: Record<string, unknown>;
         },
-      ): Promise<{ ok: true; enterpriseId: string; groupId: string }> => {
+      ): Promise<{ enterpriseId: string; groupId: string }> => {
         const enterpriseId = (await ctx.runMutation(
           config.component.public.enterpriseCreate,
           {
@@ -114,7 +113,6 @@ export function createEnterpriseDomain(deps: any) {
           },
         )) as string;
         return {
-          ok: true,
           enterpriseId,
           groupId: data.groupId,
         };
@@ -171,13 +169,13 @@ export function createEnterpriseDomain(deps: any) {
           enterpriseId,
           data,
         });
-        return { ok: true as const, enterpriseId };
+        return { enterpriseId };
       },
       delete: async (ctx: ComponentCtx, enterpriseId: string) => {
         await ctx.runMutation(config.component.public.enterpriseDelete, {
           enterpriseId,
         });
-        return { ok: true as const, enterpriseId };
+        return { enterpriseId };
       },
       /**
        * Aggregate readiness status across all configured protocols for an
@@ -193,10 +191,10 @@ export function createEnterpriseDomain(deps: any) {
           { enterpriseId },
         );
         if (!enterprise) {
-          throw new AuthError(
-            "INVALID_PARAMETERS",
-            enterpriseNotFoundError,
-          ).toConvexError();
+          throw Cv.error({
+            code: "INVALID_PARAMETERS",
+            message: enterpriseNotFoundError,
+          });
         }
         const policy = getPolicyFromEnterprise(enterprise);
         const protocols = enterprise.config?.protocols ?? {};
@@ -293,10 +291,10 @@ export function createEnterpriseDomain(deps: any) {
           { enterpriseId },
         );
         if (enterprise === null) {
-          throw new AuthError(
-            "INVALID_PARAMETERS",
-            enterpriseNotFoundError,
-          ).toConvexError();
+          throw Cv.error({
+            code: "INVALID_PARAMETERS",
+            message: enterpriseNotFoundError,
+          });
         }
 
         const domains = await ctx.runQuery(
@@ -366,10 +364,10 @@ export function createEnterpriseDomain(deps: any) {
               entry.domain === normalizedDomain,
           );
           if (!domain) {
-            throw new AuthError(
-              "INVALID_PARAMETERS",
-              "Domain is not attached to this enterprise.",
-            ).toConvexError();
+            throw Cv.error({
+              code: "INVALID_PARAMETERS",
+              message: "Domain is not attached to this enterprise.",
+            });
           }
 
           const requestedAt = Date.now();
@@ -405,7 +403,6 @@ export function createEnterpriseDomain(deps: any) {
           });
 
           return {
-            ok: true as const,
             enterpriseId: enterprise._id,
             domain: normalizedDomain,
             requestedAt,
@@ -435,10 +432,10 @@ export function createEnterpriseDomain(deps: any) {
               entry.domain === normalizedDomain,
           );
           if (!domain) {
-            throw new AuthError(
-              "INVALID_PARAMETERS",
-              "Domain is not attached to this enterprise.",
-            ).toConvexError();
+            throw Cv.error({
+              code: "INVALID_PARAMETERS",
+              message: "Domain is not attached to this enterprise.",
+            });
           }
 
           if (domain.verifiedAt !== undefined) {
@@ -503,12 +500,13 @@ export function createEnterpriseDomain(deps: any) {
           try {
             txtValues = await resolveTxtValues(verification.recordName);
           } catch (error) {
-            throw new AuthError(
-              "INTERNAL_ERROR",
-              error instanceof Error
-                ? error.message
-                : "Failed to resolve DNS TXT records.",
-            ).toConvexError();
+            throw Cv.error({
+              code: "INTERNAL_ERROR",
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Failed to resolve DNS TXT records.",
+            });
           }
 
           checks.push({
@@ -605,16 +603,17 @@ export function createEnterpriseDomain(deps: any) {
                   enterpriseId: data.enterpriseId,
                 }),
               err: () =>
-                new AuthError("INTERNAL_ERROR", "Failed to load enterprise."),
+                Cv.error({
+                  code: "INTERNAL_ERROR",
+                  message: "Failed to load enterprise.",
+                }),
             }).pipe(
               Fx.chain((ent) =>
                 ent === null
-                  ? Fx.fail(
-                      new AuthError(
-                        "INVALID_PARAMETERS",
-                        enterpriseNotFoundError,
-                      ),
-                    )
+                  ? Cv.fail({
+                      code: "INVALID_PARAMETERS",
+                      message: enterpriseNotFoundError,
+                    })
                   : Fx.succeed(ent),
               ),
             );
@@ -633,12 +632,13 @@ export function createEnterpriseDomain(deps: any) {
                         return await response.text();
                       },
                       err: (error) =>
-                        new AuthError(
-                          "INVALID_PARAMETERS",
-                          error instanceof Error
-                            ? error.message
-                            : "Failed to fetch SAML metadata",
-                        ),
+                        Cv.error({
+                          code: "INVALID_PARAMETERS",
+                          message:
+                            error instanceof Error
+                              ? error.message
+                              : "Failed to fetch SAML metadata",
+                        }),
                     }),
                   ).pipe(
                     Fx.timeout(10_000),
@@ -649,30 +649,28 @@ export function createEnterpriseDomain(deps: any) {
                       ),
                     ),
                     Fx.recover((error) =>
-                      Fx.fail(
-                        new AuthError(
-                          "INVALID_PARAMETERS",
+                      Cv.fail({
+                        code: "INVALID_PARAMETERS",
+                        message:
                           error instanceof Error
                             ? error.message
                             : "Failed to fetch SAML metadata",
-                        ),
-                      ),
+                      }),
                     ),
                   )
-                : Fx.fail(
-                    new AuthError(
-                      "INVALID_PARAMETERS",
+                : Cv.fail({
+                    code: "INVALID_PARAMETERS",
+                    message:
                       "SAML registration requires metadataXml or metadataUrl.",
-                    ),
-                  );
+                  });
 
             const parsed = yield* Fx.from({
               ok: () => parseSamlIdpMetadata(metadataXml),
               err: () =>
-                new AuthError(
-                  "INVALID_PARAMETERS",
-                  "Failed to parse SAML metadata.",
-                ),
+                Cv.error({
+                  code: "INVALID_PARAMETERS",
+                  message: "Failed to parse SAML metadata.",
+                }),
             });
 
             const baseConfig = upsertProtocolConfig(enterprise.config, "saml", {
@@ -701,10 +699,10 @@ export function createEnterpriseDomain(deps: any) {
                   },
                 }),
               err: () =>
-                new AuthError(
-                  "INTERNAL_ERROR",
-                  "Failed to persist SAML registration.",
-                ),
+                Cv.error({
+                  code: "INTERNAL_ERROR",
+                  message: "Failed to persist SAML registration.",
+                }),
             });
 
             if (normalizedDomains) {
@@ -721,10 +719,10 @@ export function createEnterpriseDomain(deps: any) {
                       },
                     ),
                   err: () =>
-                    new AuthError(
-                      "INTERNAL_ERROR",
-                      "Failed to persist enterprise domain.",
-                    ),
+                    Cv.error({
+                      code: "INTERNAL_ERROR",
+                      message: "Failed to persist enterprise domain.",
+                    }),
                 });
               }
             }
@@ -745,18 +743,17 @@ export function createEnterpriseDomain(deps: any) {
                   },
                 }),
               err: () =>
-                new AuthError(
-                  "INTERNAL_ERROR",
-                  "Failed to record SAML registration audit event.",
-                ),
+                Cv.error({
+                  code: "INTERNAL_ERROR",
+                  message: "Failed to record SAML registration audit event.",
+                }),
             });
 
             return {
-              ok: true as const,
               enterpriseId: enterprise._id,
               groupId: enterprise.groupId,
             };
-          }).pipe(Fx.recover((e) => Fx.fatal(e.toConvexError()))),
+          }).pipe(Fx.recover((e) => Fx.fatal(e))),
         );
       },
       metadata: async <DataModel extends GenericDataModel>(
@@ -775,10 +772,10 @@ export function createEnterpriseDomain(deps: any) {
           },
         );
         if (!enterprise) {
-          throw new AuthError(
-            "INVALID_PARAMETERS",
-            "Enterprise not found.",
-          ).toConvexError();
+          throw Cv.error({
+            code: "INVALID_PARAMETERS",
+            message: "Enterprise not found.",
+          });
         }
 
         return createServiceProviderMetadata(
@@ -981,12 +978,10 @@ export function createEnterpriseDomain(deps: any) {
           Fx.gen(function* () {
             yield* Fx.guard(
               data.issuer === undefined && data.discoveryUrl === undefined,
-              Fx.fail(
-                new AuthError(
-                  "INVALID_PARAMETERS",
-                  "OIDC registration requires issuer or discoveryUrl.",
-                ),
-              ),
+              Cv.fail({
+                code: "INVALID_PARAMETERS",
+                message: "OIDC registration requires issuer or discoveryUrl.",
+              }),
             );
 
             const enterprise = yield* Fx.from({
@@ -995,16 +990,17 @@ export function createEnterpriseDomain(deps: any) {
                   enterpriseId: data.enterpriseId,
                 }),
               err: () =>
-                new AuthError("INTERNAL_ERROR", "Failed to load enterprise."),
+                Cv.error({
+                  code: "INTERNAL_ERROR",
+                  message: "Failed to load enterprise.",
+                }),
             }).pipe(
               Fx.chain((ent) =>
                 ent === null
-                  ? Fx.fail(
-                      new AuthError(
-                        "INVALID_PARAMETERS",
-                        enterpriseNotFoundError,
-                      ),
-                    )
+                  ? Cv.fail({
+                      code: "INVALID_PARAMETERS",
+                      message: enterpriseNotFoundError,
+                    })
                   : Fx.succeed(ent),
               ),
             );
@@ -1027,20 +1023,20 @@ export function createEnterpriseDomain(deps: any) {
                   data: { config: nextConfig },
                 }),
               err: () =>
-                new AuthError(
-                  "INTERNAL_ERROR",
-                  "Failed to persist OIDC registration.",
-                ),
+                Cv.error({
+                  code: "INTERNAL_ERROR",
+                  message: "Failed to persist OIDC registration.",
+                }),
             });
 
             if (data.clientSecret !== undefined) {
               const ciphertext = yield* Fx.from({
                 ok: () => encryptSecret(data.clientSecret!),
                 err: () =>
-                  new AuthError(
-                    "INTERNAL_ERROR",
-                    "Failed to encrypt OIDC client secret.",
-                  ),
+                  Cv.error({
+                    code: "INTERNAL_ERROR",
+                    message: "Failed to encrypt OIDC client secret.",
+                  }),
               });
               yield* Fx.from({
                 ok: () =>
@@ -1055,10 +1051,10 @@ export function createEnterpriseDomain(deps: any) {
                     },
                   ),
                 err: () =>
-                  new AuthError(
-                    "INTERNAL_ERROR",
-                    "Failed to persist OIDC client secret.",
-                  ),
+                  Cv.error({
+                    code: "INTERNAL_ERROR",
+                    message: "Failed to persist OIDC client secret.",
+                  }),
               });
             }
 
@@ -1078,10 +1074,10 @@ export function createEnterpriseDomain(deps: any) {
                   },
                 }),
               err: () =>
-                new AuthError(
-                  "INTERNAL_ERROR",
-                  "Failed to record OIDC registration audit event.",
-                ),
+                Cv.error({
+                  code: "INTERNAL_ERROR",
+                  message: "Failed to record OIDC registration audit event.",
+                }),
             });
 
             const secret = yield* Fx.from({
@@ -1092,17 +1088,17 @@ export function createEnterpriseDomain(deps: any) {
                   ENTERPRISE_OIDC_CLIENT_SECRET_KIND,
                 ),
               err: () =>
-                new AuthError(
-                  "INTERNAL_ERROR",
-                  "Failed to load OIDC secret metadata.",
-                ),
+                Cv.error({
+                  code: "INTERNAL_ERROR",
+                  message: "Failed to load OIDC secret metadata.",
+                }),
             });
 
             return withOidcSecretState(
               getPublicOidcConfig(nextConfig),
               secret !== null,
             );
-          }).pipe(Fx.recover((e) => Fx.fatal(e.toConvexError()))),
+          }).pipe(Fx.recover((e) => Fx.fatal(e))),
         );
       },
       /**
@@ -1116,16 +1112,17 @@ export function createEnterpriseDomain(deps: any) {
                 enterpriseId,
               }),
             err: () =>
-              new AuthError("INTERNAL_ERROR", "Failed to load enterprise."),
+              Cv.error({
+                code: "INTERNAL_ERROR",
+                message: "Failed to load enterprise.",
+              }),
           }).pipe(
             Fx.chain((ent) =>
               ent === null
-                ? Fx.fail(
-                    new AuthError(
-                      "INVALID_PARAMETERS",
-                      enterpriseNotFoundError,
-                    ),
-                  )
+                ? Cv.fail({
+                    code: "INVALID_PARAMETERS",
+                    message: enterpriseNotFoundError,
+                  })
                 : Fx.succeed(ent),
             ),
             Fx.chain((enterprise) =>
@@ -1142,13 +1139,13 @@ export function createEnterpriseDomain(deps: any) {
                   );
                 },
                 err: () =>
-                  new AuthError(
-                    "INTERNAL_ERROR",
-                    "Failed to load OIDC secret metadata.",
-                  ),
+                  Cv.error({
+                    code: "INTERNAL_ERROR",
+                    message: "Failed to load OIDC secret metadata.",
+                  }),
               }),
             ),
-            Fx.recover((e) => Fx.fatal(e.toConvexError())),
+            Fx.recover((e) => Fx.fatal(e)),
           ),
         );
       },
@@ -1175,19 +1172,17 @@ export function createEnterpriseDomain(deps: any) {
                         enterpriseId: data.enterpriseId,
                       }),
                     err: () =>
-                      new AuthError(
-                        "INTERNAL_ERROR",
-                        "Failed to load enterprise.",
-                      ),
+                      Cv.error({
+                        code: "INTERNAL_ERROR",
+                        message: "Failed to load enterprise.",
+                      }),
                   }).pipe(
                     Fx.chain((ent) =>
                       ent === null
-                        ? Fx.fail(
-                            new AuthError(
-                              "INVALID_PARAMETERS",
-                              enterpriseNotFoundError,
-                            ),
-                          )
+                        ? Cv.fail({
+                            code: "INVALID_PARAMETERS",
+                            message: enterpriseNotFoundError,
+                          })
                         : Fx.succeed(ent),
                     ),
                   )
@@ -1199,55 +1194,49 @@ export function createEnterpriseDomain(deps: any) {
                           {
                             domain: normalizeDomain(
                               data.domain ??
-                                String(data.email).split("@").at(-1) ??
+                                String(data.email).split("@").pop() ??
                                 "",
                             ),
                           },
                         ),
                       err: () =>
-                        new AuthError(
-                          "INTERNAL_ERROR",
-                          "Failed to resolve enterprise by domain.",
-                        ),
+                        Cv.error({
+                          code: "INTERNAL_ERROR",
+                          message: "Failed to resolve enterprise by domain.",
+                        }),
                     }).pipe(
                       Fx.chain((result) =>
                         result?.enterprise &&
                         result.domain?.verifiedAt !== undefined
                           ? Fx.succeed(result.enterprise)
-                          : Fx.fail(
-                              new AuthError(
-                                "INVALID_PARAMETERS",
+                          : Cv.fail({
+                              code: "INVALID_PARAMETERS",
+                              message:
                                 "No enterprise OIDC connection matched the provided input.",
-                              ),
-                            ),
+                            }),
                       ),
                     )
-                  : yield* Fx.fail(
-                      new AuthError(
-                        "INVALID_PARAMETERS",
+                  : yield* Cv.fail({
+                      code: "INVALID_PARAMETERS",
+                      message:
                         "No enterprise OIDC connection matched the provided input.",
-                      ),
-                    );
+                    });
 
             yield* Fx.guard(
               enterprise.status !== "active",
-              Fx.fail(
-                new AuthError(
-                  "INVALID_PARAMETERS",
-                  "Enterprise connection is not active.",
-                ),
-              ),
+              Cv.fail({
+                code: "INVALID_PARAMETERS",
+                message: "Enterprise connection is not active.",
+              }),
             );
 
             const oidc = getOidcConfig(enterprise.config);
             yield* Fx.guard(
               oidc.enabled !== true,
-              Fx.fail(
-                new AuthError(
-                  "PROVIDER_NOT_CONFIGURED",
-                  "OIDC is not configured for this enterprise.",
-                ),
-              ),
+              Cv.fail({
+                code: "PROVIDER_NOT_CONFIGURED",
+                message: "OIDC is not configured for this enterprise.",
+              }),
             );
 
             const urls = getEnterpriseOidcUrls({
@@ -1261,7 +1250,7 @@ export function createEnterpriseDomain(deps: any) {
               callbackPath: urls.callbackUrl,
               redirectTo: data.redirectTo,
             };
-          }).pipe(Fx.recover((e) => Fx.fatal(e.toConvexError()))),
+          }).pipe(Fx.recover((e) => Fx.fatal(e))),
         );
       },
       /**
@@ -1403,10 +1392,10 @@ export function createEnterpriseDomain(deps: any) {
           },
         );
         if (enterprise === null) {
-          throw new AuthError(
-            "INVALID_PARAMETERS",
-            "Enterprise not found.",
-          ).toConvexError();
+          throw Cv.error({
+            code: "INVALID_PARAMETERS",
+            message: "Enterprise not found.",
+          });
         }
         const rawToken = generateRandomString(48, INVITE_TOKEN_ALPHABET);
         const tokenHash = await sha256(rawToken);
@@ -1439,7 +1428,6 @@ export function createEnterpriseDomain(deps: any) {
           payload: { enterpriseId: enterprise._id, scimConfigId: configId },
         });
         return {
-          ok: true as const,
           enterpriseId: enterprise._id,
           configId,
           basePath:
@@ -1632,10 +1620,10 @@ export function createEnterpriseDomain(deps: any) {
             },
           );
           if (enterprise === null) {
-            throw new AuthError(
-              "INVALID_PARAMETERS",
-              "Enterprise not found.",
-            ).toConvexError();
+            throw Cv.error({
+              code: "INVALID_PARAMETERS",
+              message: "Enterprise not found.",
+            });
           }
           const secretHash = await sha256(data.secret);
           const endpointId = (await ctx.runMutation(
@@ -1659,7 +1647,7 @@ export function createEnterpriseDomain(deps: any) {
             subjectId: endpointId,
             ok: true,
           });
-          return { ok: true as const, endpointId };
+          return { endpointId };
         },
         list: async (ctx: ComponentReadCtx, enterpriseId: string) => {
           return await ctx.runQuery(
@@ -1672,7 +1660,7 @@ export function createEnterpriseDomain(deps: any) {
             config.component.public.enterpriseWebhookEndpointUpdate,
             { endpointId, data: { status: "disabled" } },
           );
-          return { ok: true as const, endpointId };
+          return { endpointId };
         },
       },
       emit: async (

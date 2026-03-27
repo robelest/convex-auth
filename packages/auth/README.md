@@ -105,11 +105,11 @@ import { auth } from "./auth";
 
 const convex = createBuilder<DataModel>();
 
+// `auth.context(ctx)` resolves { userId, user, groupId, role, grants }
+// and throws before the handler runs when unauthenticated.
 const withRequiredAuth = convex.createMiddleware<any, { auth: any }>(
   async (ctx, next) => {
-    const userId = await auth.user.require(ctx);
-    const user = await auth.user.get(ctx, userId);
-    return next({ ...ctx, auth: { ...ctx.auth, userId, user } });
+    return next({ ...ctx, auth: await auth.context(ctx) });
   },
 );
 
@@ -125,11 +125,11 @@ project already uses `convex-helpers`.
 | Provider          | Import                                                                  |
 | ----------------- | ----------------------------------------------------------------------- |
 | OAuth (Arctic)    | `import { OAuth } from "@robelest/convex-auth/providers"`               |
-| Password          | `import { Password } from "@robelest/convex-auth/providers/password"`   |
-| Passkey           | `import { Passkey } from "@robelest/convex-auth/providers/passkey"`     |
-| TOTP              | `import { Totp } from "@robelest/convex-auth/providers/totp"`           |
-| Phone/SMS         | `import { phone } from "@robelest/convex-auth/providers/phone"`         |
-| Anonymous         | `import { Anonymous } from "@robelest/convex-auth/providers/anonymous"` |
+| Password          | `import { Password } from "@robelest/convex-auth/providers"`            |
+| Passkey           | `import { Passkey } from "@robelest/convex-auth/providers"`             |
+| TOTP              | `import { Totp } from "@robelest/convex-auth/providers"`                |
+| Phone/SMS         | `import { Phone } from "@robelest/convex-auth/providers"`               |
+| Anonymous         | `import { Anonymous } from "@robelest/convex-auth/providers"`           |
 | Device (RFC 8628) | `import { Device } from "@robelest/convex-auth/providers"`              |
 
 ## Enterprise

@@ -1,4 +1,5 @@
-import { AuthError } from "./authError";
+import { Cv } from "@robelest/fx/convex";
+
 import { ConvexAuthMaterializedConfig } from "./types";
 import { requireEnv } from "./utils";
 
@@ -11,17 +12,20 @@ export async function redirectAbsoluteUrl(
     return requireEnv("SITE_URL").replace(/\/$/, "");
   }
   if (typeof params.redirectTo !== "string") {
-    throw new AuthError(
-      "INVALID_REDIRECT",
-      `Expected \`redirectTo\` to be a string, got ${params.redirectTo as any}`,
-    );
+    throw Cv.error({
+      code: "INVALID_REDIRECT",
+      message: `Expected \`redirectTo\` to be a string, got ${params.redirectTo as any}`,
+    });
   }
   const redirectCallback =
     config.callbacks?.redirect ?? defaultRedirectCallback;
   try {
     return await redirectCallback({ redirectTo: params.redirectTo });
   } catch {
-    throw new AuthError("INTERNAL_ERROR");
+    throw Cv.error({
+      code: "INTERNAL_ERROR",
+      message: "An unexpected error occurred.",
+    });
   }
 }
 

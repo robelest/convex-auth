@@ -2,18 +2,6 @@ import { Fx } from "@robelest/fx";
 import { ConvexHttpClient } from "convex/browser";
 import { ConvexError, Value } from "convex/values";
 
-import { AUTH_ERRORS } from "../server/errors";
-import { browserMutex, getStorageListenerRegistry } from "./runtime/browser";
-import { createDeviceClient } from "./factors/device";
-import { createInviteManager } from "./runtime/invite";
-import { createPasskeyClient } from "./factors/passkey";
-import {
-  createProxyHelpers,
-  isRetriableProxyRefreshError,
-  isTransientNetworkError,
-} from "./runtime/proxy";
-import { createStorageHelpers } from "./runtime/storage";
-import { createTotpClient } from "./factors/totp";
 import type {
   AuthApiRefs,
   AuthClient,
@@ -33,14 +21,18 @@ import type {
   Storage,
   TotpClient,
 } from "./core/types";
+import { createDeviceClient } from "./factors/device";
+import { createPasskeyClient } from "./factors/passkey";
+import { createTotpClient } from "./factors/totp";
+import { browserMutex, getStorageListenerRegistry } from "./runtime/browser";
+import { createInviteManager } from "./runtime/invite";
+import {
+  createProxyHelpers,
+  isRetriableProxyRefreshError,
+  isTransientNetworkError,
+} from "./runtime/proxy";
+import { createStorageHelpers } from "./runtime/storage";
 
-// Re-export error utilities so consumers can import from `@robelest/convex-auth/client`.
-export {
-  isAuthError,
-  parseAuthError,
-  AUTH_ERRORS,
-  type AuthErrorCode,
-} from "../server/errors";
 export type {
   AuthApiRefs,
   AuthClient,
@@ -253,13 +245,20 @@ export function client<
   };
   let handlingCodeFlow = false;
 
+  const HANDSHAKE_ERROR_MESSAGES: Record<AuthHandshakeErrorCode, string> = {
+    AUTH_HANDSHAKE_TIMEOUT:
+      "Sign-in succeeded but authentication confirmation timed out.",
+    AUTH_HANDSHAKE_REJECTED:
+      "Authentication was rejected while confirming the session.",
+  };
+
   const createHandshakeError = (
     code: AuthHandshakeErrorCode,
     context: Record<string, unknown>,
   ) => {
     return new ConvexError({
       code,
-      message: AUTH_ERRORS[code],
+      message: HANDSHAKE_ERROR_MESSAGES[code],
       ...context,
     } as Value);
   };
@@ -652,25 +651,19 @@ export function client<
       Fx.run(
         Fx.match(result, result.kind, {
           redirect: (redirectResult) =>
-            Fx.from({
-              ok: async () => {
-                const redirectUrl = new URL(redirectResult.redirect);
-                if (options.persistVerifier) {
-                  await storageSet(
-                    VERIFIER_STORAGE_KEY,
-                    redirectResult.verifier,
-                  );
-                }
-                if (typeof window !== "undefined") {
-                  window.location.href = redirectUrl.toString();
-                }
-                return {
-                  kind: "redirect" as const,
-                  redirect: redirectUrl,
-                  verifier: redirectResult.verifier,
-                };
-              },
-              err: (e) => e as never,
+            Fx.promise(async () => {
+              const redirectUrl = new URL(redirectResult.redirect);
+              if (options.persistVerifier) {
+                await storageSet(VERIFIER_STORAGE_KEY, redirectResult.verifier);
+              }
+              if (typeof window !== "undefined") {
+                window.location.href = redirectUrl.toString();
+              }
+              return {
+                kind: "redirect" as const,
+                redirect: redirectUrl,
+                verifier: redirectResult.verifier,
+              };
             }),
           totpRequired: (totpRequiredResult) =>
             Fx.succeed({
@@ -685,31 +678,28 @@ export function client<
               ),
             }),
           signedIn: (signedInResult) =>
-            Fx.from({
-              ok: async () => {
-                const signingIn = await setTokenAndMaybeWait(
-                  options.shouldStore
-                    ? {
-                        shouldStore: true as const,
-                        tokens: signedInResult.tokens,
-                        waitForHandshake: true,
-                        context: { provider, flow },
-                      }
-                    : {
-                        shouldStore: false as const,
-                        tokens:
-                          signedInResult.tokens === null
-                            ? null
-                            : { token: signedInResult.tokens.token },
-                        waitForHandshake: true,
-                        context: { provider, flow },
-                      },
-                );
-                return signingIn
-                  ? ({ kind: "signedIn" as const } as SignInResult)
-                  : ({ kind: "started" as const } as SignInResult);
-              },
-              err: (e) => e as never,
+            Fx.promise(async () => {
+              const signingIn = await setTokenAndMaybeWait(
+                options.shouldStore
+                  ? {
+                      shouldStore: true as const,
+                      tokens: signedInResult.tokens,
+                      waitForHandshake: true,
+                      context: { provider, flow },
+                    }
+                  : {
+                      shouldStore: false as const,
+                      tokens:
+                        signedInResult.tokens === null
+                          ? null
+                          : { token: signedInResult.tokens.token },
+                      waitForHandshake: true,
+                      context: { provider, flow },
+                    },
+              );
+              return signingIn
+                ? ({ kind: "signedIn" as const } as SignInResult)
+                : ({ kind: "started" as const } as SignInResult);
             }),
           started: (_startedResult) => Fx.succeed({ kind: "started" as const }),
           passkeyOptions: (_passkeyOptionsResult) =>

@@ -1,8 +1,8 @@
 import { Fx } from "@robelest/fx";
+import { Cv } from "@robelest/fx/convex";
 import { GenericId } from "convex/values";
 
 import { authDb } from "./db";
-import { AuthError } from "./authError";
 import { Doc, MutationCtx } from "./types";
 import { AuthProviderMaterializedConfig, ConvexAuthConfig } from "./types";
 import { LOG_LEVELS, logWithLevel } from "./utils";
@@ -188,14 +188,15 @@ async function defaultCreateOrUpdateUser(
       Fx.from({
         ok: () => db.users.patch(userId!, userData),
         err: (error) =>
-          new AuthError(
-            "USER_UPDATE_FAILED",
-            `Could not update user document with ID \`${userId}\`, ` +
+          Cv.error({
+            code: "USER_UPDATE_FAILED",
+            message:
+              `Could not update user document with ID \`${userId}\`, ` +
               `either the user has been deleted but their account has not, ` +
               `or the profile data doesn't match the \`users\` table schema: ` +
               `${(error as Error).message}`,
-          ),
-      }).pipe(Fx.recover((e) => Fx.fatal(e.toConvexError()))),
+          }),
+      }).pipe(Fx.recover((e) => Fx.fatal(e))),
     );
   } else {
     userId = (await db.users.insert(userData)) as GenericId<"User">;

@@ -1,3 +1,4 @@
+import { Fx } from "@robelest/fx";
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { ConvexError } from "convex/values";
@@ -9,7 +10,6 @@ import type {
   SignInActionResult,
   SignOutAction,
 } from "./runtime";
-import { Fx } from "@robelest/fx";
 import { isLocalHost } from "./utils";
 
 const signInActionRef: SignInAction = makeFunctionReference("auth:signIn");
@@ -598,60 +598,126 @@ export function server(options: ServerOptions) {
       return Fx.run(
         Fx.match(actionDispatch, actionDispatch.action, {
           sessionStart: (_) =>
-            Fx.from({
-              ok: async () => {
-                const refreshDispatch =
-                  args.refreshToken === undefined
-                    ? { kind: "passthrough" as const }
-                    : currentCookies.refreshToken === null
-                      ? { kind: "refreshRequestedWithoutCookie" as const }
-                      : {
-                          kind: "hydrateRefreshFromCookie" as const,
-                          refreshToken: currentCookies.refreshToken,
-                        };
+            Fx.promise(async () => {
+              const refreshDispatch =
+                args.refreshToken === undefined
+                  ? { kind: "passthrough" as const }
+                  : currentCookies.refreshToken === null
+                    ? { kind: "refreshRequestedWithoutCookie" as const }
+                    : {
+                        kind: "hydrateRefreshFromCookie" as const,
+                        refreshToken: currentCookies.refreshToken,
+                      };
 
-                const refreshResponse = await Fx.run(
-                  Fx.match(refreshDispatch, refreshDispatch.kind, {
-                    passthrough: async () => null,
-                    hydrateRefreshFromCookie: async ({ refreshToken }) => {
-                      args.refreshToken = refreshToken;
-                      return null;
-                    },
-                    refreshRequestedWithoutCookie: async () => {
-                      const currentToken = currentCookies.token;
-                      const decodedToken =
-                        currentToken === null
-                          ? null
-                          : await Fx.run(
-                              Fx.attempt(
-                                async () =>
-                                  jwtDecode<DecodedToken>(currentToken),
-                                (decoded) => decoded,
-                                () => null,
-                              ),
-                            );
-                      const tokenDispatch =
-                        currentToken !== null &&
-                        decodedToken?.exp !== undefined &&
-                        decodedToken.iss !== undefined &&
-                        acceptedIssuers.has(
-                          normalizeIssuer(decodedToken.iss),
-                        ) &&
-                        decodedToken.exp * 1000 > Date.now()
-                          ? {
-                              kind: "validToken" as const,
-                              token: currentToken,
-                            }
-                          : { kind: "missingToken" as const };
-                      return await Fx.run(
-                        Fx.match(tokenDispatch, tokenDispatch.kind, {
-                          validToken: ({ token }) =>
-                            new Response(
+              const refreshResponse = await Fx.run(
+                Fx.match(refreshDispatch, refreshDispatch.kind, {
+                  passthrough: async () => null,
+                  hydrateRefreshFromCookie: async ({ refreshToken }) => {
+                    args.refreshToken = refreshToken;
+                    return null;
+                  },
+                  refreshRequestedWithoutCookie: async () => {
+                    const currentToken = currentCookies.token;
+                    const decodedToken =
+                      currentToken === null
+                        ? null
+                        : await Fx.run(
+                            Fx.attempt(
+                              async () => jwtDecode<DecodedToken>(currentToken),
+                              (decoded) => decoded,
+                              () => null,
+                            ),
+                          );
+                    const tokenDispatch =
+                      currentToken !== null &&
+                      decodedToken?.exp !== undefined &&
+                      decodedToken.iss !== undefined &&
+                      acceptedIssuers.has(normalizeIssuer(decodedToken.iss)) &&
+                      decodedToken.exp * 1000 > Date.now()
+                        ? {
+                            kind: "validToken" as const,
+                            token: currentToken,
+                          }
+                        : { kind: "missingToken" as const };
+                    return await Fx.run(
+                      Fx.match(tokenDispatch, tokenDispatch.kind, {
+                        validToken: ({ token }) =>
+                          new Response(
+                            JSON.stringify({
+                              tokens: {
+                                token,
+                                refreshToken: "dummy",
+                              },
+                            }),
+                            {
+                              status: 200,
+                              headers: {
+                                "Content-Type": "application/json",
+                              },
+                            },
+                          ),
+                        missingToken: () =>
+                          new Response(JSON.stringify({ tokens: null }), {
+                            status: 200,
+                            headers: {
+                              "Content-Type": "application/json",
+                            },
+                          }),
+                      }),
+                    );
+                  },
+                }),
+              );
+              const refreshDecision =
+                refreshResponse !== null
+                  ? {
+                      kind: "shortCircuit" as const,
+                      response: refreshResponse,
+                    }
+                  : { kind: "continue" as const };
+              const maybeShortCircuitResponse = await Fx.run(
+                Fx.match(refreshDecision, refreshDecision.kind, {
+                  shortCircuit: ({ response }) => response,
+                  continue: () => null,
+                }),
+              );
+              if (maybeShortCircuitResponse !== null) {
+                return maybeShortCircuitResponse;
+              }
+
+              const client = new ConvexHttpClient(convexUrl);
+              const authDispatch =
+                args.refreshToken === undefined &&
+                args.params?.code === undefined &&
+                currentCookies.token !== null
+                  ? {
+                      kind: "attachAuth" as const,
+                      token: currentCookies.token,
+                    }
+                  : { kind: "skipAuth" as const };
+              await Fx.run(
+                Fx.match(authDispatch, authDispatch.kind, {
+                  attachAuth: ({ token }) => {
+                    client.setAuth(token);
+                  },
+                  skipAuth: () => undefined,
+                }),
+              );
+              return Fx.run(
+                Fx.from({
+                  ok: () => client.action(signInActionRef, args),
+                  err: (error) => error,
+                }).pipe(
+                  Fx.fold({
+                    ok: (result: SignInActionResult) =>
+                      Fx.run(
+                        Fx.match(result, result.kind, {
+                          redirect: (redirectResult) => {
+                            const response = new Response(
                               JSON.stringify({
-                                tokens: {
-                                  token,
-                                  refreshToken: "dummy",
-                                },
+                                kind: "redirect",
+                                redirect: redirectResult.redirect,
+                                verifier: redirectResult.verifier,
                               }),
                               {
                                 status: 200,
@@ -659,380 +725,297 @@ export function server(options: ServerOptions) {
                                   "Content-Type": "application/json",
                                 },
                               },
-                            ),
-                          missingToken: () =>
-                            new Response(JSON.stringify({ tokens: null }), {
-                              status: 200,
-                              headers: {
-                                "Content-Type": "application/json",
+                            );
+                            for (const value of serializeAuthCookies(
+                              {
+                                ...currentCookies,
+                                verifier: redirectResult.verifier,
                               },
-                            }),
+                              host,
+                              cookieConfig,
+                              cookieNamespace,
+                            )) {
+                              response.headers.append("Set-Cookie", value);
+                            }
+                            return Fx.succeed(response);
+                          },
+                          signedIn: (signedInResult) => {
+                            const response = new Response(
+                              JSON.stringify({
+                                kind: "signedIn",
+                                tokens:
+                                  signedInResult.tokens === null
+                                    ? null
+                                    : {
+                                        token: signedInResult.tokens.token,
+                                        refreshToken: "dummy",
+                                      },
+                              }),
+                              {
+                                status: 200,
+                                headers: {
+                                  "Content-Type": "application/json",
+                                },
+                              },
+                            );
+                            for (const value of serializeAuthCookies(
+                              {
+                                token: signedInResult.tokens?.token ?? null,
+                                refreshToken:
+                                  signedInResult.tokens?.refreshToken ?? null,
+                                verifier: null,
+                              },
+                              host,
+                              cookieConfig,
+                              cookieNamespace,
+                            )) {
+                              response.headers.append("Set-Cookie", value);
+                            }
+                            return Fx.succeed(response);
+                          },
+                          started: (startedResult) =>
+                            Fx.succeed(
+                              new Response(JSON.stringify(startedResult), {
+                                status: 200,
+                                headers: {
+                                  "Content-Type": "application/json",
+                                },
+                              }),
+                            ),
+                          passkeyOptions: (passkeyOptionsResult) =>
+                            Fx.succeed(
+                              new Response(
+                                JSON.stringify(passkeyOptionsResult),
+                                {
+                                  status: 200,
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                  },
+                                },
+                              ),
+                            ),
+                          totpRequired: (totpRequiredResult) =>
+                            Fx.succeed(
+                              new Response(JSON.stringify(totpRequiredResult), {
+                                status: 200,
+                                headers: {
+                                  "Content-Type": "application/json",
+                                },
+                              }),
+                            ),
+                          totpSetup: (totpSetupResult) =>
+                            Fx.succeed(
+                              new Response(JSON.stringify(totpSetupResult), {
+                                status: 200,
+                                headers: {
+                                  "Content-Type": "application/json",
+                                },
+                              }),
+                            ),
+                          deviceCode: (deviceCodeResult) =>
+                            Fx.succeed(
+                              new Response(JSON.stringify(deviceCodeResult), {
+                                status: 200,
+                                headers: {
+                                  "Content-Type": "application/json",
+                                },
+                              }),
+                            ),
                         }),
-                      );
+                      ),
+                    err: (error: unknown) => {
+                      const errorBody =
+                        error instanceof ConvexError &&
+                        typeof error.data === "object" &&
+                        error.data !== null &&
+                        "code" in error.data
+                          ? {
+                              error:
+                                (error.data as { message?: string }).message ??
+                                String(error),
+                              authError: error.data,
+                            }
+                          : {
+                              error:
+                                error instanceof Error
+                                  ? error.message
+                                  : String(error),
+                            };
+                      const response = new Response(JSON.stringify(errorBody), {
+                        status: 400,
+                        headers: {
+                          "Content-Type": "application/json",
+                        },
+                      });
+                      const clearSession =
+                        args.refreshToken !== undefined &&
+                        error instanceof ConvexError &&
+                        typeof error.data === "object" &&
+                        error.data !== null &&
+                        (error.data as Record<string, unknown>).code ===
+                          "INVALID_REFRESH_TOKEN";
+                      for (const value of serializeAuthCookies(
+                        {
+                          token: clearSession ? null : currentCookies.token,
+                          refreshToken: clearSession
+                            ? null
+                            : currentCookies.refreshToken,
+                          verifier: null,
+                        },
+                        host,
+                        cookieConfig,
+                        cookieNamespace,
+                      )) {
+                        response.headers.append("Set-Cookie", value);
+                      }
+                      return response;
                     },
                   }),
-                );
-                const refreshDecision =
-                  refreshResponse !== null
-                    ? {
-                        kind: "shortCircuit" as const,
-                        response: refreshResponse,
-                      }
-                    : { kind: "continue" as const };
-                const maybeShortCircuitResponse = await Fx.run(
-                  Fx.match(refreshDecision, refreshDecision.kind, {
-                    shortCircuit: ({ response }) => response,
-                    continue: () => null,
-                  }),
-                );
-                if (maybeShortCircuitResponse !== null) {
-                  return maybeShortCircuitResponse;
-                }
-
-                const client = new ConvexHttpClient(convexUrl);
-                const authDispatch =
-                  args.refreshToken === undefined &&
-                  args.params?.code === undefined &&
-                  currentCookies.token !== null
-                    ? {
-                        kind: "attachAuth" as const,
-                        token: currentCookies.token,
-                      }
-                    : { kind: "skipAuth" as const };
-                await Fx.run(
-                  Fx.match(authDispatch, authDispatch.kind, {
-                    attachAuth: ({ token }) => {
-                      client.setAuth(token);
-                    },
-                    skipAuth: () => undefined,
-                  }),
-                );
-                return Fx.run(
-                  Fx.from({
-                    ok: () => client.action(signInActionRef, args),
-                    err: (error) => error,
-                  }).pipe(
-                    Fx.fold({
-                      ok: (result: SignInActionResult) =>
-                        Fx.run(
-                          Fx.match(result, result.kind, {
-                            redirect: (redirectResult) => {
-                              const response = new Response(
-                                JSON.stringify({
-                                  kind: "redirect",
-                                  redirect: redirectResult.redirect,
-                                  verifier: redirectResult.verifier,
-                                }),
-                                {
-                                  status: 200,
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                },
-                              );
-                              for (const value of serializeAuthCookies(
-                                {
-                                  ...currentCookies,
-                                  verifier: redirectResult.verifier,
-                                },
-                                host,
-                                cookieConfig,
-                                cookieNamespace,
-                              )) {
-                                response.headers.append("Set-Cookie", value);
-                              }
-                              return Fx.succeed(response);
-                            },
-                            signedIn: (signedInResult) => {
-                              const response = new Response(
-                                JSON.stringify({
-                                  kind: "signedIn",
-                                  tokens:
-                                    signedInResult.tokens === null
-                                      ? null
-                                      : {
-                                          token: signedInResult.tokens.token,
-                                          refreshToken: "dummy",
-                                        },
-                                }),
-                                {
-                                  status: 200,
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                },
-                              );
-                              for (const value of serializeAuthCookies(
-                                {
-                                  token: signedInResult.tokens?.token ?? null,
-                                  refreshToken:
-                                    signedInResult.tokens?.refreshToken ?? null,
-                                  verifier: null,
-                                },
-                                host,
-                                cookieConfig,
-                                cookieNamespace,
-                              )) {
-                                response.headers.append("Set-Cookie", value);
-                              }
-                              return Fx.succeed(response);
-                            },
-                            started: (startedResult) =>
-                              Fx.succeed(
-                                new Response(JSON.stringify(startedResult), {
-                                  status: 200,
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                }),
-                              ),
-                            passkeyOptions: (passkeyOptionsResult) =>
-                              Fx.succeed(
-                                new Response(
-                                  JSON.stringify(passkeyOptionsResult),
-                                  {
-                                    status: 200,
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                    },
-                                  },
-                                ),
-                              ),
-                            totpRequired: (totpRequiredResult) =>
-                              Fx.succeed(
-                                new Response(
-                                  JSON.stringify(totpRequiredResult),
-                                  {
-                                    status: 200,
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                    },
-                                  },
-                                ),
-                              ),
-                            totpSetup: (totpSetupResult) =>
-                              Fx.succeed(
-                                new Response(JSON.stringify(totpSetupResult), {
-                                  status: 200,
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                }),
-                              ),
-                            deviceCode: (deviceCodeResult) =>
-                              Fx.succeed(
-                                new Response(JSON.stringify(deviceCodeResult), {
-                                  status: 200,
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                }),
-                              ),
-                          }),
-                        ),
-                      err: (error: unknown) => {
-                        const errorBody =
-                          error instanceof ConvexError &&
-                          typeof error.data === "object" &&
-                          error.data !== null &&
-                          "code" in error.data
-                            ? {
-                                error:
-                                  (error.data as { message?: string })
-                                    .message ?? String(error),
-                                authError: error.data,
-                              }
-                            : {
-                                error:
-                                  error instanceof Error
-                                    ? error.message
-                                    : String(error),
-                              };
-                        const response = new Response(
-                          JSON.stringify(errorBody),
-                          {
-                            status: 400,
-                            headers: {
-                              "Content-Type": "application/json",
-                            },
-                          },
-                        );
-                        const clearSession =
-                          args.refreshToken !== undefined &&
-                          error instanceof ConvexError &&
-                          typeof error.data === "object" &&
-                          error.data !== null &&
-                          (error.data as Record<string, unknown>).code ===
-                            "INVALID_REFRESH_TOKEN";
-                        for (const value of serializeAuthCookies(
-                          {
-                            token: clearSession ? null : currentCookies.token,
-                            refreshToken: clearSession
-                              ? null
-                              : currentCookies.refreshToken,
-                            verifier: null,
-                          },
-                          host,
-                          cookieConfig,
-                          cookieNamespace,
-                        )) {
-                          response.headers.append("Set-Cookie", value);
-                        }
-                        return response;
-                      },
-                    }),
-                  ),
-                );
-              },
-              err: (e) => e as never,
+                ),
+              );
             }),
           sessionStop: (_) =>
-            Fx.from({
-              ok: async () => {
-                await Fx.run(
-                  Fx.from({
-                    ok: () =>
-                      (() => {
-                        const client = new ConvexHttpClient(convexUrl);
-                        if (currentCookies.token !== null) {
-                          client.setAuth(currentCookies.token);
-                        }
-                        return client.action(signOutActionRef);
-                      })(),
-                    err: (error) => error,
-                  }).pipe(
-                    Fx.recover((error: unknown) => {
-                      console.error(
-                        "[convex-auth/server] proxy sign-out failed",
-                        error,
-                      );
-                      const fallbackDispatch =
-                        currentCookies.refreshToken !== null
-                          ? {
-                              kind: "attemptFallback" as const,
-                              refreshToken: currentCookies.refreshToken,
-                            }
-                          : { kind: "skipFallback" as const };
-                      return Fx.match(fallbackDispatch, fallbackDispatch.kind, {
-                        attemptFallback: ({ refreshToken }) =>
-                          Fx.from({
-                            ok: async () => {
-                              const refreshClient = new ConvexHttpClient(
-                                convexUrl,
-                              );
-                              const refreshed = (await refreshClient.action(
-                                signInActionRef,
+            Fx.promise(async () => {
+              await Fx.run(
+                Fx.from({
+                  ok: () =>
+                    (() => {
+                      const client = new ConvexHttpClient(convexUrl);
+                      if (currentCookies.token !== null) {
+                        client.setAuth(currentCookies.token);
+                      }
+                      return client.action(signOutActionRef);
+                    })(),
+                  err: (error) => error,
+                }).pipe(
+                  Fx.recover((error: unknown) => {
+                    console.error(
+                      "[convex-auth/server] proxy sign-out failed",
+                      error,
+                    );
+                    const fallbackDispatch =
+                      currentCookies.refreshToken !== null
+                        ? {
+                            kind: "attemptFallback" as const,
+                            refreshToken: currentCookies.refreshToken,
+                          }
+                        : { kind: "skipFallback" as const };
+                    return Fx.match(fallbackDispatch, fallbackDispatch.kind, {
+                      attemptFallback: ({ refreshToken }) =>
+                        Fx.from({
+                          ok: async () => {
+                            const refreshClient = new ConvexHttpClient(
+                              convexUrl,
+                            );
+                            const refreshed = (await refreshClient.action(
+                              signInActionRef,
+                              {
+                                refreshToken,
+                              },
+                            )) as SignInActionResult;
+                            const refreshedTokens = await Fx.run(
+                              Fx.match(refreshed, refreshed.kind, {
+                                signedIn: (signedInResult) =>
+                                  Fx.succeed(signedInResult.tokens),
+                                redirect: () =>
+                                  Fx.fatal(
+                                    new Error(
+                                      "Invalid `auth:signIn` result for sign-out fallback refresh",
+                                    ),
+                                  ),
+                                started: () =>
+                                  Fx.fatal(
+                                    new Error(
+                                      "Invalid `auth:signIn` result for sign-out fallback refresh",
+                                    ),
+                                  ),
+                                passkeyOptions: () =>
+                                  Fx.fatal(
+                                    new Error(
+                                      "Invalid `auth:signIn` result for sign-out fallback refresh",
+                                    ),
+                                  ),
+                                totpRequired: () =>
+                                  Fx.fatal(
+                                    new Error(
+                                      "Invalid `auth:signIn` result for sign-out fallback refresh",
+                                    ),
+                                  ),
+                                totpSetup: () =>
+                                  Fx.fatal(
+                                    new Error(
+                                      "Invalid `auth:signIn` result for sign-out fallback refresh",
+                                    ),
+                                  ),
+                                deviceCode: () =>
+                                  Fx.fatal(
+                                    new Error(
+                                      "Invalid `auth:signIn` result for sign-out fallback refresh",
+                                    ),
+                                  ),
+                              }),
+                            );
+                            const fallbackSignOutDispatch =
+                              refreshedTokens !== null
+                                ? {
+                                    kind: "signOutWithRefreshed" as const,
+                                    token: refreshedTokens.token,
+                                  }
+                                : { kind: "skipRefreshedSignOut" as const };
+                            await Fx.run(
+                              Fx.match(
+                                fallbackSignOutDispatch,
+                                fallbackSignOutDispatch.kind,
                                 {
-                                  refreshToken,
+                                  signOutWithRefreshed: ({ token }) =>
+                                    Fx.promise(async () => {
+                                      const client = new ConvexHttpClient(
+                                        convexUrl,
+                                      );
+                                      client.setAuth(token);
+                                      await client.action(signOutActionRef);
+                                    }),
+                                  skipRefreshedSignOut: () =>
+                                    Fx.succeed(undefined),
                                 },
-                              )) as SignInActionResult;
-                              const refreshedTokens = await Fx.run(
-                                Fx.match(refreshed, refreshed.kind, {
-                                  signedIn: (signedInResult) =>
-                                    Fx.succeed(signedInResult.tokens),
-                                  redirect: () =>
-                                    Fx.fatal(
-                                      new Error(
-                                        "Invalid `auth:signIn` result for sign-out fallback refresh",
-                                      ),
-                                    ),
-                                  started: () =>
-                                    Fx.fatal(
-                                      new Error(
-                                        "Invalid `auth:signIn` result for sign-out fallback refresh",
-                                      ),
-                                    ),
-                                  passkeyOptions: () =>
-                                    Fx.fatal(
-                                      new Error(
-                                        "Invalid `auth:signIn` result for sign-out fallback refresh",
-                                      ),
-                                    ),
-                                  totpRequired: () =>
-                                    Fx.fatal(
-                                      new Error(
-                                        "Invalid `auth:signIn` result for sign-out fallback refresh",
-                                      ),
-                                    ),
-                                  totpSetup: () =>
-                                    Fx.fatal(
-                                      new Error(
-                                        "Invalid `auth:signIn` result for sign-out fallback refresh",
-                                      ),
-                                    ),
-                                  deviceCode: () =>
-                                    Fx.fatal(
-                                      new Error(
-                                        "Invalid `auth:signIn` result for sign-out fallback refresh",
-                                      ),
-                                    ),
-                                }),
-                              );
-                              const fallbackSignOutDispatch =
-                                refreshedTokens !== null
-                                  ? {
-                                      kind: "signOutWithRefreshed" as const,
-                                      token: refreshedTokens.token,
-                                    }
-                                  : { kind: "skipRefreshedSignOut" as const };
-                              await Fx.run(
-                                Fx.match(
-                                  fallbackSignOutDispatch,
-                                  fallbackSignOutDispatch.kind,
-                                  {
-                                    signOutWithRefreshed: ({ token }) =>
-                                      Fx.from({
-                                        ok: async () => {
-                                          const client = new ConvexHttpClient(
-                                            convexUrl,
-                                          );
-                                          client.setAuth(token);
-                                          await client.action(signOutActionRef);
-                                        },
-                                        err: (error) => error,
-                                      }),
-                                    skipRefreshedSignOut: () => Fx.succeed(undefined),
-                                  },
-                                ),
-                              );
-                            },
-                            err: (fallbackError) => fallbackError,
-                          }).pipe(
-                            Fx.recover((fallbackError: unknown) => {
-                              console.error(
-                                "[convex-auth/server] proxy sign-out fallback failed",
-                                fallbackError,
-                              );
-                              return Fx.succeed(undefined);
-                            }),
-                          ),
-                        skipFallback: () => Fx.succeed(undefined),
-                      });
-                    }),
-                    Fx.map(() => undefined),
-                  ),
-                );
-                const response = new Response(JSON.stringify(null), {
-                  status: 200,
-                  headers: {
-                    "Content-Type": "application/json",
-                  },
-                });
-                for (const value of serializeAuthCookies(
-                  {
-                    token: null,
-                    refreshToken: null,
-                    verifier: null,
-                  },
-                  host,
-                  cookieConfig,
-                  cookieNamespace,
-                )) {
-                  response.headers.append("Set-Cookie", value);
-                }
-                return response;
-              },
-              err: (e) => e as never,
+                              ),
+                            );
+                          },
+                          err: (error) => error,
+                        }).pipe(
+                          Fx.recover((fallbackError: unknown) => {
+                            console.error(
+                              "[convex-auth/server] proxy sign-out fallback failed",
+                              fallbackError,
+                            );
+                            return Fx.succeed(undefined);
+                          }),
+                        ),
+                      skipFallback: () => Fx.succeed(undefined),
+                    });
+                  }),
+                  Fx.map(() => undefined),
+                ),
+              );
+              const response = new Response(JSON.stringify(null), {
+                status: 200,
+                headers: {
+                  "Content-Type": "application/json",
+                },
+              });
+              for (const value of serializeAuthCookies(
+                {
+                  token: null,
+                  refreshToken: null,
+                  verifier: null,
+                },
+                host,
+                cookieConfig,
+                cookieNamespace,
+              )) {
+                response.headers.append("Set-Cookie", value);
+              }
+              return response;
             }),
         }),
       );

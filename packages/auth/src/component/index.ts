@@ -10,9 +10,9 @@
 export { AuthCtx, createAuth } from "../server/auth";
 export type {
   AuthApi,
+  AuthContext,
   AuthConfig,
   AuthCtxConfig,
-  AuthResolvedContext,
   InferAuth,
   UserDoc,
 } from "../server/auth";

@@ -133,14 +133,11 @@ export async function authorized(
     return;
   }
 
-  const result = await auth.member.resolve(ctx, {
+  await auth.member.require(ctx, {
     userId: input.userId,
     groupId: input.resolvedGroupId,
     grants: [input.permission],
   });
-  if (!result.ok) {
-    throw new Error("Access denied");
-  }
 }
 ```
 

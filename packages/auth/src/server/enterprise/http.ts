@@ -1,11 +1,10 @@
+import { Fx } from "@robelest/fx";
+import { Cv } from "@robelest/fx/convex";
 import type { GenericActionCtx, HttpRouter } from "convex/server";
+import { ConvexError } from "convex/values";
 import { serialize as serializeCookie } from "cookie";
 
 import { redirectToParamCookie, useRedirectToParam } from "../cookies";
-import { isAuthError } from "../errors";
-import { Fx } from "@robelest/fx";
-
-import { AuthError } from "../authError";
 import { addSSORoutes, convertErrorsToResponse, getCookies } from "../http";
 import type { SSORuntimeRoute } from "../http";
 import { createOAuthAuthorizationURL, handleOAuthCallback } from "../oauth";
@@ -207,12 +206,10 @@ export function addEnterpriseHttpRuntime(deps: EnterpriseHttpRuntimeDeps) {
           runtimeRoute.protocol !== "saml" ||
             runtimeRoute.rest.length !== 1 ||
             runtimeRoute.rest[0] !== "acs",
-          Fx.fail(
-            new AuthError(
-              "INVALID_PARAMETERS",
-              "Invalid enterprise runtime path.",
-            ).toConvexError(),
-          ),
+          Cv.fail({
+            code: "INVALID_PARAMETERS",
+            message: "Invalid enterprise runtime path.",
+          }),
         );
 
         const enterpriseId = runtimeRoute.enterpriseId;
@@ -230,10 +227,10 @@ export function addEnterpriseHttpRuntime(deps: EnterpriseHttpRuntimeDeps) {
               config: loaded.config,
             }),
           err: (e) =>
-            new AuthError(
-              "OAUTH_PROVIDER_ERROR",
-              `SAML response parse failed: ${e instanceof Error ? e.message : String(e)}`,
-            ).toConvexError(),
+            Cv.error({
+              code: "OAUTH_PROVIDER_ERROR",
+              message: `SAML response parse failed: ${e instanceof Error ? e.message : String(e)}`,
+            }),
         });
 
         yield* Fx.from({
@@ -247,10 +244,11 @@ export function addEnterpriseHttpRuntime(deps: EnterpriseHttpRuntimeDeps) {
             return Promise.resolve();
           },
           err: () =>
-            new AuthError(
-              "OAUTH_INVALID_STATE",
-              "SAML RelayState did not match the pending login request.",
-            ).toConvexError(),
+            Cv.error({
+              code: "OAUTH_INVALID_STATE",
+              message:
+                "SAML RelayState did not match the pending login request.",
+            }),
         });
 
         const { samlAttributes, samlSessionIndex, ...userProfile } =
@@ -331,10 +329,10 @@ export function addEnterpriseHttpRuntime(deps: EnterpriseHttpRuntimeDeps) {
       runtimeRoute.rest.length !== 1 ||
       runtimeRoute.rest[0] !== "slo"
     ) {
-      throw new AuthError(
-        "INVALID_PARAMETERS",
-        "Invalid enterprise runtime path.",
-      ).toConvexError();
+      throw Cv.error({
+        code: "INVALID_PARAMETERS",
+        message: "Invalid enterprise runtime path.",
+      });
     }
     const { loaded, enterprise } = await loadActiveEnterpriseSamlOrThrow(
       ctx,
@@ -371,10 +369,10 @@ export function addEnterpriseHttpRuntime(deps: EnterpriseHttpRuntimeDeps) {
     if (parsedMessage.hasSamlResponse) {
       return new Response(null, { status: 204 });
     }
-    throw new AuthError(
-      "INVALID_PARAMETERS",
-      "Missing SAML logout payload.",
-    ).toConvexError();
+    throw Cv.error({
+      code: "INVALID_PARAMETERS",
+      message: "Missing SAML logout payload.",
+    });
   };
 
   const handleScimRequest = async (
@@ -645,7 +643,7 @@ export function addEnterpriseHttpRuntime(deps: EnterpriseHttpRuntimeDeps) {
           userId,
           data: patchData,
         });
-        const resolution = await auth.member.resolve(state.ctx, {
+        const resolution = await auth.member.inspect(state.ctx, {
           groupId: state.enterprise.groupId,
           userId,
         });
@@ -711,7 +709,7 @@ export function addEnterpriseHttpRuntime(deps: EnterpriseHttpRuntimeDeps) {
         );
         if (missing) return missing;
         const userId = state.parsedPath.resourceId!;
-        const resolution = await auth.member.resolve(state.ctx, {
+        const resolution = await auth.member.inspect(state.ctx, {
           groupId: state.enterprise.groupId,
           userId,
         });
@@ -961,15 +959,12 @@ export function addEnterpriseHttpRuntime(deps: EnterpriseHttpRuntimeDeps) {
             );
             const userId = match?.[1];
             if (userId) {
-              const resolution = await auth.member.resolve(
-                state.ctx,
-                { groupId, userId },
-              );
+              const resolution = await auth.member.inspect(state.ctx, {
+                groupId,
+                userId,
+              });
               if (resolution.membership) {
-                await auth.member.delete(
-                  state.ctx,
-                  resolution.membership._id,
-                );
+                await auth.member.delete(state.ctx, resolution.membership._id);
               }
             }
           }
@@ -1105,7 +1100,13 @@ export function addEnterpriseHttpRuntime(deps: EnterpriseHttpRuntimeDeps) {
       ) {
         return scimError(400, "invalidFilter", error.message);
       }
-      if (isAuthError(error)) {
+      if (
+        error instanceof ConvexError &&
+        typeof error.data === "object" &&
+        error.data !== null &&
+        "code" in error.data &&
+        "message" in error.data
+      ) {
         const code = error.data.code as string;
         const status =
           code === "MISSING_BEARER_TOKEN" || code === "INVALID_API_KEY"
@@ -1141,7 +1142,10 @@ export function addEnterpriseHttpRuntime(deps: EnterpriseHttpRuntimeDeps) {
       const url = new URL(request.url);
       const verifier = url.searchParams.get("code");
       if (!verifier) {
-        throw new AuthError("OAUTH_MISSING_VERIFIER").toConvexError();
+        throw Cv.error({
+          code: "OAUTH_MISSING_VERIFIER",
+          message: "Missing sign-in verifier.",
+        });
       }
       const { loaded, enterprise } = await loadActiveEnterpriseSamlOrThrow(
         ctx,
@@ -1204,7 +1208,10 @@ export function addEnterpriseHttpRuntime(deps: EnterpriseHttpRuntimeDeps) {
       const url = new URL(request.url);
       const verifier = url.searchParams.get("code");
       if (!verifier) {
-        throw new AuthError("OAUTH_MISSING_VERIFIER").toConvexError();
+        throw Cv.error({
+          code: "OAUTH_MISSING_VERIFIER",
+          message: "Missing sign-in verifier.",
+        });
       }
       const { enterprise, oidc } = await loadEnterpriseOidcOrThrow(
         ctx,

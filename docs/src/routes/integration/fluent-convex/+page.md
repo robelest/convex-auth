@@ -50,7 +50,6 @@ yarn add fluent-convex zod
 
 ```ts
 // convex/lib/functions.ts
-import { ConvexError } from "convex/values";
 import { createBuilder } from "fluent-convex";
 import { WithZod } from "fluent-convex/zod";
 import type { DataModel } from "./_generated/dataModel";
@@ -58,25 +57,11 @@ import { auth } from "../auth";
 
 const convex = createBuilder<DataModel>();
 
-const withRequiredAuth = convex.createMiddleware<any, { auth: any }>(
-  async (ctx, next) => {
-    const userId = await auth.user.id(ctx);
-    if (userId === null) {
-      throw new ConvexError({
-        code: "NOT_SIGNED_IN",
-        message: "Authentication required",
-      });
-    }
-    const user = await auth.user.get(ctx, userId);
-    if (user === null) {
-      throw new ConvexError({
-        code: "USER_NOT_FOUND",
-        message: "Authenticated user not found",
-      });
-    }
-    return next({ ...ctx, auth: { ...ctx.auth, userId, user } });
-  },
-);
+// auth.context() resolves { userId, user, groupId, role, grants }
+// and throws ConvexError if unauthenticated — no manual checks needed.
+const withRequiredAuth = convex.createMiddleware(async (ctx, next) => {
+  return next({ ...ctx, auth: await auth.context(ctx) });
+});
 
 export const query = convex.query().use(withRequiredAuth).extend(WithZod);
 export const mutation = convex.mutation().use(withRequiredAuth).extend(WithZod);

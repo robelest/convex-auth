@@ -1,6 +1,5 @@
 import { Fx } from "@robelest/fx";
 
-import { base64urlDecode, base64urlEncode } from "../runtime/browser";
 import type {
   AuthSession,
   ConvexTransport,
@@ -8,6 +7,7 @@ import type {
   SignInActionResult,
   SignInResult,
 } from "../core/types";
+import { base64urlDecode, base64urlEncode } from "../runtime/browser";
 
 type PasskeyDeps = {
   proxy: string | undefined;
@@ -43,31 +43,28 @@ export function createPasskeyClient(deps: PasskeyDeps): PasskeyClient {
     return Fx.run(
       Fx.match(result, result.kind, {
         signedIn: (signedInResult) =>
-          Fx.from({
-            ok: async () => {
-              const signingIn = await setTokenAndMaybeWait(
-                proxy
-                  ? {
-                      shouldStore: false as const,
-                      tokens:
-                        signedInResult.tokens === null
-                          ? null
-                          : { token: signedInResult.tokens.token },
-                      waitForHandshake: true,
-                      context: { provider: "passkey", flow },
-                    }
-                  : {
-                      shouldStore: true as const,
-                      tokens: signedInResult.tokens,
-                      waitForHandshake: true,
-                      context: { provider: "passkey", flow },
-                    },
-              );
-              return signingIn
-                ? ({ kind: "signedIn" as const } as SignInResult)
-                : ({ kind: "started" as const } as SignInResult);
-            },
-            err: (e) => e as never,
+          Fx.promise(async () => {
+            const signingIn = await setTokenAndMaybeWait(
+              proxy
+                ? {
+                    shouldStore: false as const,
+                    tokens:
+                      signedInResult.tokens === null
+                        ? null
+                        : { token: signedInResult.tokens.token },
+                    waitForHandshake: true,
+                    context: { provider: "passkey", flow },
+                  }
+                : {
+                    shouldStore: true as const,
+                    tokens: signedInResult.tokens,
+                    waitForHandshake: true,
+                    context: { provider: "passkey", flow },
+                  },
+            );
+            return signingIn
+              ? ({ kind: "signedIn" as const } as SignInResult)
+              : ({ kind: "started" as const } as SignInResult);
           }),
         redirect: () => Fx.succeed({ kind: "started" as const }),
         started: () => Fx.succeed({ kind: "started" as const }),

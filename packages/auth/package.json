@@ -1,6 +1,6 @@
 {
   "name": "@robelest/convex-auth",
-  "version": "0.0.4-preview.22",
+  "version": "0.0.4-preview.23",
   "description": "Authentication for Convex",
   "keywords": [
     "auth",
@@ -53,10 +53,6 @@
     "./convex.config.js": {
       "types": "./dist/component/convex.config.d.ts",
       "default": "./dist/component/convex.config.js"
-    },
-    "./errors": {
-      "types": "./dist/server/errors.d.ts",
-      "import": "./dist/server/errors.js"
     },
     "./providers": {
       "types": "./dist/providers/index.d.ts",

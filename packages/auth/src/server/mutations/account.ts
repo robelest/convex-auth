@@ -1,11 +1,11 @@
 import { Fx } from "@robelest/fx";
+import { Cv } from "@robelest/fx/convex";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
-import { Infer, v } from "convex/values";
+import { ConvexError, Infer, v } from "convex/values";
 
-import { authDb } from "../db";
-import { AuthError } from "../authError";
 import { GetProviderOrThrowFunc, hash } from "../crypto";
 import * as Provider from "../crypto";
+import { authDb } from "../db";
 import { MutationCtx } from "../types";
 import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils";
 import { AUTH_STORE_REF } from "./store/refs";
@@ -20,7 +20,7 @@ export function modifyAccountImpl(
   args: Infer<typeof modifyAccountArgs>,
   getProviderOrThrow: GetProviderOrThrowFunc,
   config: Provider.Config,
-): Fx<void, AuthError> {
+): Fx<void, ConvexError<any>> {
   const { provider, account } = args;
   const db = authDb(ctx, config);
 
@@ -29,38 +29,24 @@ export function modifyAccountImpl(
     account: { id: account.id, secret: maybeRedact(account.secret ?? "") },
   });
 
-  return Fx.from({
-    ok: () => db.accounts.get(provider, account.id),
-    err: () =>
-      new AuthError(
-        "ACCOUNT_NOT_FOUND",
-        `Cannot modify account with ID ${account.id} because it does not exist`,
-      ),
-  }).pipe(
-    Fx.chain((doc) =>
-      doc === null
-        ? Fx.fail(
-            new AuthError(
-              "ACCOUNT_NOT_FOUND",
-              `Cannot modify account with ID ${account.id} because it does not exist`,
-            ),
-          )
-        : Fx.succeed(doc),
-    ),
-    Fx.chain((existingAccount) =>
-      hash(getProviderOrThrow(provider), account.secret).pipe(
-        Fx.chain((hashedSecret) =>
-          Fx.from({
-            ok: () =>
-              db.accounts.patch(existingAccount._id, { secret: hashedSecret }),
-            err: () =>
-              new AuthError("INTERNAL_ERROR", "Failed to patch account"),
-          }),
-        ),
-      ),
-    ),
-    Fx.map(() => undefined),
-  );
+  return Fx.gen(function* () {
+    const existingAccount = yield* Fx.promise(() =>
+      db.accounts.get(provider, account.id),
+    );
+    if (existingAccount === null) {
+      return yield* Cv.fail({
+        code: "ACCOUNT_NOT_FOUND",
+        message: `Cannot modify account with ID ${account.id} because it does not exist`,
+      });
+    }
+    const hashedSecret = yield* hash(
+      getProviderOrThrow(provider),
+      account.secret,
+    );
+    yield* Fx.promise(() =>
+      db.accounts.patch(existingAccount._id, { secret: hashedSecret }),
+    );
+  });
 }
 
 export const callModifyAccount = async <DataModel extends GenericDataModel>(

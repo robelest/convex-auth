@@ -3,17 +3,18 @@
  *
  * Uses Arctic for OAuth provider integration.
  *
- * All functions return `Fx<A, AuthError>` composed via `Fx.gen` pipelines.
+ * All functions return `Fx<A, ConvexError<any>>` composed via `Fx.gen` pipelines.
  *
  * @internal
  * @module
  */
 
 import { Fx } from "@robelest/fx";
+import { Cv } from "@robelest/fx/convex";
 import * as arctic from "arctic";
+import type { ConvexError } from "convex/values";
 
 import { SHARED_COOKIE_OPTIONS } from "./cookies";
-import { AuthError } from "./authError";
 import type { OAuthProfile } from "./types";
 import { logWithLevel } from "./utils";
 import { isLocalHost } from "./utils";
@@ -134,13 +135,13 @@ function isPKCEProvider(provider: any): boolean {
 
 /**
  * Exchange the authorization code for tokens via Arctic.
- * Maps Arctic-specific errors to typed `AuthError` failures.
+ * Maps Arctic-specific errors to typed `ConvexError<any>` failures.
  */
 function exchangeCode(
   arcticProvider: any,
   code: string,
   codeVerifier: string | undefined,
-): Fx<arctic.OAuth2Tokens, AuthError> {
+): Fx<arctic.OAuth2Tokens, ConvexError<any>> {
   return Fx.from({
     ok: () =>
       isPKCEProvider(arcticProvider)
@@ -148,24 +149,24 @@ function exchangeCode(
         : arcticProvider.validateAuthorizationCode(code),
     err: (e) => {
       if (e instanceof arctic.OAuth2RequestError) {
-        return new AuthError(
-          "OAUTH_PROVIDER_ERROR",
-          `Token exchange failed: ${e.code}`,
-        );
+        return Cv.error({
+          code: "OAUTH_PROVIDER_ERROR",
+          message: `Token exchange failed: ${e.code}`,
+        });
       }
       if (e instanceof arctic.ArcticFetchError) {
-        return new AuthError(
-          "OAUTH_PROVIDER_ERROR",
-          `Network error during token exchange: ${e.message}`,
-        );
+        return Cv.error({
+          code: "OAUTH_PROVIDER_ERROR",
+          message: `Network error during token exchange: ${e.message}`,
+        });
       }
       // Unknown error — treat as unrecoverable defect; we surface it as
-      // an AuthError here so the pipeline type stays Fx<_, AuthError>.
+      // an ConvexError<any> here so the pipeline type stays Fx<_, ConvexError<any>>.
       // The original `throw e` re-throw is replicated via Fx.fatal below.
-      return new AuthError(
-        "OAUTH_PROVIDER_ERROR",
-        `Unexpected error during token exchange: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      return Cv.error({
+        code: "OAUTH_PROVIDER_ERROR",
+        message: `Unexpected error during token exchange: ${e instanceof Error ? e.message : String(e)}`,
+      });
     },
   }).pipe(
     Fx.chain((tokens) => {
@@ -186,7 +187,7 @@ function extractProfile(
   providerId: string,
   oauthConfig: OAuthProviderConfigLike,
   tokens: arctic.OAuth2Tokens,
-): Fx<OAuthProfile, AuthError> {
+): Fx<OAuthProfile, ConvexError<any>> {
   const hasIdToken =
     "id_token" in tokens.data &&
     typeof (tokens.data as any).id_token === "string";
@@ -201,10 +202,10 @@ function extractProfile(
       Fx.from({
         ok: () => oauthConfig.profile!(tokens),
         err: (e) =>
-          new AuthError(
-            "OAUTH_INVALID_PROFILE",
-            `Profile callback threw: ${e instanceof Error ? e.message : String(e)}`,
-          ),
+          Cv.error({
+            code: "OAUTH_INVALID_PROFILE",
+            message: `Profile callback threw: ${e instanceof Error ? e.message : String(e)}`,
+          }),
       }),
     idToken: (_profileSource) => {
       const claims = arctic.decodeIdToken(tokens.idToken()) as Record<
@@ -219,13 +220,12 @@ function extractProfile(
       });
     },
     missing: (_profileSource) =>
-      Fx.fail(
-        new AuthError(
-          "OAUTH_INVALID_PROFILE",
+      Cv.fail({
+        code: "OAUTH_INVALID_PROFILE",
+        message:
           `Provider "${providerId}" does not return an ID token. ` +
-            `Add a \`profile\` callback in the OAuth() config to extract user info from the access token.`,
-        ),
-      ),
+          `Add a \`profile\` callback in the OAuth() config to extract user info from the access token.`,
+      }),
   });
 }
 
@@ -235,15 +235,13 @@ function extractProfile(
 function validateProfileId(
   providerId: string,
   profile: OAuthProfile,
-): Fx<OAuthProfile, AuthError> {
+): Fx<OAuthProfile, ConvexError<any>> {
   return typeof profile.id === "string" && profile.id
     ? Fx.succeed(profile)
-    : Fx.fail(
-        new AuthError(
-          "OAUTH_INVALID_PROFILE",
-          `The profile callback for "${providerId}" must return an object with a string \`id\` field.`,
-        ),
-      );
+    : Cv.fail({
+        code: "OAUTH_INVALID_PROFILE",
+        message: `The profile callback for "${providerId}" must return an object with a string \`id\` field.`,
+      });
 }
 
 // ============================================================================
@@ -308,7 +306,7 @@ export async function createOAuthAuthorizationURL(
  * Handle the OAuth callback: validate state, exchange code for tokens,
  * extract profile.
  *
- * Returns `Fx<CallbackResult, AuthError>` composed via `Fx.gen`.
+ * Returns `Fx<CallbackResult, ConvexError<any>>` composed via `Fx.gen`.
  */
 /** @internal */
 export function handleOAuthCallback(
@@ -317,7 +315,7 @@ export function handleOAuthCallback(
   oauthConfig: OAuthProviderConfigLike,
   params: Record<string, string>,
   cookies: Record<string, string | undefined>,
-): Fx<CallbackResult, AuthError> {
+): Fx<CallbackResult, ConvexError<any>> {
   return Fx.gen(function* () {
     const resCookies: OAuthCookie[] = [];
 
@@ -328,7 +326,10 @@ export function handleOAuthCallback(
 
     yield* Fx.guard(
       !storedState || !returnedState || storedState !== returnedState,
-      Fx.fail(new AuthError("OAUTH_INVALID_STATE")),
+      Cv.fail({
+        code: "OAUTH_INVALID_STATE",
+        message: "Invalid OAuth state. Please try signing in again.",
+      }),
     );
     resCookies.push(clearCookie("state", providerId));
 
@@ -340,26 +341,20 @@ export function handleOAuthCallback(
         error_description: params.error_description,
       };
       logWithLevel("DEBUG", "OAuthCallbackError", cause);
-      yield* Fx.fail(
-        new AuthError(
-          "OAUTH_PROVIDER_ERROR",
-          "OAuth provider returned an error",
-          {
-            cause: JSON.stringify(cause),
-          },
-        ),
-      );
+      yield* Cv.fail({
+        code: "OAUTH_PROVIDER_ERROR",
+        message: "OAuth provider returned an error",
+        cause: JSON.stringify(cause),
+      });
     }
 
     // 2. Get code
     const code = yield* params.code != null
       ? Fx.succeed(params.code)
-      : Fx.fail(
-          new AuthError(
-            "OAUTH_PROVIDER_ERROR",
-            "Missing authorization code in callback",
-          ),
-        );
+      : Cv.fail({
+          code: "OAUTH_PROVIDER_ERROR",
+          message: "Missing authorization code in callback",
+        });
 
     // 3. Read PKCE verifier from cookie if applicable
     let codeVerifier: string | undefined;
@@ -367,12 +362,10 @@ export function handleOAuthCallback(
       const pkceCookieName = oauthCookieName("pkce", providerId);
       codeVerifier = yield* cookies[pkceCookieName] != null
         ? Fx.succeed(cookies[pkceCookieName]!)
-        : Fx.fail(
-            new AuthError(
-              "OAUTH_MISSING_VERIFIER",
-              "Missing PKCE verifier cookie for OAuth callback",
-            ),
-          );
+        : Cv.fail({
+            code: "OAUTH_MISSING_VERIFIER",
+            message: "Missing PKCE verifier cookie for OAuth callback",
+          });
       resCookies.push(clearCookie("pkce", providerId));
     }
 
@@ -381,12 +374,10 @@ export function handleOAuthCallback(
       const nonceCookieName = oauthCookieName("nonce", providerId);
       nonce = yield* cookies[nonceCookieName] != null
         ? Fx.succeed(cookies[nonceCookieName]!)
-        : Fx.fail(
-            new AuthError(
-              "OAUTH_PROVIDER_ERROR",
-              "Missing nonce cookie for OAuth callback",
-            ),
-          );
+        : Cv.fail({
+            code: "OAUTH_PROVIDER_ERROR",
+            message: "Missing nonce cookie for OAuth callback",
+          });
       resCookies.push(clearCookie("nonce", providerId));
     }
 
@@ -397,10 +388,10 @@ export function handleOAuthCallback(
       yield* Fx.from({
         ok: () => oauthConfig.validateTokens!(tokens, { nonce }),
         err: (e) =>
-          new AuthError(
-            "OAUTH_PROVIDER_ERROR",
-            `Token validation failed: ${e instanceof Error ? e.message : String(e)}`,
-          ),
+          Cv.error({
+            code: "OAUTH_PROVIDER_ERROR",
+            message: `Token validation failed: ${e instanceof Error ? e.message : String(e)}`,
+          }),
       });
     }
 

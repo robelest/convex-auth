@@ -795,30 +795,25 @@ export type AuthProviderSignInResult = {
   sessionId: GenericId<"Session">;
 } | null;
 
-/** Arguments for `auth.member.resolve()`. */
-export type AuthMemberResolveArgs = {
+/** Arguments for `auth.member.inspect()`. */
+export type AuthMemberInspectArgs = {
   userId: GenericId<"User">;
   groupId: GenericId<"Group">;
   ancestry?: boolean;
-  roleIds?: string[];
-  grants?: string[];
   maxDepth?: number;
 };
 
-/** Result of `auth.member.resolve()` — membership check with role and grant details. */
-export type AuthMemberResolveResult = {
-  ok: boolean;
+/** Result of `auth.member.inspect()` — membership state and derived access details. */
+export type AuthMemberInspectResult = {
   membership: GenericDoc<GenericDataModel, "GroupMember"> | null;
-  matchedGroupId: GenericId<"Group"> | null;
   roleIds: string[];
   grants: string[];
-  missingGrants: string[];
-  depth: number | null;
-  isDirect: boolean;
-  isInherited: boolean;
-  traversedGroupIds: GenericId<"Group">[];
-  code?: "INVALID_ROLE_IDS";
-  invalidRoleIds?: string[];
+};
+
+/** Arguments for `auth.member.require()`. */
+export type AuthMemberRequireArgs = AuthMemberInspectArgs & {
+  roleIds?: string[];
+  grants?: string[];
 };
 
 /**
@@ -846,7 +841,6 @@ export type AuthServerHelpers = {
       ctx: GenericActionCtx<any>,
       args: AuthCreateAccountArgs,
     ) => Promise<{
-      ok: true;
       account: GenericDoc<GenericDataModel, "Account">;
       user: GenericDoc<GenericDataModel, "User">;
     }>;
@@ -860,7 +854,7 @@ export type AuthServerHelpers = {
     update: (
       ctx: GenericActionCtx<any>,
       args: AuthUpdateAccountArgs,
-    ) => Promise<{ ok: true; accountId: GenericId<"Account"> }>;
+    ) => Promise<{ accountId: GenericId<"Account"> }>;
   };
   session: {
     current: (ctx: {
@@ -870,16 +864,19 @@ export type AuthServerHelpers = {
       ctx: GenericActionCtx<any>,
       args: AuthInvalidateSessionsArgs,
     ) => Promise<{
-      ok: true;
       userId: GenericId<"User">;
       except: GenericId<"Session">[];
     }>;
   };
   member: {
-    resolve: (
+    inspect: (
       ctx: GenericActionCtx<any>,
-      args: AuthMemberResolveArgs,
-    ) => Promise<AuthMemberResolveResult>;
+      args: AuthMemberInspectArgs,
+    ) => Promise<AuthMemberInspectResult>;
+    require: (
+      ctx: GenericActionCtx<any>,
+      args: AuthMemberRequireArgs,
+    ) => Promise<AuthMemberInspectResult>;
   };
   provider: {
     signIn: (
@@ -939,7 +936,7 @@ export interface SAMLAttributeMapping {
  * Materialized OAuth provider config (Arctic-based).
  *
  * Carries the Arctic provider instance along with scopes and profile config.
-  * Produced by materializing an `OAuthProviderInstance` during `configDefaults`.
+ * Produced by materializing an `OAuthProviderInstance` during `configDefaults`.
  */
 export interface OAuthMaterializedConfig {
   /**

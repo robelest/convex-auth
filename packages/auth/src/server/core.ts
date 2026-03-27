@@ -1,13 +1,14 @@
+import { Cv } from "@robelest/fx/convex";
 import { Auth, GenericActionCtx, GenericDataModel } from "convex/server";
 import { GenericId } from "convex/values";
 
+import { materializeProvider } from "./config";
 import {
   buildScopeChecker,
   checkKeyRateLimit,
   generateApiKey,
   hashApiKey,
 } from "./keys";
-import { materializeProvider } from "./config";
 import { signInImpl } from "./signin";
 import type {
   AuthProviderConfig,
@@ -17,11 +18,7 @@ import type {
   UserOrderBy,
   UserWhere,
 } from "./types";
-import {
-  generateRandomString,
-  sha256,
-  TOKEN_SUB_CLAIM_DIVIDER,
-} from "./utils";
+import { generateRandomString, sha256, TOKEN_SUB_CLAIM_DIVIDER } from "./utils";
 
 type ComponentCtx = Pick<
   GenericActionCtx<GenericDataModel>,
@@ -104,17 +101,17 @@ export function createCoreDomains(deps: CoreDeps) {
     return roleDefinitions[roleId] ?? null;
   };
 
-  const normalizeRoleIds = (
-    roleIds?: string[],
-  ):
-    | { ok: true; roleIds: string[] }
-    | { ok: false; invalidRoleIds: string[] } => {
+  const normalizeRoleIds = (roleIds?: string[]): string[] => {
     const normalized = Array.from(new Set(roleIds ?? []));
     const invalid = normalized.filter((id) => getRoleDefinition(id) === null);
     if (invalid.length > 0) {
-      return { ok: false, invalidRoleIds: invalid };
+      throw Cv.error({
+        code: "INVALID_ROLE_IDS",
+        message: "One or more role IDs are invalid.",
+        invalidRoleIds: invalid,
+      });
     }
-    return { ok: true, roleIds: normalized };
+    return normalized;
   };
 
   const listAllKeysByUser = async (ctx: ComponentCtx, userId: string) => {
@@ -225,14 +222,15 @@ export function createCoreDomains(deps: CoreDeps) {
         const authHeader = request.headers.get("Authorization");
         if (authHeader?.startsWith("Bearer sk_")) {
           const rawKey = authHeader.slice(7);
-          const result = await getAuth().key.verify(
-            ctx as ComponentCtx,
-            rawKey,
-          );
-          if (result.ok) {
+          try {
+            const result = await getAuth().key.verify(
+              ctx as ComponentCtx,
+              rawKey,
+            );
             return result.userId;
+          } catch {
+            return null;
           }
-          return null;
         }
       }
       return null;
@@ -325,7 +323,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param ctx - Convex mutation context.
      * @param userId - The user's document ID.
      * @param data - Fields to merge into the user document.
-     * @returns `{ ok: true, userId }`.
+     * @returns `{ userId }`.
      *
      * @example
      * ```ts
@@ -344,7 +342,7 @@ export function createCoreDomains(deps: CoreDeps) {
         userId,
         data,
       });
-      return { ok: true as const, userId };
+      return { userId };
     },
     /**
      * Set the user's active group. Stored in `user.extend.lastActiveGroup`.
@@ -354,7 +352,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param ctx - Convex mutation context.
      * @param opts.userId - The user's document ID.
      * @param opts.groupId - Group ID to set as active, or `null` to clear.
-     * @returns `{ ok: true, userId, groupId }` confirming the active group was set (or cleared).
+     * @returns `{ userId, groupId }` confirming the active group was set (or cleared).
      *
      * @example
      * ```ts
@@ -380,12 +378,12 @@ export function createCoreDomains(deps: CoreDeps) {
       if (opts.groupId === null) {
         const { lastActiveGroup: _omit, ...rest } = existingExtend;
         await user.update(ctx, opts.userId, { extend: rest });
-        return { ok: true as const, userId: opts.userId, groupId: null };
+        return { userId: opts.userId, groupId: null };
       }
       await user.update(ctx, opts.userId, {
         extend: { ...existingExtend, lastActiveGroup: opts.groupId },
       });
-      return { ok: true as const, userId: opts.userId, groupId: opts.groupId };
+      return { userId: opts.userId, groupId: opts.groupId };
     },
     /**
      * Read the user's active group ID from `user.extend.lastActiveGroup`.
@@ -429,7 +427,8 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param ctx - Convex mutation context.
      * @param userId - The user's document ID.
      * @param opts.cascade - Whether to delete related records (default `true`).
-     * @returns `{ ok: true, userId }`.
+     * @returns `{ userId }`.
+     * @throws `INVALID_PARAMETERS` if `cascade` is `false` but the user has linked data.
      */
     delete: async (
       ctx: ComponentCtx,
@@ -462,7 +461,10 @@ export function createCoreDomains(deps: CoreDeps) {
         passkeys.length +
         totps.length;
       if (!cascade && totalLinked > 0) {
-        return { ok: false as const, code: "INVALID_PARAMETERS" as const };
+        throw Cv.error({
+          code: "INVALID_PARAMETERS",
+          message: "The provided parameters are invalid.",
+        });
       }
       const deletions: Promise<unknown>[] = [];
       for (const s of sessions)
@@ -501,7 +503,7 @@ export function createCoreDomains(deps: CoreDeps) {
         );
       await Promise.all(deletions);
       await ctx.runMutation(config.component.public.userDelete, { userId });
-      return { ok: true as const, userId };
+      return { userId };
     },
   };
 
@@ -547,7 +549,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param ctx - Convex action context.
      * @param args.userId - The user whose sessions should be invalidated.
      * @param args.except - Optional array of session IDs to keep valid.
-     * @returns `{ ok: true, userId, except }` confirming the operation.
+     * @returns `{ userId, except }` confirming the operation.
      *
      * @example Sign out everywhere except the current session
      * ```ts
@@ -564,7 +566,6 @@ export function createCoreDomains(deps: CoreDeps) {
     ) => {
       await callInvalidateSessions(ctx, args);
       return {
-        ok: true as const,
         userId: args.userId,
         except: args.except ?? [],
       };
@@ -635,7 +636,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param args.profile - Profile data used to create or update the user document.
      * @param args.shouldLinkViaEmail - If `true`, link to an existing user by email match.
      * @param args.shouldLinkViaPhone - If `true`, link to an existing user by phone match.
-     * @returns `{ ok: true, ...created }` with the created account and user information.
+     * @returns The created account and user information.
      *
      * @example
      * ```ts
@@ -651,7 +652,7 @@ export function createCoreDomains(deps: CoreDeps) {
       args: CreateAccountArgs,
     ) => {
       const created = await callCreateAccountFromCredentials(ctx, args);
-      return { ok: true as const, ...created };
+      return { ...created };
     },
     /**
      * Retrieve an auth account by provider and credentials.
@@ -700,7 +701,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param args.provider - The provider ID (e.g. `"password"`).
      * @param args.account.id - Provider-specific account identifier.
      * @param args.account.secret - The new credential secret to store.
-     * @returns `{ ok: true, accountId }` confirming the update.
+     * @returns `{ accountId }` confirming the update.
      *
      * @example Password reset
      * ```ts
@@ -715,7 +716,7 @@ export function createCoreDomains(deps: CoreDeps) {
       args: UpdateAccountCredentialsArgs,
     ) => {
       await callModifyAccount(ctx, args);
-      return { ok: true as const, accountId: args.account.id };
+      return { accountId: args.account.id };
     },
     /**
      * Delete an auth account by ID.
@@ -727,16 +728,13 @@ export function createCoreDomains(deps: CoreDeps) {
      *
      * @param ctx - Convex mutation context.
      * @param accountId - The account's document ID.
-     * @returns `{ ok: true, accountId }` on success, or
-     *   `{ ok: false, code: "ACCOUNT_NOT_FOUND" }` if the account does not exist, or
-     *   `{ ok: false, code: "INVALID_PARAMETERS" }` if it is the user's last account.
+     * @returns `{ accountId }` on success.
+     * @throws `ACCOUNT_NOT_FOUND` if the account does not exist.
+     * @throws `INVALID_PARAMETERS` if it is the user's last account.
      *
      * @example
      * ```ts
-     * const result = await auth.account.delete(ctx, accountId);
-     * if (!result.ok) {
-     *   console.error("Cannot delete account:", result.code);
-     * }
+     * await auth.account.delete(ctx, accountId);
      * ```
      */
     delete: async (ctx: ComponentCtx, accountId: string) => {
@@ -744,19 +742,25 @@ export function createCoreDomains(deps: CoreDeps) {
         accountId,
       });
       if (doc === null) {
-        return { ok: false as const, code: "ACCOUNT_NOT_FOUND" as const };
+        throw Cv.error({
+          code: "ACCOUNT_NOT_FOUND",
+          message: "Account not found.",
+        });
       }
       const allAccounts = (await ctx.runQuery(
         config.component.public.accountListByUser,
         { userId: (doc as any).userId },
       )) as Array<{ _id: string }>;
       if (allAccounts.length <= 1) {
-        return { ok: false as const, code: "INVALID_PARAMETERS" as const };
+        throw Cv.error({
+          code: "INVALID_PARAMETERS",
+          message: "The provided parameters are invalid.",
+        });
       }
       await ctx.runMutation(config.component.public.accountDelete, {
         accountId,
       });
-      return { ok: true as const, accountId };
+      return { accountId };
     },
     /**
      * List all passkey credentials registered for a user.
@@ -794,7 +798,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param ctx - Convex mutation context.
      * @param passkeyId - The passkey credential's document ID.
      * @param name - The new display name for the passkey.
-     * @returns `{ ok: true, passkeyId }` confirming the rename.
+     * @returns `{ passkeyId }` confirming the rename.
      *
      * @example
      * ```ts
@@ -810,7 +814,7 @@ export function createCoreDomains(deps: CoreDeps) {
         passkeyId,
         data: { name },
       });
-      return { ok: true as const, passkeyId };
+      return { passkeyId };
     },
     /**
      * Delete a passkey credential.
@@ -821,7 +825,7 @@ export function createCoreDomains(deps: CoreDeps) {
      *
      * @param ctx - Convex mutation context.
      * @param passkeyId - The passkey credential's document ID.
-     * @returns `{ ok: true, passkeyId }` confirming the deletion.
+     * @returns `{ passkeyId }` confirming the deletion.
      *
      * @example
      * ```ts
@@ -832,7 +836,7 @@ export function createCoreDomains(deps: CoreDeps) {
       await ctx.runMutation(config.component.public.passkeyDelete, {
         passkeyId,
       });
-      return { ok: true as const, passkeyId };
+      return { passkeyId };
     },
     /**
      * List all TOTP (time-based one-time password) factors for a user.
@@ -863,7 +867,7 @@ export function createCoreDomains(deps: CoreDeps) {
      *
      * @param ctx - Convex mutation context.
      * @param totpId - The TOTP factor's document ID.
-     * @returns `{ ok: true, totpId }` confirming the deletion.
+     * @returns `{ totpId }` confirming the deletion.
      *
      * @example
      * ```ts
@@ -872,7 +876,7 @@ export function createCoreDomains(deps: CoreDeps) {
      */
     deleteTotp: async (ctx: ComponentCtx, totpId: string) => {
       await ctx.runMutation(config.component.public.totpDelete, { totpId });
-      return { ok: true as const, totpId };
+      return { totpId };
     },
   };
 
@@ -954,7 +958,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param data.parentGroupId - Nest under this group. Omit for a root group.
      * @param data.tags - Faceted classification tags (normalized at write time).
      * @param data.extend - Arbitrary app-specific metadata.
-     * @returns `{ ok: true, groupId }`.
+     * @returns `{ groupId }`.
      *
      * @example Root group
      * ```ts
@@ -980,12 +984,12 @@ export function createCoreDomains(deps: CoreDeps) {
         tags?: Array<{ key: string; value: string }>;
         extend?: Record<string, unknown>;
       },
-    ): Promise<{ ok: true; groupId: string }> => {
+    ): Promise<{ groupId: string }> => {
       const groupId = (await ctx.runMutation(
         config.component.public.groupCreate,
         data,
       )) as string;
-      return { ok: true, groupId };
+      return { groupId };
     },
     /**
      * Fetch a group document by ID.
@@ -1074,7 +1078,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param ctx - Convex mutation context.
      * @param groupId - The group's document ID.
      * @param data - Fields to merge (e.g. `name`, `slug`, `tags`, `parentGroupId`).
-     * @returns `{ ok: true, groupId }`.
+     * @returns `{ groupId }`.
      *
      * @example
      * ```ts
@@ -1093,7 +1097,7 @@ export function createCoreDomains(deps: CoreDeps) {
         groupId,
         data,
       });
-      return { ok: true as const, groupId };
+      return { groupId };
     },
     /**
      * Delete a group and recursively cascade to all descendant groups,
@@ -1101,7 +1105,7 @@ export function createCoreDomains(deps: CoreDeps) {
      *
      * @param ctx - Convex mutation context.
      * @param groupId - The group's document ID.
-     * @returns `{ ok: true, groupId }`.
+     * @returns `{ groupId }`.
      *
      * @example
      * ```ts
@@ -1110,7 +1114,7 @@ export function createCoreDomains(deps: CoreDeps) {
      */
     delete: async (ctx: ComponentCtx, groupId: string) => {
       await ctx.runMutation(config.component.public.groupDelete, { groupId });
-      return { ok: true as const, groupId };
+      return { groupId };
     },
     /**
      * Walk up the group hierarchy from `groupId` and return all ancestor
@@ -1176,7 +1180,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * Add a user to a group with optional role IDs.
      *
      * Role IDs are validated against the roles defined in `defineRoles()` —
-     * invalid IDs return `{ ok: false, code: "INVALID_ROLE_IDS" }`.
+     * invalid IDs throw `INVALID_ROLE_IDS`.
      * Throws `DUPLICATE_MEMBERSHIP` if the user is already a member.
      *
      * @param ctx - Convex mutation context.
@@ -1185,7 +1189,8 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param data.roleIds - Role IDs from `defineRoles()` (optional).
      * @param data.status - Membership status string (optional, app-defined).
      * @param data.extend - Arbitrary app-specific metadata.
-     * @returns `{ ok: true, memberId }` or `{ ok: false, code, invalidRoleIds }`.
+     * @returns `{ memberId }`.
+     * @throws `INVALID_ROLE_IDS` if any supplied role IDs are not defined.
      *
      * @example
      * ```ts
@@ -1206,18 +1211,12 @@ export function createCoreDomains(deps: CoreDeps) {
         extend?: Record<string, unknown>;
       },
     ) => {
-      const normalized = normalizeRoleIds(data.roleIds);
-      if (!normalized.ok)
-        return {
-          ok: false as const,
-          code: "INVALID_ROLE_IDS" as const,
-          invalidRoleIds: normalized.invalidRoleIds,
-        };
+      const roleIds = normalizeRoleIds(data.roleIds);
       const memberId = (await ctx.runMutation(
         config.component.public.memberAdd,
-        { ...data, roleIds: normalized.roleIds },
+        { ...data, roleIds },
       )) as string;
-      return { ok: true as const, memberId };
+      return { memberId };
     },
     /**
      * Fetch a membership document by its document ID.
@@ -1291,7 +1290,7 @@ export function createCoreDomains(deps: CoreDeps) {
      *
      * @param ctx - Convex mutation context.
      * @param memberId - The membership document ID.
-     * @returns `{ ok: true, memberId }`.
+     * @returns `{ memberId }`.
      *
      * @example
      * ```ts
@@ -1300,7 +1299,7 @@ export function createCoreDomains(deps: CoreDeps) {
      */
     delete: async (ctx: ComponentCtx, memberId: string) => {
       await ctx.runMutation(config.component.public.memberRemove, { memberId });
-      return { ok: true as const, memberId };
+      return { memberId };
     },
     /**
      * Patch a membership's `roleIds`, `status`, or `extend` fields.
@@ -1309,7 +1308,8 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param ctx - Convex mutation context.
      * @param memberId - The membership document ID.
      * @param data - Fields to merge. `roleIds` are validated.
-     * @returns `{ ok: true, memberId }` or `{ ok: false, code: "INVALID_ROLE_IDS" }`.
+     * @returns `{ memberId }`.
+     * @throws `INVALID_ROLE_IDS` if any supplied role IDs are not defined.
      *
      * @example
      * ```ts
@@ -1326,24 +1326,17 @@ export function createCoreDomains(deps: CoreDeps) {
     ) => {
       const nextData = { ...data };
       if ("roleIds" in nextData) {
-        const normalized = normalizeRoleIds(
+        nextData.roleIds = normalizeRoleIds(
           Array.isArray(nextData.roleIds)
             ? (nextData.roleIds as string[])
             : undefined,
         );
-        if (!normalized.ok)
-          return {
-            ok: false as const,
-            code: "INVALID_ROLE_IDS" as const,
-            invalidRoleIds: normalized.invalidRoleIds,
-          };
-        nextData.roleIds = normalized.roleIds;
       }
       await ctx.runMutation(config.component.public.memberUpdate, {
         memberId,
         data: nextData,
       });
-      return { ok: true as const, memberId };
+      return { memberId };
     },
     /**
      * Resolve a user's membership in a group, optionally walking the
@@ -1364,72 +1357,42 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param opts.userId - The user's document ID.
      * @param opts.groupId - The group to check membership in.
      * @param opts.ancestry - Walk the hierarchy (default `false`).
-     * @param opts.grants - Grant strings to check (optional).
-     * @param opts.roleIds - Role IDs to filter by (optional).
      * @param opts.maxDepth - Max hierarchy levels (default 32, only with ancestry).
-     * @returns `{ ok, membership, roleIds, grants, missingGrants, ... }`.
-     *   `ok` is `true` when membership exists and all requested grants are satisfied.
+     * @returns `{ membership, roleIds, grants }`.
      *
      * @example Direct lookup
      * ```ts
-     * const result = await auth.member.resolve(ctx, { userId, groupId });
-     * if (!result.membership) return { ok: false, code: "NOT_A_MEMBER" };
+     * const result = await auth.member.inspect(ctx, { userId, groupId });
+     * if (!result.membership) return null;
      * ```
      *
-     * @example Check grants (no hierarchy walk)
+     * @example Check grants after inspection
      * ```ts
-     * const result = await auth.member.resolve(ctx, {
-     *   userId, groupId, grants: ["issues.create"],
+     * const result = await auth.member.inspect(ctx, {
+     *   userId, groupId,
      * });
-     * if (!result.ok) return { ok: false, code: "FORBIDDEN" };
+     * const canCreate = result.grants.includes("issues.create");
      * ```
      *
      * @example Walk hierarchy + check grants
      * ```ts
-     * const result = await auth.member.resolve(ctx, {
-     *   userId, groupId: teamId, ancestry: true, grants: ["issues.create"],
+     * const result = await auth.member.inspect(ctx, {
+     *   userId, groupId: teamId, ancestry: true,
      * });
      * ```
      */
-    resolve: async (
+    inspect: async (
       ctx: ComponentReadCtx,
       opts: {
         userId: string;
         groupId: string;
         ancestry?: boolean;
-        roleIds?: string[];
-        grants?: string[];
         maxDepth?: number;
       },
     ) => {
-      const normalized = normalizeRoleIds(opts.roleIds);
-      if (!normalized.ok)
-        return {
-          ok: false as const,
-          membership: null,
-          matchedGroupId: null,
-          roleIds: [] as string[],
-          grants: [] as string[],
-          missingGrants: Array.from(new Set(opts.grants ?? [])),
-          depth: null,
-          isDirect: false,
-          isInherited: false,
-          traversedGroupIds: [] as string[],
-          code: "INVALID_ROLE_IDS" as const,
-          invalidRoleIds: normalized.invalidRoleIds,
-        };
-      const requestedRoleIds = normalized.roleIds;
-      const roleFilter =
-        requestedRoleIds.length > 0 ? new Set(requestedRoleIds) : null;
-      const requiredGrants = Array.from(new Set(opts.grants ?? []));
       const useAncestry = opts.ancestry === true;
 
       let membership: any = null;
-      let matchedGroupId: string | null = null;
-      let depth: number | null = null;
-      let isDirect = false;
-      let isInherited = false;
-      let traversedGroupIds: string[] = [];
 
       if (useAncestry) {
         // Hierarchy walk — single component RPC
@@ -1444,11 +1407,6 @@ export function createCoreDomains(deps: CoreDeps) {
           },
         );
         membership = result.membership;
-        matchedGroupId = result.matchedGroupId;
-        depth = result.depth;
-        isDirect = result.isDirect;
-        isInherited = result.isInherited;
-        traversedGroupIds = result.traversedGroupIds ?? [];
       } else {
         // Fast path — direct lookup, 1 read
         const doc = await ctx.runQuery(
@@ -1456,64 +1414,75 @@ export function createCoreDomains(deps: CoreDeps) {
           { userId: opts.userId, groupId: opts.groupId },
         );
         membership = doc;
-        matchedGroupId = doc ? opts.groupId : null;
-        depth = doc ? 0 : null;
-        isDirect = doc !== null;
       }
 
       if (membership === null) {
         return {
-          ok: false as const,
           membership: null,
-          matchedGroupId: null,
           roleIds: [] as string[],
           grants: [] as string[],
-          missingGrants: requiredGrants,
-          depth: null,
-          isDirect: false,
-          isInherited: false,
-          traversedGroupIds,
         };
       }
 
       const membershipRoleIds = membership.roleIds ?? [];
       const membershipGrants = resolveGrantedPermissions(membershipRoleIds);
 
-      // Check role filter
-      if (
-        roleFilter !== null &&
-        !membershipRoleIds.some((roleId: string) => roleFilter.has(roleId))
-      ) {
-        return {
-          ok: false as const,
-          membership: null,
-          matchedGroupId: null,
-          roleIds: [] as string[],
-          grants: [] as string[],
-          missingGrants: requiredGrants,
-          depth: null,
-          isDirect: false,
-          isInherited: false,
-          traversedGroupIds,
-        };
-      }
-
-      const missingGrants = requiredGrants.filter(
-        (grant) => !membershipGrants.includes(grant),
-      );
-
       return {
-        ok: missingGrants.length === 0,
         membership,
-        matchedGroupId,
         roleIds: membershipRoleIds,
         grants: membershipGrants,
-        missingGrants,
-        depth,
-        isDirect,
-        isInherited,
-        traversedGroupIds,
       };
+    },
+    require: async (
+      ctx: ComponentReadCtx,
+      opts: {
+        userId: string;
+        groupId: string;
+        ancestry?: boolean;
+        roleIds?: string[];
+        grants?: string[];
+        maxDepth?: number;
+      },
+    ) => {
+      const validatedRoleIds = normalizeRoleIds(opts.roleIds);
+      const requiredGrants = Array.from(new Set(opts.grants ?? []));
+      const roleFilter =
+        validatedRoleIds.length > 0 ? new Set(validatedRoleIds) : null;
+      const result = await member.inspect(ctx, {
+        userId: opts.userId,
+        groupId: opts.groupId,
+        ancestry: opts.ancestry,
+        maxDepth: opts.maxDepth,
+      });
+      if (result.membership === null) {
+        throw Cv.error({
+          code: "NOT_A_MEMBER",
+          message: "User is not a member of this group.",
+          groupId: opts.groupId,
+        });
+      }
+      if (
+        roleFilter !== null &&
+        !result.roleIds.some((roleId: string) => roleFilter.has(roleId))
+      ) {
+        throw Cv.error({
+          code: "NOT_A_MEMBER",
+          message: "User is not a member of this group.",
+          groupId: opts.groupId,
+        });
+      }
+      const missingGrants = requiredGrants.filter(
+        (grant) => !result.grants.includes(grant),
+      );
+      if (missingGrants.length > 0) {
+        throw Cv.error({
+          code: "MISSING_GRANTS",
+          message: "User is missing required grants.",
+          groupId: opts.groupId,
+          missingGrants,
+        });
+      }
+      return result;
     },
   };
 
@@ -1529,7 +1498,8 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param data.roleIds - Role IDs from `defineRoles()` to assign on acceptance (optional).
      * @param data.expiresTime - Expiration timestamp in ms since epoch (optional).
      * @param data.extend - Arbitrary app-specific metadata (optional).
-     * @returns `{ ok: true, inviteId, token }` or `{ ok: false, code: "INVALID_ROLE_IDS" }`.
+     * @returns `{ inviteId, token }`.
+     * @throws `INVALID_ROLE_IDS` if any supplied role IDs are not defined.
      *
      * @example
      * ```ts
@@ -1549,13 +1519,7 @@ export function createCoreDomains(deps: CoreDeps) {
         extend?: Record<string, unknown>;
       },
     ) => {
-      const normalized = normalizeRoleIds(data.roleIds);
-      if (!normalized.ok)
-        return {
-          ok: false as const,
-          code: "INVALID_ROLE_IDS" as const,
-          invalidRoleIds: normalized.invalidRoleIds,
-        };
+      const roleIds = normalizeRoleIds(data.roleIds);
       const token = generateRandomString(
         inviteTokenLength,
         inviteTokenAlphabet,
@@ -1563,9 +1527,9 @@ export function createCoreDomains(deps: CoreDeps) {
       const tokenHash = await sha256(token);
       const inviteId = (await ctx.runMutation(
         config.component.public.inviteCreate,
-        { ...data, roleIds: normalized.roleIds, tokenHash, status: "pending" },
+        { ...data, roleIds, tokenHash, status: "pending" },
       )) as string;
-      return { ok: true as const, inviteId, token };
+      return { inviteId, token };
     },
     /**
      * Fetch an invite document by ID.
@@ -1628,7 +1592,7 @@ export function createCoreDomains(deps: CoreDeps) {
        * @param ctx - Convex mutation context.
        * @param args.token - The raw invite token string.
        * @param args.acceptedByUserId - The user accepting the invite.
-       * @returns `{ ok: true, ...result }` with the created membership details.
+       * @returns The created membership details.
        *
        * @example
        * ```ts
@@ -1647,7 +1611,7 @@ export function createCoreDomains(deps: CoreDeps) {
           config.component.public.inviteAcceptByToken,
           { tokenHash, acceptedByUserId: args.acceptedByUserId },
         );
-        return { ok: true as const, ...result };
+        return { ...result };
       },
     },
     /**
@@ -1715,7 +1679,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param ctx - Convex mutation context.
      * @param inviteId - The invite's document ID.
      * @param acceptedByUserId - The user who accepted the invite (optional).
-     * @returns `{ ok: true, inviteId, acceptedByUserId }`.
+     * @returns `{ inviteId, acceptedByUserId }`.
      *
      * @example
      * ```ts
@@ -1732,7 +1696,6 @@ export function createCoreDomains(deps: CoreDeps) {
         ...(acceptedByUserId ? { acceptedByUserId } : {}),
       });
       return {
-        ok: true as const,
         inviteId,
         acceptedByUserId: acceptedByUserId ?? null,
       };
@@ -1745,7 +1708,7 @@ export function createCoreDomains(deps: CoreDeps) {
      *
      * @param ctx - Convex mutation context.
      * @param inviteId - The invite's document ID.
-     * @returns `{ ok: true, inviteId }`.
+     * @returns `{ inviteId }`.
      *
      * @example
      * ```ts
@@ -1754,7 +1717,7 @@ export function createCoreDomains(deps: CoreDeps) {
      */
     revoke: async (ctx: ComponentCtx, inviteId: string) => {
       await ctx.runMutation(config.component.public.inviteRevoke, { inviteId });
-      return { ok: true as const, inviteId };
+      return { inviteId };
     },
   };
 
@@ -1770,7 +1733,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param opts.rateLimit - Optional per-key rate limit `{ maxRequests, windowMs }`.
      * @param opts.expiresAt - Optional expiration timestamp (ms since epoch).
      * @param opts.metadata - Arbitrary app-specific metadata.
-     * @returns `{ ok: true, keyId, secret }`. Store `secret` securely — it cannot be retrieved later.
+     * @returns `{ keyId, secret }`. Store `secret` securely — it cannot be retrieved later.
      *
      * @example
      * ```ts
@@ -1791,7 +1754,7 @@ export function createCoreDomains(deps: CoreDeps) {
         expiresAt?: number;
         metadata?: Record<string, unknown>;
       },
-    ): Promise<{ ok: true; keyId: string; secret: string }> => {
+    ): Promise<{ keyId: string; secret: string }> => {
       const { raw, hashedKey, displayPrefix } = await generateApiKey("sk_");
       const keyId = (await ctx.runMutation(config.component.public.keyInsert, {
         userId: opts.userId,
@@ -1803,7 +1766,7 @@ export function createCoreDomains(deps: CoreDeps) {
         expiresAt: opts.expiresAt,
         metadata: opts.metadata,
       })) as string;
-      return { ok: true, keyId, secret: raw };
+      return { keyId, secret: raw };
     },
     /**
      * Verify an API key and return the owner's identity and scopes.
@@ -1813,48 +1776,45 @@ export function createCoreDomains(deps: CoreDeps) {
      *
      * @param ctx - Convex mutation context (updates `lastUsedAt` and rate limit state).
      * @param rawKey - The raw `sk_*` key string.
-     * @returns On success: `{ ok: true, userId, keyId, scopes }` where `scopes.can(resource, action)` checks permissions.
-     *   On failure: `{ ok: false, code }` with one of:
-     *   - `"INVALID_API_KEY"` — key not found.
-     *   - `"API_KEY_REVOKED"` — key was revoked.
-     *   - `"API_KEY_EXPIRED"` — key past its `expiresAt`.
-     *   - `"API_KEY_RATE_LIMITED"` — rate limit exceeded.
+     * @returns `{ userId, keyId, scopes }` where `scopes.can(resource, action)` checks permissions.
+     * @throws `INVALID_API_KEY` if the key is not found.
+     * @throws `API_KEY_REVOKED` if the key was revoked.
+     * @throws `API_KEY_EXPIRED` if the key is past its `expiresAt`.
+     * @throws `API_KEY_RATE_LIMITED` if the rate limit is exceeded.
      *
      * @example
      * ```ts
-     * const result = await auth.key.verify(ctx, rawKey);
-     * if (!result.ok) return { ok: false, code: result.code };
-     * const canRead = result.scopes.can("data", "read");
+     * const { userId, scopes } = await auth.key.verify(ctx, rawKey);
+     * const canRead = scopes.can("data", "read");
      * ```
      */
     verify: async (
       ctx: ComponentCtx,
       rawKey: string,
-    ): Promise<
-      | { ok: true; userId: string; keyId: string; scopes: ScopeChecker }
-      | {
-          ok: false;
-          code:
-            | "INVALID_API_KEY"
-            | "API_KEY_REVOKED"
-            | "API_KEY_EXPIRED"
-            | "API_KEY_RATE_LIMITED";
-        }
-    > => {
+    ): Promise<{ userId: string; keyId: string; scopes: ScopeChecker }> => {
       const hashedKey = await hashApiKey(rawKey);
       const doc = (await ctx.runQuery(
         config.component.public.keyGetByHashedKey,
         { hashedKey },
       )) as KeyDoc | null;
       if (!doc) {
-        return { ok: false as const, code: "INVALID_API_KEY" as const };
+        throw Cv.error({
+          code: "INVALID_API_KEY",
+          message: "Invalid API key.",
+        });
       }
       const k = doc;
       if (k.revoked) {
-        return { ok: false as const, code: "API_KEY_REVOKED" as const };
+        throw Cv.error({
+          code: "API_KEY_REVOKED",
+          message: "This API key has been revoked.",
+        });
       }
       if (k.expiresAt && k.expiresAt < Date.now()) {
-        return { ok: false as const, code: "API_KEY_EXPIRED" as const };
+        throw Cv.error({
+          code: "API_KEY_EXPIRED",
+          message: "This API key has expired.",
+        });
       }
       const patchData: Record<string, unknown> = { lastUsedAt: Date.now() };
       if (k.rateLimit) {
@@ -1863,7 +1823,10 @@ export function createCoreDomains(deps: CoreDeps) {
           k.rateLimitState ?? undefined,
         );
         if (limited) {
-          return { ok: false as const, code: "API_KEY_RATE_LIMITED" as const };
+          throw Cv.error({
+            code: "API_KEY_RATE_LIMITED",
+            message: "API key rate limit exceeded. Please try again later.",
+          });
         }
         patchData.rateLimitState = newState;
       }
@@ -1872,7 +1835,6 @@ export function createCoreDomains(deps: CoreDeps) {
         data: patchData,
       });
       return {
-        ok: true as const,
         userId: k.userId,
         keyId: k._id,
         scopes: buildScopeChecker(k.scopes),
@@ -1936,24 +1898,23 @@ export function createCoreDomains(deps: CoreDeps) {
      *
      * @param ctx - Convex query or mutation context.
      * @param keyId - The API key's document ID.
-     * @returns `{ ok: true, key }` with the key document, or `{ ok: false }` if not found.
+     * @returns The key document, or `null` if not found.
      *
      * @example
      * ```ts
-     * const result = await auth.key.get(ctx, keyId);
-     * if (!result.ok) throw new Error("Key not found");
-     * console.log(result.key.name, result.key.prefix);
+     * const key = await auth.key.get(ctx, keyId);
+     * if (!key) throw new Error("Key not found");
+     * console.log(key.name, key.prefix);
      * ```
      */
     get: async (
       ctx: ComponentReadCtx,
       keyId: string,
-    ): Promise<{ ok: true; key: KeyDoc } | { ok: false }> => {
+    ): Promise<KeyDoc | null> => {
       const doc = (await ctx.runQuery(config.component.public.keyGetById, {
         keyId,
       })) as KeyDoc | null;
-      if (!doc) return { ok: false as const };
-      return { ok: true as const, key: doc };
+      return doc ?? null;
     },
     /**
      * Update a key's name, scopes, or rate limit.
@@ -1964,7 +1925,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param ctx - Convex mutation context.
      * @param keyId - The API key's document ID.
      * @param data - Fields to merge into the key document.
-     * @returns `{ ok: true, keyId }`.
+     * @returns `{ keyId }`.
      *
      * @example
      * ```ts
@@ -1984,18 +1945,18 @@ export function createCoreDomains(deps: CoreDeps) {
       },
     ) => {
       await ctx.runMutation(config.component.public.keyPatch, { keyId, data });
-      return { ok: true as const, keyId };
+      return { keyId };
     },
     /**
      * Soft-delete: set `revoked: true`. The key can no longer be verified.
      *
      * After revocation, any subsequent calls to `auth.key.verify` with
-     * this key will return `{ ok: false, code: "API_KEY_REVOKED" }`.
+     * this key will throw `API_KEY_REVOKED`.
      * The key record is preserved for audit purposes.
      *
      * @param ctx - Convex mutation context.
      * @param keyId - The API key's document ID.
-     * @returns `{ ok: true, keyId }`.
+     * @returns `{ keyId }`.
      *
      * @example
      * ```ts
@@ -2007,7 +1968,7 @@ export function createCoreDomains(deps: CoreDeps) {
         keyId,
         data: { revoked: true },
       });
-      return { ok: true as const, keyId };
+      return { keyId };
     },
     /**
      * Hard-delete: permanently remove the key record.
@@ -2018,7 +1979,7 @@ export function createCoreDomains(deps: CoreDeps) {
      *
      * @param ctx - Convex mutation context.
      * @param keyId - The API key's document ID.
-     * @returns `{ ok: true, keyId }`.
+     * @returns `{ keyId }`.
      *
      * @example
      * ```ts
@@ -2027,45 +1988,48 @@ export function createCoreDomains(deps: CoreDeps) {
      */
     delete: async (ctx: ComponentCtx, keyId: string) => {
       await ctx.runMutation(config.component.public.keyDelete, { keyId });
-      return { ok: true as const, keyId };
+      return { keyId };
     },
     /**
      * Rotate a key: revokes the old key and creates a new one with the
      * same user, scopes, and rate limit. Returns the new `keyId` and `secret`.
-     * Fails with `{ ok: false }` if the key is already revoked.
+     * Throws if the key does not exist or is already revoked.
      *
      * @param ctx - Convex mutation context.
      * @param keyId - The existing API key's document ID to rotate.
      * @param opts.name - Optional new name for the rotated key (defaults to the old name).
      * @param opts.expiresAt - Optional new expiration timestamp in ms since epoch.
-     * @returns `{ ok: true, keyId, secret }` with the new key, or `{ ok: false, code }` on failure.
+     * @returns `{ keyId, secret }` with the new key.
+     * @throws `INVALID_PARAMETERS` if the key does not exist.
+     * @throws `API_KEY_REVOKED` if the key is already revoked.
      *
      * @example
      * ```ts
-     * const result = await auth.key.rotate(ctx, oldKeyId, {
+     * const { keyId, secret } = await auth.key.rotate(ctx, oldKeyId, {
      *   expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
      * });
-     * if (result.ok) {
-     *   // Store result.secret securely — shown only once
-     * }
+     * // Store secret securely — shown only once
      * ```
      */
     rotate: async (
       ctx: ComponentCtx,
       keyId: string,
       opts?: { name?: string; expiresAt?: number },
-    ): Promise<
-      | { ok: true; keyId: string; secret: string }
-      | { ok: false; code: "INVALID_PARAMETERS" | "API_KEY_REVOKED" }
-    > => {
+    ): Promise<{ keyId: string; secret: string }> => {
       const existing = await ctx.runQuery(config.component.public.keyGetById, {
         keyId,
       });
       if (!existing) {
-        return { ok: false as const, code: "INVALID_PARAMETERS" as const };
+        throw Cv.error({
+          code: "INVALID_PARAMETERS",
+          message: "The provided parameters are invalid.",
+        });
       }
       if ((existing as any).revoked === true) {
-        return { ok: false as const, code: "API_KEY_REVOKED" as const };
+        throw Cv.error({
+          code: "API_KEY_REVOKED",
+          message: "This API key has been revoked.",
+        });
       }
       await ctx.runMutation(config.component.public.keyPatch, {
         keyId,

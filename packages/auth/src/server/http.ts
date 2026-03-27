@@ -1,3 +1,5 @@
+import { Fx } from "@robelest/fx";
+import { Cv } from "@robelest/fx/convex";
 import {
   GenericActionCtx,
   GenericDataModel,
@@ -7,10 +9,6 @@ import {
 import { ConvexError } from "convex/values";
 import { parse as parseCookies } from "cookie";
 
-import { isAuthError } from "./errors";
-import { Fx } from "@robelest/fx";
-
-import { AuthError } from "./authError";
 import type { CorsConfig, HttpKeyContext } from "./types";
 import { logError } from "./utils";
 
@@ -59,19 +57,21 @@ export function createHttpAction(auth: {
             const rawKey = authHeader.slice(7);
 
             const keyResult = await Fx.run(
-              Fx.from({
-                ok: () => auth.key.verify(genericCtx, rawKey),
-                err: (error) => error,
-              }).pipe(
-                Fx.fold({
-                  ok: (result) => ({ ok: true, value: result }) as const,
-                  err: (error) => ({ ok: false, error }) as const,
-                }),
+              Fx.attempt(
+                () => auth.key.verify(genericCtx, rawKey),
+                (result) => ({ ok: true, value: result }) as const,
+                (error) => ({ ok: false, error }) as const,
               ),
             );
 
             if (!keyResult.ok) {
-              if (isAuthError(keyResult.error)) {
+              if (
+                keyResult.error instanceof ConvexError &&
+                typeof keyResult.error.data === "object" &&
+                keyResult.error.data !== null &&
+                "code" in keyResult.error.data &&
+                "message" in keyResult.error.data
+              ) {
                 const { code, message } = keyResult.error.data as {
                   code: string;
                   message: string;
@@ -219,7 +219,13 @@ export function convertErrorsToResponse(
         err: (error) => error,
       }).pipe(
         Fx.recover((error) => {
-          if (isAuthError(error)) {
+          if (
+            error instanceof ConvexError &&
+            typeof error.data === "object" &&
+            error.data !== null &&
+            "code" in error.data &&
+            "message" in error.data
+          ) {
             return Fx.succeed(
               new Response(
                 JSON.stringify({
@@ -426,10 +432,10 @@ export function addSSORoutes(
           deps.routeBase,
         );
         if (!route) {
-          throw new AuthError(
-            "INVALID_PARAMETERS",
-            "Invalid enterprise runtime path.",
-          ).toConvexError();
+          throw Cv.error({
+            code: "INVALID_PARAMETERS",
+            message: "Invalid enterprise runtime path.",
+          });
         }
         if (route.protocol === "saml" && route.rest.length === 1) {
           if (route.rest[0] === "metadata") {
@@ -456,10 +462,10 @@ export function addSSORoutes(
         if (route.protocol === "scim" && route.rest[0] === "v2") {
           return await deps.handleScimRequest(ctx, request);
         }
-        throw new AuthError(
-          "INVALID_PARAMETERS",
-          "Invalid enterprise runtime path.",
-        ).toConvexError();
+        throw Cv.error({
+          code: "INVALID_PARAMETERS",
+          message: "Invalid enterprise runtime path.",
+        });
       }),
     ),
   });
@@ -484,10 +490,10 @@ export function addSSORoutes(
         if (route?.protocol === "scim" && route.rest[0] === "v2") {
           return await deps.handleScimRequest(ctx, request);
         }
-        throw new AuthError(
-          "INVALID_PARAMETERS",
-          "Invalid enterprise runtime path.",
-        ).toConvexError();
+        throw Cv.error({
+          code: "INVALID_PARAMETERS",
+          message: "Invalid enterprise runtime path.",
+        });
       }),
     ),
   });
@@ -504,10 +510,10 @@ export function addSSORoutes(
         if (route?.protocol === "scim" && route.rest[0] === "v2") {
           return await deps.handleScimRequest(ctx, request);
         }
-        throw new AuthError(
-          "INVALID_PARAMETERS",
-          "Invalid enterprise runtime path.",
-        ).toConvexError();
+        throw Cv.error({
+          code: "INVALID_PARAMETERS",
+          message: "Invalid enterprise runtime path.",
+        });
       }),
     ),
   });

@@ -1,4 +1,3 @@
-import { parseAuthError } from "@robelest/convex-auth/server/errors";
 import {
   authCookieNames,
   parseAuthCookies,
@@ -11,6 +10,7 @@ import {
 import { isLocalHost } from "@robelest/convex-auth/server/utils";
 import { Fx } from "@robelest/fx";
 import { ConvexHttpClient } from "convex/browser";
+import { ConvexError } from "convex/values";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
 const TEST_COOKIE_NAMESPACE = "server_security_tests";
@@ -130,7 +130,10 @@ test("OAuth callback rejects PKCE provider when verifier cookie is missing", asy
       ),
     ),
   ).rejects.toSatisfy((error: unknown) => {
-    return parseAuthError(error)?.code === "OAUTH_MISSING_VERIFIER";
+    return (
+      error instanceof ConvexError &&
+      error.data?.code === "OAUTH_MISSING_VERIFIER"
+    );
   });
 
   expect(provider.validateAuthorizationCode).not.toHaveBeenCalled();

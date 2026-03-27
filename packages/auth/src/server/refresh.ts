@@ -1,8 +1,8 @@
 import { Fx } from "@robelest/fx";
-import { GenericId } from "convex/values";
+import { Cv } from "@robelest/fx/convex";
+import { ConvexError, GenericId } from "convex/values";
 
 import { authDb } from "./db";
-import { AuthError } from "./authError";
 import { Doc, MutationCtx } from "./types";
 import { ConvexAuthConfig } from "./types";
 import {
@@ -56,21 +56,19 @@ export const parseRefreshToken = (
     refreshTokenId: GenericId<"RefreshToken">;
     sessionId: GenericId<"Session">;
   },
-  AuthError
+  ConvexError<any>
 > => {
   const [refreshTokenId, sessionId] = refreshToken.split(REFRESH_TOKEN_DIVIDER);
   const msg = `Can't parse refresh token: ${maybeRedact(refreshToken)}`;
-  const refreshTokenIdFx: Fx<string, AuthError> =
-    refreshTokenId != null
-      ? Fx.succeed(refreshTokenId)
-      : Fx.fail(new AuthError("INVALID_REFRESH_TOKEN", msg));
+  const refreshTokenIdFx: Fx<string, ConvexError<any>> = refreshTokenId != null
+    ? Fx.succeed(refreshTokenId)
+    : Cv.fail({ code: "INVALID_REFRESH_TOKEN", message: msg });
 
   return refreshTokenIdFx.pipe(
     Fx.chain((rtId) => {
-      const sessionIdFx: Fx<string, AuthError> =
-        sessionId != null
-          ? Fx.succeed(sessionId)
-          : Fx.fail(new AuthError("INVALID_REFRESH_TOKEN", msg));
+      const sessionIdFx: Fx<string, ConvexError<any>> = sessionId != null
+        ? Fx.succeed(sessionId)
+        : Cv.fail({ code: "INVALID_REFRESH_TOKEN", message: msg });
       return sessionIdFx.pipe(
         Fx.map((sId) => ({
           refreshTokenId: rtId as GenericId<"RefreshToken">,
@@ -115,13 +113,11 @@ export async function invalidateRefreshTokensInSubtree(
     Fx.each(tokensToInvalidate, (token) =>
       token.firstUsedTime === undefined ||
       token.firstUsedTime > Date.now() - REFRESH_TOKEN_REUSE_WINDOW_MS
-        ? Fx.from({
-            ok: () =>
-              db.refreshTokens.patch(token._id, {
-                firstUsedTime: Date.now() - REFRESH_TOKEN_REUSE_WINDOW_MS,
-              }),
-            err: (e) => e as never,
-          })
+        ? Fx.promise(() =>
+            db.refreshTokens.patch(token._id, {
+              firstUsedTime: Date.now() - REFRESH_TOKEN_REUSE_WINDOW_MS,
+            }),
+          )
         : Fx.unit,
     ),
   );

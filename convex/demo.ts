@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
@@ -12,12 +12,6 @@ import {
 
 // ── Shared return validators ──
 
-const mutationError = v.object({
-  ok: v.literal(false),
-  code: v.string(),
-  message: v.optional(v.string()),
-});
-
 const userSummary = v.object({
   userId: v.string(),
   name: v.string(),
@@ -29,8 +23,6 @@ const workspaceSummary = v.object({
   name: v.string(),
   roleIds: v.array(v.string()),
   grants: v.array(v.string()),
-  matchedGroupId: v.union(v.string(), v.null()),
-  isInherited: v.boolean(),
 });
 
 const projectSummary = v.object({
@@ -120,8 +112,6 @@ type WorkspaceSummary = {
   name: string;
   roleIds: string[];
   grants: string[];
-  matchedGroupId: string | null;
-  isInherited: boolean;
 };
 
 function toSlug(value: string) {
@@ -170,9 +160,6 @@ export const dashboard = authQuery({
     ),
   }),
   handler: async (ctx, args) => {
-    if (!ctx.auth) {
-      return { user: null, workspaces: [], selectedWorkspace: null };
-    }
     const { userId, user } = ctx.auth;
     const roots = await auth.group.list(ctx, {
       where: { isRoot: true },
@@ -184,7 +171,7 @@ export const dashboard = authQuery({
     const workspaces = (
       await Promise.all(
         roots.items.map(async (group: (typeof roots.items)[number]) => {
-          const resolution = await auth.member.resolve(ctx, {
+          const resolution = await auth.member.inspect(ctx, {
             userId,
             groupId: group._id,
           });
@@ -196,8 +183,6 @@ export const dashboard = authQuery({
             name: group.name,
             roleIds: resolution.roleIds,
             grants: resolution.grants,
-            matchedGroupId: resolution.matchedGroupId ?? null,
-            isInherited: resolution.isInherited,
           } satisfies WorkspaceSummary;
         }),
       )
@@ -360,7 +345,6 @@ export const dashboard = authQuery({
 
 export const projectIssues = authQuery({
   args: {
-    workspaceId: v.string(),
     projectId: v.id("demoProjects"),
   },
   returns: v.object({
@@ -378,21 +362,22 @@ export const projectIssues = authQuery({
     issues: v.array(issueSummary),
   }),
   handler: async (ctx, args) => {
-    if (!ctx.auth) return { project: null, issues: [] };
     const { userId } = ctx.auth;
 
     const project = await ctx.db.get(args.projectId);
-    if (project === null || project.groupId !== args.workspaceId) {
-      return { project: null, issues: [] };
+    if (project === null) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Project not found.",
+      });
     }
 
     const scopeGroupId = project.teamGroupId ?? project.groupId;
-    const access = await auth.member.resolve(ctx, {
+    await auth.member.require(ctx, {
       userId,
       groupId: scopeGroupId,
       grants: ["projects.read"],
     });
-    if (!access.ok) return { project: null, issues: [] };
 
     const teamGroup = project.teamGroupId
       ? await auth.group.get(ctx, project.teamGroupId)
@@ -482,23 +467,22 @@ export const projectIssues = authQuery({
 
 export const issueComments = authQuery({
   args: {
-    workspaceId: v.string(),
     issueId: v.id("demoIssues"),
   },
   returns: v.array(commentSummary),
   handler: async (ctx, args) => {
-    if (!ctx.auth) return [];
     const { userId } = ctx.auth;
 
     const issue = await ctx.db.get(args.issueId);
-    if (issue === null || issue.groupId !== args.workspaceId) return [];
+    if (issue === null) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "Issue not found." });
+    }
 
-    const access = await auth.member.resolve(ctx, {
+    await auth.member.require(ctx, {
       userId,
       groupId: issue.scopeGroupId,
       grants: ["projects.read"],
     });
-    if (!access.ok) return [];
 
     const comments = await ctx.db
       .query("demoComments")
@@ -538,21 +522,15 @@ export const createWorkspace = authMutation({
   args: {
     name: v.string(),
   },
-  returns: v.union(
-    v.object({ ok: v.literal(true), workspaceId: v.string() }),
-    mutationError,
-  ),
+  returns: v.object({ workspaceId: v.string() }),
   handler: async (ctx, args) => {
-    if (!ctx.auth)
-      return { ok: false as const, code: "NOT_SIGNED_IN" as const };
     const { userId } = ctx.auth;
     const name = args.name.trim();
     if (name.length < 3) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
+      throw new ConvexError({
+        code: "INVALID_INPUT",
         message: "Workspace name must be at least 3 characters.",
-      };
+      });
     }
 
     const roots = await auth.group.list(ctx, {
@@ -565,7 +543,7 @@ export const createWorkspace = authMutation({
     const existing = (
       await Promise.all(
         roots.items.map(async (group: (typeof roots.items)[number]) => {
-          const resolution = await auth.member.resolve(ctx, {
+          const resolution = await auth.member.inspect(ctx, {
             userId,
             groupId: group._id,
           });
@@ -577,8 +555,6 @@ export const createWorkspace = authMutation({
             name: group.name,
             roleIds: resolution.roleIds,
             grants: resolution.grants,
-            matchedGroupId: resolution.matchedGroupId ?? null,
-            isInherited: resolution.isInherited,
           } satisfies WorkspaceSummary;
         }),
       )
@@ -589,11 +565,10 @@ export const createWorkspace = authMutation({
         (workspace) => workspace.name.toLowerCase() === name.toLowerCase(),
       )
     ) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
+      throw new ConvexError({
+        code: "INVALID_INPUT",
         message: "You already have a workspace with that name.",
-      };
+      });
     }
 
     const slugBase = toSlug(name);
@@ -602,14 +577,13 @@ export const createWorkspace = authMutation({
       slug: slugBase,
       type: "workspace",
     });
-
     await auth.member.create(ctx, {
       userId,
       groupId,
       roleIds: [roles.orgAdmin.id],
     });
 
-    return { ok: true as const, workspaceId: groupId };
+    return { workspaceId: groupId };
   },
 });
 
@@ -621,21 +595,15 @@ export const createProject = authMutation({
     identifier: v.string(),
     description: v.string(),
   },
-  returns: v.union(
-    v.object({ ok: v.literal(true), projectId: v.id("demoProjects") }),
-    mutationError,
-  ),
+  returns: v.object({ projectId: v.id("demoProjects") }),
   handler: async (ctx, args) => {
-    if (!ctx.auth)
-      return { ok: false as const, code: "NOT_SIGNED_IN" as const };
     const { userId } = ctx.auth;
 
-    const access = await auth.member.resolve(ctx, {
+    await auth.member.require(ctx, {
       userId,
       groupId: args.workspaceId,
       grants: ["projects.create"],
     });
-    if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
 
     const identifier = args.identifier
       .trim()
@@ -643,25 +611,24 @@ export const createProject = authMutation({
       .replace(/[^A-Z0-9]/g, "")
       .slice(0, 6);
     if (identifier.length < 2) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
+      throw new ConvexError({
+        code: "INVALID_INPUT",
         message: "Identifier must be at least 2 characters.",
-      };
+      });
     }
 
     // Check identifier uniqueness within workspace
     const existingIdentifier = await ctx.db
       .query("demoProjects")
-      .withIndex("by_groupId", (q) => q.eq("groupId", args.workspaceId))
-      .filter((q) => q.eq(q.field("identifier"), identifier))
+      .withIndex("by_groupId_and_identifier", (q) =>
+        q.eq("groupId", args.workspaceId).eq("identifier", identifier),
+      )
       .first();
     if (existingIdentifier) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
+      throw new ConvexError({
+        code: "INVALID_INPUT",
         message: `Identifier "${identifier}" is already in use.`,
-      };
+      });
     }
 
     const slug = toSlug(args.name) || "project";
@@ -673,11 +640,10 @@ export const createProject = authMutation({
       )
       .first();
     if (existingSlug) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
+      throw new ConvexError({
+        code: "INVALID_INPUT",
         message: "A project with that name already exists.",
-      };
+      });
     }
 
     const projectId = await ctx.db.insert("demoProjects", {
@@ -693,44 +659,36 @@ export const createProject = authMutation({
       openIssueCount: 0,
     });
 
-    return { ok: true as const, projectId };
+    return { projectId };
   },
 });
 
 export const createIssue = authMutation({
   args: {
-    workspaceId: v.string(),
     projectId: v.id("demoProjects"),
     title: v.string(),
     description: v.optional(v.string()),
     priority: v.optional(issuePriorityValidator),
     labels: v.optional(v.array(v.string())),
   },
-  returns: v.union(
-    v.object({ ok: v.literal(true), issueId: v.id("demoIssues") }),
-    mutationError,
-  ),
+  returns: v.object({ issueId: v.id("demoIssues") }),
   handler: async (ctx, args) => {
-    if (!ctx.auth)
-      return { ok: false as const, code: "NOT_SIGNED_IN" as const };
     const { userId } = ctx.auth;
 
     const project = await ctx.db.get(args.projectId);
-    if (project === null || project.groupId !== args.workspaceId) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
+    if (project === null) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
         message: "Project not found.",
-      };
+      });
     }
 
     const scopeGroupId = project.teamGroupId ?? project.groupId;
-    const access = await auth.member.resolve(ctx, {
+    await auth.member.require(ctx, {
       userId,
       groupId: scopeGroupId,
       grants: ["issues.create"],
     });
-    if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
 
     const nextNumber = project.issueCounter + 1;
     const openCount = (project.openIssueCount ?? 0) + 1;
@@ -741,7 +699,7 @@ export const createIssue = authMutation({
 
     const issueId = await ctx.db.insert("demoIssues", {
       projectId: project._id,
-      groupId: args.workspaceId,
+      groupId: project.groupId,
       scopeGroupId,
       number: nextNumber,
       title: args.title.trim(),
@@ -753,13 +711,12 @@ export const createIssue = authMutation({
       position: nextNumber,
     });
 
-    return { ok: true as const, issueId };
+    return { issueId };
   },
 });
 
 export const updateIssue = authMutation({
   args: {
-    workspaceId: v.string(),
     issueId: v.id("demoIssues"),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
@@ -768,22 +725,13 @@ export const updateIssue = authMutation({
     assigneeUserId: v.optional(v.union(v.string(), v.null())),
     labels: v.optional(v.array(v.string())),
   },
-  returns: v.union(
-    v.object({ ok: v.literal(true), issueId: v.id("demoIssues") }),
-    mutationError,
-  ),
+  returns: v.object({ issueId: v.id("demoIssues") }),
   handler: async (ctx, args) => {
-    if (!ctx.auth)
-      return { ok: false as const, code: "NOT_SIGNED_IN" as const };
     const { userId } = ctx.auth;
 
     const issue = await ctx.db.get(args.issueId);
-    if (issue === null || issue.groupId !== args.workspaceId) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
-        message: "Issue not found.",
-      };
+    if (issue === null) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "Issue not found." });
     }
 
     // Check which permissions are needed based on which fields are being updated
@@ -796,57 +744,53 @@ export const updateIssue = authMutation({
     const needsAssign = args.assigneeUserId !== undefined;
 
     if (needsEdit) {
-      const editAccess = await auth.member.resolve(ctx, {
+      await auth.member.require(ctx, {
         userId,
         groupId: issue.scopeGroupId,
         grants: ["issues.edit"],
       });
-      if (!editAccess.ok)
-        return { ok: false as const, code: "FORBIDDEN" as const };
 
       // Members can only edit their own or assigned issues
-      const assignAccess = await auth.member.resolve(ctx, {
-        userId,
-        groupId: issue.scopeGroupId,
-        grants: ["issues.assign"],
-      });
-      if (!assignAccess.ok) {
+      try {
+        await auth.member.require(ctx, {
+          userId,
+          groupId: issue.scopeGroupId,
+          grants: ["issues.assign"],
+        });
+      } catch {
         const isOwnerOrAssignee =
           issue.createdByUserId === userId || issue.assigneeUserId === userId;
         if (!isOwnerOrAssignee)
-          return { ok: false as const, code: "FORBIDDEN" as const };
+          throw new ConvexError({
+            code: "FORBIDDEN",
+            message: "Access denied.",
+          });
       }
     }
 
     if (needsMove) {
-      const moveAccess = await auth.member.resolve(ctx, {
+      await auth.member.require(ctx, {
         userId,
         groupId: issue.scopeGroupId,
         grants: ["issues.move"],
       });
-      if (!moveAccess.ok)
-        return { ok: false as const, code: "FORBIDDEN" as const };
     }
 
     if (needsAssign) {
       const isSelfAssign = args.assigneeUserId === userId;
       if (!isSelfAssign) {
-        const assignAccess = await auth.member.resolve(ctx, {
+        await auth.member.require(ctx, {
           userId,
           groupId: issue.scopeGroupId,
           grants: ["issues.assign"],
         });
-        if (!assignAccess.ok)
-          return { ok: false as const, code: "FORBIDDEN" as const };
       } else {
         // Self-assignment requires at least issues.move
-        const moveAccess = await auth.member.resolve(ctx, {
+        await auth.member.require(ctx, {
           userId,
           groupId: issue.scopeGroupId,
           grants: ["issues.move"],
         });
-        if (!moveAccess.ok)
-          return { ok: false as const, code: "FORBIDDEN" as const };
       }
     }
 
@@ -877,36 +821,28 @@ export const updateIssue = authMutation({
     }
 
     await ctx.db.patch(args.issueId, patch);
-    return { ok: true as const, issueId: args.issueId };
+    return { issueId: args.issueId };
   },
 });
 
 export const deleteIssue = authMutation({
   args: {
-    workspaceId: v.string(),
     issueId: v.id("demoIssues"),
   },
-  returns: v.union(v.object({ ok: v.literal(true) }), mutationError),
+  returns: v.null(),
   handler: async (ctx, args) => {
-    if (!ctx.auth)
-      return { ok: false as const, code: "NOT_SIGNED_IN" as const };
     const { userId } = ctx.auth;
 
     const issue = await ctx.db.get(args.issueId);
-    if (issue === null || issue.groupId !== args.workspaceId) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
-        message: "Issue not found.",
-      };
+    if (issue === null) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "Issue not found." });
     }
 
-    const access = await auth.member.resolve(ctx, {
+    await auth.member.require(ctx, {
       userId,
       groupId: issue.scopeGroupId,
       grants: ["issues.delete"],
     });
-    if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
 
     // Delete comments first (bounded to avoid hitting read limits)
     let batch = await ctx.db
@@ -936,101 +872,83 @@ export const deleteIssue = authMutation({
     }
 
     await ctx.db.delete(args.issueId);
-    return { ok: true as const };
+    return null;
   },
 });
 
 export const createComment = authMutation({
   args: {
-    workspaceId: v.string(),
     issueId: v.id("demoIssues"),
     body: v.string(),
   },
-  returns: v.union(
-    v.object({ ok: v.literal(true), commentId: v.id("demoComments") }),
-    mutationError,
-  ),
+  returns: v.object({ commentId: v.id("demoComments") }),
   handler: async (ctx, args) => {
-    if (!ctx.auth)
-      return { ok: false as const, code: "NOT_SIGNED_IN" as const };
     const { userId } = ctx.auth;
 
     const issue = await ctx.db.get(args.issueId);
-    if (issue === null || issue.groupId !== args.workspaceId) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
-        message: "Issue not found.",
-      };
+    if (issue === null) {
+      throw new ConvexError({ code: "NOT_FOUND", message: "Issue not found." });
     }
 
     const body = args.body.trim();
     if (body.length === 0) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
+      throw new ConvexError({
+        code: "INVALID_INPUT",
         message: "Comment cannot be empty.",
-      };
+      });
     }
 
-    const access = await auth.member.resolve(ctx, {
+    await auth.member.require(ctx, {
       userId,
       groupId: issue.scopeGroupId,
       grants: ["comments.create"],
     });
-    if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
 
     const commentId = await ctx.db.insert("demoComments", {
       issueId: issue._id,
-      groupId: args.workspaceId,
+      groupId: issue.groupId,
       authorUserId: userId,
       body,
     });
 
-    return { ok: true as const, commentId };
+    return { commentId };
   },
 });
 
 export const deleteComment = authMutation({
   args: {
-    workspaceId: v.string(),
     commentId: v.id("demoComments"),
   },
-  returns: v.union(v.object({ ok: v.literal(true) }), mutationError),
+  returns: v.null(),
   handler: async (ctx, args) => {
-    if (!ctx.auth)
-      return { ok: false as const, code: "NOT_SIGNED_IN" as const };
     const { userId } = ctx.auth;
 
     const comment = await ctx.db.get(args.commentId);
-    if (comment === null || comment.groupId !== args.workspaceId) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
+    if (comment === null) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
         message: "Comment not found.",
-      };
+      });
     }
 
     // Author can always delete their own comment
     if (comment.authorUserId !== userId) {
       const issue = await ctx.db.get(comment.issueId);
       if (issue === null) {
-        return {
-          ok: false as const,
-          code: "INVALID_INPUT" as const,
+        throw new ConvexError({
+          code: "INVALID_INPUT",
           message: "Issue not found.",
-        };
+        });
       }
-      const access = await auth.member.resolve(ctx, {
+      await auth.member.require(ctx, {
         userId,
         groupId: issue.scopeGroupId,
         grants: ["comments.delete"],
       });
-      if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
     }
 
     await ctx.db.delete(args.commentId);
-    return { ok: true as const };
+    return null;
   },
 });
 
@@ -1040,36 +958,30 @@ export const createTeam = authMutation({
     name: v.string(),
     parentTeamId: v.optional(v.string()),
   },
-  returns: v.union(
-    v.object({ ok: v.literal(true), groupId: v.string() }),
-    mutationError,
-  ),
+  returns: v.object({ groupId: v.string() }),
   handler: async (ctx, args) => {
-    if (!ctx.auth)
-      return { ok: false as const, code: "NOT_SIGNED_IN" as const };
     const { userId } = ctx.auth;
     const teamName = args.name.trim();
     if (teamName.length < 2) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
+      throw new ConvexError({
+        code: "INVALID_INPUT",
         message: "Team name must be at least 2 characters.",
-      };
+      });
     }
 
-    const access = await auth.member.resolve(ctx, {
+    await auth.member.require(ctx, {
       userId,
       groupId: args.workspaceId,
       grants: ["teams.manage"],
     });
-    if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
+
     const { groupId } = await auth.group.create(ctx, {
       name: teamName,
       parentGroupId: args.parentTeamId ?? args.workspaceId,
       type: "team",
       tags: [{ key: "demo", value: "team" }],
     });
-    return { ok: true as const, groupId };
+    return { groupId };
   },
 });
 
@@ -1079,18 +991,15 @@ export const updateMemberRole = authMutation({
     memberId: v.string(),
     roleId: v.string(),
   },
-  returns: v.union(v.object({ ok: v.literal(true) }), mutationError),
+  returns: v.null(),
   handler: async (ctx, args) => {
-    if (!ctx.auth)
-      return { ok: false as const, code: "NOT_SIGNED_IN" as const };
     const { userId } = ctx.auth;
 
-    const access = await auth.member.resolve(ctx, {
+    await auth.member.require(ctx, {
       userId,
       groupId: args.workspaceId,
       grants: ["members.manage"],
     });
-    if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
 
     // Validate the role ID
     const validRoleIds = [
@@ -1100,11 +1009,10 @@ export const updateMemberRole = authMutation({
     ] as const;
     const matched = validRoleIds.find((id) => id === args.roleId);
     if (!matched) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
+      throw new ConvexError({
+        code: "INVALID_INPUT",
         message: "Invalid role.",
-      };
+      });
     }
 
     // Prevent demoting the last admin
@@ -1118,11 +1026,10 @@ export const updateMemberRole = authMutation({
           m.roleIds?.includes(roles.orgAdmin.id) && m._id !== args.memberId,
       ).length;
       if (adminCount === 0) {
-        return {
-          ok: false as const,
-          code: "INVALID_INPUT" as const,
+        throw new ConvexError({
+          code: "INVALID_INPUT",
           message: "Cannot remove the last admin.",
-        };
+        });
       }
     }
 
@@ -1130,7 +1037,7 @@ export const updateMemberRole = authMutation({
       roleIds: [matched],
     });
 
-    return { ok: true as const };
+    return null;
   },
 });
 
@@ -1141,21 +1048,16 @@ export const createInviteInternal = internalMutation({
     roleId: v.string(),
     invitedByUserId: v.string(),
   },
-  returns: v.union(
-    v.object({
-      ok: v.literal(true),
-      inviteId: v.string(),
-      token: v.string(),
-    }),
-    mutationError,
-  ),
+  returns: v.object({
+    inviteId: v.string(),
+    token: v.string(),
+  }),
   handler: async (ctx, args) => {
-    const access = await auth.member.resolve(ctx, {
+    await auth.member.require(ctx, {
       userId: args.invitedByUserId,
       groupId: args.workspaceId,
       grants: ["members.manage"],
     });
-    if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
 
     const validRoleIds = [
       roles.orgAdmin.id,
@@ -1164,11 +1066,10 @@ export const createInviteInternal = internalMutation({
     ] as const;
     const matched = validRoleIds.find((id) => id === args.roleId);
     if (!matched) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
+      throw new ConvexError({
+        code: "INVALID_INPUT",
         message: "Invalid role.",
-      };
+      });
     }
 
     const result = await auth.invite.create(ctx, {
@@ -1177,17 +1078,7 @@ export const createInviteInternal = internalMutation({
       roleIds: [matched],
       invitedByUserId: args.invitedByUserId,
     });
-
-    if (!result.ok) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
-        message: "Failed to create invite.",
-      };
-    }
-
     return {
-      ok: true as const,
       inviteId: result.inviteId,
       token: result.token,
     };
@@ -1200,39 +1091,21 @@ export const inviteMember = authAction({
     email: v.string(),
     roleId: v.string(),
   },
-  returns: v.union(
-    v.object({ ok: v.literal(true), inviteId: v.string() }),
-    v.object({
-      ok: v.literal(false),
-      code: v.string(),
-      message: v.optional(v.string()),
-    }),
-  ),
+  returns: v.object({ inviteId: v.string() }),
   handler: async (ctx, args) => {
-    const userId = ctx.auth?.userId;
-    if (!userId) return { ok: false as const, code: "NOT_SIGNED_IN" };
+    const { userId } = ctx.auth;
 
     const email = args.email.trim().toLowerCase();
 
     const result: {
-      ok: boolean;
-      inviteId?: string;
-      token?: string;
-      message?: string;
+      inviteId: string;
+      token: string;
     } = await ctx.runMutation(internal.demo.createInviteInternal, {
       workspaceId: args.workspaceId,
       email,
       roleId: args.roleId,
       invitedByUserId: userId,
     });
-
-    if (!result.ok || !result.token || !result.inviteId) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT",
-        message: result.message,
-      };
-    }
 
     // Send invite email via Resend
     const appUrl = process.env.APP_URL ?? "http://localhost:3001";
@@ -1260,7 +1133,7 @@ export const inviteMember = authAction({
       console.error("Invite email error:", e);
     }
 
-    return { ok: true as const, inviteId: result.inviteId };
+    return { inviteId: result.inviteId };
   },
 });
 
@@ -1268,25 +1141,15 @@ export const acceptInvite = authMutation({
   args: {
     token: v.string(),
   },
-  returns: v.union(v.object({ ok: v.literal(true) }), mutationError),
+  returns: v.null(),
   handler: async (ctx, args) => {
-    if (!ctx.auth)
-      return { ok: false as const, code: "NOT_SIGNED_IN" as const };
     const { userId } = ctx.auth;
 
-    try {
-      await auth.invite.token.accept(ctx, {
-        token: args.token,
-        acceptedByUserId: userId,
-      });
-      return { ok: true as const };
-    } catch (e: unknown) {
-      return {
-        ok: false as const,
-        code: "INVALID_INPUT" as const,
-        message: e instanceof Error ? e.message : "Invalid or expired invite.",
-      };
-    }
+    await auth.invite.token.accept(ctx, {
+      token: args.token,
+      acceptedByUserId: userId,
+    });
+    return null;
   },
 });
 
@@ -1296,15 +1159,13 @@ export const listInvites = authQuery({
   },
   returns: v.array(inviteSummary),
   handler: async (ctx, args) => {
-    if (!ctx.auth) return [];
     const { userId } = ctx.auth;
 
-    const access = await auth.member.resolve(ctx, {
+    await auth.member.require(ctx, {
       userId,
       groupId: args.workspaceId,
       grants: ["members.manage"],
     });
-    if (!access.ok) return [];
 
     const result = await auth.invite.list(ctx, {
       where: { groupId: args.workspaceId, status: "pending" },
@@ -1327,20 +1188,17 @@ export const revokeInvite = authMutation({
     workspaceId: v.string(),
     inviteId: v.string(),
   },
-  returns: v.union(v.object({ ok: v.literal(true) }), mutationError),
+  returns: v.null(),
   handler: async (ctx, args) => {
-    if (!ctx.auth)
-      return { ok: false as const, code: "NOT_SIGNED_IN" as const };
     const { userId } = ctx.auth;
 
-    const access = await auth.member.resolve(ctx, {
+    await auth.member.require(ctx, {
       userId,
       groupId: args.workspaceId,
       grants: ["members.manage"],
     });
-    if (!access.ok) return { ok: false as const, code: "FORBIDDEN" as const };
 
     await auth.invite.revoke(ctx, args.inviteId);
-    return { ok: true as const };
+    return null;
   },
 });

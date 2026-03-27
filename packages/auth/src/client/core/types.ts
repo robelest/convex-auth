@@ -286,21 +286,19 @@ export interface DeviceClient {
    *
    * @param opts - Poll options.
    * @param opts.code - The {@link DeviceCodeResult} returned from `signIn("device")`.
-   * @returns `{ ok: true }` when authorized, or `{ ok: false, expired }` on failure.
+   * @throws `ConvexError({ code: "DEVICE_CODE_EXPIRED" })` when the code expires before authorization.
    *
    * @example
    * ```ts
    * const result = await auth.signIn("device");
    * if (result.kind === "deviceCode") {
    *   // Display result.deviceCode.userCode to the user
-   *   const poll = await auth.device.poll({ code: result.deviceCode });
-   *   if (poll.ok) console.log("Device authorized!");
+   *   await auth.device.poll({ code: result.deviceCode });
+   *   console.log("Device authorized!");
    * }
    * ```
    */
-  poll(opts: {
-    code: DeviceCodeResult;
-  }): Promise<{ ok: true } | { ok: false; expired: boolean }>;
+  poll(opts: { code: DeviceCodeResult }): Promise<void>;
 
   /**
    * Approve a device flow from the verification page using the displayed user code.
@@ -310,17 +308,14 @@ export interface DeviceClient {
    *
    * @param opts - Verification options.
    * @param opts.code - The user code string (e.g. `"WDJB-MJHT"`).
-   * @returns `{ ok: true }` on success, or `{ ok: false, message }` on failure.
+   * @throws `ConvexError({ code: "DEVICE_AUTHORIZATION_FAILED" })` when verification fails.
    *
    * @example
    * ```ts
-   * const result = await auth.device.verify({ code: "WDJB-MJHT" });
-   * if (!result.ok) console.error(result.message);
+   * await auth.device.verify({ code: "WDJB-MJHT" });
    * ```
    */
-  verify(opts: {
-    code: string;
-  }): Promise<{ ok: true } | { ok: false; message: string }>;
+  verify(opts: { code: string }): Promise<void>;
 }
 
 /**
@@ -345,8 +340,13 @@ export interface PendingInvite {
    * @readonly
    */
   readonly email: string | null;
-  /** Consume the invite: clears storage/URL params and returns the token. */
-  accept(): Promise<{ ok: boolean; token?: string; message?: string }>;
+  /**
+   * Consume the invite: clears storage/URL params and returns the token.
+   *
+   * @returns The invite token.
+   * @throws When there is no pending invite to accept.
+   */
+  accept(): Promise<{ token: string }>;
 }
 
 /** Base auth client — always present. */

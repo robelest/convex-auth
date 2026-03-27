@@ -27,12 +27,12 @@ OIDC.
 
 ## Methods
 
-| Method                          | Signature                                                                                                      | Returns                        | Description                                                                                                      |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `auth.sso.admin.oidc.configure` | `(ctx, { enterpriseId, issuer?, discoveryUrl?, clientId, clientSecret?, scopes?, authorizationParams?, ... })` | OIDC config document           | Configures OIDC settings for a connection and stores the normalized config.                                      |
-| `auth.sso.admin.oidc.get`       | `(ctx, enterpriseId)`                                                                                          | OIDC config document           | Returns the current OIDC configuration for a connection.                                                         |
-| `auth.sso.admin.oidc.validate`  | `(ctx, enterpriseId)`                                                                                          | `{ ok, enterpriseId, checks }` | Validates that the OIDC configuration is complete and the IdP is reachable.                                      |
-| `auth.sso.client.signIn`        | `(ctx, { enterpriseId?, email?, domain?, redirectTo? })`                                                       | Sign-in route description      | Resolves the client-facing OIDC sign-in route for a connection. Domain/email routing requires a verified domain. |
+| Method                          | Signature                                                                                                      | Returns                   | Description                                                                                                      |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `auth.sso.admin.oidc.configure` | `(ctx, { enterpriseId, issuer?, discoveryUrl?, clientId, clientSecret?, scopes?, authorizationParams?, ... })` | OIDC config document      | Configures OIDC settings for a connection and stores the normalized config.                                      |
+| `auth.sso.admin.oidc.get`       | `(ctx, enterpriseId)`                                                                                          | OIDC config document      | Returns the current OIDC configuration for a connection.                                                         |
+| `auth.sso.admin.oidc.validate`  | `(ctx, enterpriseId)`                                                                                          | `{ checks: [...] }`       | Validates that the OIDC configuration is complete and the IdP is reachable. Each check has its own `ok` field.   |
+| `auth.sso.client.signIn`        | `(ctx, { enterpriseId?, email?, domain?, redirectTo? })`                                                       | Sign-in route description | Resolves the client-facing OIDC sign-in route for a connection. Domain/email routing requires a verified domain. |
 
 `clientSecret` is write-only. Configure it through
 [`auth.sso.admin.oidc.configure(...)`](/sso/oidc/), but expect
@@ -86,10 +86,11 @@ available yet.
 After configuring, validate that the connection is working:
 
 ```ts
-const result = await auth.sso.admin.oidc.validate(ctx, enterpriseId);
+const { checks } = await auth.sso.admin.oidc.validate(ctx, enterpriseId);
 
-if (!result.ok) {
-  console.error("OIDC validation failed:", result.checks);
+const failures = checks.filter((check) => !check.ok);
+if (failures.length > 0) {
+  console.error("OIDC validation failed:", failures);
 }
 ```
 

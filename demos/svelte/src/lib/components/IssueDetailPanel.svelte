@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { ConvexClient } from "convex/browser";
+  import type { Id, Infer } from "convex/values";
+  import type { demoIssueStatus, demoIssuePriority } from "$convex/schema.js";
   import { api } from "$convex/_generated/api.js";
   import { useQuery } from "convex-svelte";
   import X from "phosphor-svelte/lib/X";
@@ -15,7 +17,7 @@
     onclose,
   } = $props<{
     issue: {
-      issueId: string;
+      issueId: Id<"demoIssues">;
       identifier: string;
       number: number;
       title: string;
@@ -47,8 +49,7 @@
   const commentsQuery = useQuery(
     api.demo.issueComments,
     () => ({
-      workspaceId: workspaceGroupId,
-      issueId: issue.issueId as any,
+      issueId: issue.issueId,
     }),
   );
 
@@ -103,8 +104,7 @@
     errorMessage = null;
     try {
       await client.mutation(api.demo.updateIssue, {
-        workspaceId: workspaceGroupId,
-        issueId: issue.issueId as any,
+        issueId: issue.issueId,
         title: editTitle,
         description: editDescription,
       });
@@ -114,28 +114,26 @@
     }
   }
 
-  async function handleStatusChange(newStatus: string) {
+  async function handleStatusChange(newStatus: Infer<typeof demoIssueStatus>) {
     if (!canMove) return;
     errorMessage = null;
     try {
       await client.mutation(api.demo.updateIssue, {
-        workspaceId: workspaceGroupId,
-        issueId: issue.issueId as any,
-        status: newStatus as any,
+        issueId: issue.issueId,
+        status: newStatus,
       });
     } catch (e: unknown) {
       errorMessage = e instanceof Error ? e.message : "Failed to update status";
     }
   }
 
-  async function handlePriorityChange(newPriority: string) {
+  async function handlePriorityChange(newPriority: Infer<typeof demoIssuePriority>) {
     if (!canEdit) return;
     errorMessage = null;
     try {
       await client.mutation(api.demo.updateIssue, {
-        workspaceId: workspaceGroupId,
-        issueId: issue.issueId as any,
-        priority: newPriority as any,
+        issueId: issue.issueId,
+        priority: newPriority,
       });
     } catch (e: unknown) {
       errorMessage = e instanceof Error ? e.message : "Failed to update priority";
@@ -146,8 +144,7 @@
     errorMessage = null;
     try {
       const result = await client.mutation(api.demo.updateIssue, {
-        workspaceId: workspaceGroupId,
-        issueId: issue.issueId as any,
+        issueId: issue.issueId,
         assigneeUserId: newAssigneeUserId || null,
       });
       if ("ok" in result && !result.ok && "message" in result) {
@@ -164,8 +161,7 @@
     errorMessage = null;
     try {
       await client.mutation(api.demo.createComment, {
-        workspaceId: workspaceGroupId,
-        issueId: issue.issueId as any,
+        issueId: issue.issueId,
         body: newComment,
       });
       newComment = "";
@@ -180,8 +176,7 @@
     errorMessage = null;
     try {
       await client.mutation(api.demo.deleteComment, {
-        workspaceId: workspaceGroupId,
-        commentId: commentId as any,
+        commentId: commentId as Id<"demoComments">,
       });
     } catch (e: unknown) {
       errorMessage = e instanceof Error ? e.message : "Failed to delete comment";
@@ -198,8 +193,7 @@
     errorMessage = null;
     try {
       await client.mutation(api.demo.deleteIssue, {
-        workspaceId: workspaceGroupId,
-        issueId: issue.issueId as any,
+        issueId: issue.issueId,
       });
       onclose();
     } catch (e: unknown) {

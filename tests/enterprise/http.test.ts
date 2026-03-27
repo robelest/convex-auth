@@ -1,5 +1,6 @@
 import { api } from "@convex/_generated/api";
 import schema from "@convex/schema";
+import { ConvexError } from "convex/values";
 import { expect, test } from "vite-plus/test";
 
 import { convexTest } from "../convex.setup";
@@ -104,13 +105,11 @@ test("disableWebhookEndpoint authorizes against the endpoint enterprise", async 
     },
   );
 
-  const forbidden = await asOtherUser.mutation(
-    (api as any).auth.enterprise.disableWebhookEndpoint,
-    {
+  await expect(
+    asOtherUser.mutation((api as any).auth.enterprise.disableWebhookEndpoint, {
       endpointId: endpoint._id,
-    },
-  );
-  expect(forbidden.ok).toBe(false);
+    }),
+  ).rejects.toThrow(ConvexError);
 
   const disabled = await asAdmin.mutation(
     (api as any).auth.enterprise.disableWebhookEndpoint,
@@ -119,5 +118,5 @@ test("disableWebhookEndpoint authorizes against the endpoint enterprise", async 
     },
   );
 
-  expect(disabled).toEqual({ ok: true, endpointId: endpoint._id });
+  expect(disabled).toEqual({ endpointId: endpoint._id });
 });

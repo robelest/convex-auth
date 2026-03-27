@@ -13,10 +13,32 @@ description: One app, any auth method — session, API key, SSO, device flow.
 Every auth path resolves to the same `userId`. They compose naturally because
 `userId` is the single shared anchor across all access patterns.
 
-## `auth.user.id` with optional request
+## Default app pattern
 
-Pass a `Request` to `auth.user.id(ctx, request)` and it tries session JWT first,
-then `Authorization: Bearer sk_...` API key:
+In app queries, mutations, and actions, use `auth.ctx()` once and then read the
+resolved user from `ctx.auth`.
+
+```ts
+// convex/functions.ts
+export const authQuery = customQuery(query, auth.ctx());
+```
+
+```ts
+export const myGroups = authQuery({
+  args: {},
+  handler: async (ctx) => {
+    return await auth.member.list(ctx, {
+      where: { userId: ctx.auth.userId },
+    });
+  },
+});
+```
+
+## Raw HTTP fallback
+
+Most apps do not need `auth.user.id(...)`. Keep it for raw `httpAction`
+handlers that intentionally accept either a browser session or an API key in the
+same endpoint.
 
 ```ts
 http.route({
@@ -39,9 +61,9 @@ http.route({
 
 | How the user authenticated                | How `userId` is available                            |
 | ----------------------------------------- | ---------------------------------------------------- |
-| Browser (password, email, passkey, OAuth) | `auth.user.id(ctx)`                                  |
-| Enterprise SSO (OIDC/SAML)                | Same as browser — SSO completes as a session         |
-| Device flow (RFC 8628, CLI/TV)            | Same as browser — device poll returns session tokens |
+| Browser (password, email, passkey, OAuth) | `ctx.auth.userId` via `auth.ctx()`                   |
+| Enterprise SSO (OIDC/SAML)                | Same as browser - SSO completes as a session         |
+| Device flow (RFC 8628, CLI/TV)            | Same as browser - device poll returns session tokens |
 | API key (machine/automation)              | `ctx.key.userId` or `auth.user.id(ctx, request)`     |
 
 ## Composing primitives
@@ -54,10 +76,11 @@ async function getMyGroups(ctx: any, userId: string) {
 }
 
 // Browser session
-const handler = query(async (ctx) => {
-  const userId = await auth.user.id(ctx);
-  if (userId === null) throw new Error("Not signed in");
-  return getMyGroups(ctx, userId);
+const handler = authQuery({
+  args: {},
+  handler: async (ctx) => {
+    return getMyGroups(ctx, ctx.auth.userId);
+  },
 });
 
 // API key HTTP endpoint

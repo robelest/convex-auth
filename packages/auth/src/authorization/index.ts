@@ -11,7 +11,7 @@
  * map where each role has an `id` (matching its key), an optional `label`,
  * and a typed `grants` array. The returned object is fully type-safe:
  * role IDs and grant strings are narrowed to their literal types, so
- * `member.resolve()` and `member.create()` calls are checked at compile time.
+ * `member.inspect()` / `member.require()` and `member.create()` calls are checked at compile time.
  * This is the canonical way to define role metadata for the auth library.
  *
  * @param roles - An object mapping role IDs to their configuration.

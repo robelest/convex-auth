@@ -14,7 +14,8 @@
     "isolatedModules": true,
     "noEmit": true,
     "paths": {
-      "@robelest/convex-auth/*": ["../packages/auth/dist/*"]
+      "@robelest/convex-auth": ["../packages/auth/src"],
+      "@robelest/convex-auth/*": ["../packages/auth/src/*"]
     }
   },
   "include": ["./**/*"],

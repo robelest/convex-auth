@@ -48,18 +48,16 @@ export function createInviteManager(args: {
         await storageSet(emailKey, pendingInvite.email);
       }
     },
-    async acceptInvite(): Promise<{
-      ok: boolean;
-      token?: string;
-      message?: string;
-    }> {
-      if (!pendingInvite) return { ok: false, message: "No pending invite" };
+    async acceptInvite(): Promise<{ token: string }> {
+      if (!pendingInvite) {
+        throw new Error("No pending invite to accept.");
+      }
       const { token } = pendingInvite;
       pendingInvite = null;
       void storageRemove(tokenKey);
       void storageRemove(emailKey);
       cleanUrlParams(["invite", "email"]);
-      return { ok: true, token };
+      return { token };
     },
   };
 }

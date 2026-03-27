@@ -1,3 +1,4 @@
+import { Cv } from "@robelest/fx/convex";
 import { actionGeneric, mutationGeneric, queryGeneric } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
@@ -62,11 +63,11 @@ export type EnterpriseAdminAuthorizationInput = {
 /**
  * App-defined authorization hook for mounted enterprise admin APIs.
  *
- * Return `void` (or resolve) to allow the operation, or `{ ok: false }` to deny it.
+ * Return `void` (or resolve) to allow the operation, or throw to deny it.
  *
  * @param ctx - Convex context with `ctx.auth` for identity checks.
  * @param input - The {@link EnterpriseAdminAuthorizationInput} describing who is doing what.
- * @returns `void` to allow, `{ ok: false }` to deny.
+ * @returns `void` to allow; throw to deny.
  *
  * @example
  * ```ts
@@ -74,7 +75,7 @@ export type EnterpriseAdminAuthorizationInput = {
  *
  * const authorized: EnterpriseAuthorizer = async (ctx, input) => {
  *   const identity = await ctx.auth.getUserIdentity();
- *   if (!identity) return { ok: false };
+ *   if (!identity) throw new Error("Forbidden");
  *   // Allow all admin ops for the org owner
  * };
  * ```
@@ -82,7 +83,7 @@ export type EnterpriseAdminAuthorizationInput = {
 export type EnterpriseAuthorizer = (
   ctx: { auth: import("convex/server").Auth },
   input: EnterpriseAdminAuthorizationInput,
-) => Promise<void | { ok: false }>;
+) => Promise<void>;
 
 type RoleRef<TRoleId extends string> = { id: TRoleId };
 
@@ -209,23 +210,26 @@ function createMountedAdminAuthorizer(
   ) => {
     const userId = await requireUserId(ctx);
     if (userId === null) {
-      return { ok: false as const, code: "NOT_SIGNED_IN" as const };
+      throw Cv.error({
+        code: "NOT_SIGNED_IN",
+        message: "You must be signed in to perform this action.",
+      });
     }
     if (!options?.admin?.authorized) {
-      return { ok: false as const, code: "FORBIDDEN" as const };
+      throw Cv.error({
+        code: "FORBIDDEN",
+        message: "Access denied.",
+      });
     }
     const resolved = await resolveMountedEnterpriseTarget(auth, ctx, target);
-    const authResult = await options.admin.authorized(ctx, {
+    await options.admin.authorized(ctx, {
       userId,
       permission,
       enterpriseId: resolved.enterpriseId,
       groupId: resolved.groupId,
       resolvedGroupId: resolved.resolvedGroupId,
     });
-    if (authResult && !authResult.ok) {
-      return { ok: false as const, code: "FORBIDDEN" as const };
-    }
-    return { ok: true as const, userId, ...resolved };
+    return { userId, ...resolved };
   };
 }
 
@@ -286,8 +290,6 @@ export function sso<
             const authResult = await authorize(ctx, "sso.connection.create", {
               groupId: args.groupId,
             });
-            if (!authResult.ok)
-              return { ok: false as const, code: authResult.code };
             const { userId } = authResult;
             const createsGroup = args.groupId === undefined;
             const groupId =
@@ -332,10 +334,9 @@ export function sso<
         get: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.connection.read", {
+            await authorize(ctx, "sso.connection.read", {
               enterpriseId: args.enterpriseId,
             });
-            if (!_auth.ok) return null;
             return await auth.sso.admin.connection.get(
               ctx as never,
               args.enterpriseId,
@@ -345,10 +346,9 @@ export function sso<
         getByGroup: queryGeneric({
           args: { groupId: v.string() },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.connection.read", {
+            await authorize(ctx, "sso.connection.read", {
               groupId: args.groupId,
             });
-            if (!_auth.ok) return null;
             return await auth.sso.admin.connection.getByGroup(
               ctx as never,
               args.groupId,
@@ -358,10 +358,9 @@ export function sso<
         getByDomain: queryGeneric({
           args: { domain: v.string() },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.connection.read", {
+            await authorize(ctx, "sso.connection.read", {
               domain: args.domain,
             });
-            if (!_auth.ok) return null;
             return await auth.sso.admin.connection.getByDomain(
               ctx as never,
               args.domain,
@@ -377,10 +376,9 @@ export function sso<
             order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
           },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.connection.read", {
+            await authorize(ctx, "sso.connection.read", {
               groupId: args.where?.groupId,
             });
-            if (!_auth.ok) return null;
             return await auth.sso.admin.connection.list(
               ctx as never,
               args as never,
@@ -397,25 +395,23 @@ export function sso<
             }),
           },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.connection.manage", {
+            await authorize(ctx, "sso.connection.manage", {
               enterpriseId: args.enterpriseId,
             });
-            if (!_auth.ok) return { ok: false as const, code: _auth.code };
             await auth.sso.admin.connection.update(
               ctx as never,
               args.enterpriseId,
               args.data,
             );
-            return { ok: true as const, enterpriseId: args.enterpriseId };
+            return { enterpriseId: args.enterpriseId };
           },
         }),
         delete: mutationGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.connection.manage", {
+            await authorize(ctx, "sso.connection.manage", {
               enterpriseId: args.enterpriseId,
             });
-            if (!_auth.ok) return { ok: false as const, code: _auth.code };
             return await auth.sso.admin.connection.delete(
               ctx as never,
               args.enterpriseId,
@@ -425,10 +421,9 @@ export function sso<
         status: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.connection.read", {
+            await authorize(ctx, "sso.connection.read", {
               enterpriseId: args.enterpriseId,
             });
-            if (!_auth.ok) return null;
             return await auth.sso.admin.connection.status(
               ctx as never,
               args.enterpriseId,
@@ -439,10 +434,9 @@ export function sso<
           list: queryGeneric({
             args: { enterpriseId: v.string() },
             handler: async (ctx, args) => {
-              const _auth = await authorize(ctx, "sso.connection.read", {
+              await authorize(ctx, "sso.connection.read", {
                 enterpriseId: args.enterpriseId,
               });
-              if (!_auth.ok) return null;
               return await auth.sso.admin.connection.domain.list(
                 ctx as never,
                 args.enterpriseId,
@@ -452,10 +446,9 @@ export function sso<
           validate: queryGeneric({
             args: { enterpriseId: v.string() },
             handler: async (ctx, args) => {
-              const _auth = await authorize(ctx, "sso.domain.manage", {
+              await authorize(ctx, "sso.domain.manage", {
                 enterpriseId: args.enterpriseId,
               });
-              if (!_auth.ok) return null;
               return await auth.sso.admin.connection.domain.validate(
                 ctx as never,
                 args.enterpriseId,
@@ -468,10 +461,9 @@ export function sso<
               domains: v.array(enterpriseDomainInputValidator),
             },
             handler: async (ctx, args) => {
-              const _auth = await authorize(ctx, "sso.domain.manage", {
+              await authorize(ctx, "sso.domain.manage", {
                 enterpriseId: args.enterpriseId,
               });
-              if (!_auth.ok) return { ok: false as const, code: _auth.code };
               return await auth.sso.admin.connection.domain.set(
                 ctx as never,
                 args.enterpriseId,
@@ -483,10 +475,9 @@ export function sso<
             request: mutationGeneric({
               args: enterpriseDomainVerificationInputValidator,
               handler: async (ctx, args) => {
-                const _auth = await authorize(ctx, "sso.domain.manage", {
+                await authorize(ctx, "sso.domain.manage", {
                   enterpriseId: args.enterpriseId,
                 });
-                if (!_auth.ok) return { ok: false as const, code: _auth.code };
                 return await auth.sso.admin.connection.domain.verification.request(
                   ctx as never,
                   args,
@@ -496,10 +487,9 @@ export function sso<
             confirm: actionGeneric({
               args: enterpriseDomainVerificationInputValidator,
               handler: async (ctx, args) => {
-                const _auth = await authorize(ctx, "sso.domain.manage", {
+                await authorize(ctx, "sso.domain.manage", {
                   enterpriseId: args.enterpriseId,
                 });
-                if (!_auth.ok) return { ok: false as const, code: _auth.code };
                 return await auth.sso.admin.connection.domain.verification.confirm(
                   ctx as never,
                   args,
@@ -524,20 +514,18 @@ export function sso<
             extraFields: v.optional(v.record(v.string(), v.string())),
           },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.protocol.manage", {
+            await authorize(ctx, "sso.protocol.manage", {
               enterpriseId: args.enterpriseId,
             });
-            if (!_auth.ok) return { ok: false as const, code: _auth.code };
             return await auth.sso.admin.oidc.configure(ctx as never, args);
           },
         }),
         get: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.connection.read", {
+            await authorize(ctx, "sso.connection.read", {
               enterpriseId: args.enterpriseId,
             });
-            if (!_auth.ok) return null;
             return await auth.sso.admin.oidc.get(
               ctx as never,
               args.enterpriseId,
@@ -547,10 +535,9 @@ export function sso<
         validate: actionGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.protocol.manage", {
+            await authorize(ctx, "sso.protocol.manage", {
               enterpriseId: args.enterpriseId,
             });
-            if (!_auth.ok) return { ok: false as const, code: _auth.code };
             return await auth.sso.admin.oidc.validate(
               ctx as never,
               args.enterpriseId,
@@ -572,20 +559,18 @@ export function sso<
             sp: v.optional(enterpriseSamlSpValidator),
           },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.protocol.manage", {
+            await authorize(ctx, "sso.protocol.manage", {
               enterpriseId: args.enterpriseId,
             });
-            if (!_auth.ok) return { ok: false as const, code: _auth.code };
             return await auth.sso.admin.saml.configure(ctx as never, args);
           },
         }),
         validate: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.protocol.manage", {
+            await authorize(ctx, "sso.protocol.manage", {
               enterpriseId: args.enterpriseId,
             });
-            if (!_auth.ok) return null;
             return await auth.sso.admin.saml.validate(
               ctx as never,
               args.enterpriseId,
@@ -597,10 +582,9 @@ export function sso<
         get: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.connection.read", {
+            await authorize(ctx, "sso.connection.read", {
               enterpriseId: args.enterpriseId,
             });
-            if (!_auth.ok) return null;
             return await auth.sso.admin.policy.get(
               ctx as never,
               args.enterpriseId,
@@ -613,10 +597,9 @@ export function sso<
             patch: enterprisePolicyPatchValidator,
           },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.policy.manage", {
+            await authorize(ctx, "sso.policy.manage", {
               enterpriseId: args.enterpriseId,
             });
-            if (!_auth.ok) return { ok: false as const, code: _auth.code };
             return await auth.sso.admin.policy.update(
               ctx as never,
               args.enterpriseId,
@@ -627,10 +610,9 @@ export function sso<
         validate: queryGeneric({
           args: { enterpriseId: v.string() },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.policy.manage", {
+            await authorize(ctx, "sso.policy.manage", {
               enterpriseId: args.enterpriseId,
             });
-            if (!_auth.ok) return null;
             return await auth.sso.admin.policy.validate(
               ctx as never,
               args.enterpriseId,
@@ -646,11 +628,10 @@ export function sso<
             limit: v.optional(v.number()),
           },
           handler: async (ctx, args) => {
-            const _auth = await authorize(ctx, "sso.audit.read", {
+            await authorize(ctx, "sso.audit.read", {
               enterpriseId: args.enterpriseId,
               groupId: args.groupId,
             });
-            if (!_auth.ok) return null;
             return await auth.sso.admin.audit.list(ctx as never, args);
           },
         }),
@@ -663,10 +644,9 @@ export function sso<
               limit: v.optional(v.number()),
             },
             handler: async (ctx, args) => {
-              const _auth = await authorize(ctx, "sso.webhook.manage", {
+              await authorize(ctx, "sso.webhook.manage", {
                 enterpriseId: args.enterpriseId,
               });
-              if (!_auth.ok) return null;
               return await (auth.sso.admin.webhook as any).delivery.list(
                 ctx as never,
                 args,
@@ -687,8 +667,6 @@ export function sso<
               const authResult = await authorize(ctx, "sso.webhook.manage", {
                 enterpriseId: args.enterpriseId,
               });
-              if (!authResult.ok)
-                return { ok: false as const, code: authResult.code };
               const { userId } = authResult;
               const result = await auth.sso.admin.webhook.endpoint.create(
                 ctx as never,
@@ -711,10 +689,9 @@ export function sso<
           list: queryGeneric({
             args: { enterpriseId: v.string() },
             handler: async (ctx, args) => {
-              const _auth = await authorize(ctx, "sso.webhook.manage", {
+              await authorize(ctx, "sso.webhook.manage", {
                 enterpriseId: args.enterpriseId,
               });
-              if (!_auth.ok) return null;
               const endpoints = await auth.sso.admin.webhook.endpoint.list(
                 ctx as never,
                 args.enterpriseId,
@@ -733,16 +710,15 @@ export function sso<
                 args.endpointId,
               );
               if (!endpoint) {
-                return {
-                  ok: false as const,
-                  code: "INVALID_PARAMETERS" as const,
-                };
+                throw Cv.error({
+                  code: "INVALID_PARAMETERS",
+                  message: "Webhook endpoint not found.",
+                });
               }
-              const _auth = await authorize(ctx, "sso.webhook.manage", {
+              await authorize(ctx, "sso.webhook.manage", {
                 enterpriseId: endpoint.enterpriseId,
                 groupId: endpoint.groupId,
               });
-              if (!_auth.ok) return { ok: false as const, code: _auth.code };
               return await auth.sso.admin.webhook.endpoint.disable(
                 ctx as never,
                 args.endpointId,
@@ -825,30 +801,27 @@ export function scim<
           status: v.optional(enterpriseStatusValidator),
         },
         handler: async (ctx, args) => {
-          const _auth = await authorize(ctx, "scim.manage", {
+          await authorize(ctx, "scim.manage", {
             enterpriseId: args.enterpriseId,
           });
-          if (!_auth.ok) return { ok: false as const, code: _auth.code };
           return await auth.scim.admin.configure(ctx as never, args);
         },
       }),
       get: queryGeneric({
         args: { enterpriseId: v.string() },
         handler: async (ctx, args) => {
-          const _auth = await authorize(ctx, "scim.manage", {
+          await authorize(ctx, "scim.manage", {
             enterpriseId: args.enterpriseId,
           });
-          if (!_auth.ok) return null;
           return await auth.scim.admin.get(ctx as never, args.enterpriseId);
         },
       }),
       validate: queryGeneric({
         args: { enterpriseId: v.string() },
         handler: async (ctx, args) => {
-          const _auth = await authorize(ctx, "scim.manage", {
+          await authorize(ctx, "scim.manage", {
             enterpriseId: args.enterpriseId,
           });
-          if (!_auth.ok) return null;
           return await auth.scim.admin.validate(
             ctx as never,
             args.enterpriseId,

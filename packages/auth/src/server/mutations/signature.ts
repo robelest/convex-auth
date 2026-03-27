@@ -1,10 +1,10 @@
 import { Fx } from "@robelest/fx";
+import { Cv } from "@robelest/fx/convex";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
-import { GenericId, Infer, v } from "convex/values";
+import { ConvexError, GenericId, Infer, v } from "convex/values";
 
-import { authDb } from "../db";
-import { AuthError } from "../authError";
 import * as Provider from "../crypto";
+import { authDb } from "../db";
 import { MutationCtx } from "../types";
 import { AUTH_STORE_REF } from "./store/refs";
 
@@ -19,17 +19,24 @@ export function verifierSignatureImpl(
   ctx: MutationCtx,
   args: Infer<typeof verifierSignatureArgs>,
   config: Provider.Config,
-): Fx<ReturnType, AuthError> {
+): Fx<ReturnType, ConvexError<any>> {
   return Fx.gen(function* () {
     const { verifier, signature } = args;
     const db = authDb(ctx, config);
     const verifierDoc = yield* Fx.from({
       ok: () => db.verifiers.getById(verifier as GenericId<"AuthVerifier">),
-      err: () => new AuthError("INVALID_VERIFIER"),
+      err: () =>
+        Cv.error({
+          code: "INVALID_VERIFIER",
+          message: "Invalid or expired verifier.",
+        }),
     }).pipe(
       Fx.chain((doc) =>
         doc === null
-          ? Fx.fail(new AuthError("INVALID_VERIFIER"))
+          ? Cv.fail({
+              code: "INVALID_VERIFIER",
+              message: "Invalid or expired verifier.",
+            })
           : Fx.succeed(doc),
       ),
     );

@@ -1,6 +1,7 @@
 import { components } from "@convex/_generated/api";
 import { auth } from "@convex/auth";
 import schema from "@convex/schema";
+import { ConvexError } from "convex/values";
 import { expect, test, vi } from "vite-plus/test";
 
 import { convexTest } from "./convex.setup";
@@ -9,10 +10,10 @@ import { convexTest } from "./convex.setup";
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Unwrap a key.get result, asserting ok and returning the key doc. */
-function expectKey(result: { ok: boolean; key?: any }) {
-  expect(result.ok).toBe(true);
-  return result.key;
+/** Unwrap a key.get result, asserting non-null and returning the key doc. */
+function expectKey(result: any) {
+  expect(result).not.toBeNull();
+  return result!;
 }
 
 /** Create a test user and return their userId. */
@@ -157,17 +158,17 @@ test("key.verify with valid secret returns userId keyId and scopes", async () =>
   expect(result.canDataWrite).toBe(false);
 });
 
-test("key.verify with unknown key returns ok: false", async () => {
+test("key.verify with unknown key throws ConvexError", async () => {
   const t = convexTest(schema);
 
-  const result = await t.run(async (ctx) => {
-    return await auth.key.verify(ctx, "sk_not_a_real_key_abc123");
-  });
-
-  expect(result.ok).toBe(false);
+  await expect(
+    t.run(async (ctx) => {
+      return await auth.key.verify(ctx, "sk_not_a_real_key_abc123");
+    }),
+  ).rejects.toThrow(ConvexError);
 });
 
-test("key.verify after revoke returns ok: false", async () => {
+test("key.verify after revoke throws ConvexError", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
@@ -183,14 +184,14 @@ test("key.verify after revoke returns ok: false", async () => {
     await auth.key.revoke(ctx, keyId);
   });
 
-  const result = await t.run(async (ctx) => {
-    return await auth.key.verify(ctx, secret);
-  });
-
-  expect(result.ok).toBe(false);
+  await expect(
+    t.run(async (ctx) => {
+      return await auth.key.verify(ctx, secret);
+    }),
+  ).rejects.toThrow(ConvexError);
 });
 
-test("key.verify after expiry returns ok: false", async () => {
+test("key.verify after expiry throws ConvexError", async () => {
   vi.useFakeTimers();
   const t = convexTest(schema);
   const userId = await createUser(t);
@@ -207,11 +208,11 @@ test("key.verify after expiry returns ok: false", async () => {
 
   vi.advanceTimersByTime(2000);
 
-  const result = await t.run(async (ctx) => {
-    return await auth.key.verify(ctx, secret);
-  });
-
-  expect(result.ok).toBe(false);
+  await expect(
+    t.run(async (ctx) => {
+      return await auth.key.verify(ctx, secret);
+    }),
+  ).rejects.toThrow(ConvexError);
 
   vi.useRealTimers();
 });
@@ -239,11 +240,11 @@ test("key.verify rate limiting triggers after threshold", async () => {
   }
 
   // Fourth call should be rate limited
-  const result = await t.run(async (ctx) => {
-    return await auth.key.verify(ctx, secret);
-  });
-
-  expect(result.ok).toBe(false);
+  await expect(
+    t.run(async (ctx) => {
+      return await auth.key.verify(ctx, secret);
+    }),
+  ).rejects.toThrow(ConvexError);
 
   vi.useRealTimers();
 });
@@ -348,7 +349,7 @@ test("key.get after revoke still returns record with revoked: true", async () =>
 // key.revoke
 // ---------------------------------------------------------------------------
 
-test("key.revoke sets revoked flag and verify returns ok: false", async () => {
+test("key.revoke sets revoked flag and verify throws ConvexError", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
@@ -370,11 +371,11 @@ test("key.revoke sets revoked flag and verify returns ok: false", async () => {
 
   expect(expectKey(revokedGet).revoked).toBe(true);
 
-  const result = await t.run(async (ctx) => {
-    return await auth.key.verify(ctx, secret);
-  });
-
-  expect(result.ok).toBe(false);
+  await expect(
+    t.run(async (ctx) => {
+      return await auth.key.verify(ctx, secret);
+    }),
+  ).rejects.toThrow(ConvexError);
 });
 
 // ---------------------------------------------------------------------------
@@ -613,7 +614,7 @@ test("key.rotate returns new secret starting with sk_", async () => {
   expect(newKeyId).not.toBe(oldKeyId);
 });
 
-test("key.rotate: old key verify returns ok: false after rotation", async () => {
+test("key.rotate: old key verify throws ConvexError after rotation", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
@@ -627,9 +628,9 @@ test("key.rotate: old key verify returns ok: false after rotation", async () => 
 
   await t.run(async (ctx) => auth.key.rotate(ctx, oldKeyId));
 
-  const result = await t.run(async (ctx) => auth.key.verify(ctx, oldSecret));
-
-  expect(result.ok).toBe(false);
+  await expect(
+    t.run(async (ctx) => auth.key.verify(ctx, oldSecret)),
+  ).rejects.toThrow(ConvexError);
 });
 
 test("key.rotate: new key verify succeeds with same userId", async () => {
@@ -686,7 +687,7 @@ test("key.rotate: new key inherits scopes and rateLimit", async () => {
   expect(rotated.rateLimit).toEqual(rateLimit);
 });
 
-test("key.rotate: rotating already-revoked key returns ok: false", async () => {
+test("key.rotate: rotating already-revoked key throws ConvexError", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
@@ -696,7 +697,7 @@ test("key.rotate: rotating already-revoked key returns ok: false", async () => {
 
   await t.run(async (ctx) => auth.key.revoke(ctx, keyId));
 
-  const result = await t.run(async (ctx) => auth.key.rotate(ctx, keyId));
-
-  expect(result.ok).toBe(false);
+  await expect(
+    t.run(async (ctx) => auth.key.rotate(ctx, keyId)),
+  ).rejects.toThrow(ConvexError);
 });

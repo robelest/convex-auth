@@ -1,4 +1,5 @@
-import { client, parseAuthError } from "@robelest/convex-auth/client/index";
+import { client } from "@robelest/convex-auth/client/index";
+import { ConvexError } from "convex/values";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
 async function waitForSetAuthCalls(
@@ -279,7 +280,10 @@ test("proxy signIn times out after rejection signal with no later confirmation",
   // eslint-disable-next-line jest/valid-expect -- rejection handler must be registered before advancing timers
   const rejection = expect(signInPromise).rejects.toSatisfy(
     (error: unknown) => {
-      return parseAuthError(error)?.code === "AUTH_HANDSHAKE_TIMEOUT";
+      return (
+        error instanceof ConvexError &&
+        error.data?.code === "AUTH_HANDSHAKE_TIMEOUT"
+      );
     },
   );
   await vi.advanceTimersByTimeAsync(5001);
@@ -328,7 +332,10 @@ test("proxy signIn times out when auth confirmation never arrives", async () => 
   // eslint-disable-next-line jest/valid-expect -- rejection handler must be registered before advancing timers
   const rejection2 = expect(signInPromise).rejects.toSatisfy(
     (error: unknown) => {
-      return parseAuthError(error)?.code === "AUTH_HANDSHAKE_TIMEOUT";
+      return (
+        error instanceof ConvexError &&
+        error.data?.code === "AUTH_HANDSHAKE_TIMEOUT"
+      );
     },
   );
   await vi.advanceTimersByTimeAsync(5001);

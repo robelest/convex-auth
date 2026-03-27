@@ -1,10 +1,10 @@
 import type { Fx as FxType } from "@robelest/fx";
+import { Fx } from "@robelest/fx";
+import { Cv } from "@robelest/fx/convex";
 import { GenericId } from "convex/values";
+import { ConvexError } from "convex/values";
 
 import { handleDevice } from "./device";
-import { Fx } from "@robelest/fx";
-
-import { AuthError } from "./authError";
 import {
   callCreateVerificationCode,
   callRefreshSession,
@@ -79,9 +79,7 @@ export async function signInImpl(
   },
 ): Promise<SignInResult> {
   const fx = signInFx(ctx, provider, args, options);
-  return Fx.run(
-    fx.pipe(Fx.recover((e) => Fx.fatal((e as AuthError).toConvexError()))),
-  );
+  return Fx.run(fx.pipe(Fx.recover((e) => Fx.fatal(e))));
 }
 
 /**
@@ -104,7 +102,7 @@ function signInFx(
     generateTokens: boolean;
     allowExtraProviders: boolean;
   },
-): FxType<SignInResult, AuthError> {
+): FxType<SignInResult, ConvexError<any>> {
   return Fx.gen(function* () {
     // --- Refresh token (no provider) ---
     if (provider === null && args.refreshToken) {
@@ -133,7 +131,10 @@ function signInFx(
     // --- Provider is required past this point ---
     const resolvedProvider = yield* provider != null
       ? Fx.succeed(provider)
-      : Fx.fail(new AuthError("SIGN_IN_MISSING_PARAMS"));
+      : Cv.fail({
+          code: "SIGN_IN_MISSING_PARAMS",
+          message: "Cannot sign in: missing provider, code, or refresh token.",
+        });
 
     // --- Dispatch by provider type ---
     return yield* Fx.match(resolvedProvider).on("type", {
@@ -167,7 +168,7 @@ function handleEmailAndPhoneProviderFx(
 ): FxType<
   | { kind: "started"; started: true }
   | { kind: "signedIn"; signedIn: SessionInfoWithTokens },
-  AuthError
+  ConvexError<any>
 > {
   return Fx.gen(function* () {
     // --- Code verification path ---
@@ -182,7 +183,10 @@ function handleEmailAndPhoneProviderFx(
       );
       const verified = yield* result != null
         ? Fx.succeed(result)
-        : Fx.fail(new AuthError("INVALID_VERIFICATION_CODE"));
+        : Cv.fail({
+            code: "INVALID_VERIFICATION_CODE",
+            message: "Invalid or expired verification code.",
+          });
       return {
         kind: "signedIn" as const,
         signedIn: verified as SessionInfoWithTokens,
@@ -196,10 +200,10 @@ function handleEmailAndPhoneProviderFx(
       ? yield* Fx.from({
           ok: async () => provider.generateVerificationToken!(),
           err: () =>
-            new AuthError(
-              "INTERNAL_ERROR",
-              "Failed to generate verification token",
-            ),
+            Cv.error({
+              code: "INTERNAL_ERROR",
+              message: "Failed to generate verification token",
+            }),
         })
       : generateRandomString(32, alphabet);
     const expirationTime =
@@ -242,7 +246,10 @@ function handleEmailAndPhoneProviderFx(
               ctx,
             ),
           err: () =>
-            new AuthError("INTERNAL_ERROR", "Failed to send email code"),
+            Cv.error({
+              code: "INTERNAL_ERROR",
+              message: "Failed to send email code",
+            }),
         }),
       phone: (p) =>
         Fx.from({
@@ -252,7 +259,10 @@ function handleEmailAndPhoneProviderFx(
               ctx,
             ),
           err: () =>
-            new AuthError("INTERNAL_ERROR", "Failed to send phone code"),
+            Cv.error({
+              code: "INTERNAL_ERROR",
+              message: "Failed to send phone code",
+            }),
         }),
     });
     return { kind: "started" as const, started: true as const };
@@ -275,7 +285,7 @@ function handleCredentialsFx(
 ): FxType<
   | { kind: "signedIn"; signedIn: SessionInfo | null }
   | { kind: "totpRequired"; verifier: string },
-  AuthError
+  ConvexError<any>
 > {
   return Fx.gen(function* () {
     const result = yield* Fx.promise(() =>
@@ -338,7 +348,7 @@ function handleOAuthProviderFx(
 ): FxType<
   | { kind: "signedIn"; signedIn: SessionInfoWithTokens | null }
   | { kind: "redirect"; redirect: string; verifier: string },
-  AuthError
+  ConvexError<any>
 > {
   return Fx.gen(function* () {
     // --- Code verification path ---
@@ -368,12 +378,10 @@ function handleOAuthProviderFx(
     if (args.params?.redirectTo !== undefined) {
       yield* Fx.guard(
         typeof args.params.redirectTo !== "string",
-        Fx.fail(
-          new AuthError(
-            "INVALID_REDIRECT",
-            `Expected \`redirectTo\` to be a string, got ${args.params.redirectTo}`,
-          ),
-        ),
+        Cv.fail({
+          code: "INVALID_REDIRECT",
+          message: `Expected \`redirectTo\` to be a string, got ${args.params.redirectTo}`,
+        }),
       );
       redirect.searchParams.set("redirectTo", args.params.redirectTo);
     }
@@ -395,26 +403,25 @@ function handleSsoProviderFx(
   args: {
     params?: Record<string, any>;
   },
-): FxType<{ kind: "redirect"; redirect: string; verifier: string }, AuthError> {
+): FxType<
+  { kind: "redirect"; redirect: string; verifier: string },
+  ConvexError<any>
+> {
   return Fx.gen(function* () {
     const enterpriseId = args.params?.enterpriseId;
     if (!enterpriseId || typeof enterpriseId !== "string") {
-      return yield* Fx.fail(
-        new AuthError(
-          "SIGN_IN_MISSING_PARAMS",
-          "enterpriseId is required for SSO sign-in.",
-        ),
-      );
+      return yield* Cv.fail({
+        code: "SIGN_IN_MISSING_PARAMS",
+        message: "enterpriseId is required for SSO sign-in.",
+      });
     }
 
     const protocol: "oidc" | "saml" = args.params?.protocol ?? "oidc";
     if (protocol !== "oidc" && protocol !== "saml") {
-      return yield* Fx.fail(
-        new AuthError(
-          "SIGN_IN_MISSING_PARAMS",
-          `Invalid SSO protocol: ${protocol as string}. Expected "oidc" or "saml".`,
-        ),
-      );
+      return yield* Cv.fail({
+        code: "SIGN_IN_MISSING_PARAMS",
+        message: `Invalid SSO protocol: ${protocol as string}. Expected "oidc" or "saml".`,
+      });
     }
 
     const verifier = yield* Fx.promise(() => callVerifier(ctx));

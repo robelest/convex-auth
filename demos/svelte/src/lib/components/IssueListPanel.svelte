@@ -1,12 +1,13 @@
 <script lang="ts">
   import type { ConvexClient } from "convex/browser";
+  import type { Id } from "convex/values";
   import { api } from "$convex/_generated/api.js";
   import { useQuery } from "convex-svelte";
   import IssueDetailPanel from "./IssueDetailPanel.svelte";
 
   let { project, permissions, members, currentUserId, workspaceGroupId, client } = $props<{
     project: {
-      projectId: string;
+      projectId: Id<"demoProjects">;
       name: string;
       identifier: string;
       slug: string;
@@ -32,8 +33,7 @@
   const issuesQuery = useQuery(
     api.demo.projectIssues,
     () => ({
-      workspaceId: workspaceGroupId,
-      projectId: project.projectId as any,
+      projectId: project.projectId,
     }),
   );
 
@@ -113,8 +113,7 @@
     errorMessage = null;
     try {
       const result = await client.mutation(api.demo.createIssue, {
-        workspaceId: workspaceGroupId,
-        projectId: project.projectId as any,
+        projectId: project.projectId,
         title: newTitle,
       });
       if ("ok" in result && !result.ok && "message" in result) {

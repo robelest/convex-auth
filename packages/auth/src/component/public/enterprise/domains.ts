@@ -1,6 +1,10 @@
 import { ConvexError, v } from "convex/values";
+
 import { mutation, query } from "../../functions";
-import { vEnterpriseDomainDoc, vEnterpriseDomainVerificationDoc } from "../../model";
+import {
+  vEnterpriseDomainDoc,
+  vEnterpriseDomainVerificationDoc,
+} from "../../model";
 
 /**
  * Link a domain to an enterprise record, or update an existing link.

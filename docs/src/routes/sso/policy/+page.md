@@ -29,11 +29,11 @@ application until dedicated policy fields land.
 
 ## Methods
 
-| Method     | Signature                    | Returns                                | Description                                          |
-| ---------- | ---------------------------- | -------------------------------------- | ---------------------------------------------------- |
-| `get`      | `(ctx, enterpriseId)`        | `EnterprisePolicy`                     | Returns the canonical policy for a connection.       |
-| `update`   | `(ctx, enterpriseId, patch)` | `EnterprisePolicy`                     | Applies a partial update and returns the new policy. |
-| `validate` | `(ctx, enterpriseId)`        | `{ ok, enterpriseId, checks, policy }` | Validates the policy document for a connection.      |
+| Method     | Signature                    | Returns             | Description                                                                        |
+| ---------- | ---------------------------- | ------------------- | ---------------------------------------------------------------------------------- |
+| `get`      | `(ctx, enterpriseId)`        | `EnterprisePolicy`  | Returns the canonical policy for a connection.                                     |
+| `update`   | `(ctx, enterpriseId, patch)` | `EnterprisePolicy`  | Applies a partial update and returns the new policy.                               |
+| `validate` | `(ctx, enterpriseId)`        | `{ checks: [...] }` | Validates the policy document for a connection. Each check has its own `ok` field. |
 
 ## Default policy
 

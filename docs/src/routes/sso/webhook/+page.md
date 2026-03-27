@@ -20,11 +20,11 @@ SSO-related events.
 
 ## Endpoint methods
 
-| Method             | Signature                                                               | Returns              | Description                                                  |
-| ------------------ | ----------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------ |
-| `endpoint.create`  | `(ctx, { enterpriseId, url, secret, subscriptions, createdByUserId? })` | `{ endpointId }`     | Creates a webhook endpoint that listens for specific events. |
-| `endpoint.list`    | `(ctx, enterpriseId)`                                                   | Endpoint[]           | Lists all webhook endpoints for a connection.                |
-| `endpoint.disable` | `(ctx, endpointId)`                                                     | `{ ok, endpointId }` | Disables a webhook endpoint (stops delivery).                |
+| Method             | Signature                                                               | Returns          | Description                                                                               |
+| ------------------ | ----------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------- |
+| `endpoint.create`  | `(ctx, { enterpriseId, url, secret, subscriptions, createdByUserId? })` | `{ endpointId }` | Creates a webhook endpoint that listens for specific events.                              |
+| `endpoint.list`    | `(ctx, enterpriseId)`                                                   | Endpoint[]       | Lists all webhook endpoints for a connection.                                             |
+| `endpoint.disable` | `(ctx, endpointId)`                                                     | `{ endpointId }` | Disables a webhook endpoint (stops delivery). Throws `ConvexError` if endpoint not found. |
 
 ## Example
 

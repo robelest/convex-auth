@@ -36,9 +36,7 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
     deps;
 
   return {
-    poll: async (opts: {
-      code: DeviceCodeResult;
-    }): Promise<{ ok: true } | { ok: false; expired: boolean }> => {
+    poll: async (opts: { code: DeviceCodeResult }): Promise<void> => {
       const { code } = opts;
       const intervalMs = code.interval * 1000;
       const expiresAt = Date.now() + code.expiresIn * 1000;
@@ -121,16 +119,17 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
               context: { provider: "device", flow: "poll" },
             });
           }
-          return { ok: true as const };
+          return;
         }
       }
 
-      return { ok: false as const, expired: true };
+      throw new ConvexError({
+        code: "DEVICE_CODE_EXPIRED",
+        message: "Device code expired before authorization was completed.",
+      });
     },
 
-    verify: async (opts: {
-      code: string;
-    }): Promise<{ ok: true } | { ok: false; message: string }> => {
+    verify: async (opts: { code: string }): Promise<void> => {
       const params: Record<string, any> = {
         flow: "verify",
         userCode: opts.code,
@@ -148,12 +147,11 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
             params,
           });
         }
-        return { ok: true as const };
       } catch (e: unknown) {
-        return {
-          ok: false as const,
+        throw new ConvexError({
+          code: "DEVICE_AUTHORIZATION_FAILED",
           message: e instanceof Error ? e.message : "Invalid or expired code.",
-        };
+        });
       }
     },
   };

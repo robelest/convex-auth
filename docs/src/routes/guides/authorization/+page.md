@@ -14,7 +14,8 @@ Convex Auth's authorization model is:
 
 - app-defined roles in `createAuth({ authorization: { roles } })`
 - per-group membership assignment via `roleIds`
-- grant-based enforcement via `auth.member.resolve(...)`
+- grant-based enforcement via `auth.member.require(...)` or
+  `auth.member.inspect(...)`
 
 ## Define roles
 
@@ -106,28 +107,35 @@ This is intentional:
 - Some providers don't guarantee email
 - Sessions should remain valid even if profile fields change
 
-Read identity from `auth.user.*`, then read profile fields from the user
-document.
+In app code, resolve authentication once with `auth.ctx()` and then use
+`ctx.auth.userId` / `ctx.auth.user` in handlers.
 
 ## Authorization pattern
 
+These examples assume your handlers use auth-aware builders that inject
+`ctx.auth` once in `convex/functions.ts`:
+
 ```ts
-import { query } from "./_generated/server";
+import { customMutation, customQuery } from "convex-helpers/server/customFunctions";
+import { mutation, query } from "./_generated/server";
 import { auth } from "./auth";
 
-export const canAccessAdminTools = query({
+export const authQuery = customQuery(query, auth.ctx());
+export const authMutation = customMutation(mutation, auth.ctx());
+```
+
+```ts
+import { authQuery } from "./functions";
+import { auth } from "./auth";
+
+export const canAccessAdminTools = authQuery({
   args: {},
   handler: async (ctx) => {
-    const userId = await auth.user.id(ctx);
-    if (userId === null) {
-      return false;
-    }
-    const result = await auth.member.resolve(ctx, {
-      userId,
+    const result = await auth.member.inspect(ctx, {
+      userId: ctx.auth.userId,
       groupId: "group_id_here",
-      grants: ["admin.tools.read"],
     });
-    return result.ok;
+    return result.grants.includes("admin.tools.read");
   },
 });
 ```
@@ -135,38 +143,41 @@ export const canAccessAdminTools = query({
 Prefer checking grants instead of checking role names directly.
 
 ```ts
-const result = await auth.member.resolve(ctx, {
-  userId,
+// Use this when the handler should fail instead of returning a boolean.
+await auth.member.require(ctx, {
+  userId: ctx.auth.userId,
   groupId: orgId,
   grants: ["sso.connection.manage"],
 });
-if (!result.ok) {
-  throw new Error("Forbidden");
-}
 ```
 
 ## Membership traversal
 
-If your groups are nested, `auth.member.resolve(...)` can still resolve
+If your groups are nested, `auth.member.inspect(...)` can still resolve
 inherited membership, but access decisions should usually be expressed in
 grants.
 
 ```ts
-const resolution = await auth.member.resolve(ctx, {
-  userId,
+const result = await auth.member.inspect(ctx, {
+  userId: ctx.auth.userId,
   groupId: teamId,
-  grants: ["members.read"],
 });
+
+if (result.grants.includes("members.read")) {
+  // authorized
+}
 ```
 
 ## Performance: derive permissions from resolved grants
 
-When you already have a user's resolved grants (e.g. from `member.resolve`), you
+When you already have a user's resolved grants (e.g. from `member.inspect`), you
 can derive permissions locally instead of making separate authorization calls:
 
 ```ts
-const workspace = await auth.member.resolve(ctx, { userId, groupId });
-const { grants } = workspace;
+const { grants } = await auth.member.inspect(ctx, {
+  userId: ctx.auth.userId,
+  groupId,
+});
 
 // Derive permissions from already-resolved grants (no extra DB reads)
 const permissions = {
@@ -209,10 +220,11 @@ This is why authorization should be keyed on `userId`, not provider account IDs.
 
 ## Common patterns
 
-- **Need current user ID?** `await auth.user.id(ctx)` (returns `string | null`)
-- **Need current user email/profile?** `await auth.user.viewer(ctx)`
-- **Public route with optional auth?** `await auth.user.id(ctx)` and branch on
-  `null`
+- **Need a signed-in user?** Use `auth.ctx()` so handlers receive `ctx.auth.userId`
+  and `ctx.auth.user`
+- **Need a boolean access check?** Use `auth.member.inspect(...)`
+- **Need to enforce permissions?** Use `auth.member.require(...)`
+- **Need optional auth?** Use `AuthCtx(auth, { optional: true })`
 
 ## Recommended pattern
 

@@ -7,17 +7,16 @@ import {
   type InferAuth,
 } from "@robelest/convex-auth/component";
 import auth from "@robelest/convex-auth/convex.config";
-import { parseAuthError } from "@robelest/convex-auth/errors";
 import { OAuth } from "@robelest/convex-auth/providers";
 import { Password } from "@robelest/convex-auth/providers/password";
-import type { AuthResolvedContext } from "@robelest/convex-auth/server";
+import type { AuthContext } from "@robelest/convex-auth/server";
 
 type _ClientFactory = typeof client;
 type _DefineRolesFactory = typeof defineRoles;
 type _AuthCtxFactory = typeof AuthCtx;
 type _CreateAuthFactory = typeof createAuth;
 type _AuthConfig = ConvexAuthConfig;
-type _AuthResolvedContext = AuthResolvedContext;
+type _AuthContext = AuthContext;
 type _OAuthFactory = typeof OAuth;
 type _PasswordClass = typeof Password;
 type _ConvexConfig = typeof auth;
@@ -45,7 +44,6 @@ const _inferredAuth: _InferredAuth = {
   canWrite: true,
 };
 
-void parseAuthError;
 void _inferredAuth;
 
 const _typecheck: {
@@ -57,7 +55,7 @@ const _typecheck: {
   OAuth: _OAuthFactory;
   password: _PasswordClass;
   authConfig: _AuthConfig | null;
-  resolvedAuth: _AuthResolvedContext | null;
+  authContext: _AuthContext | null;
 } = {
   authCtx: AuthCtx,
   client,
@@ -67,7 +65,7 @@ const _typecheck: {
   OAuth,
   password: Password,
   authConfig: null,
-  resolvedAuth: null,
+  authContext: null,
 };
 
 void _typecheck;

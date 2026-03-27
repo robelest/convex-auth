@@ -1,6 +1,11 @@
 import { v } from "convex/values";
+
 import { mutation, query } from "../../functions";
-import { vAuditActorType, vAuditStatus, vEnterpriseAuditEventDoc } from "../../model";
+import {
+  vAuditActorType,
+  vAuditStatus,
+  vEnterpriseAuditEventDoc,
+} from "../../model";
 
 /**
  * Record a new audit event for an enterprise.

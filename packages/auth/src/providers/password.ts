@@ -220,127 +220,106 @@ export class Password<DataModel extends GenericDataModel = GenericDataModel> {
         return await Fx.run(
           Fx.match(flowDispatch, flowDispatch.tag, {
             signUp: () =>
-              Fx.from({
-                ok: async () => {
-                  const secret = requirePasswordParam(
-                    params.password,
-                    "signUp",
-                  );
-                  const created = await ctx.auth.account.create(ctx, {
-                    provider,
-                    account: { id: email, secret },
-                    profile: profile as any,
-                    shouldLinkViaEmail: config.verify !== undefined,
-                    shouldLinkViaPhone: false,
-                  });
-                  return await finalizeCredentialsResult(
-                    created.account,
-                    created.user,
-                  );
-                },
-                err: (e) => e as never,
+              Fx.promise(async () => {
+                const secret = requirePasswordParam(params.password, "signUp");
+                const created = await ctx.auth.account.create(ctx, {
+                  provider,
+                  account: { id: email, secret },
+                  profile: profile as any,
+                  shouldLinkViaEmail: config.verify !== undefined,
+                  shouldLinkViaPhone: false,
+                });
+                return await finalizeCredentialsResult(
+                  created.account,
+                  created.user,
+                );
               }),
             signIn: () =>
-              Fx.from({
-                ok: async () => {
-                  const secret = requirePasswordParam(
-                    params.password,
-                    "signIn",
-                  );
-                  const retrieved = await ctx.auth.account.get(ctx, {
-                    provider,
-                    account: { id: email, secret },
-                  });
-                  if (retrieved === null) {
-                    throw new Error("Invalid credentials");
-                  }
-                  return await finalizeCredentialsResult(
-                    retrieved.account,
-                    retrieved.user,
-                  );
-                },
-                err: (e) => e as never,
+              Fx.promise(async () => {
+                const secret = requirePasswordParam(params.password, "signIn");
+                const retrieved = await ctx.auth.account.get(ctx, {
+                  provider,
+                  account: { id: email, secret },
+                });
+                if (retrieved === null) {
+                  throw new Error("Invalid credentials");
+                }
+                return await finalizeCredentialsResult(
+                  retrieved.account,
+                  retrieved.user,
+                );
               }),
             reset: () =>
-              Fx.from({
-                ok: async () => {
-                  if (!config.reset) {
-                    throw new Error(
-                      `Password reset is not enabled for ${provider}`,
-                    );
-                  }
-                  const { account } = await ctx.auth.account.get(ctx, {
-                    provider,
-                    account: { id: email },
-                  });
-                  return await ctx.auth.provider.signIn(
-                    ctx,
-                    config.reset as AuthProviderConfig,
-                    {
-                      accountId: account._id,
-                      params,
-                    },
+              Fx.promise(async () => {
+                if (!config.reset) {
+                  throw new Error(
+                    `Password reset is not enabled for ${provider}`,
                   );
-                },
-                err: (e) => e as never,
+                }
+                const { account } = await ctx.auth.account.get(ctx, {
+                  provider,
+                  account: { id: email },
+                });
+                return await ctx.auth.provider.signIn(
+                  ctx,
+                  config.reset as AuthProviderConfig,
+                  {
+                    accountId: account._id,
+                    params,
+                  },
+                );
               }),
             resetVerification: () =>
-              Fx.from({
-                ok: async () => {
-                  if (!config.reset) {
-                    throw new Error(
-                      `Password reset is not enabled for ${provider}`,
-                    );
-                  }
-                  if (params.newPassword === undefined) {
-                    throw new Error(
-                      "Missing `newPassword` param for `reset-verification` flow",
-                    );
-                  }
-                  const result = await ctx.auth.provider.signIn(
-                    ctx,
-                    config.reset as AuthProviderConfig,
-                    { params },
+              Fx.promise(async () => {
+                if (!config.reset) {
+                  throw new Error(
+                    `Password reset is not enabled for ${provider}`,
                   );
-                  if (result === null) {
-                    throw new Error("Invalid code");
-                  }
-                  const { userId, sessionId } = result;
-                  const secret = params.newPassword as string;
-                  await ctx.auth.account.update(ctx, {
-                    provider,
-                    account: { id: email, secret },
-                  });
-                  await ctx.auth.session.invalidate(ctx, {
-                    userId,
-                    except: [sessionId],
-                  });
-                  return { userId, sessionId };
-                },
-                err: (e) => e as never,
+                }
+                if (params.newPassword === undefined) {
+                  throw new Error(
+                    "Missing `newPassword` param for `reset-verification` flow",
+                  );
+                }
+                const result = await ctx.auth.provider.signIn(
+                  ctx,
+                  config.reset as AuthProviderConfig,
+                  { params },
+                );
+                if (result === null) {
+                  throw new Error("Invalid code");
+                }
+                const { userId, sessionId } = result;
+                const secret = params.newPassword as string;
+                await ctx.auth.account.update(ctx, {
+                  provider,
+                  account: { id: email, secret },
+                });
+                await ctx.auth.session.invalidate(ctx, {
+                  userId,
+                  except: [sessionId],
+                });
+                return { userId, sessionId };
               }),
             emailVerification: () =>
-              Fx.from({
-                ok: async () => {
-                  if (!config.verify) {
-                    throw new Error(
-                      `Email verification is not enabled for ${provider}`,
-                    );
-                  }
-                  const { account } = await ctx.auth.account.get(ctx, {
-                    provider,
-                    account: { id: email },
-                  });
-                  return await ctx.auth.provider.signIn(
-                    ctx,
-                    config.verify as AuthProviderConfig,
-                    {
-                      accountId: account._id,
-                      params,
-                    },
+              Fx.promise(async () => {
+                if (!config.verify) {
+                  throw new Error(
+                    `Email verification is not enabled for ${provider}`,
                   );
-                },
-                err: (e) => e as never,
+                }
+                const { account } = await ctx.auth.account.get(ctx, {
+                  provider,
+                  account: { id: email },
+                });
+                return await ctx.auth.provider.signIn(
+                  ctx,
+                  config.verify as AuthProviderConfig,
+                  {
+                    accountId: account._id,
+                    params,
+                  },
+                );
               }),
             invalid: () =>
               Fx.fatal(

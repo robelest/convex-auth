@@ -8,24 +8,22 @@ import {
   encodeBase64urlNoPadding,
   encodeHexLowerCase,
 } from "@oslojs/encoding";
-
-import { AuthError } from "./authError";
+import { Cv } from "@robelest/fx/convex";
 
 /**
  * Require an environment variable to be set, throwing at config time if missing.
  *
- * Uses `AuthError.toConvexError()` directly since this is a synchronous guard
+ * Uses `Cv.error()` directly since this is a synchronous guard
  * called inline in many expressions — not suitable for Fx pipeline wrapping.
  */
 /** @internal */
 export function requireEnv(name: string) {
   const value = process.env[name];
   if (value === undefined) {
-    throw new AuthError(
-      "MISSING_ENV_VAR",
-      `Missing environment variable \`${name}\``,
-      { variable: name },
-    ).toConvexError();
+    throw Cv.error({
+      code: "MISSING_ENV_VAR",
+      message: `Missing environment variable \`${name}\``,
+    });
   }
   return value;
 }
@@ -183,10 +181,10 @@ export async function encryptSecret(value: string) {
 export async function decryptSecret(ciphertext: string) {
   const [ivEncoded, payloadEncoded] = ciphertext.split(".");
   if (!ivEncoded || !payloadEncoded) {
-    throw new AuthError(
-      "INVALID_PARAMETERS",
-      "Stored enterprise secret is malformed.",
-    ).toConvexError();
+    throw Cv.error({
+      code: "INVALID_PARAMETERS",
+      message: "Stored enterprise secret is malformed.",
+    });
   }
   const key = await getSecretCryptoKey();
   const decrypted = await crypto.subtle.decrypt(

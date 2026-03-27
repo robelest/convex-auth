@@ -12,21 +12,23 @@ description:
 # auth.member
 
 The `auth.member` namespace manages the relationship between users and groups.
-Each membership stores assigned `roleIds`, and `auth.member.resolve(...)`
-combines membership lookup, role filtering, inheritance, and grant checks.
+Each membership stores assigned `roleIds`. Use `auth.member.inspect(...)` to
+look up membership details and `auth.member.require(...)` to enforce
+authorization with a single call.
 
 See [Authorization Patterns](/guides/authorization) for the full model.
 
 ## Methods
 
-| Method    | Signature                                                               | Returns               | Description                                                                                                           |
-| --------- | ----------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `create`  | `(ctx, { userId, groupId, roleIds? })`                                  | `{ ok, memberId }`    | Creates a user membership in a group with optional assigned role IDs.                                                 |
-| `get`     | `(ctx, memberId)`                                                       | `Doc<"members"> \| null` | Returns the membership record for a given membership ID, or `null` if it does not exist.                             |
-| `list`    | `(ctx, { groupId?, userId?, limit?, cursor? })`                         | Paginated member list | Lists members by group, by user, or both.                                                                             |
-| `update`  | `(ctx, memberId, { roleIds?, status?, extend? })`                       | `{ ok, memberId }`    | Updates a membership's assigned role IDs or metadata.                                                                 |
-| `delete`  | `(ctx, memberId)`                                                       | `{ ok, memberId }`    | Deletes a user membership from a group.                                                                               |
-| `resolve` | `(ctx, { userId, groupId, ancestry?, roleIds?, grants?, maxDepth? })` | Resolution result     | Resolves membership, optional inheritance, role filters, and grant checks in one call.                               |
+| Method    | Signature                                                             | Returns                           | Description                                                                                                                         |
+| --------- | --------------------------------------------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `create`  | `(ctx, { userId, groupId, roleIds? })`                                | `{ memberId }`                    | Creates a user membership in a group with optional assigned role IDs. Throws `ConvexError` with code `INVALID_ROLE_IDS` on failure. |
+| `get`     | `(ctx, memberId)`                                                     | `Doc<"members"> \| null`          | Returns the membership record for a given membership ID, or `null` if it does not exist.                                            |
+| `list`    | `(ctx, { groupId?, userId?, limit?, cursor? })`                       | Paginated member list             | Lists members by group, by user, or both.                                                                                           |
+| `update`  | `(ctx, memberId, { roleIds?, status?, extend? })`                     | `{ memberId }`                    | Updates a membership's assigned role IDs or metadata. Throws `ConvexError` with code `INVALID_ROLE_IDS` on failure.                 |
+| `delete`  | `(ctx, memberId)`                                                     | `{ memberId }`                    | Deletes a user membership from a group.                                                                                             |
+| `inspect` | `(ctx, { userId, groupId, ancestry?, maxDepth? })`                    | `{ membership, roleIds, grants }` | Looks up membership, resolves roles and grants. Returns result without throwing.                                                    |
+| `require` | `(ctx, { userId, groupId, ancestry?, roleIds?, grants?, maxDepth? })` | `{ membership, roleIds, grants }` | Resolves membership and enforces required roleIds/grants. Throws `ConvexError` on failure.                                          |
 
 ## Examples
 
@@ -50,44 +52,53 @@ if (!member) {
 }
 ```
 
-### Check grants with `resolve`
+### Inspect membership and grants
 
 ```ts
-const result = await auth.member.resolve(ctx, {
+const result = await auth.member.inspect(ctx, {
+  userId,
+  groupId: orgId,
+});
+
+if (result.membership) {
+  console.log(result.roleIds); // e.g. ["orgAdmin"]
+  console.log(result.grants); // e.g. ["members.create", "members.update"]
+}
+```
+
+### Require specific grants (throws on failure)
+
+```ts
+// Throws `NOT_A_MEMBER` or `MISSING_GRANTS` on failure.
+await auth.member.require(ctx, {
   userId,
   groupId: orgId,
   grants: ["members.update"],
 });
-
-if (!result.ok) {
-  throw new Error(`Missing grants: ${result.missingGrants.join(", ")}`);
-}
 ```
 
-### Resolve role from parent group
+### Inspect role from parent group
 
 ```ts
 // Checks teamId, then walks up to the parent org
-const match = await auth.member.resolve(ctx, {
+const result = await auth.member.inspect(ctx, {
   userId,
   groupId: teamId,
 });
 
-if (match.membership) {
-  console.log(match.roleIds, match.matchedGroupId, match.grants);
+if (result.membership) {
+  console.log(result.roleIds, result.grants);
 }
 ```
 
-### Resolve with ancestry trail
+### Inspect with ancestry trail
 
 Pass `ancestry: true` to get the list of group IDs traversed during resolution:
 
 ```ts
-const match = await auth.member.resolve(ctx, {
+const result = await auth.member.inspect(ctx, {
   userId,
   groupId: teamId,
   ancestry: true,
 });
-
-// match.traversedGroupIds: [teamId, parentOrgId, ...]
 ```

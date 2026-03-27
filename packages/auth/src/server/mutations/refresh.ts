@@ -1,10 +1,9 @@
 import { Fx } from "@robelest/fx";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
-import { Infer, v } from "convex/values";
+import { ConvexError, Infer, v } from "convex/values";
 
-import { authDb } from "../db";
-import { AuthError } from "../authError";
 import * as Provider from "../crypto";
+import { authDb } from "../db";
 import {
   invalidateRefreshTokensInSubtree,
   parseRefreshToken,
@@ -50,7 +49,9 @@ export async function refreshSessionImpl(
 
   return Fx.run(
     parseRefreshToken(refreshToken).pipe(
-      Fx.recover((err: AuthError) => Fx.fail(new RefreshFailure(err.message))),
+      Fx.recover((err: ConvexError<any>) =>
+        Fx.fail(new RefreshFailure(err.data.message)),
+      ),
       Fx.tap(({ refreshTokenId, sessionId: tokenSessionId }) =>
         Fx.sync(() =>
           logWithLevel(

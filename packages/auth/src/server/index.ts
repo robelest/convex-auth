@@ -2,9 +2,9 @@ export { AuthCtx, createAuth } from "./auth";
 export type {
   AuthApi,
   AuthApiBase,
+  AuthContext,
   AuthConfig,
   AuthCtxConfig,
-  AuthResolvedContext,
   ConvexAuthResult,
   InferAuth,
   InferClientApi,

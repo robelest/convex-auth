@@ -1,9 +1,9 @@
+import { Cv } from "@robelest/fx/convex";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { GenericId, Infer, v } from "convex/values";
 
-import { authDb } from "../db";
-import { AuthError } from "../authError";
 import * as Provider from "../crypto";
+import { authDb } from "../db";
 import { getAuthSessionId } from "../sessions";
 import { MutationCtx } from "../types";
 import { EmailConfig, PhoneConfig } from "../types";
@@ -47,10 +47,10 @@ export async function createVerificationCodeImpl(
     typedExistingAccountId !== undefined
       ? ((await db.accounts.getById(typedExistingAccountId)) ??
         (() => {
-          throw new AuthError(
-            "ACCOUNT_NOT_FOUND",
-            `Expected an account to exist for ID "${typedExistingAccountId}"`,
-          ).toConvexError();
+          throw Cv.error({
+            code: "ACCOUNT_NOT_FOUND",
+            message: `Expected an account to exist for ID "${typedExistingAccountId}"`,
+          });
         })())
       : await db.accounts.get(providerId, email ?? phone!);
 

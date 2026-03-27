@@ -63,7 +63,7 @@ For subsequent requests:
 
 - Queries/mutations call `ctx.auth.getUserIdentity()` which returns
   `{ subject: "userId|sessionId" }`
-- `auth.user.id(ctx)` extracts the `userId` from the subject
+- `auth.ctx()` / `auth.context(ctx)` resolves `{ userId, user, groupId, role, grants }`
 
 ## Key design constraints
 
@@ -86,12 +86,36 @@ For subsequent requests:
 - **SCIM** (conditional): `auth.scim.admin.*` — provisioning helpers when
   `new SSO()` is in providers
 
+## Where `ctx.auth` comes from
+
+`createAuth(...)` does not mutate every Convex handler automatically. App code
+typically wires `auth.ctx()` into custom builders once, then uses those builders
+everywhere auth is required.
+
+```ts
+// convex/functions.ts
+import {
+  customAction,
+  customMutation,
+  customQuery,
+} from "convex-helpers/server/customFunctions";
+import { action, mutation, query } from "./_generated/server";
+import { auth } from "./auth";
+
+export const authQuery = customQuery(query, auth.ctx());
+export const authMutation = customMutation(mutation, auth.ctx());
+export const authAction = customAction(action, auth.ctx());
+```
+
+Inside those handlers, `ctx.auth` includes `{ userId, user, groupId, role,
+grants }` and unauthenticated callers are rejected before your handler runs.
+
 ## API layers
 
 | Layer                  | What it is                                                        | Typical usage                                                               |
 | ---------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | Auth-flow actions      | Required client-callable functions exported from `convex/auth.ts` | `api.auth.signIn`, `api.auth.signOut`, `api.auth.store`                     |
-| Helper namespaces      | Server-side helper APIs returned by `createAuth(...)`             | `auth.user.id(ctx)`, `auth.sso.admin.connection.create(ctx, ...)`           |
+| Helper namespaces      | Server-side helper APIs returned by `createAuth(...)`             | `auth.member.require(ctx, ...)`, `auth.sso.admin.connection.create(ctx, ...)` |
 | Mounted enterprise RPC | Optional app-owned public RPC for enterprise/admin UI             | `api.auth.enterprise.createConnection`, `api.auth.enterprise.configureScim` |
 
 Only the first layer is required for the frontend auth client. The third layer
@@ -108,11 +132,11 @@ Every auth path resolves to the same `userId`:
 
 | Access pattern                     | How `userId` is available                            |
 | ---------------------------------- | ---------------------------------------------------- |
-| Browser (password, OAuth, passkey) | `auth.user.id(ctx)`                                  |
-| Enterprise SSO (OIDC / SAML)       | Same as browser — SSO completes as a session         |
-| Device flow (CLI / IoT)            | Same as browser — device poll returns session tokens |
+| Browser (password, OAuth, passkey) | `ctx.auth.userId` via `auth.ctx()`                   |
+| Enterprise SSO (OIDC / SAML)       | Same as browser - SSO completes as a session         |
+| Device flow (CLI / IoT)            | Same as browser - device poll returns session tokens |
 | API key (machine / automation)     | `ctx.key.userId` or `auth.user.id(ctx, request)`     |
 
 The `userId` is the single shared anchor — server logic works regardless of how
-the caller authenticated. Use `auth.user.id(ctx, request?)` to resolve it
-universally.
+the caller authenticated. In app code, prefer `auth.ctx()` and `ctx.auth.userId`.
+Keep `auth.user.id(ctx, request?)` for advanced raw HTTP handlers.

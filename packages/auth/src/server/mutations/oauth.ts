@@ -1,13 +1,12 @@
 import { Fx } from "@robelest/fx";
+import { Cv } from "@robelest/fx/convex";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import type { ConvexError } from "convex/values";
 import { Infer, v } from "convex/values";
 
-import { authDb } from "../db";
-import { AuthError } from "../authError";
 import * as Provider from "../crypto";
-import {
-  createSyntheticOAuthMaterializedConfig,
-} from "../enterprise/oidc";
+import { authDb } from "../db";
+import { createSyntheticOAuthMaterializedConfig } from "../enterprise/oidc";
 import { normalizeEnterprisePolicy } from "../enterprise/policy";
 import {
   ENTERPRISE_OIDC_PROVIDER_PREFIX,
@@ -81,7 +80,7 @@ export function userOAuthImpl(
   args: Infer<typeof userOAuthArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
-): Fx<ReturnType, AuthError> {
+): Fx<ReturnType, ConvexError<{ code: string; message: string }>> {
   return Fx.gen(function* () {
     logWithLevel("DEBUG", "userOAuthImpl args:", args);
     const { profile, provider, providerAccountId, signature, accountExtend } =
@@ -129,11 +128,18 @@ export function userOAuthImpl(
 
     const verifier = yield* Fx.from({
       ok: () => db.verifiers.getBySignature(signature),
-      err: () => new AuthError("OAUTH_INVALID_STATE"),
+      err: () =>
+        Cv.error({
+          code: "OAUTH_INVALID_STATE",
+          message: "Invalid OAuth state. Please try signing in again.",
+        }),
     }).pipe(
       Fx.chain((doc) =>
         doc === null
-          ? Fx.fail(new AuthError("OAUTH_INVALID_STATE"))
+          ? Cv.fail({
+              code: "OAUTH_INVALID_STATE",
+              message: "Invalid OAuth state. Please try signing in again.",
+            })
           : Fx.succeed(doc),
       ),
     );

@@ -84,53 +84,38 @@ export const storeImpl = async (
   logWithLevel(LOG_LEVELS.INFO, `\`auth:store\` type: ${args.type}`);
   return Fx.run(
     Fx.match(args, args.type, {
-      signIn: (a) =>
-        Fx.from({
-          ok: () => signInImpl(ctx, a, config),
-          err: (e) => e as never,
-        }),
+      signIn: (a) => Fx.promise(() => signInImpl(ctx, a, config)),
       signOut: () => signOutImpl(ctx, config),
       refreshSession: (a) =>
-        Fx.from({
-          ok: () => refreshSessionImpl(ctx, a, getProviderOrThrow, config),
-          err: (e) => e as never,
-        }),
+        Fx.promise(() =>
+          refreshSessionImpl(ctx, a, getProviderOrThrow, config),
+        ),
       verifyCodeAndSignIn: (a) =>
-        Fx.from({
-          ok: () => verifyCodeAndSignInImpl(ctx, a, getProviderOrThrow, config),
-          err: (e) => e as never,
-        }),
+        Fx.promise(() =>
+          verifyCodeAndSignInImpl(ctx, a, getProviderOrThrow, config),
+        ),
       verifier: () => verifierImpl(ctx, config),
       verifierSignature: (a) =>
         verifierSignatureImpl(ctx, a, config).pipe(
-          Fx.recover((e) => Fx.fatal(e.toConvexError())),
+          Fx.recover((e) => Fx.fatal(e)),
         ),
       userOAuth: (a) =>
         userOAuthImpl(ctx, a, getProviderOrThrow, config).pipe(
-          Fx.recover((e) => Fx.fatal(e.toConvexError())),
+          Fx.recover((e) => Fx.fatal(e)),
         ),
       createVerificationCode: (a) =>
-        Fx.from({
-          ok: () =>
-            createVerificationCodeImpl(ctx, a, getProviderOrThrow, config),
-          err: (e) => e as never,
-        }),
+        Fx.promise(() =>
+          createVerificationCodeImpl(ctx, a, getProviderOrThrow, config),
+        ),
       createAccountFromCredentials: (a) =>
-        Fx.from({
-          ok: () =>
-            createAccountFromCredentialsImpl(
-              ctx,
-              a,
-              getProviderOrThrow,
-              config,
-            ),
-          err: (e) => e as never,
-        }),
+        Fx.promise(() =>
+          createAccountFromCredentialsImpl(ctx, a, getProviderOrThrow, config),
+        ),
       retrieveAccountWithCredentials: (a) =>
         retrieveAccountWithCredentialsImpl(ctx, a, getProviderOrThrow, config),
       modifyAccount: (a) =>
         modifyAccountImpl(ctx, a, getProviderOrThrow, config).pipe(
-          Fx.recover((e) => Fx.fatal(e.toConvexError())),
+          Fx.recover((e) => Fx.fatal(e)),
         ),
       invalidateSessions: (a) => invalidateSessionsImpl(ctx, a, config),
     }),

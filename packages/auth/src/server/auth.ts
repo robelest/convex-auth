@@ -4,12 +4,12 @@
  * @module
  */
 
+import { Cv } from "@robelest/fx/convex";
 import type { UserIdentity } from "convex/server";
 import type { GenericId } from "convex/values";
 
 import type { AuthApiRefs } from "../client/index";
 import { Auth as AuthFactory } from "./runtime";
-import { AuthError } from "./authError";
 import type { Doc } from "./types";
 import type {
   AuthAuthorizationConfig,
@@ -41,7 +41,7 @@ type MemberApiWithAuthorization<
   TAuthorization extends AuthAuthorizationConfig | undefined,
 > = Omit<
   ReturnType<typeof AuthFactory>["auth"]["member"],
-  "create" | "list" | "update" | "resolve"
+  "create" | "list" | "update" | "inspect" | "require"
 > & {
   create: (
     ctx: Parameters<
@@ -54,7 +54,7 @@ type MemberApiWithAuthorization<
       status?: string;
       extend?: Record<string, unknown>;
     },
-  ) => Promise<{ ok: true; memberId: string }>;
+  ) => Promise<{ memberId: string }>;
   list: (
     ctx: Parameters<
       ReturnType<typeof AuthFactory>["auth"]["member"]["list"]
@@ -78,10 +78,21 @@ type MemberApiWithAuthorization<
     >[0],
     memberId: string,
     data: Record<string, unknown> & { roleIds?: AuthRoleId<TAuthorization>[] },
-  ) => Promise<{ ok: true; memberId: string }>;
-  resolve: (
+  ) => Promise<{ memberId: string }>;
+  inspect: (
     ctx: Parameters<
-      ReturnType<typeof AuthFactory>["auth"]["member"]["resolve"]
+      ReturnType<typeof AuthFactory>["auth"]["member"]["inspect"]
+    >[0],
+    opts: {
+      userId: string;
+      groupId: string;
+      ancestry?: boolean;
+      maxDepth?: number;
+    },
+  ) => ReturnType<ReturnType<typeof AuthFactory>["auth"]["member"]["inspect"]>;
+  require: (
+    ctx: Parameters<
+      ReturnType<typeof AuthFactory>["auth"]["member"]["require"]
     >[0],
     opts: {
       userId: string;
@@ -91,9 +102,8 @@ type MemberApiWithAuthorization<
       grants?: AuthGrant<TAuthorization>[];
       maxDepth?: number;
     },
-  ) => ReturnType<ReturnType<typeof AuthFactory>["auth"]["member"]["resolve"]>;
+  ) => ReturnType<ReturnType<typeof AuthFactory>["auth"]["member"]["require"]>;
 };
-
 
 /**
  * The base auth API surface returned by {@link createAuth}.
@@ -126,30 +136,29 @@ export type AuthApiBase<
   key: ReturnType<typeof AuthFactory>["auth"]["key"];
   http: ReturnType<typeof AuthFactory>["auth"]["http"];
   /**
-   * Resolve the current user's auth context. Framework-agnostic — use
+   * Resolve the current request's auth context. Framework-agnostic — use
    * this in fluent-convex middleware, custom wrappers, or anywhere you
-   * need the resolved `{ userId, user, groupId, role, grants }` object.
+   * need the current `{ userId, user, groupId, role, grants }` object.
    *
-   * Returns `null` when unauthenticated. Does not throw.
+   * Throws a structured `ConvexError` when unauthenticated.
    *
    * @param ctx - Convex query, mutation, or action context.
-   * @returns The resolved auth context, or `null`.
+   * @returns The current auth context.
    *
    * @example fluent-convex middleware
    * ```ts
    * const withAuth = convex.createMiddleware(async (ctx, next) => {
-   *   return next({ ...ctx, auth: await auth.resolve(ctx) });
+   *   return next({ ...ctx, auth: await auth.context(ctx) });
    * });
    * ```
    *
    * @example Direct usage in a handler
    * ```ts
-   * const resolved = await auth.resolve(ctx);
-   * if (!resolved) return { ok: false, code: "NOT_SIGNED_IN" };
-   * const { userId, grants } = resolved;
+   * const authContext = await auth.context(ctx);
+   * const { userId, grants } = authContext;
    * ```
    */
-  resolve: (ctx: any) => Promise<AuthResolvedContext | null>;
+  context: (ctx: any) => Promise<AuthContext>;
   /**
    * Context enrichment for convex-helpers `customQuery` / `customMutation` /
    * `customAction`.
@@ -158,9 +167,9 @@ export type AuthApiBase<
    * and grants, then attaches them to `ctx.auth`. Returns a `Customization`
    * object compatible with convex-helpers' custom function builders.
    *
-   * `ctx.auth` is `{ userId, user, groupId, role, grants }` when
-   * authenticated, `null` when unauthenticated. No throwing — your
-   * handler decides how to respond.
+   * `ctx.auth` is the current request auth context.
+   * By default this throws when unauthenticated so handlers can assume
+   * `ctx.auth.userId` and `ctx.auth.user` exist.
    *
    * @returns A convex-helpers `Customization` object.
    *
@@ -182,7 +191,6 @@ export type AuthApiBase<
    * export const list = authQuery({
    *   args: { workspaceId: v.string() },
    *   handler: async (ctx, args) => {
-   *     if (!ctx.auth) return [];
    *     const { userId, groupId, grants } = ctx.auth;
    *     // business logic
    *   },
@@ -192,26 +200,27 @@ export type AuthApiBase<
   ctx: () => {
     args: Record<string, never>;
     input: (ctx: any) => Promise<{
-      ctx: { auth: AuthResolvedContext | null };
+      ctx: { auth: AuthContext };
       args: Record<string, never>;
     }>;
   };
 };
 
 /**
- * Resolved auth context injected into `ctx.auth` by `auth.ctx()` and
- * {@link AuthCtx}. Also the expected return shape for custom
- * {@link AuthCtxConfig.authResolve | authResolve} hooks.
+ * Current request auth context injected into `ctx.auth` by `auth.ctx()` and
+ * {@link AuthCtx}. This is the authenticated auth shape returned by
+ * {@link createAuth().context}. Optional context builders may still surface
+ * nullable fields when `optional: true` is used.
  *
- * - `null` when unauthenticated.
  * - `groupId` is `null` when the user has no active group set.
- * - `role` / `grants` are `null` / `[]` when no active group or no membership.
+ * - `role` is `null` when no active group or no membership is resolved.
+ * - `grants` is `[]` when no active group or no membership is resolved.
  *
  * @example
  * ```ts
- * import type { AuthResolvedContext } from "@robelest/convex-auth/server";
+ * import type { AuthContext } from "@robelest/convex-auth/server";
  *
- * const mockAuth: AuthResolvedContext = {
+ * const mockAuth: AuthContext = {
  *   userId: "user123" as Id<"User">,
  *   user: { _id: "user123", email: "test@example.com" },
  *   groupId: "group456",
@@ -220,7 +229,7 @@ export type AuthApiBase<
  * };
  * ```
  */
-export type AuthResolvedContext = {
+export type AuthContext = {
   /** The authenticated user's document ID. */
   userId: GenericId<"User">;
   /** The authenticated user's full document. */
@@ -237,7 +246,7 @@ type AuthCtxBase = {
   getUserIdentity: () => Promise<UserIdentity | null>;
 };
 
-type RequiredAuthCtxState = AuthCtxBase & AuthResolvedContext;
+type RequiredAuthCtxState = AuthCtxBase & AuthContext;
 
 type OptionalAuthCtxState = AuthCtxBase & {
   userId: GenericId<"User"> | null;
@@ -262,7 +271,6 @@ type PublicSsoAdminApi = {
           isPrimary?: boolean;
         }>,
       ) => Promise<{
-        ok: true;
         enterpriseId: string;
         domains: Array<{
           domainId: string;
@@ -277,7 +285,6 @@ type PublicSsoAdminApi = {
           ctx: Parameters<InternalSsoApi["connection"]["create"]>[0],
           args: { enterpriseId: string; domain: string },
         ) => Promise<{
-          ok: true;
           enterpriseId: string;
           domain: string;
           requestedAt: number;
@@ -292,7 +299,6 @@ type PublicSsoAdminApi = {
           ctx: Parameters<InternalSsoApi["connection"]["create"]>[0],
           args: { enterpriseId: string; domain: string },
         ) => Promise<{
-          ok: boolean;
           enterpriseId: string;
           domain: string;
           verifiedAt?: number;
@@ -446,9 +452,12 @@ export type AuthLike = Pick<AuthApiBase, "user" | "member">;
  * 1. `user.id(ctx)` → userId or null (exit early)
  * 2. `user.get(ctx, userId)` → user doc (cached per-execution)
  * 3. `user.getActiveGroup(ctx, { userId })` → groupId or null
- * 4. If groupId → `member.resolve(ctx, { userId, groupId })` → role + grants
+ * 4. If groupId → `member.inspect(ctx, { userId, groupId })` → role + grants
  */
-async function resolveAuthContext(auth: AuthLike, ctx: any) {
+async function getAuthContext(
+  auth: AuthLike,
+  ctx: any,
+): Promise<AuthContext | null> {
   const userId = await auth.user.id(ctx);
   if (!userId) return null;
   const user = await auth.user.get(ctx, userId);
@@ -456,7 +465,7 @@ async function resolveAuthContext(auth: AuthLike, ctx: any) {
   let role: string | null = null;
   let grants: string[] = [];
   if (groupId) {
-    const resolved = await auth.member.resolve(ctx, { userId, groupId });
+    const resolved = await auth.member.inspect(ctx, { userId, groupId });
     if (resolved.membership) {
       role = resolved.roleIds[0] ?? null;
       grants = resolved.grants;
@@ -504,10 +513,10 @@ export function createAuth<
     ) => {
       const enterprise = await connectionApi.get(ctx, enterpriseId);
       if (enterprise === null) {
-        throw new AuthError(
-          "INVALID_PARAMETERS",
-          "Enterprise not found.",
-        ).toConvexError();
+        throw Cv.error({
+          code: "INVALID_PARAMETERS",
+          message: "Enterprise not found.",
+        });
       }
 
       const normalized = domains.map((entry: (typeof domains)[number]) => ({
@@ -517,16 +526,16 @@ export function createAuth<
       const deduped = new Map<string, (typeof normalized)[number]>();
       for (const entry of normalized) {
         if (entry.domain.length === 0) {
-          throw new AuthError(
-            "INVALID_PARAMETERS",
-            "Domain must not be empty.",
-          ).toConvexError();
+          throw Cv.error({
+            code: "INVALID_PARAMETERS",
+            message: "Domain must not be empty.",
+          });
         }
         if (deduped.has(entry.domain)) {
-          throw new AuthError(
-            "INVALID_PARAMETERS",
-            `Duplicate domain: ${entry.domain}`,
-          ).toConvexError();
+          throw Cv.error({
+            code: "INVALID_PARAMETERS",
+            message: `Duplicate domain: ${entry.domain}`,
+          });
         }
         deduped.set(entry.domain, entry);
       }
@@ -536,10 +545,10 @@ export function createAuth<
         (entry) => entry.isPrimary,
       ).length;
       if (primaryCount > 1) {
-        throw new AuthError(
-          "INVALID_PARAMETERS",
-          "Only one primary domain may be set.",
-        ).toConvexError();
+        throw Cv.error({
+          code: "INVALID_PARAMETERS",
+          message: "Only one primary domain may be set.",
+        });
       }
       if (nextDomains.length > 0 && primaryCount === 0) {
         nextDomains[0] = { ...nextDomains[0], isPrimary: true };
@@ -586,7 +595,6 @@ export function createAuth<
 
       const updatedDomains = await domainApi.list(ctx, enterpriseId);
       return {
-        ok: true as const,
         enterpriseId,
         domains: updatedDomains.map(
           (domain: (typeof updatedDomains)[number]) => ({
@@ -660,12 +668,27 @@ export function createAuth<
     },
     http: authResult.auth.http,
 
-    resolve: (ctx: any) => resolveAuthContext(authResult.auth, ctx),
+    context: async (ctx: any) => {
+      const authContext = await getAuthContext(authResult.auth, ctx);
+      if (authContext === null) {
+        throw Cv.error({
+          code: "NOT_SIGNED_IN",
+          message: "Authentication required.",
+        });
+      }
+      return authContext;
+    },
 
     ctx: () => ({
       args: {},
       input: async (ctx: any) => {
-        const authCtx = await resolveAuthContext(authResult.auth, ctx);
+        const authCtx = await getAuthContext(authResult.auth, ctx);
+        if (authCtx === null) {
+          throw Cv.error({
+            code: "NOT_SIGNED_IN",
+            message: "Authentication required.",
+          });
+        }
         return { ctx: { auth: authCtx }, args: {} };
       },
     }),
@@ -694,14 +717,14 @@ export type AuthCtxConfig<
   resolve?: (
     ctx: any,
     user: UserDoc,
-    auth: AuthResolvedContext,
+    auth: AuthContext,
   ) => Promise<TResolve> | TResolve;
   /**
    * Override or wrap the base auth resolution used by {@link AuthCtx}.
    *
    * Return `undefined` to fall back to the built-in resolver,
    * `null` for an explicit unauthenticated state, or an
-   * {@link AuthResolvedContext} object to provide a pre-resolved auth state.
+   * {@link AuthContext} object to provide a pre-resolved auth state.
    * This is useful for tests, proxy auth, impersonation flows, or any
    * environment that needs to inject auth without depending on the standard
    * Convex auth tables.
@@ -722,12 +745,8 @@ export type AuthCtxConfig<
    */
   authResolve?: (
     ctx: any,
-    fallback: () => Promise<AuthResolvedContext | null>,
-  ) =>
-    | Promise<AuthResolvedContext | null | undefined>
-    | AuthResolvedContext
-    | null
-    | undefined;
+    fallback: () => Promise<AuthContext | null>,
+  ) => Promise<AuthContext | null | undefined> | AuthContext | null | undefined;
 };
 
 /**
@@ -774,11 +793,8 @@ export function AuthCtx<
 /**
  * Create a context enrichment for `customQuery` / `customMutation` — required auth (default).
  *
- * When `optional` is omitted or `false`, the inferred type is the authenticated
- * auth shape. At runtime this helper still resolves instead of throwing, so if
- * no user is signed in the returned `ctx.auth.userId` / `ctx.auth.user` are
- * `null`, `ctx.auth.groupId` / `ctx.auth.role` are `null`, and
- * `ctx.auth.grants` is `[]`.
+ * When `optional` is omitted or `false`, unauthenticated requests throw a
+ * structured `ConvexError` before your handler runs.
  *
  * @param auth - The auth API object returned by {@link createAuth}.
  * @param config - Optional configuration with a `resolve` callback
@@ -820,7 +836,7 @@ export function AuthCtx(auth: AuthLike, config?: AuthCtxConfig<any>) {
     input: async (ctx: any, _args: any, _extra?: any) => {
       const nativeAuth = ctx.auth;
       const getUserIdentity = nativeAuth.getUserIdentity.bind(nativeAuth);
-      const fallback = () => resolveAuthContext(auth, ctx);
+      const fallback = () => getAuthContext(auth, ctx);
 
       const authOverride = config?.authResolve
         ? await config.authResolve(ctx, fallback)
@@ -829,6 +845,12 @@ export function AuthCtx(auth: AuthLike, config?: AuthCtxConfig<any>) {
         authOverride === undefined ? await fallback() : authOverride;
 
       if (resolved === null) {
+        if (config?.optional !== true) {
+          throw Cv.error({
+            code: "NOT_SIGNED_IN",
+            message: "Authentication required.",
+          });
+        }
         return {
           ctx: {
             auth: {

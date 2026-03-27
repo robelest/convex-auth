@@ -2,8 +2,10 @@ import { Fx } from "@robelest/fx";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { Infer, v } from "convex/values";
 
-import { authDb } from "../db";
 import * as Provider from "../crypto";
+import { authDb } from "../db";
+import { createSyntheticOAuthMaterializedConfig } from "../enterprise/oidc";
+import { isEnterpriseProviderId } from "../enterprise/shared";
 import {
   isSignInRateLimited,
   recordFailedSignIn,
@@ -14,10 +16,6 @@ import {
   getAuthSessionId,
   maybeGenerateTokensForSession,
 } from "../sessions";
-import {
-  createSyntheticOAuthMaterializedConfig,
-} from "../enterprise/oidc";
-import { isEnterpriseProviderId } from "../enterprise/shared";
 import { MutationCtx, SessionInfo } from "../types";
 import { upsertUserAndAccount } from "../users";
 import { LOG_LEVELS, logWithLevel, sha256 } from "../utils";

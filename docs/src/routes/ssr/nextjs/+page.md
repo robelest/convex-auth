@@ -89,11 +89,12 @@ export async function POST(request: Request) {
 ## Server component usage
 
 In a server component or layout, read the token from cookies using
-`next/headers`:
+`next/headers` and pass it into your app-owned client auth provider:
 
 ```ts
 // app/layout.tsx
 import { cookies } from "next/headers";
+import { AuthProvider } from "./auth-provider";
 
 export default async function RootLayout({
   children,
@@ -106,9 +107,13 @@ export default async function RootLayout({
   return (
     <html>
       <body>
-        <ConvexAuthProvider token={token}>{children}</ConvexAuthProvider>
+        <AuthProvider token={token}>{children}</AuthProvider>
       </body>
     </html>
   );
 }
 ```
+
+`AuthProvider` is your client component that creates the auth client with
+`client({ convex, proxyPath: "/api/auth", tokenSeed: token })` and exposes it
+to the rest of your React tree.

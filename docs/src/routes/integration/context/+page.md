@@ -1,7 +1,8 @@
 ---
 title: Context Enrichment
 description:
-  Zero-boilerplate ctx.auth.userId, groupId, role, and grants via convex-helpers.
+  Zero-boilerplate ctx.auth.userId, groupId, role, and grants via
+  convex-helpers.
 ---
 
 <svelte:head>
@@ -111,8 +112,8 @@ tables.
 
 `AuthCtx` captures the `auth` object at module load time and resolves auth from
 the component's `User`, `Member`, and group state tables. In `convex-test`,
-those component tables are empty, so resolution always returns an unauthenticated
-state even if you mock the auth module import.
+those component tables are empty, so resolution always returns an
+unauthenticated state even if you mock the auth module import.
 
 Use `authResolve` to inject pre-resolved auth state or fall back to the built-in
 resolver.
@@ -145,16 +146,12 @@ import {
   mutation as rawMutation,
 } from "../_generated/server";
 import { AuthCtx } from "@robelest/convex-auth/component";
-import type { AuthResolvedContext } from "@robelest/convex-auth/component";
+import type { AuthContext } from "@robelest/convex-auth/component";
 import { auth } from "../auth";
 
-let _authResolve:
-  | ((ctx: any) => AuthResolvedContext | null | undefined)
-  | undefined;
+let _authResolve: ((ctx: any) => AuthContext | null | undefined) | undefined;
 
-export function setTestAuth(
-  fn: typeof _authResolve,
-) {
+export function setTestAuth(fn: typeof _authResolve) {
   _authResolve = fn;
 }
 
@@ -203,7 +200,7 @@ test("list messages for authenticated user", async () => {
 
 ```ts
 // convex/test.helpers.ts
-import type { AuthResolvedContext } from "@robelest/convex-auth/component";
+import type { AuthContext } from "@robelest/convex-auth/component";
 
 interface TestAuthState {
   userId: string;
@@ -213,9 +210,7 @@ interface TestAuthState {
   grants?: string[];
 }
 
-export function createTestAuth(
-  state: TestAuthState,
-): () => AuthResolvedContext {
+export function createTestAuth(state: TestAuthState): () => AuthContext {
   return () => ({
     userId: state.userId as any,
     user: {

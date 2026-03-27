@@ -1,5 +1,6 @@
+import { Fx } from "@robelest/fx";
+import { Cv } from "@robelest/fx/convex";
 import {
-  Auth,
   GenericActionCtx,
   GenericDataModel,
   HttpRouter,
@@ -9,10 +10,10 @@ import {
 import { v } from "convex/values";
 import { serialize as serializeCookie } from "cookie";
 
-import { createCoreDomains } from "./core";
+import { configDefaults, listAvailableProviders } from "./config";
 import { redirectToParamCookie, useRedirectToParam } from "./cookies";
-import { createEnterpriseDomain } from "./enterprise/domain";
-import { addEnterpriseHttpRuntime } from "./enterprise/http";
+import { createCoreDomains } from "./core";
+import { GetProviderOrThrowFunc } from "./crypto";
 import {
   getOidcConfig,
   getPublicOidcConfig,
@@ -20,24 +21,24 @@ import {
   upsertProtocolConfig,
   withOidcSecretState,
 } from "./enterprise/config";
-import { normalizeEnterprisePolicy, patchEnterprisePolicy } from "./enterprise/policy";
+import { createEnterpriseDomain } from "./enterprise/domain";
+import { addEnterpriseHttpRuntime } from "./enterprise/http";
+import {
+  normalizeEnterprisePolicy,
+  patchEnterprisePolicy,
+} from "./enterprise/policy";
 import {
   createServiceProviderMetadata,
   getSamlServiceProviderOptions,
   parseSamlIdpMetadata,
 } from "./enterprise/saml";
-import {
-  parseScimPath,
-} from "./enterprise/scim";
+import { parseScimPath } from "./enterprise/scim";
 import {
   enterpriseOidcProviderId,
   getEnterpriseOidcUrls,
   isEnterpriseSamlSourceActive,
   normalizeDomain,
 } from "./enterprise/shared";
-import { Fx } from "@robelest/fx";
-
-import { AuthError } from "./authError";
 import {
   addAuthRoutes,
   addOpenIdRoutes,
@@ -58,8 +59,6 @@ import {
   storeImpl,
 } from "./mutations/index";
 import { createOAuthAuthorizationURL, handleOAuthCallback } from "./oauth";
-import { GetProviderOrThrowFunc } from "./crypto";
-import { configDefaults, listAvailableProviders } from "./config";
 import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects";
 import { signInImpl } from "./signin";
 import type {
@@ -171,9 +170,11 @@ export function Auth(config_: ConvexAuthConfig) {
         `Provider \`${id}\` is not configured, ` +
         `available providers are ${listAvailableProviders(config, allowExtraProviders)}.`;
       logWithLevel(LOG_LEVELS.ERROR, detail);
-      throw new AuthError("PROVIDER_NOT_CONFIGURED", detail, {
+      throw Cv.error({
+        code: "PROVIDER_NOT_CONFIGURED",
+        message: detail,
         provider: id,
-      }).toConvexError();
+      });
     }
     return provider;
   };
@@ -231,10 +232,10 @@ export function Auth(config_: ConvexAuthConfig) {
       },
     );
     if (!enterprise) {
-      throw new AuthError(
-        "INVALID_PARAMETERS",
-        enterpriseNotFoundError,
-      ).toConvexError();
+      throw Cv.error({
+        code: "INVALID_PARAMETERS",
+        message: enterpriseNotFoundError,
+      });
     }
     return enterprise;
   };
@@ -245,10 +246,10 @@ export function Auth(config_: ConvexAuthConfig) {
   ) => {
     const enterprise = await loadEnterpriseOrThrow(ctx, enterpriseId);
     if (enterprise.status !== "active") {
-      throw new AuthError(
-        "INVALID_PARAMETERS",
-        "Enterprise connection is not active.",
-      ).toConvexError();
+      throw Cv.error({
+        code: "INVALID_PARAMETERS",
+        message: "Enterprise connection is not active.",
+      });
     }
     return enterprise;
   };
@@ -268,17 +269,17 @@ export function Auth(config_: ConvexAuthConfig) {
       enterprise,
     };
     if (!isEnterpriseSamlSourceActive(loaded)) {
-      throw new AuthError(
-        "INVALID_PARAMETERS",
-        "Enterprise connection is not active.",
-      ).toConvexError();
+      throw Cv.error({
+        code: "INVALID_PARAMETERS",
+        message: "Enterprise connection is not active.",
+      });
     }
     const saml = getSamlConfig(loaded.config);
     if (!saml.idp?.metadataXml) {
-      throw new AuthError(
-        "PROVIDER_NOT_CONFIGURED",
-        "SAML is not configured for this enterprise.",
-      ).toConvexError();
+      throw Cv.error({
+        code: "PROVIDER_NOT_CONFIGURED",
+        message: "SAML is not configured for this enterprise.",
+      });
     }
     return { loaded, enterprise, saml };
   };
@@ -290,10 +291,10 @@ export function Auth(config_: ConvexAuthConfig) {
     const enterprise = await loadActiveEnterpriseOrThrow(ctx, enterpriseId);
     const oidc = await getEnterpriseOidcConfigWithSecret(ctx, enterprise);
     if (oidc.enabled !== true) {
-      throw new AuthError(
-        "PROVIDER_NOT_CONFIGURED",
-        "OIDC is not configured for this enterprise.",
-      ).toConvexError();
+      throw Cv.error({
+        code: "PROVIDER_NOT_CONFIGURED",
+        message: "OIDC is not configured for this enterprise.",
+      });
     }
     return { enterprise, oidc };
   };
@@ -407,7 +408,10 @@ export function Auth(config_: ConvexAuthConfig) {
   ) => {
     const authHeader = request.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      throw new AuthError("MISSING_BEARER_TOKEN").toConvexError();
+      throw Cv.error({
+        code: "MISSING_BEARER_TOKEN",
+        message: "Missing or malformed Authorization: Bearer header.",
+      });
     }
     const token = authHeader.slice(7);
     const scimConfig = await ctx.runQuery(
@@ -415,17 +419,17 @@ export function Auth(config_: ConvexAuthConfig) {
       { tokenHash: await sha256(token) },
     );
     if (!scimConfig || scimConfig.status !== "active") {
-      throw new AuthError(
-        "INVALID_API_KEY",
-        "Invalid SCIM token.",
-      ).toConvexError();
+      throw Cv.error({
+        code: "INVALID_API_KEY",
+        message: "Invalid SCIM token.",
+      });
     }
     const parsedPath = parseScimPath(new URL(request.url).pathname);
     if (parsedPath.enterpriseId !== scimConfig.enterpriseId) {
-      throw new AuthError(
-        "INVALID_API_KEY",
-        "SCIM token/tenant mismatch.",
-      ).toConvexError();
+      throw Cv.error({
+        code: "INVALID_API_KEY",
+        message: "SCIM token/tenant mismatch.",
+      });
     }
     const enterprise = await ctx.runQuery(
       config.component.public.enterpriseGet,
@@ -434,10 +438,10 @@ export function Auth(config_: ConvexAuthConfig) {
       },
     );
     if (enterprise === null) {
-      throw new AuthError(
-        "INVALID_PARAMETERS",
-        "Enterprise not found.",
-      ).toConvexError();
+      throw Cv.error({
+        code: "INVALID_PARAMETERS",
+        message: "Enterprise not found.",
+      });
     }
     return { scimConfig, enterprise, parsedPath };
   };
@@ -548,13 +552,19 @@ export function Auth(config_: ConvexAuthConfig) {
             handleSignIn: convertErrorsToResponse(400, async (ctx, request) => {
               const url = new URL(request.url);
               const pathParts = url.pathname.split("/");
-              const providerId = pathParts.at(-1)!;
+              const providerId = pathParts[pathParts.length - 1]!;
               if (providerId === null) {
-                throw new AuthError("OAUTH_MISSING_PROVIDER").toConvexError();
+                throw Cv.error({
+                  code: "OAUTH_MISSING_PROVIDER",
+                  message: "Missing OAuth provider ID.",
+                });
               }
               const verifier = url.searchParams.get("code");
               if (verifier === null) {
-                throw new AuthError("OAUTH_MISSING_VERIFIER").toConvexError();
+                throw Cv.error({
+                  code: "OAUTH_MISSING_VERIFIER",
+                  message: "Missing sign-in verifier.",
+                });
               }
               const provider = getProviderOrThrow(providerId);
 
@@ -588,11 +598,16 @@ export function Auth(config_: ConvexAuthConfig) {
             }),
             handleCallback: async (ctx, request) => {
               const url = new URL(request.url);
-              const providerId = new URL(request.url).pathname
-                .split("/")
-                .at(-1);
+              const callbackPathParts = new URL(request.url).pathname.split(
+                "/",
+              );
+              const providerId =
+                callbackPathParts[callbackPathParts.length - 1];
               if (!providerId) {
-                throw new AuthError("OAUTH_MISSING_PROVIDER").toConvexError();
+                throw Cv.error({
+                  code: "OAUTH_MISSING_PROVIDER",
+                  message: "Missing OAuth provider ID.",
+                });
               }
               logWithLevel(
                 LOG_LEVELS.DEBUG,

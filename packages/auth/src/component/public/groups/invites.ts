@@ -1,7 +1,13 @@
 import { ConvexError, v } from "convex/values";
+
 import type { Id } from "../../_generated/dataModel";
 import { mutation, query } from "../../functions";
-import { vGroupInviteDoc, vInviteAcceptByTokenResult, vInviteStatus, vPaginated } from "../../model";
+import {
+  vGroupInviteDoc,
+  vInviteAcceptByTokenResult,
+  vInviteStatus,
+  vPaginated,
+} from "../../model";
 
 /**
  * Create a new platform-level invitation. Optionally set `groupId` to tie

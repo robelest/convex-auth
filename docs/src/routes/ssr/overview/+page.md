@@ -121,11 +121,9 @@ consume the invite:
 
 ```ts
 if (auth.invite) {
-  const { ok, token } = await auth.invite.accept();
-  if (ok) {
-    // Use the token to call your accept mutation
-    await client.mutation(api.acceptInvite, { token });
-  }
+  const { token } = await auth.invite.accept();
+  // Use the token to call your accept mutation
+  await client.mutation(api.acceptInvite, { token });
 }
 ```
 

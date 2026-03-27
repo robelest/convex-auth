@@ -3,8 +3,15 @@ import { auth } from "@convex/auth";
 import schema from "@convex/schema";
 import { enterprise, scim, sso } from "@robelest/convex-auth/server";
 import {
-  createEnterpriseOidcProvider,
-} from "@robelest/convex-auth/server/enterprise/oidc";
+  getPublicOidcConfig,
+  upsertProtocolConfig,
+} from "@robelest/convex-auth/server/enterprise/config";
+import { createEnterpriseOidcProvider } from "@robelest/convex-auth/server/enterprise/oidc";
+import {
+  createServiceProviderMetadata,
+  parseSamlIdpMetadata,
+} from "@robelest/convex-auth/server/enterprise/saml";
+import { parseScimListRequest } from "@robelest/convex-auth/server/enterprise/scim";
 import {
   getEnterpriseOidcUrls,
   getEnterpriseSamlUrls,
@@ -12,15 +19,6 @@ import {
   enterpriseOidcProviderId,
   enterpriseSamlProviderId,
 } from "@robelest/convex-auth/server/enterprise/shared";
-import {
-  getPublicOidcConfig,
-  upsertProtocolConfig,
-} from "@robelest/convex-auth/server/enterprise/config";
-import {
-  createServiceProviderMetadata,
-  parseSamlIdpMetadata,
-} from "@robelest/convex-auth/server/enterprise/saml";
-import { parseScimListRequest } from "@robelest/convex-auth/server/enterprise/scim";
 import { sha256 } from "@robelest/convex-auth/server/utils";
 import idpMetadataXml from "@robelest/samlify/test/misc/idpmeta.xml?raw";
 import { SignJWT } from "jose";
@@ -119,7 +117,7 @@ test("enterprise domain validation reports onboarding diagnostics", async () => 
     });
   });
   const enterpriseId = created.enterpriseId;
-  expect(created.ok).toBe(true);
+  expect(enterpriseId).toBeTruthy();
 
   await t.run(async (ctx) => {
     await auth.sso.admin.connection.domain.set(ctx as any, enterpriseId, [

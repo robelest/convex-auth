@@ -24,29 +24,29 @@ the root namespace for enterprise domain management through
 
 ## Methods
 
-| Method        | Signature                                                  | Returns                         | Description                                                   |
-| ------------- | ---------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------- |
-| `create`      | `(ctx, { groupId, slug?, name?, status?, domains?, ... })` | `{ ok, enterpriseId, groupId }` | Creates a new SSO connection for a group.                     |
-| `get`         | `(ctx, enterpriseId)`                                      | `Doc \| null`                   | Fetches a connection by ID.                                   |
-| `getByGroup`  | `(ctx, groupId)`                                           | `Doc \| null`                   | Returns the SSO connection for a group, or `null`.            |
-| `getByDomain` | `(ctx, domain)`                                            | `Doc \| null`                   | Looks up a connection by email domain.                        |
-| `list`        | `(ctx, { where?, limit?, cursor?, orderBy?, order? })`     | Paginated list                  | Lists SSO connections with optional filtering and sorting.    |
-| `update`      | `(ctx, enterpriseId, data)`                                | `{ ok, enterpriseId }`          | Updates connection fields (status, metadata, domains, etc.).  |
-| `delete`      | `(ctx, enterpriseId)`                                      | `{ ok, enterpriseId }`          | Deletes an SSO connection.                                    |
-| `status`      | `(ctx, enterpriseId)`                                      | Status object                   | Returns readiness and per-protocol status for the connection. |
+| Method        | Signature                                                  | Returns                     | Description                                                   |
+| ------------- | ---------------------------------------------------------- | --------------------------- | ------------------------------------------------------------- |
+| `create`      | `(ctx, { groupId, slug?, name?, status?, domains?, ... })` | `{ enterpriseId, groupId }` | Creates a new SSO connection for a group.                     |
+| `get`         | `(ctx, enterpriseId)`                                      | `Doc \| null`               | Fetches a connection by ID.                                   |
+| `getByGroup`  | `(ctx, groupId)`                                           | `Doc \| null`               | Returns the SSO connection for a group, or `null`.            |
+| `getByDomain` | `(ctx, domain)`                                            | `Doc \| null`               | Looks up a connection by email domain.                        |
+| `list`        | `(ctx, { where?, limit?, cursor?, orderBy?, order? })`     | Paginated list              | Lists SSO connections with optional filtering and sorting.    |
+| `update`      | `(ctx, enterpriseId, data)`                                | `{ enterpriseId }`          | Updates connection fields (status, metadata, domains, etc.).  |
+| `delete`      | `(ctx, enterpriseId)`                                      | `{ enterpriseId }`          | Deletes an SSO connection.                                    |
+| `status`      | `(ctx, enterpriseId)`                                      | Status object               | Returns readiness and per-protocol status for the connection. |
 
 ## Domain methods
 
 The [`auth.sso.admin.connection.domain`](/sso/connection/) namespace manages
 domains owned by the connection.
 
-| Method                 | Signature                         | Returns                         | Description                                                                 |
-| ---------------------- | --------------------------------- | ------------------------------- | --------------------------------------------------------------------------- |
-| `list`                 | `(ctx, enterpriseId)`             | Domain list                     | Lists domains attached to the connection.                                   |
-| `validate`             | `(ctx, enterpriseId)`             | Status info                     | Returns onboarding diagnostics for domains.                                 |
-| `set`                  | `(ctx, enterpriseId, domains)`    | `{ ok, enterpriseId, domains }` | Replaces the connection's full domain set and returns the canonical result. |
-| `verification.request` | `(ctx, { enterpriseId, domain })` | Verification challenge          | Issues a DNS TXT verification challenge for an attached domain.             |
-| `verification.confirm` | `(ctx, { enterpriseId, domain })` | Confirmation result             | Resolves the TXT record and marks the domain verified on success.           |
+| Method                 | Signature                         | Returns                     | Description                                                                 |
+| ---------------------- | --------------------------------- | --------------------------- | --------------------------------------------------------------------------- |
+| `list`                 | `(ctx, enterpriseId)`             | Domain list                 | Lists domains attached to the connection.                                   |
+| `validate`             | `(ctx, enterpriseId)`             | Status info                 | Returns onboarding diagnostics for domains.                                 |
+| `set`                  | `(ctx, enterpriseId, domains)`    | `{ enterpriseId, domains }` | Replaces the connection's full domain set and returns the canonical result. |
+| `verification.request` | `(ctx, { enterpriseId, domain })` | Verification challenge      | Issues a DNS TXT verification challenge for an attached domain.             |
+| `verification.confirm` | `(ctx, { enterpriseId, domain })` | Confirmation result         | Resolves the TXT record and marks the domain verified on success.           |
 
 ## Example
 

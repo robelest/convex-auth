@@ -11,6 +11,14 @@
     "sourceMap": true,
     "strict": true,
     "moduleResolution": "bundler",
+    "paths": {
+      "$lib": ["./src/lib"],
+      "$lib/*": ["./src/lib/*"],
+      "$convex": ["../../convex"],
+      "$convex/*": ["../../convex/*"],
+      "@robelest/convex-auth": ["../../packages/auth/src"],
+      "@robelest/convex-auth/*": ["../../packages/auth/src/*"]
+    },
     "types": ["./worker-configuration.d.ts"]
   }
 }

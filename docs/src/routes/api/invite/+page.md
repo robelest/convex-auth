@@ -15,13 +15,13 @@ lifecycle: `pending` -> `accepted` or `revoked`.
 
 ## Methods
 
-| Method   | Signature                                         | Returns                              | Description                                                       |
-| -------- | ------------------------------------------------- | ------------------------------------ | ----------------------------------------------------------------- |
-| `create` | `(ctx, { groupId, email, roleIds?, expiresAt? })` | `{ ok, inviteId, token }`            | Creates a pending invite. Optionally set an expiration timestamp. |
-| `get`    | `(ctx, inviteId)`                                 | `Doc<"invites">`                     | Fetches an invite document by ID.                                 |
-| `list`   | `(ctx, { groupId?, status?, limit?, cursor? })`   | Paginated invite list                | Lists invites, optionally filtered by group and/or status.        |
-| `accept` | `(ctx, inviteId)`                                 | `{ ok, inviteId, acceptedByUserId }` | Accepts a pending invite and records acceptance metadata.         |
-| `revoke` | `(ctx, inviteId)`                                 | `{ ok, inviteId }`                   | Revokes a pending invite so it can no longer be accepted.         |
+| Method   | Signature                                         | Returns                          | Description                                                                             |
+| -------- | ------------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------- |
+| `create` | `(ctx, { groupId, email, roleIds?, expiresAt? })` | `{ inviteId, token }`            | Creates a pending invite. Throws `ConvexError` with code `INVALID_ROLE_IDS` on failure. |
+| `get`    | `(ctx, inviteId)`                                 | `Doc<"invites">`                 | Fetches an invite document by ID.                                                       |
+| `list`   | `(ctx, { groupId?, status?, limit?, cursor? })`   | Paginated invite list            | Lists invites, optionally filtered by group and/or status.                              |
+| `accept` | `(ctx, inviteId)`                                 | `{ inviteId, acceptedByUserId }` | Accepts a pending invite and records acceptance metadata.                               |
+| `revoke` | `(ctx, inviteId)`                                 | `{ inviteId }`                   | Revokes a pending invite so it can no longer be accepted.                               |
 
 ## Examples
 

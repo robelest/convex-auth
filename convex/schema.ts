@@ -37,7 +37,8 @@ export default defineSchema({
   })
     .index("by_groupId", ["groupId"])
     .index("by_teamGroupId", ["teamGroupId"])
-    .index("by_groupId_and_slug", ["groupId", "slug"]),
+    .index("by_groupId_and_slug", ["groupId", "slug"])
+    .index("by_groupId_and_identifier", ["groupId", "identifier"]),
 
   demoIssues: defineTable({
     projectId: v.id("demoProjects"),
