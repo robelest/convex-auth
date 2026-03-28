@@ -15,9 +15,7 @@
       "$lib": ["./src/lib"],
       "$lib/*": ["./src/lib/*"],
       "$convex": ["../../convex"],
-      "$convex/*": ["../../convex/*"],
-      "@robelest/convex-auth": ["../../packages/auth/src"],
-      "@robelest/convex-auth/*": ["../../packages/auth/src/*"]
+      "$convex/*": ["../../convex/*"]
     },
     "types": ["./worker-configuration.d.ts"]
   }
