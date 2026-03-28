@@ -20,7 +20,7 @@ one setup API, full TypeScript support.
 - **Groups, memberships, invites** — hierarchical multi-tenancy with roles.
 - **SSR support** — framework-agnostic httpOnly cookie API (SvelteKit, TanStack
   Start, Next.js).
-- **Context enrichment** — zero-boilerplate `ctx.auth.userId` via `AuthCtx`.
+- **Context enrichment** — zero-boilerplate `ctx.auth.userId` via `auth.ctx()`.
 
 ## Install
 
@@ -117,8 +117,7 @@ export const query = convex.query().use(withRequiredAuth).extend(WithZod);
 export const mutation = convex.mutation().use(withRequiredAuth).extend(WithZod);
 ```
 
-`AuthCtx` from `@robelest/convex-auth/component` remains supported if your
-project already uses `convex-helpers`.
+`auth.ctx()` works with `convex-helpers` and other custom builder setups.
 
 ## Providers
 

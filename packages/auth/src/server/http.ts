@@ -9,8 +9,261 @@ import {
 import { ConvexError } from "convex/values";
 import { parse as parseCookies } from "cookie";
 
+import type {
+  AuthContext,
+  OptionalAuthContext,
+  UserDoc,
+} from "./auth";
+import {
+  createUnauthenticatedAuthContext,
+  getAuthContextForUser,
+  getSessionUserId,
+} from "./context";
 import type { CorsConfig, HttpKeyContext } from "./types";
 import { logError } from "./utils";
+
+type HttpContextAuthLike = {
+  user: {
+    get: (ctx: any, userId: string) => Promise<UserDoc>;
+    getActiveGroup: (
+      ctx: any,
+      args: { userId: string },
+    ) => Promise<string | null>;
+  };
+  member: {
+    inspect: (
+      ctx: any,
+      args: { userId: string; groupId: string },
+    ) => Promise<{
+      membership: unknown;
+      roleIds: string[];
+      grants: string[];
+    }>;
+  };
+  key: {
+    verify: (ctx: GenericActionCtx<any>, rawKey: string) => Promise<{
+      userId: string;
+      keyId: string;
+      scopes: HttpKeyContext["key"]["scopes"];
+    }>;
+  };
+};
+
+/**
+ * Auth context returned by `auth.http.context(ctx, request)`.
+ *
+ * This resolves raw HTTP authentication in two steps:
+ * 1. session auth from `ctx.auth.getUserIdentity()`
+ * 2. API key auth from `Authorization: Bearer sk_*`
+ *
+ * The `source` field tells you which authentication path succeeded.
+ * When `source === "key"`, the verified API key metadata is available on
+ * `key`.
+ *
+ * @example
+ * ```ts
+ * const authContext = await auth.http.context(ctx, request);
+ * if (authContext.source === "key") {
+ *   console.log(authContext.key.keyId);
+ * }
+ * ```
+ */
+export type HttpAuthContext =
+  | (AuthContext & {
+      /** The request authenticated through a browser or session token. */
+      source: "session";
+      /** No API key was used for this request. */
+      key: null;
+    })
+  | (AuthContext & {
+      /** The request authenticated through an API key. */
+      source: "key";
+      /** Verified API key metadata for the request. */
+      key: HttpKeyContext["key"];
+    });
+
+/**
+ * Nullable HTTP auth context returned by
+ * `auth.http.context(ctx, request, { optional: true })`.
+ *
+ * This preserves a stable auth-shaped object for raw `httpAction` handlers
+ * that allow anonymous callers.
+ */
+export type OptionalHttpAuthContext =
+  | (OptionalAuthContext & {
+      /** No authentication source was resolved. */
+      source: null;
+      /** No API key metadata is available. */
+      key: null;
+    })
+  | HttpAuthContext;
+
+/**
+ * Configuration for {@link createAuth().http.context}.
+ *
+ * This mirrors {@link AuthContextConfig} for raw HTTP handlers and adds support
+ * for enriching mixed session/API-key auth results.
+ *
+ * @typeParam TResolve - Extra fields returned from `resolve()` and merged into
+ *   the resolved HTTP auth context.
+ *
+ * @example
+ * ```ts
+ * const authContext = await auth.http.context(ctx, request, {
+ *   resolve: async (_ctx, user, authState) => ({
+ *     email: user.email,
+ *     isMachineRequest: authState.source === "key",
+ *   }),
+ * });
+ * ```
+ */
+export type HttpAuthContextConfig<
+  TResolve extends Record<string, unknown> = Record<string, never>,
+> = {
+  /**
+   * Allow unauthenticated callers and return a null-shaped auth object instead
+   * of throwing `NOT_SIGNED_IN`.
+   */
+  optional?: boolean;
+  /**
+   * Attach additional derived fields to the resolved HTTP auth context.
+   *
+   * This callback runs only when authentication succeeds.
+   */
+  resolve?: (
+    ctx: GenericActionCtx<any>,
+    user: UserDoc,
+    auth: HttpAuthContext,
+  ) => Promise<TResolve> | TResolve;
+  /**
+   * Override or wrap HTTP auth resolution.
+   *
+   * Return `undefined` to use the built-in session-or-key resolver, `null` for
+   * an explicit unauthenticated state, or a fully resolved
+   * {@link HttpAuthContext}.
+   */
+  authResolve?: (
+    ctx: GenericActionCtx<any>,
+    fallback: () => Promise<HttpAuthContext | null>,
+  ) =>
+    | Promise<HttpAuthContext | null | undefined>
+    | HttpAuthContext
+    | null
+    | undefined;
+};
+
+function createNotSignedInError() {
+  return Cv.error({
+    code: "NOT_SIGNED_IN",
+    message: "Authentication required.",
+  });
+}
+
+async function getHttpKeyContext(
+  auth: HttpContextAuthLike,
+  ctx: GenericActionCtx<any>,
+  request: Request,
+): Promise<HttpAuthContext | null> {
+  const authHeader = request.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer sk_")) {
+    return null;
+  }
+
+  try {
+    const verified = await auth.key.verify(ctx, authHeader.slice(7));
+    const authContext = await getAuthContextForUser(auth, ctx, verified.userId);
+    return {
+      ...authContext,
+      source: "key",
+      key: {
+        userId: verified.userId,
+        keyId: verified.keyId,
+        scopes: verified.scopes,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function resolveHttpAuthContext(
+  auth: HttpContextAuthLike,
+  ctx: GenericActionCtx<any>,
+  request: Request,
+): Promise<HttpAuthContext | null> {
+  const sessionUserId = await getSessionUserId(ctx);
+  if (sessionUserId !== null) {
+    const authContext = await getAuthContextForUser(auth, ctx, sessionUserId);
+    return {
+      ...authContext,
+      source: "session",
+      key: null,
+    };
+  }
+
+  return await getHttpKeyContext(auth, ctx, request);
+}
+
+/**
+ * @internal
+ * Create the implementation behind `auth.http.context(...)`.
+ */
+export function createHttpContext(auth: HttpContextAuthLike): {
+  <TResolve extends Record<string, unknown> = Record<string, never>>(
+    ctx: GenericActionCtx<any>,
+    request: Request,
+    config: HttpAuthContextConfig<TResolve> & { optional: true },
+  ): Promise<OptionalHttpAuthContext & TResolve>;
+  <TResolve extends Record<string, unknown> = Record<string, never>>(
+    ctx: GenericActionCtx<any>,
+    request: Request,
+    config?: HttpAuthContextConfig<TResolve>,
+  ): Promise<HttpAuthContext & TResolve>;
+} {
+  return (async (
+    ctx: GenericActionCtx<any>,
+    request: Request,
+    config?: HttpAuthContextConfig<any>,
+  ) => {
+    const fallback = () => resolveHttpAuthContext(auth, ctx, request);
+    const authOverride = config?.authResolve
+      ? await config.authResolve(ctx, fallback)
+      : undefined;
+    const resolved =
+      authOverride === undefined ? await fallback() : authOverride;
+
+    if (resolved === null) {
+      if (config?.optional !== true) {
+        throw createNotSignedInError();
+      }
+      return {
+        ...createUnauthenticatedAuthContext(),
+        source: null,
+        key: null,
+      };
+    }
+
+    const extra = config?.resolve
+      ? await config.resolve(ctx, resolved.user, resolved)
+      : {};
+
+    return {
+      ...resolved,
+      ...extra,
+    };
+  }) as {
+    <TResolve extends Record<string, unknown> = Record<string, never>>(
+      ctx: GenericActionCtx<any>,
+      request: Request,
+      config: HttpAuthContextConfig<TResolve> & { optional: true },
+    ): Promise<OptionalHttpAuthContext & TResolve>;
+    <TResolve extends Record<string, unknown> = Record<string, never>>(
+      ctx: GenericActionCtx<any>,
+      request: Request,
+      config?: HttpAuthContextConfig<TResolve>,
+    ): Promise<HttpAuthContext & TResolve>;
+  };
+}
 
 export function createHttpAction(auth: {
   key: { verify: (ctx: GenericActionCtx<any>, rawKey: string) => Promise<any> };

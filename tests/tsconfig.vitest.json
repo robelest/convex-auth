@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "./*.ts",
+    "./enterprise/**/*.ts"
+  ],
+  "exclude": [
+    "./samlify/**",
+    "node_modules"
+  ]
+}

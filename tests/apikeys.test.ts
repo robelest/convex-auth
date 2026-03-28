@@ -493,10 +493,58 @@ test("scopes.can full wildcard grants everything", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// auth.user.id with API key fallback
+// auth.context / auth.http.context
 // ---------------------------------------------------------------------------
 
-test("auth.user.id returns userId from API key Bearer header", async () => {
+test("auth.context returns auth state from a session identity", async () => {
+  const t = convexTest(schema);
+  const userId = await createUser(t);
+
+  const resolved = await t.run(async (ctx) => {
+    const sessionCtx = {
+      ...ctx,
+      auth: {
+        ...ctx.auth,
+        getUserIdentity: async () => ({
+          subject: `${userId}|session_123`,
+          issuer: "https://example.com",
+        }),
+      },
+    };
+    const authContext = await auth.context(sessionCtx as any);
+    return {
+      userId: authContext.userId,
+      groupId: authContext.groupId,
+      role: authContext.role,
+      grants: authContext.grants,
+    };
+  });
+
+  expect(resolved).toEqual({
+    userId,
+    groupId: null,
+    role: null,
+    grants: [],
+  });
+});
+
+test("auth.context optional returns null-shaped auth when unauthenticated", async () => {
+  const t = convexTest(schema);
+
+  const resolved = await t.run(async (ctx) => {
+    return await auth.context(ctx, { optional: true });
+  });
+
+  expect(resolved).toEqual({
+    userId: null,
+    user: null,
+    groupId: null,
+    role: null,
+    grants: [],
+  });
+});
+
+test("auth.http.context returns userId from API key Bearer header", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
@@ -512,37 +560,62 @@ test("auth.user.id returns userId from API key Bearer header", async () => {
     const request = new Request("https://example.com/api/data", {
       headers: { Authorization: `Bearer ${secret}` },
     });
-    return await auth.user.id(ctx, request);
+    const authContext = await auth.http.context(ctx, request);
+    return {
+      userId: authContext.userId,
+      source: authContext.source,
+      keyId: authContext.key?.keyId ?? null,
+    };
   });
 
-  expect(resolved).toBe(userId);
+  expect(resolved).toEqual({
+    userId,
+    source: "key",
+    keyId: expect.any(String),
+  });
 });
 
-test("auth.user.id returns null with no session and no header", async () => {
+test("auth.http.context optional returns null-shaped auth with no session and no header", async () => {
   const t = convexTest(schema);
 
   const resolved = await t.run(async (ctx) => {
     const request = new Request("https://example.com/api/data");
-    return await auth.user.id(ctx, request);
+    return await auth.http.context(ctx, request, { optional: true });
   });
 
-  expect(resolved).toBeNull();
+  expect(resolved).toEqual({
+    userId: null,
+    user: null,
+    groupId: null,
+    role: null,
+    grants: [],
+    source: null,
+    key: null,
+  });
 });
 
-test("auth.user.id returns null with invalid Bearer key", async () => {
+test("auth.http.context optional returns null-shaped auth with invalid Bearer key", async () => {
   const t = convexTest(schema);
 
   const resolved = await t.run(async (ctx) => {
     const request = new Request("https://example.com/api/data", {
       headers: { Authorization: "Bearer sk_not_a_real_key" },
     });
-    return await auth.user.id(ctx, request);
+    return await auth.http.context(ctx, request, { optional: true });
   });
 
-  expect(resolved).toBeNull();
+  expect(resolved).toEqual({
+    userId: null,
+    user: null,
+    groupId: null,
+    role: null,
+    grants: [],
+    source: null,
+    key: null,
+  });
 });
 
-test("auth.user.id returns null with revoked key", async () => {
+test("auth.http.context optional returns null-shaped auth with revoked key", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
@@ -555,39 +628,66 @@ test("auth.user.id returns null with revoked key", async () => {
     const request = new Request("https://example.com/api/data", {
       headers: { Authorization: `Bearer ${secret}` },
     });
-    return await auth.user.id(ctx, request);
+    return await auth.http.context(ctx, request, { optional: true });
   });
 
-  expect(resolved).toBeNull();
-});
-
-test("auth.user.id returns null when unauthenticated", async () => {
-  const t = convexTest(schema);
-
-  const resolved = await t.run(async (ctx) => {
-    const request = new Request("https://example.com/api/data");
-    return await auth.user.id(ctx, request);
+  expect(resolved).toEqual({
+    userId: null,
+    user: null,
+    groupId: null,
+    role: null,
+    grants: [],
+    source: null,
+    key: null,
   });
-
-  expect(resolved).toBeNull();
 });
 
-test("auth.user.id returns userId with valid API key", async () => {
+test("auth.http.context prefers session auth over API key when both are present", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
   const { secret } = await t.run(async (ctx) => {
-    return await auth.key.create(ctx, { userId, name: "Required", scopes: [] });
+    return await auth.key.create(ctx, { userId, name: "Fallback", scopes: [] });
   });
 
   const resolved = await t.run(async (ctx) => {
+    const sessionCtx = {
+      ...ctx,
+      auth: {
+        ...ctx.auth,
+        getUserIdentity: async () => ({
+          subject: `${userId}|session_456`,
+          issuer: "https://example.com",
+        }),
+      },
+    };
     const request = new Request("https://example.com/api/data", {
       headers: { Authorization: `Bearer ${secret}` },
     });
-    return await auth.user.id(ctx, request);
+    const authContext = await auth.http.context(sessionCtx as any, request);
+    return {
+      userId: authContext.userId,
+      source: authContext.source,
+      key: authContext.key,
+    };
   });
 
-  expect(resolved).toBe(userId);
+  expect(resolved).toEqual({
+    userId,
+    source: "session",
+    key: null,
+  });
+});
+
+test("auth.http.context throws when required auth is missing", async () => {
+  const t = convexTest(schema);
+
+  await expect(
+    t.run(async (ctx) => {
+      const request = new Request("https://example.com/api/data");
+      return await auth.http.context(ctx, request);
+    }),
+  ).rejects.toThrow(ConvexError);
 });
 
 // ---------------------------------------------------------------------------

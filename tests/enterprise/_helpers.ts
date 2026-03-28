@@ -241,9 +241,9 @@ export interface RequestOptions {
 
 function toHeadersObject(headers: Headers): Record<string, string> {
   const result: Record<string, string> = {};
-  for (const [key, value] of headers.entries()) {
+  headers.forEach((value, key) => {
     result[key] = value;
-  }
+  });
   return result;
 }
 

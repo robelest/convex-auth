@@ -7,15 +7,21 @@
  * @module
  */
 
-export { AuthCtx, createAuth } from "../server/auth";
+export { createAuth } from "../server/auth";
 export type {
   AuthApi,
   AuthContext,
+  AuthContextConfig,
   AuthConfig,
-  AuthCtxConfig,
   InferAuth,
+  OptionalAuthContext,
   UserDoc,
 } from "../server/auth";
+export type {
+  HttpAuthContext,
+  HttpAuthContextConfig,
+  OptionalHttpAuthContext,
+} from "../server/http";
 export type {
   ConvexAuthConfig,
   AuthProviderConfig,

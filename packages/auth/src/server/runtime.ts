@@ -44,6 +44,7 @@ import {
   addOpenIdRoutes,
   convertErrorsToResponse,
   createHttpAction,
+  createHttpContext,
   createHttpRoute,
   getCookies,
 } from "./http";
@@ -492,283 +493,305 @@ export function Auth(config_: ConvexAuthConfig) {
       getPolicyFromEnterprise,
       patchEnterprisePolicy,
     }),
-    // HTTP wiring stays local to the factory because it still depends on a
-    // dense mix of OAuth, SAML, SCIM, cookie, and response helpers.
-    http: {
-      /**
-       * Register core HTTP routes for JWT verification and OAuth sign-in.
-       *
-       * ```ts
-       * import { httpRouter } from "convex/server";
-       * import { auth } from "./auth";
-       *
-       * const http = httpRouter();
-       *
-       * auth.http.add(http);
-       *
-       * export default http;
-       * ```
-       *
-       * The following routes are handled always:
-       *
-       * - `/.well-known/openid-configuration`
-       * - `/.well-known/jwks.json`
-       *
-       * The following routes are handled if OAuth is configured:
-       *
-       * - `/api/auth/signin/*`
-       * - `/api/auth/callback/*`
-       *
-       * @param http your HTTP router
-       */
-      add: (http: HttpRouter) => {
-        addOpenIdRoutes(http, {
-          getIssuer: () => requireEnv("CONVEX_SITE_URL"),
-          getJwks: () => requireEnv("JWKS"),
-        });
+  };
 
-        addEnterpriseHttpRuntime({
-          http,
-          hasSSO,
-          auth,
-          config,
-          routeBase: ENTERPRISE_CONTROL_ROUTE_BASE,
-          requireEnv,
-          loadActiveEnterpriseSamlOrThrow,
-          loadEnterpriseOidcOrThrow,
-          getEnterpriseScimContext,
-          getPolicyFromEnterprise,
-          normalizeEnterprisePolicy,
-          recordEnterpriseAuditEvent,
-          emitEnterpriseWebhookDeliveries,
-          generateRandomString,
-          inviteTokenAlphabet: INVITE_TOKEN_ALPHABET,
-          callUserOAuth,
-          callVerifierSignature,
-        });
+  // HTTP wiring stays local to the factory because it still depends on a
+  // dense mix of OAuth, SAML, SCIM, cookie, and response helpers.
+  auth.http = {
+    /**
+     * Register core HTTP routes for JWT verification and OAuth sign-in.
+     *
+     * ```ts
+     * import { httpRouter } from "convex/server";
+     * import { auth } from "./auth";
+     *
+     * const http = httpRouter();
+     *
+     * auth.http.add(http);
+     *
+     * export default http;
+     * ```
+     *
+     * The following routes are handled always:
+     *
+     * - `/.well-known/openid-configuration`
+     * - `/.well-known/jwks.json`
+     *
+     * The following routes are handled if OAuth is configured:
+     *
+     * - `/api/auth/signin/*`
+     * - `/api/auth/callback/*`
+     *
+     * @param http your HTTP router
+     */
+    add: (http: HttpRouter) => {
+      addOpenIdRoutes(http, {
+        getIssuer: () => requireEnv("CONVEX_SITE_URL"),
+        getJwks: () => requireEnv("JWKS"),
+      });
 
-        if (hasOAuth) {
-          addAuthRoutes(http, {
-            handleSignIn: convertErrorsToResponse(400, async (ctx, request) => {
-              const url = new URL(request.url);
-              const pathParts = url.pathname.split("/");
-              const providerId = pathParts[pathParts.length - 1]!;
-              if (providerId === null) {
-                throw Cv.error({
-                  code: "OAUTH_MISSING_PROVIDER",
-                  message: "Missing OAuth provider ID.",
-                });
-              }
-              const verifier = url.searchParams.get("code");
-              if (verifier === null) {
-                throw Cv.error({
-                  code: "OAUTH_MISSING_VERIFIER",
-                  message: "Missing sign-in verifier.",
-                });
-              }
-              const provider = getProviderOrThrow(providerId);
+      addEnterpriseHttpRuntime({
+        http,
+        hasSSO,
+        auth,
+        config,
+        routeBase: ENTERPRISE_CONTROL_ROUTE_BASE,
+        requireEnv,
+        loadActiveEnterpriseSamlOrThrow,
+        loadEnterpriseOidcOrThrow,
+        getEnterpriseScimContext,
+        getPolicyFromEnterprise,
+        normalizeEnterprisePolicy,
+        recordEnterpriseAuditEvent,
+        emitEnterpriseWebhookDeliveries,
+        generateRandomString,
+        inviteTokenAlphabet: INVITE_TOKEN_ALPHABET,
+        callUserOAuth,
+        callVerifierSignature,
+      });
 
-              const oauthConfig = provider as OAuthMaterializedConfig;
-              const { redirect, cookies, signature } =
-                await createOAuthAuthorizationURL(
-                  providerId,
-                  oauthConfig.provider,
-                  oauthConfig,
-                );
-
-              await callVerifierSignature(ctx, {
-                verifier,
-                signature,
+      if (hasOAuth) {
+        addAuthRoutes(http, {
+          handleSignIn: convertErrorsToResponse(400, async (ctx, request) => {
+            const url = new URL(request.url);
+            const pathParts = url.pathname.split("/");
+            const providerId = pathParts[pathParts.length - 1]!;
+            if (providerId === null) {
+              throw Cv.error({
+                code: "OAUTH_MISSING_PROVIDER",
+                message: "Missing OAuth provider ID.",
               });
+            }
+            const verifier = url.searchParams.get("code");
+            if (verifier === null) {
+              throw Cv.error({
+                code: "OAUTH_MISSING_VERIFIER",
+                message: "Missing sign-in verifier.",
+              });
+            }
+            const provider = getProviderOrThrow(providerId);
 
-              const redirectTo = url.searchParams.get("redirectTo");
-              if (redirectTo !== null) {
-                cookies.push(redirectToParamCookie(providerId, redirectTo));
-              }
-
-              const headers = new Headers({ Location: redirect });
-              for (const { name, value, options } of cookies) {
-                headers.append(
-                  "Set-Cookie",
-                  serializeCookie(name, value, options as any),
-                );
-              }
-
-              return new Response(null, { status: 302, headers });
-            }),
-            handleCallback: async (ctx, request) => {
-              const url = new URL(request.url);
-              const callbackPathParts = new URL(request.url).pathname.split(
-                "/",
-              );
-              const providerId =
-                callbackPathParts[callbackPathParts.length - 1];
-              if (!providerId) {
-                throw Cv.error({
-                  code: "OAUTH_MISSING_PROVIDER",
-                  message: "Missing OAuth provider ID.",
-                });
-              }
-              logWithLevel(
-                LOG_LEVELS.DEBUG,
-                "Handling OAuth callback for provider:",
+            const oauthConfig = provider as OAuthMaterializedConfig;
+            const { redirect, cookies, signature } =
+              await createOAuthAuthorizationURL(
                 providerId,
+                oauthConfig.provider,
+                oauthConfig,
               );
-              const provider = getProviderOrThrow(providerId);
 
-              const cookies = getCookies(request);
+            await callVerifierSignature(ctx, {
+              verifier,
+              signature,
+            });
 
-              const maybeRedirectTo = useRedirectToParam(provider.id, cookies);
+            const redirectTo = url.searchParams.get("redirectTo");
+            if (redirectTo !== null) {
+              cookies.push(redirectToParamCookie(providerId, redirectTo));
+            }
 
-              const destinationUrl = await redirectAbsoluteUrl(config, {
-                redirectTo: maybeRedirectTo?.redirectTo,
+            const headers = new Headers({ Location: redirect });
+            for (const { name, value, options } of cookies) {
+              headers.append(
+                "Set-Cookie",
+                serializeCookie(name, value, options as any),
+              );
+            }
+
+            return new Response(null, { status: 302, headers });
+          }),
+          handleCallback: async (ctx, request) => {
+            const url = new URL(request.url);
+            const callbackPathParts = new URL(request.url).pathname.split("/");
+            const providerId = callbackPathParts[callbackPathParts.length - 1];
+            if (!providerId) {
+              throw Cv.error({
+                code: "OAUTH_MISSING_PROVIDER",
+                message: "Missing OAuth provider ID.",
               });
+            }
+            logWithLevel(
+              LOG_LEVELS.DEBUG,
+              "Handling OAuth callback for provider:",
+              providerId,
+            );
+            const provider = getProviderOrThrow(providerId);
 
-              const params = url.searchParams;
+            const cookies = getCookies(request);
 
-              if (
-                request.headers.get("Content-Type") ===
-                "application/x-www-form-urlencoded"
-              ) {
-                const formData = await request.formData();
-                formData.forEach((value, key) => {
-                  if (typeof value === "string") {
-                    params.append(key, value);
-                  }
-                });
-              }
+            const maybeRedirectTo = useRedirectToParam(provider.id, cookies);
 
-              return Fx.run(
-                Fx.from({
-                  ok: async () => {
-                    const oauthConfig = provider as OAuthMaterializedConfig;
-                    const result = await Fx.run(
-                      handleOAuthCallback(
-                        providerId,
-                        oauthConfig.provider,
-                        oauthConfig,
-                        Object.fromEntries(params.entries()),
-                        cookies,
-                      ),
-                    );
-                    const oauthCookies = result.cookies;
-                    const { id: profileId, ...profileData } = result.profile;
-                    const { signature } = result;
+            const destinationUrl = await redirectAbsoluteUrl(config, {
+              redirectTo: maybeRedirectTo?.redirectTo,
+            });
 
-                    const verificationCode = await callUserOAuth(ctx, {
-                      provider: providerId,
-                      providerAccountId: profileId,
-                      profile: profileData,
-                      signature,
-                    });
+            const params = url.searchParams;
 
-                    const redirUrl = setURLSearchParam(
-                      destinationUrl,
-                      "code",
-                      verificationCode,
-                    );
-                    const redirHeaders = new Headers({ Location: redirUrl });
-                    redirHeaders.set("Cache-Control", "must-revalidate");
-                    for (const { name, value, options } of [
-                      ...oauthCookies,
-                      ...(maybeRedirectTo !== null
-                        ? [maybeRedirectTo.updatedCookie]
-                        : []),
-                    ] as any) {
-                      redirHeaders.append(
-                        "Set-Cookie",
-                        serializeCookie(name, value, options),
-                      );
-                    }
-                    return new Response(null, {
-                      status: 302,
-                      headers: redirHeaders,
-                    });
-                  },
-                  err: (error) => error,
-                }).pipe(
-                  Fx.recover((error) => {
-                    logError(error);
-                    const respHeaders = new Headers({
-                      Location: destinationUrl,
-                    });
-                    for (const { name, value, options } of maybeRedirectTo !==
-                    null
+            if (
+              request.headers.get("Content-Type") ===
+              "application/x-www-form-urlencoded"
+            ) {
+              const formData = await request.formData();
+              formData.forEach((value, key) => {
+                if (typeof value === "string") {
+                  params.append(key, value);
+                }
+              });
+            }
+
+            return Fx.run(
+              Fx.from({
+                ok: async () => {
+                  const oauthConfig = provider as OAuthMaterializedConfig;
+                  const result = await Fx.run(
+                    handleOAuthCallback(
+                      providerId,
+                      oauthConfig.provider,
+                      oauthConfig,
+                      Object.fromEntries(params.entries()),
+                      cookies,
+                    ),
+                  );
+                  const oauthCookies = result.cookies;
+                  const { id: profileId, ...profileData } = result.profile;
+                  const { signature } = result;
+
+                  const verificationCode = await callUserOAuth(ctx, {
+                    provider: providerId,
+                    providerAccountId: profileId,
+                    profile: profileData,
+                    signature,
+                  });
+
+                  const redirUrl = setURLSearchParam(
+                    destinationUrl,
+                    "code",
+                    verificationCode,
+                  );
+                  const redirHeaders = new Headers({ Location: redirUrl });
+                  redirHeaders.set("Cache-Control", "must-revalidate");
+                  for (const { name, value, options } of [
+                    ...oauthCookies,
+                    ...(maybeRedirectTo !== null
                       ? [maybeRedirectTo.updatedCookie]
-                      : []) {
-                      respHeaders.append(
-                        "Set-Cookie",
-                        serializeCookie(name, value, options),
-                      );
-                    }
-                    return Fx.succeed(
-                      new Response(null, {
-                        status: 302,
-                        headers: respHeaders,
-                      }),
+                      : []),
+                  ] as any) {
+                    redirHeaders.append(
+                      "Set-Cookie",
+                      serializeCookie(name, value, options),
                     );
-                  }),
-                ),
-              );
-            },
-          });
-        }
-      },
-
-      /**
-       * Wrap an HTTP action handler with Bearer token authentication.
-       *
-       * Extracts the `Authorization: Bearer <key>` header, verifies the
-       * API key via `auth.key.verify()`, and injects `ctx.key` with the
-       * verified key info. Returns structured JSON error responses for
-       * missing/invalid/revoked/expired/rate-limited keys.
-       *
-       * If the handler returns a plain object, it is auto-wrapped in a
-       * `200 JSON` response. If it returns a `Response`, CORS headers
-       * are merged and the response is passed through.
-       *
-       * ```ts
-       * const handler = auth.http.action(async (ctx, request) => {
-       *   const data = await ctx.runQuery(api.data.get, { userId: ctx.key.userId });
-       *   return { data };
-       * });
-       * http.route({ path: "/api/data", method: "GET", handler });
-       * ```
-       *
-       * @param handler - Receives enriched `ctx` (with `ctx.key`) and the raw `Request`.
-       * @param options.scope - Optional scope check; returns 403 if the key lacks permission.
-       * @param options.cors - CORS config; defaults to permissive (`*`).
-       */
-      action: createHttpAction(auth),
-
-      /**
-       * Register a Bearer-authenticated route **and** its OPTIONS preflight
-       * in a single call.
-       *
-       * ```ts
-       * auth.http.route(http, {
-       *   path: "/api/messages",
-       *   method: "POST",
-       *   handler: async (ctx, request) => {
-       *     const { body } = await request.json();
-       *     await ctx.runMutation(internal.messages.sendAsUser, {
-       *       userId: ctx.key.userId,
-       *       body,
-       *     });
-       *     return { success: true };
-       *   },
-       * });
-       * ```
-       *
-       * @param http - The Convex HTTP router.
-       * @param routeConfig.path - The URL path to match.
-       * @param routeConfig.method - HTTP method (GET, POST, PUT, PATCH, DELETE).
-       * @param routeConfig.handler - Receives enriched `ctx` (with `ctx.key`) and the raw `Request`.
-       * @param routeConfig.scope - Optional scope check; returns 403 if the key lacks permission.
-       * @param routeConfig.cors - CORS config; defaults to permissive (`*`).
-       */
-      route: createHttpRoute(createHttpAction(auth)),
+                  }
+                  return new Response(null, {
+                    status: 302,
+                    headers: redirHeaders,
+                  });
+                },
+                err: (error) => error,
+              }).pipe(
+                Fx.recover((error) => {
+                  logError(error);
+                  const respHeaders = new Headers({
+                    Location: destinationUrl,
+                  });
+                  for (const { name, value, options } of maybeRedirectTo !== null
+                    ? [maybeRedirectTo.updatedCookie]
+                    : []) {
+                    respHeaders.append(
+                      "Set-Cookie",
+                      serializeCookie(name, value, options),
+                    );
+                  }
+                  return Fx.succeed(
+                    new Response(null, {
+                      status: 302,
+                      headers: respHeaders,
+                    }),
+                  );
+                }),
+              ),
+            );
+          },
+        });
+      }
     },
+
+    /**
+     * Resolve mixed HTTP auth for a raw `httpAction`.
+     *
+     * Checks session auth first, then falls back to `Authorization: Bearer sk_*`
+     * API keys. This is the low-level helper for endpoints that intentionally
+     * accept either browser sessions or API keys.
+     * Pass `{ optional: true }` to get a null-shaped auth object instead of a
+     * `NOT_SIGNED_IN` error.
+     *
+     * ```ts
+     * http.route({
+     *   path: "/api/data",
+     *   method: "GET",
+     *   handler: httpAction(async (ctx, request) => {
+     *     const authContext = await auth.http.context(ctx, request);
+     *     return Response.json({
+     *       userId: authContext.userId,
+     *       source: authContext.source,
+     *     });
+     *   }),
+     * });
+     * ```
+     */
+    context: createHttpContext(auth),
+
+    /**
+     * Wrap an HTTP action handler with Bearer token authentication.
+     *
+     * Extracts the `Authorization: Bearer <key>` header, verifies the
+     * API key via `auth.key.verify()`, and injects `ctx.key` with the
+     * verified key info. Returns structured JSON error responses for
+     * missing/invalid/revoked/expired/rate-limited keys.
+     *
+     * If the handler returns a plain object, it is auto-wrapped in a
+     * `200 JSON` response. If it returns a `Response`, CORS headers
+     * are merged and the response is passed through.
+     *
+     * ```ts
+     * const handler = auth.http.action(async (ctx, request) => {
+     *   const data = await ctx.runQuery(api.data.get, { userId: ctx.key.userId });
+     *   return { data };
+     * });
+     * http.route({ path: "/api/data", method: "GET", handler });
+     * ```
+     *
+     * @param handler - Receives enriched `ctx` (with `ctx.key`) and the raw `Request`.
+     * @param options.scope - Optional scope check; returns 403 if the key lacks permission.
+     * @param options.cors - CORS config; defaults to permissive (`*`).
+     */
+    action: createHttpAction(auth),
+
+    /**
+     * Register a Bearer-authenticated route **and** its OPTIONS preflight
+     * in a single call.
+     *
+     * ```ts
+     * auth.http.route(http, {
+     *   path: "/api/messages",
+     *   method: "POST",
+     *   handler: async (ctx, request) => {
+     *     const { body } = await request.json();
+     *     await ctx.runMutation(internal.messages.sendAsUser, {
+     *       userId: ctx.key.userId,
+     *       body,
+     *     });
+     *     return { success: true };
+     *   },
+     * });
+     * ```
+     *
+     * @param http - The Convex HTTP router.
+     * @param routeConfig.path - The URL path to match.
+     * @param routeConfig.method - HTTP method (GET, POST, PUT, PATCH, DELETE).
+     * @param routeConfig.handler - Receives enriched `ctx` (with `ctx.key`) and the raw `Request`.
+     * @param routeConfig.scope - Optional scope check; returns 403 if the key lacks permission.
+     * @param routeConfig.cors - CORS config; defaults to permissive (`*`).
+     */
+    route: createHttpRoute(createHttpAction(auth)),
   };
 
   const enrichCtx = <DataModel extends GenericDataModel>(

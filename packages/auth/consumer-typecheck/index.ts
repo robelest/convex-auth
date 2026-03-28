@@ -1,8 +1,9 @@
 import { defineRoles } from "@robelest/convex-auth/authorization";
 import { client } from "@robelest/convex-auth/client";
 import {
-  AuthCtx,
   createAuth,
+  type AuthApi,
+  type AuthContextConfig,
   type ConvexAuthConfig,
   type InferAuth,
 } from "@robelest/convex-auth/component";
@@ -13,7 +14,10 @@ import type { AuthContext } from "@robelest/convex-auth/server";
 
 type _ClientFactory = typeof client;
 type _DefineRolesFactory = typeof defineRoles;
-type _AuthCtxFactory = typeof AuthCtx;
+type _AuthCtxFactory = AuthApi["ctx"];
+type _AuthContextResolver = AuthApi["context"];
+type _AuthHttpContextResolver = AuthApi["http"]["context"];
+type _AuthContextConfig = AuthContextConfig;
 type _CreateAuthFactory = typeof createAuth;
 type _AuthConfig = ConvexAuthConfig;
 type _AuthContext = AuthContext;
@@ -21,9 +25,9 @@ type _OAuthFactory = typeof OAuth;
 type _PasswordClass = typeof Password;
 type _ConvexConfig = typeof auth;
 
-declare const authLike: Parameters<typeof AuthCtx>[0];
+declare const authLike: Pick<AuthApi, "ctx" | "context" | "http">;
 
-const authCtx = AuthCtx(authLike, {
+const authCtx = authLike.ctx({
   authResolve: async (_ctx, fallback) => await fallback(),
   resolve: async (_ctx, _user, authState) => ({
     copiedGroupId: authState.groupId,
@@ -31,7 +35,16 @@ const authCtx = AuthCtx(authLike, {
   }),
 });
 
+const optionalContextPromise = authLike.context({} as any, { optional: true });
+const optionalHttpContextPromise = authLike.http.context(
+  {} as any,
+  new Request("https://example.com"),
+  { optional: true },
+);
+
 type _InferredAuth = InferAuth<typeof authCtx>;
+type _OptionalContext = Awaited<typeof optionalContextPromise>;
+type _OptionalHttpContext = Awaited<typeof optionalHttpContextPromise>;
 
 const _inferredAuth: _InferredAuth = {
   getUserIdentity: async () => null,
@@ -46,8 +59,16 @@ const _inferredAuth: _InferredAuth = {
 
 void _inferredAuth;
 
+const _optionalContext = null as unknown as _OptionalContext;
+const _optionalHttpContext = null as unknown as _OptionalHttpContext;
+
+void _optionalContext;
+void _optionalHttpContext;
+
 const _typecheck: {
   authCtx: _AuthCtxFactory;
+  authContextResolver: _AuthContextResolver;
+  authHttpContextResolver: _AuthHttpContextResolver;
   client: _ClientFactory;
   defineRoles: _DefineRolesFactory;
   createAuth: _CreateAuthFactory;
@@ -55,9 +76,12 @@ const _typecheck: {
   OAuth: _OAuthFactory;
   password: _PasswordClass;
   authConfig: _AuthConfig | null;
+  authContextConfig: _AuthContextConfig | null;
   authContext: _AuthContext | null;
 } = {
-  authCtx: AuthCtx,
+  authCtx: null as unknown as _AuthCtxFactory,
+  authContextResolver: null as unknown as _AuthContextResolver,
+  authHttpContextResolver: null as unknown as _AuthHttpContextResolver,
   client,
   defineRoles,
   createAuth,
@@ -65,6 +89,7 @@ const _typecheck: {
   OAuth,
   password: Password,
   authConfig: null,
+  authContextConfig: null,
   authContext: null,
 };
 

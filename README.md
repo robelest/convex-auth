@@ -9,8 +9,8 @@
 - **Groups and memberships** — Hierarchical groups, roles, invites, cascade
   operations
 - **SSR** — Cookie-based auth for SvelteKit, TanStack Start, Next.js
-- **Multi-access** — `auth.user.id(ctx, request?)` resolves session JWT or API
-  key universally
+- **Multi-access** — `auth.ctx()`, `auth.context(ctx)`, and
+  `auth.http.context(ctx, request)` cover app, imperative, and raw HTTP auth
 - **Convex component** — Isolated tables, typed helpers, zero-config defaults
 
 ## Documentation

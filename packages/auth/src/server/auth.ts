@@ -9,6 +9,10 @@ import type { UserIdentity } from "convex/server";
 import type { GenericId } from "convex/values";
 
 import type { AuthApiRefs } from "../client/index";
+import {
+  createUnauthenticatedAuthContext,
+  getAuthContext as getResolvedAuthContext,
+} from "./context";
 import { Auth as AuthFactory } from "./runtime";
 import type { Doc } from "./types";
 import type {
@@ -140,9 +144,12 @@ export type AuthApiBase<
    * this in fluent-convex middleware, custom wrappers, or anywhere you
    * need the current `{ userId, user, groupId, role, grants }` object.
    *
-   * Throws a structured `ConvexError` when unauthenticated.
+   * Throws a structured `ConvexError` when unauthenticated by default.
+   * Pass `{ optional: true }` to get a null-shaped auth object instead.
    *
    * @param ctx - Convex query, mutation, or action context.
+   * @param config - Optional auth resolution config. Supports `optional`,
+   *   `resolve`, and `authResolve`.
    * @returns The current auth context.
    *
    * @example fluent-convex middleware
@@ -153,12 +160,20 @@ export type AuthApiBase<
    * ```
    *
    * @example Direct usage in a handler
-   * ```ts
-   * const authContext = await auth.context(ctx);
-   * const { userId, grants } = authContext;
-   * ```
-   */
-  context: (ctx: any) => Promise<AuthContext>;
+    * ```ts
+    * const authContext = await auth.context(ctx);
+    * const { userId, grants } = authContext;
+    * ```
+    *
+    * @example Optional usage
+    * ```ts
+    * const authContext = await auth.context(ctx, { optional: true });
+    * if (authContext.userId === null) {
+    *   return null;
+    * }
+    * ```
+    */
+  context: AuthContextResolver;
   /**
    * Context enrichment for convex-helpers `customQuery` / `customMutation` /
    * `customAction`.
@@ -197,20 +212,14 @@ export type AuthApiBase<
    * });
    * ```
    */
-  ctx: () => {
-    args: Record<string, never>;
-    input: (ctx: any) => Promise<{
-      ctx: { auth: AuthContext };
-      args: Record<string, never>;
-    }>;
-  };
+  ctx: AuthContextFactory;
 };
 
 /**
- * Current request auth context injected into `ctx.auth` by `auth.ctx()` and
- * {@link AuthCtx}. This is the authenticated auth shape returned by
- * {@link createAuth().context}. Optional context builders may still surface
- * nullable fields when `optional: true` is used.
+ * Current request auth context injected into `ctx.auth` by `auth.ctx()`. This
+ * is the authenticated auth shape returned by {@link createAuth().context}.
+ * Optional context builders may still surface nullable fields when
+ * `optional: true` is used.
  *
  * - `groupId` is `null` when the user has no active group set.
  * - `role` is `null` when no active group or no membership is resolved.
@@ -242,18 +251,82 @@ export type AuthContext = {
   grants: string[];
 };
 
-type AuthCtxBase = {
+/**
+ * Nullable auth context returned by `auth.context(ctx, { optional: true })`
+ * and injected by `auth.ctx({ optional: true })`.
+ *
+ * Use this when callers may be unauthenticated but you still want a stable
+ * auth-shaped object.
+ *
+ * - `userId` and `user` are `null` when unauthenticated.
+ * - `groupId` and `role` are `null` when no active group is resolved.
+ * - `grants` is `[]` when no membership is resolved.
+ *
+ * @example
+ * ```ts
+ * const authContext = await auth.context(ctx, { optional: true });
+ * if (authContext.userId === null) {
+ *   return null;
+ * }
+ * ```
+ */
+export type OptionalAuthContext = {
+  /** The authenticated user's document ID, or `null` when unauthenticated. */
+  userId: GenericId<"User"> | null;
+  /** The authenticated user's full document, or `null` when unauthenticated. */
+  user: UserDoc | null;
+  /** The user's active group ID, or `null` if none is set. */
+  groupId: string | null;
+  /** The user's primary role in the active group, or `null`. */
+  role: string | null;
+  /** Resolved grant strings for the active membership, or `[]`. */
+  grants: string[];
+};
+
+type AuthContextBase = {
   getUserIdentity: () => Promise<UserIdentity | null>;
 };
 
-type RequiredAuthCtxState = AuthCtxBase & AuthContext;
+type RequiredAuthContextState = AuthContextBase & AuthContext;
 
-type OptionalAuthCtxState = AuthCtxBase & {
-  userId: GenericId<"User"> | null;
-  user: UserDoc | null;
-  groupId: string | null;
-  role: string | null;
-  grants: string[];
+type OptionalAuthContextState = AuthContextBase & OptionalAuthContext;
+
+type ResolvedAuthContext<TResolve> = AuthContext & TResolve;
+
+type ResolvedOptionalAuthContext<TResolve> = OptionalAuthContext & TResolve;
+
+type AuthContextResolver = {
+  <TResolve extends Record<string, unknown> = Record<string, never>>(
+    ctx: any,
+    config: AuthContextConfig<TResolve> & { optional: true },
+  ): Promise<ResolvedOptionalAuthContext<TResolve>>;
+  <TResolve extends Record<string, unknown> = Record<string, never>>(
+    ctx: any,
+    config?: AuthContextConfig<TResolve>,
+  ): Promise<ResolvedAuthContext<TResolve>>;
+};
+
+type AuthContextCustomization<TAuth> = {
+  args: {};
+  input: (
+    ctx: any,
+    _args: any,
+    _extra?: any,
+  ) => Promise<{
+    ctx: {
+      auth: TAuth;
+    };
+    args: {};
+  }>;
+};
+
+type AuthContextFactory = {
+  <TResolve extends Record<string, unknown> = Record<string, never>>(
+    config: AuthContextConfig<TResolve> & { optional: true },
+  ): AuthContextCustomization<OptionalAuthContextState & TResolve>;
+  <TResolve extends Record<string, unknown> = Record<string, never>>(
+    config?: AuthContextConfig<TResolve>,
+  ): AuthContextCustomization<RequiredAuthContextState & TResolve>;
 };
 
 type InternalSsoApi = ReturnType<typeof AuthFactory>["auth"]["sso"];
@@ -437,41 +510,54 @@ export type AuthLike = Pick<AuthApiBase, "user" | "member">;
  * });
  * ```
  *
- * @see {@link AuthCtx}
+ * @see {@link AuthContextConfig}
  */
 
 // ---------------------------------------------------------------------------
 // Function builders — shared auth resolution logic
 // ---------------------------------------------------------------------------
 
-/**
- * Resolve auth context for the current user. Returns the enriched
- * `ctx.auth` object or `null` when unauthenticated.
- *
- * Resolution flow:
- * 1. `user.id(ctx)` → userId or null (exit early)
- * 2. `user.get(ctx, userId)` → user doc (cached per-execution)
- * 3. `user.getActiveGroup(ctx, { userId })` → groupId or null
- * 4. If groupId → `member.inspect(ctx, { userId, groupId })` → role + grants
- */
-async function getAuthContext(
+async function resolveConfiguredAuthContext(
   auth: AuthLike,
   ctx: any,
+  config?: AuthContextConfig<any>,
 ): Promise<AuthContext | null> {
-  const userId = await auth.user.id(ctx);
-  if (!userId) return null;
-  const user = await auth.user.get(ctx, userId);
-  const groupId = await auth.user.getActiveGroup(ctx, { userId });
-  let role: string | null = null;
-  let grants: string[] = [];
-  if (groupId) {
-    const resolved = await auth.member.inspect(ctx, { userId, groupId });
-    if (resolved.membership) {
-      role = resolved.roleIds[0] ?? null;
-      grants = resolved.grants;
+  const fallback = () => getResolvedAuthContext(auth, ctx);
+  const authOverride = config?.authResolve
+    ? await config.authResolve(ctx, fallback)
+    : undefined;
+  return authOverride === undefined ? await fallback() : authOverride;
+}
+
+function createNotSignedInError() {
+  return Cv.error({
+    code: "NOT_SIGNED_IN",
+    message: "Authentication required.",
+  });
+}
+
+async function createPublicAuthContext(
+  auth: AuthLike,
+  ctx: any,
+  config?: AuthContextConfig<any>,
+) {
+  const resolved = await resolveConfiguredAuthContext(auth, ctx, config);
+
+  if (resolved === null) {
+    if (config?.optional !== true) {
+      throw createNotSignedInError();
     }
+    return createUnauthenticatedAuthContext();
   }
-  return { userId, user, groupId, role, grants };
+
+  const extra = config?.resolve
+    ? await config.resolve(ctx, resolved.user, resolved)
+    : {};
+
+  return {
+    ...resolved,
+    ...extra,
+  };
 }
 
 export function createAuth<
@@ -668,51 +754,49 @@ export function createAuth<
     },
     http: authResult.auth.http,
 
-    context: async (ctx: any) => {
-      const authContext = await getAuthContext(authResult.auth, ctx);
-      if (authContext === null) {
-        throw Cv.error({
-          code: "NOT_SIGNED_IN",
-          message: "Authentication required.",
-        });
-      }
-      return authContext;
-    },
+    context: ((ctx: any, config?: AuthContextConfig<any>) =>
+      createPublicAuthContext(authResult.auth, ctx, config)) as AuthContextResolver,
 
-    ctx: () => ({
-      args: {},
-      input: async (ctx: any) => {
-        const authCtx = await getAuthContext(authResult.auth, ctx);
-        if (authCtx === null) {
-          throw Cv.error({
-            code: "NOT_SIGNED_IN",
-            message: "Authentication required.",
-          });
-        }
-        return { ctx: { auth: authCtx }, args: {} };
-      },
-    }),
+    ctx: ((config?: AuthContextConfig<any>) =>
+      createAuthContextCustomization(authResult.auth, config)) as AuthContextFactory,
   } as unknown as ConvexAuthResult<P, TAuthorization>;
 }
 
 // ============================================================================
-// AuthCtx — ctx enrichment for customQuery / customMutation
+// auth.ctx() — ctx enrichment for customQuery / customMutation
 // ============================================================================
 
 /**
- * Configuration for {@link AuthCtx} context enrichment.
+ * Configuration for {@link createAuth().ctx} context enrichment.
+ *
+ * The same config shape is also used by {@link createAuth().context}.
  *
  * @typeParam TResolve - Extra fields returned from `resolve()` and merged into
  *   the resulting `ctx.auth` object.
+ *
+ * @example
+ * ```ts
+ * const authContext = await auth.context(ctx, {
+ *   resolve: async (_ctx, user, authState) => ({
+ *     email: user.email,
+ *     canWrite: authState.grants.includes("posts.write"),
+ *   }),
+ * });
+ * ```
  */
-export type AuthCtxConfig<
+export type AuthContextConfig<
   TResolve extends Record<string, unknown> = Record<string, never>,
 > = {
-  /** Allow unauthenticated callers and return `userId: null` / `user: null`. */
+  /**
+   * Allow unauthenticated callers and return a null-shaped auth object instead
+   * of throwing `NOT_SIGNED_IN`.
+   */
   optional?: boolean;
   /**
    * Attach additional derived fields to the auth context after the base auth
    * context is resolved.
+   *
+   * This callback runs only when a user is authenticated.
    */
   resolve?: (
     ctx: any,
@@ -720,7 +804,7 @@ export type AuthCtxConfig<
     auth: AuthContext,
   ) => Promise<TResolve> | TResolve;
   /**
-   * Override or wrap the base auth resolution used by {@link AuthCtx}.
+   * Override or wrap the base auth resolution used by {@link createAuth().ctx}.
    *
    * Return `undefined` to fall back to the built-in resolver,
    * `null` for an explicit unauthenticated state, or an
@@ -730,12 +814,12 @@ export type AuthCtxConfig<
    * Convex auth tables.
    *
    * @param ctx - The Convex function context.
-   * @param fallback - The built-in auth resolver used by {@link AuthCtx}.
+   * @param fallback - The built-in auth resolver used by {@link createAuth().ctx}.
    * @returns Resolved auth state, `null`, or `undefined` to use the fallback.
    *
    * @example
    * ```ts
-   * const authCtx = AuthCtx(auth, {
+   * const authCtx = auth.ctx({
    *   authResolve: async (ctx, fallback) => {
    *     const injected = getInjectedAuth(ctx);
    *     return injected ?? (await fallback());
@@ -756,7 +840,6 @@ export type AuthCtxConfig<
  * The enriched `ctx.auth` will have `userId: null`, `user: null`,
  * `groupId: null`, `role: null`, and `grants: []` for unauthenticated callers.
  *
- * @param auth - The auth API object returned by {@link createAuth}.
  * @param config - Configuration with `optional: true` and an optional
  *   `resolve` callback for attaching extra fields to the auth context.
  * @returns An object with `args` and `input` compatible with Convex
@@ -764,39 +847,21 @@ export type AuthCtxConfig<
  *
  * @example
  * ```ts
- * const authCtx = AuthCtx(auth, {
- *   optional: true,
- *   resolve: async (_ctx, user) => ({ plan: user?.extend?.plan ?? null }),
- * });
- * ```
+    * const authCtx = auth.ctx({
+    *   optional: true,
+    *   resolve: async (_ctx, user) => ({ plan: user.extend?.plan ?? null }),
+    * });
+    * ```
  *
  * @see {@link createAuth}
  */
-export function AuthCtx<
-  TResolve extends Record<string, unknown> = Record<string, never>,
->(
-  auth: AuthLike,
-  config: AuthCtxConfig<TResolve> & { optional: true },
-): {
-  args: {};
-  input: (
-    ctx: any,
-    _args: any,
-    _extra?: any,
-  ) => Promise<{
-    ctx: {
-      auth: OptionalAuthCtxState & TResolve;
-    };
-    args: {};
-  }>;
-};
+
 /**
  * Create a context enrichment for `customQuery` / `customMutation` — required auth (default).
  *
  * When `optional` is omitted or `false`, unauthenticated requests throw a
  * structured `ConvexError` before your handler runs.
  *
- * @param auth - The auth API object returned by {@link createAuth}.
  * @param config - Optional configuration with a `resolve` callback
  *   for attaching extra fields to the auth context.
  * @returns An object with `args` and `input` compatible with Convex
@@ -804,62 +869,33 @@ export function AuthCtx<
  *
  * @example
  * ```ts
- * const authCtx = AuthCtx(auth, {
- *   resolve: async (_ctx, user) => ({ email: user.email }),
- * });
- * ```
+    * const authCtx = auth.ctx({
+    *   resolve: async (_ctx, user) => ({ email: user.email }),
+    * });
+    * ```
  *
  * @see {@link createAuth}
  */
-export function AuthCtx<
-  TResolve extends Record<string, unknown> = Record<string, never>,
->(
+function createAuthContextCustomization(
   auth: AuthLike,
-  config?: AuthCtxConfig<TResolve>,
-): {
-  args: {};
-  input: (
-    ctx: any,
-    _args: any,
-    _extra?: any,
-  ) => Promise<{
-    ctx: {
-      auth: RequiredAuthCtxState & TResolve;
-    };
-    args: {};
-  }>;
-};
-// Implementation
-export function AuthCtx(auth: AuthLike, config?: AuthCtxConfig<any>) {
+  config?: AuthContextConfig<any>,
+) {
   return {
     args: {},
     input: async (ctx: any, _args: any, _extra?: any) => {
       const nativeAuth = ctx.auth;
       const getUserIdentity = nativeAuth.getUserIdentity.bind(nativeAuth);
-      const fallback = () => getAuthContext(auth, ctx);
-
-      const authOverride = config?.authResolve
-        ? await config.authResolve(ctx, fallback)
-        : undefined;
-      const resolved =
-        authOverride === undefined ? await fallback() : authOverride;
+      const resolved = await resolveConfiguredAuthContext(auth, ctx, config);
 
       if (resolved === null) {
         if (config?.optional !== true) {
-          throw Cv.error({
-            code: "NOT_SIGNED_IN",
-            message: "Authentication required.",
-          });
+          throw createNotSignedInError();
         }
         return {
           ctx: {
             auth: {
               getUserIdentity,
-              userId: null,
-              user: null,
-              groupId: null,
-              role: null,
-              grants: [],
+              ...createUnauthenticatedAuthContext(),
             },
           },
           args: {},
@@ -885,21 +921,21 @@ export function AuthCtx(auth: AuthLike, config?: AuthCtxConfig<any>) {
 }
 
 /**
- * Extract the resolved `auth` context type from an {@link AuthCtx} instance.
+ * Extract the resolved `auth` context type from an `auth.ctx()` customization.
  *
  * Use this to type function parameters or variables that receive the
- * enriched auth context produced by `AuthCtx`. The inferred type includes
+ * enriched auth context produced by `auth.ctx()`. The inferred type includes
  * `userId`, `user`, `groupId`, `role`, `grants`, `getUserIdentity`, and any
  * additional fields added by the `resolve` callback. This is the generic
  * utility for reusing the enriched auth shape without manually duplicating
  * conditional auth types.
  *
- * @typeParam T - An `AuthCtx` return value (must have an `input` method
+ * @typeParam T - An `auth.ctx()` return value (must have an `input` method
  *   that returns `{ ctx: { auth: ... } }`).
  *
  * @example
  * ```ts
- * const authCtx = AuthCtx(auth, {
+ * const authCtx = auth.ctx({
  *   resolve: async (ctx, user) => ({ orgId: user.orgId }),
  * });
  * type Auth = InferAuth<typeof authCtx>;

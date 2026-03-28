@@ -36,7 +36,7 @@ export const myGroups = authQuery({
 
 ## Raw HTTP fallback
 
-Most apps do not need `auth.user.id(...)`. Keep it for raw `httpAction`
+Most apps do not need `auth.http.context(...)`. Keep it for raw `httpAction`
 handlers that intentionally accept either a browser session or an API key in the
 same endpoint.
 
@@ -45,13 +45,17 @@ http.route({
   path: "/api/data",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const userId = await auth.user.id(ctx, request);
-    if (userId === null) {
+    const authContext = await auth.http.context(ctx, request, {
+      optional: true,
+    });
+    if (authContext.userId === null) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
       });
     }
-    const data = await ctx.runQuery(internal.data.forUser, { userId });
+    const data = await ctx.runQuery(internal.data.forUser, {
+      userId: authContext.userId,
+    });
     return Response.json(data);
   }),
 });
@@ -64,7 +68,7 @@ http.route({
 | Browser (password, email, passkey, OAuth) | `ctx.auth.userId` via `auth.ctx()`                   |
 | Enterprise SSO (OIDC/SAML)                | Same as browser - SSO completes as a session         |
 | Device flow (RFC 8628, CLI/TV)            | Same as browser - device poll returns session tokens |
-| API key (machine/automation)              | `ctx.key.userId` or `auth.user.id(ctx, request)`     |
+| API key (machine/automation)              | `ctx.key.userId` or `auth.http.context(ctx, request).userId` |
 
 ## Composing primitives
 
@@ -90,8 +94,7 @@ const apiHandler = auth.http.action(async (ctx) => {
 
 // Any HTTP action (session or API key)
 const flexHandler = httpAction(async (ctx, request) => {
-  const userId = await auth.user.id(ctx, request);
-  if (userId === null) throw new Error("Not signed in");
-  return Response.json(await getMyGroups(ctx, userId));
+  const authContext = await auth.http.context(ctx, request);
+  return Response.json(await getMyGroups(ctx, authContext.userId));
 });
 ```

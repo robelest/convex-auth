@@ -15,8 +15,7 @@ The `auth.user` namespace provides methods for managing users. All methods
 require a Convex context (`ctx`) as the first argument.
 
 In normal app code, prefer `auth.ctx()` / `ctx.auth.userId` for the current
-signed-in user. `auth.user.id(ctx, request?)` is a low-level helper for
-optional auth or raw HTTP handlers.
+signed-in user. Raw mixed-auth HTTP handlers should use `auth.http.context(...)`.
 
 The `ctx.auth` examples on this page assume you created auth-aware builders such
 as `authQuery`, `authMutation`, or `authAction` with `auth.ctx()` in
@@ -26,11 +25,10 @@ as `authQuery`, `authMutation`, or `authAction` with `auth.ctx()` in
 
 | Method           | Signature                            | Returns               | Description                                                                                                                                                              |
 | ---------------- | ------------------------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `id`             | `(ctx, request?)`                    | `string \| null`      | Low-level identity resolver. Checks the session JWT first, then optionally falls back to `Authorization: Bearer sk_...` on raw HTTP requests.                          |
 | `get`            | `(ctx, userId)`                      | `Doc<"User"> \| null` | Fetches a user document by ID.                                                                                                                                           |
 | `list`           | `(ctx, { where?, limit?, cursor? })` | Paginated user list   | Lists users with optional filtering and pagination.                                                                                                                      |
 | `update`         | `(ctx, userId, data)`                | `{ userId }`          | Updates fields on a user document.                                                                                                                                       |
-| `viewer`         | `(ctx)`                              | `Doc<"User"> \| null` | Returns the current user's full document, or `null` when unauthenticated.                                                                                                |
+| `viewer`         | `(ctx)`                              | `Doc<"User"> \| null` | Returns the current session user's full document, or `null` when unauthenticated.                                                                                        |
 | `delete`         | `(ctx, userId, { cascade? })`        | `{ userId }`          | Deletes a user. With `cascade: true`, also deletes all linked sessions, accounts, memberships, and keys. Throws `ConvexError` with code `INVALID_PARAMETERS` on failure. |
 | `setActiveGroup` | `(ctx, { userId, groupId })`         | `{ userId, groupId }` | Sets the user's active group.                                                                                                                                            |
 | `getActiveGroup` | `(ctx, { userId })`                  | `Id<"Group"> \| null` | Returns the user's active group ID, or `null` if none is set.                                                                                                            |
@@ -74,11 +72,11 @@ await auth.user.setActiveGroup(ctx, {
 const activeGroup = await auth.user.getActiveGroup(ctx, { userId });
 ```
 
-### Advanced: raw HTTP auth fallback
+### Advanced: raw HTTP mixed auth
 
 ```ts
-const userId = await auth.user.id(ctx, request);
-if (userId === null) {
+const authContext = await auth.http.context(ctx, request, { optional: true });
+if (authContext.userId === null) {
   return new Response("Unauthorized", { status: 401 });
 }
 ```

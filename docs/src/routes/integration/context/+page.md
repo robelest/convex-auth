@@ -12,9 +12,9 @@ description:
 
 # Context Enrichment
 
-Eliminate per-handler auth boilerplate with `AuthCtx`. Set up once, and every
-query/mutation gets `ctx.auth.userId`, `ctx.auth.groupId`, `ctx.auth.role`, and
-`ctx.auth.grants` automatically.
+Eliminate per-handler auth boilerplate with `auth.ctx()`. Set up once, and
+every query/mutation gets `ctx.auth.userId`, `ctx.auth.groupId`,
+`ctx.auth.role`, and `ctx.auth.grants` automatically.
 
 Requires [`convex-helpers`](https://github.com/get-convex/convex-helpers).
 
@@ -33,10 +33,9 @@ import {
   query as rawQuery,
   mutation as rawMutation,
 } from "../_generated/server";
-import { AuthCtx } from "@robelest/convex-auth/component";
 import { auth } from "../auth";
 
-const authCtx = AuthCtx(auth);
+const authCtx = auth.ctx();
 
 export const query = customQuery(rawQuery, authCtx);
 export const mutation = customMutation(rawMutation, authCtx);
@@ -70,7 +69,7 @@ The canonical `convex-auth` integration still only needs:
 ```ts
 export const publicQuery = customQuery(
   rawQuery,
-  AuthCtx(auth, { optional: true }),
+  auth.ctx({ optional: true }),
 );
 // ctx.auth.userId is null and ctx.auth.grants is [] when unauthenticated
 ```
@@ -78,7 +77,7 @@ export const publicQuery = customQuery(
 ## Add app-specific fields
 
 ```ts
-const authCtx = AuthCtx(auth, {
+const authCtx = auth.ctx({
   resolve: async (_ctx, user, authState) => {
     return {
       activeGroupId: authState.groupId ?? user?.extend?.lastActiveGroup ?? null,
@@ -104,13 +103,13 @@ const authCtx = AuthCtx(auth, {
 
 ## Testing with `convex-test`
 
-You can test `AuthCtx`-based functions with
+You can test `auth.ctx()`-based functions with
 [`convex-test`](https://docs.convex.dev/testing) without hitting component
 tables.
 
 ### Why this needs a hook
 
-`AuthCtx` captures the `auth` object at module load time and resolves auth from
+`auth.ctx()` captures the `auth` object at module load time and resolves auth from
 the component's `User`, `Member`, and group state tables. In `convex-test`,
 those component tables are empty, so resolution always returns an
 unauthenticated state even if you mock the auth module import.
@@ -145,7 +144,6 @@ import {
   query as rawQuery,
   mutation as rawMutation,
 } from "../_generated/server";
-import { AuthCtx } from "@robelest/convex-auth/component";
 import type { AuthContext } from "@robelest/convex-auth/component";
 import { auth } from "../auth";
 
@@ -155,7 +153,7 @@ export function setTestAuth(fn: typeof _authResolve) {
   _authResolve = fn;
 }
 
-const authCtx = AuthCtx(auth, {
+const authCtx = auth.ctx({
   authResolve: async (ctx, fallback) => {
     const resolved = await _authResolve?.(ctx);
     return resolved === undefined ? fallback() : resolved;
@@ -249,7 +247,7 @@ setTestAuth(() => null);
 top:
 
 ```ts
-const authCtx = AuthCtx(auth, {
+const authCtx = auth.ctx({
   authResolve: async (ctx, fallback) => {
     const resolved = await _authResolve?.(ctx);
     return resolved === undefined ? fallback() : resolved;

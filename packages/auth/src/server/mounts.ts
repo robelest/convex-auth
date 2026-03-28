@@ -127,11 +127,11 @@ type MountedEnterpriseTarget = {
   domain?: string;
 };
 
-function requireSignedInUser(auth: Pick<AuthApi, "user">) {
+function requireSignedInUser(auth: Pick<AuthApi, "context">) {
   return async (ctx: {
     auth: import("convex/server").Auth;
   }): Promise<string | null> => {
-    return await auth.user.id(ctx as never);
+    return (await auth.context(ctx as never, { optional: true })).userId;
   };
 }
 
@@ -198,7 +198,7 @@ async function resolveMountedEnterpriseTarget(
 }
 
 function createMountedAdminAuthorizer(
-  auth: Pick<AuthApi, "sso" | "user">,
+  auth: Pick<AuthApi, "context" | "sso">,
   options?: MountedEnterpriseOptions,
 ) {
   const requireUserId = requireSignedInUser(auth);
@@ -269,7 +269,10 @@ function createMountedAdminAuthorizer(
 export function sso<
   TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
 >(
-  auth: Pick<AuthApi<TAuthorization>, "group" | "member" | "sso" | "user">,
+  auth: Pick<
+    AuthApi<TAuthorization>,
+    "context" | "group" | "member" | "sso"
+  >,
   options?: MountedEnterpriseOptions<AuthRoleId<TAuthorization>>,
 ) {
   const authorize = createMountedAdminAuthorizer(auth, options);
@@ -787,7 +790,7 @@ export function sso<
 export function scim<
   TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
 >(
-  auth: Pick<AuthApi<TAuthorization>, "scim" | "sso" | "user">,
+  auth: Pick<AuthApi<TAuthorization>, "context" | "scim" | "sso">,
   options?: MountedEnterpriseOptions<AuthRoleId<TAuthorization>>,
 ) {
   const authorize = createMountedAdminAuthorizer(auth, options);
@@ -872,7 +875,7 @@ export function enterprise<
 >(
   auth: Pick<
     AuthApi<TAuthorization>,
-    "group" | "member" | "scim" | "sso" | "user"
+    "context" | "group" | "member" | "scim" | "sso"
   >,
   options: EnterpriseMountOptions<AuthRoleId<TAuthorization>>,
 ) {

@@ -3,6 +3,7 @@ import { Auth, GenericActionCtx, GenericDataModel } from "convex/server";
 import { GenericId } from "convex/values";
 
 import { materializeProvider } from "./config";
+import { getSessionUserId } from "./context";
 import {
   buildScopeChecker,
   checkKeyRateLimit,
@@ -181,62 +182,7 @@ export function createCoreDomains(deps: CoreDeps) {
 
   const user = {
     /**
-     * Resolve the current user's ID.
-     *
-     * Checks two sources in order:
-     *
-     * 1. **Session JWT** — extracts the `userId` from `ctx.auth.getUserIdentity()`.
-     *    This is the standard path for browser sessions and costs zero DB reads.
-     * 2. **API key** — if a `request` is provided and contains a
-     *    `Bearer sk_*` Authorization header, the key is verified against the
-     *    database and the owning `userId` is returned.
-     *
-     * Returns `null` when neither source produces a valid identity.
-     *
-     * @param ctx - Convex query, mutation, or action context.
-     * @param request - Optional incoming `Request` to check for API key auth.
-     *   Only needed in HTTP actions or server-side handlers.
-     * @returns The user's document ID, or `null` if unauthenticated.
-     *
-     * @example Session auth (queries, mutations)
-     * ```ts
-     * const userId = await auth.user.id(ctx);
-     * if (!userId) return { ok: false, code: "NOT_SIGNED_IN" };
-     * ```
-     *
-     * @example API key auth (HTTP actions)
-     * ```ts
-     * const userId = await auth.user.id(ctx, request);
-     * ```
-     */
-    id: async (
-      ctx: { auth: Auth } & Partial<ComponentCtx>,
-      request?: Request,
-    ): Promise<string | null> => {
-      const identity = await ctx.auth.getUserIdentity();
-      if (identity !== null) {
-        const [userId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
-        return userId;
-      }
-      if (request !== undefined && "runMutation" in ctx && ctx.runMutation) {
-        const authHeader = request.headers.get("Authorization");
-        if (authHeader?.startsWith("Bearer sk_")) {
-          const rawKey = authHeader.slice(7);
-          try {
-            const result = await getAuth().key.verify(
-              ctx as ComponentCtx,
-              rawKey,
-            );
-            return result.userId;
-          } catch {
-            return null;
-          }
-        }
-      }
-      return null;
-    },
-    /**
-     * Fetch a user document by ID.
+      * Fetch a user document by ID.
      *
      * Results are **cached per-execution** — calling `auth.user.get(ctx, id)`
      * multiple times within the same query or mutation handler for the same
@@ -297,9 +243,8 @@ export function createCoreDomains(deps: CoreDeps) {
       return await ctx.runQuery(config.component.public.userList, opts);
     },
     /**
-     * Convenience method: resolve the current user ID from the session
-     * and fetch their full document in one call. Returns `null` if
-     * unauthenticated. Equivalent to `auth.user.id(ctx)` then `auth.user.get(ctx, id)`.
+      * Convenience method: resolve the current session user and fetch their
+      * full document in one call. Returns `null` if unauthenticated.
      *
      * @param ctx - Convex query or mutation context with `auth` for session lookup.
      * @returns The authenticated user's document, or `null` if unauthenticated.
@@ -312,7 +257,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     viewer: async (ctx: ComponentAuthReadCtx) => {
-      const userId = await user.id(ctx);
+      const userId = await getSessionUserId(ctx);
       if (userId === null) return null;
       return await user.get(ctx, userId);
     },

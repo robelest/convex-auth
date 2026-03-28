@@ -224,7 +224,7 @@ This is why authorization should be keyed on `userId`, not provider account IDs.
   and `ctx.auth.user`
 - **Need a boolean access check?** Use `auth.member.inspect(...)`
 - **Need to enforce permissions?** Use `auth.member.require(...)`
-- **Need optional auth?** Use `AuthCtx(auth, { optional: true })`
+- **Need optional auth?** Use `auth.ctx({ optional: true })`
 
 ## Recommended pattern
 

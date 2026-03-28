@@ -135,8 +135,9 @@ Every auth path resolves to the same `userId`:
 | Browser (password, OAuth, passkey) | `ctx.auth.userId` via `auth.ctx()`                   |
 | Enterprise SSO (OIDC / SAML)       | Same as browser - SSO completes as a session         |
 | Device flow (CLI / IoT)            | Same as browser - device poll returns session tokens |
-| API key (machine / automation)     | `ctx.key.userId` or `auth.user.id(ctx, request)`     |
+| API key (machine / automation)     | `ctx.key.userId` or `auth.http.context(ctx, request).userId` |
 
 The `userId` is the single shared anchor — server logic works regardless of how
 the caller authenticated. In app code, prefer `auth.ctx()` and `ctx.auth.userId`.
-Keep `auth.user.id(ctx, request?)` for advanced raw HTTP handlers.
+Use `auth.http.context(ctx, request)` for advanced raw HTTP handlers that accept
+either a session or an API key.
