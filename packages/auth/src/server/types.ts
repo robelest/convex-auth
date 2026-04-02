@@ -197,7 +197,8 @@ export type ConvexAuthConfig = {
      *
      * Convex Auth performs redirect only during OAuth sign-in. By default,
      * it redirects back to the URL specified via the `SITE_URL` environment
-     * variable. Similarly magic links link to `SITE_URL`.
+     * variable. Similarly magic links link to `SITE_URL`. Additional frontend
+     * origins can be listed in `SECONDARY_URL` for flows like passkeys.
      *
      * You can customize that behavior by providing a `redirectTo` param
      * to the `signIn` function:
@@ -646,7 +647,7 @@ export interface PasskeyProviderConfig {
     rpName?: string;
     /** Relying Party ID (hostname). Defaults to SITE_URL hostname. */
     rpId?: string;
-    /** Allowed origins for credential verification. Defaults to SITE_URL. */
+    /** Allowed origins for credential verification. Defaults to SITE_URL plus SECONDARY_URL. */
     origin?: string | string[];
     /**
      * Attestation conveyance preference. Defaults to "none".

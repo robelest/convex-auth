@@ -64,6 +64,7 @@ import {
   mutatePasskeyUpdateCounter,
   mutateVerifierDelete,
 } from "./types";
+import { siteUrlsFromEnv } from "./utils";
 
 type EnrichedActionCtx = GenericActionCtxWithAuthConfig<AuthDataModel>;
 
@@ -93,7 +94,9 @@ interface RpOptions {
 const resolveRpOptionsFx = (
   provider: PasskeyProviderConfig,
 ): FxType<RpOptions, ConvexError<any>> => {
-  const siteUrl = process.env.SITE_URL;
+  const configuredSiteUrls =
+    process.env.SITE_URL === undefined ? null : siteUrlsFromEnv();
+  const siteUrl = configuredSiteUrls?.primaryUrl;
   const hasSiteUrl = siteUrl !== undefined && siteUrl !== "";
   const hasRpId = provider.options.rpId !== undefined;
 
@@ -111,10 +114,11 @@ const resolveRpOptionsFx = (
     ),
     Fx.map((siteUrl) => {
       const siteHostname = siteUrl ? new URL(siteUrl).hostname : undefined;
+      const defaultOrigin = configuredSiteUrls?.allowedUrls ?? siteUrl;
       return {
         rpName: provider.options.rpName ?? siteHostname ?? "localhost",
         rpId: provider.options.rpId ?? siteHostname ?? "localhost",
-        origin: provider.options.origin ?? siteUrl ?? "http://localhost",
+        origin: provider.options.origin ?? defaultOrigin ?? "http://localhost",
         attestation: provider.options.attestation ?? "none",
         userVerification: provider.options.userVerification ?? "required",
         residentKey: provider.options.residentKey ?? "preferred",

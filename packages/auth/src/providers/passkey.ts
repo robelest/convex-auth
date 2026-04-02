@@ -20,7 +20,7 @@ export interface PasskeyConfig {
   rpName?: string;
   /** Relying Party ID (hostname). Defaults to SITE_URL hostname. */
   rpId?: string;
-  /** Allowed origins for credential verification. Defaults to SITE_URL. */
+  /** Allowed origins for credential verification. Defaults to SITE_URL plus SECONDARY_URL. */
   origin?: string | string[];
   /** Attestation conveyance preference. Defaults to "none". */
   attestation?: "none" | "direct";

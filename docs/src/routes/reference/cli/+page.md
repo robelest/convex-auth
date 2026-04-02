@@ -28,6 +28,7 @@ for explicit or self-hosted targets.
 | Option                     | Description                                               |
 | -------------------------- | --------------------------------------------------------- |
 | `--site-url <url>`         | Value for `SITE_URL`; avoids interactive prompt           |
+| `--secondary-url <urls>`   | Comma-separated value for `SECONDARY_URL`                 |
 | `--prod`                   | Target production deployment                              |
 | `--preview-name <name>`    | Target preview deployment                                 |
 | `--deployment-name <name>` | Target specific named deployment                          |
@@ -49,6 +50,12 @@ import { auth, authorized } from "../auth";
 export const { createConnection, configureScim } = enterprise(auth, {
   authorized,
 });
+```
+
+Example:
+
+```bash
+pnpx @robelest/convex-auth --site-url "https://app.example.com" --secondary-url "http://localhost:3000,http://localhost:5173"
 ```
 
 Then call the exported functions with normal Convex hooks:

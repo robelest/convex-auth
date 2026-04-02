@@ -105,6 +105,10 @@ program
     "Your frontend app URL (e.g. 'http://localhost:5173' for dev, 'https://myapp.com' for prod)",
   )
   .option(
+    "--secondary-url <urls>",
+    "Comma-separated additional frontend URLs allowed to share the same auth instance",
+  )
+  .option(
     "--variables <json>",
     "Configure additional variables for interactive configuration.",
   )
@@ -145,7 +149,7 @@ program
     };
 
     // Step 1: Configure SITE_URL
-    await configureSiteUrl(config, options.siteUrl);
+    await configureSiteUrl(config, options.siteUrl, options.secondaryUrl);
 
     // Step 2: Configure private and public key
     await configureKeys(config);
@@ -201,7 +205,11 @@ type ProjectConfig = {
 // Step 1: SITE_URL
 // ---------------------------------------------------------------------------
 
-async function configureSiteUrl(config: ProjectConfig, forcedValue?: string) {
+async function configureSiteUrl(
+  config: ProjectConfig,
+  forcedValue?: string,
+  forcedSecondaryValue?: string,
+) {
   logStep(config, "Configure SITE_URL");
   if (config.isExpo) {
     p.log.info("React Native projects don't require a SITE_URL.");
@@ -235,6 +243,29 @@ async function configureSiteUrl(config: ProjectConfig, forcedValue?: string) {
     },
     forcedValue,
   });
+
+  await configureEnvVar(config, {
+    name: "SECONDARY_URL",
+    description:
+      "additional frontend URLs as a comma-separated list (optional)",
+    validate: (input) => {
+      if (input.trim() === "") {
+        return true;
+      }
+      for (const candidate of input.split(",").map((url) => url.trim())) {
+        if (candidate === "") {
+          continue;
+        }
+        try {
+          new URL(candidate);
+        } catch {
+          return "Each URL must start with http:// or https://";
+        }
+      }
+      return true;
+    },
+    forcedValue: forcedSecondaryValue,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -255,6 +286,9 @@ async function configureEnvVar(
     variable.forcedValue &&
     (variable.validate ? variable.validate(variable.forcedValue) : true)
   ) {
+    if (variable.forcedValue.trim() === "") {
+      return;
+    }
     await setEnvVar(config, variable.name, variable.forcedValue);
     return;
   }
@@ -272,6 +306,9 @@ async function configureEnvVar(
     default: variable.default,
     validate: variable.validate,
   });
+  if (chosenValue.trim() === "") {
+    return;
+  }
   await setEnvVar(config, variable.name, chosenValue);
 }
 

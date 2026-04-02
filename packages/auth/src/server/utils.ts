@@ -29,6 +29,27 @@ export function requireEnv(name: string) {
 }
 
 /** @internal */
+export function normalizeUrl(url: string) {
+  return url.replace(/\/$/, "");
+}
+
+/** @internal */
+export function siteUrlsFromEnv() {
+  const primaryUrl = normalizeUrl(requireEnv("SITE_URL"));
+  const secondary = process.env.SECONDARY_URL;
+  const secondaryUrls =
+    secondary
+      ?.split(",")
+      .map((url) => url.trim())
+      .filter((url) => url.length > 0)
+      .map(normalizeUrl) ?? [];
+  return {
+    primaryUrl,
+    allowedUrls: [...new Set([primaryUrl, ...secondaryUrls])],
+  };
+}
+
+/** @internal */
 export function isLocalHost(host?: string) {
   if (host === undefined) {
     return false;
