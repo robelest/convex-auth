@@ -16,7 +16,7 @@ description: Required and optional environment variables for convex-auth.
 | ---------------------------- | ------------------------------------------- |
 | `JWT_PRIVATE_KEY`            | Signs session JWTs                          |
 | `JWKS`                       | JSON Web Key Set for verification           |
-| `AUTH_SECRET_ENCRYPTION_KEY` | Encrypts stored enterprise secrets          |
+| `AUTH_SECRET_ENCRYPTION_KEY` | Encrypts stored group SSO secrets           |
 | `SITE_URL`                   | Frontend URL for OAuth/magic link redirects |
 
 These are set automatically by the CLI setup wizard.
@@ -34,6 +34,24 @@ These are set automatically by the CLI setup wizard.
 | `AUTH_<PROVIDER>_ID`     | `AUTH_GITHUB_ID`     |
 | `AUTH_<PROVIDER>_SECRET` | `AUTH_GITHUB_SECRET` |
 
+### OAuth provider env
+
+| Provider  | Required variables                                                                   | Optional variables      |
+| --------- | ------------------------------------------------------------------------------------ | ----------------------- |
+| Google    | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`                                               | -                       |
+| GitHub    | `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`                                               | -                       |
+| Apple     | `AUTH_APPLE_ID`, `AUTH_APPLE_TEAM_ID`, `AUTH_APPLE_KEY_ID`, `AUTH_APPLE_PRIVATE_KEY` | -                       |
+| Microsoft | `AUTH_MICROSOFT_TENANT_ID`, `AUTH_MICROSOFT_ID`                                      | `AUTH_MICROSOFT_SECRET` |
+
+OAuth provider callbacks default to:
+
+```text
+${CONVEX_SITE_URL}/api/auth/callback/<provider>
+```
+
+You only need to pass `redirectUri` in provider config when you want to override
+that default.
+
 ## Optional
 
 | Variable                            | Purpose                                                                   | Default           |
@@ -47,7 +65,7 @@ These are set automatically by the CLI setup wizard.
 default redirects. Use `SECONDARY_URL` to allow additional localhost or hosted
 frontend origins to share the same auth instance:
 
-```env
+```bash
 SITE_URL=https://app.example.com
 SECONDARY_URL=http://localhost:3000,http://localhost:5173,https://staging.example.com
 ```

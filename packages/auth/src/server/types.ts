@@ -340,21 +340,9 @@ export type ConvexAuthConfig = {
 /**
  * Union of all supported auth provider config types.
  *
- * Includes Arctic-based OAuth providers (via the `OAuth()` factory),
- * plus library-native providers: credentials, email, phone, passkey
- * (WebAuthn), and TOTP (2FA). Each can be passed as a config object
- * or a factory function.
+ * Includes materialized provider configs plus optional config factories.
  */
 export type AuthProviderConfig =
-  | import("../providers/oauth").OAuthProviderInstance
-  | import("../providers/password").Password
-  | import("../providers/passkey").Passkey
-  | import("../providers/totp").Totp
-  | import("../providers/anonymous").Anonymous
-  | import("../providers/device").Device
-  | import("../providers/sso").SSO
-  | import("../providers/email").Email
-  | import("../providers/phone").Phone
   | OAuthMaterializedConfig
   | ConvexCredentialsConfig
   | ((...args: any) => ConvexCredentialsConfig)
@@ -372,7 +360,7 @@ export type AuthProviderConfig =
 
 /**
  * Minimal config stored for the SSO provider at runtime.
- * No options — enterprise configuration is entirely per-tenant runtime state.
+ * No options — connection configuration is entirely per-tenant runtime state.
  */
 export interface SSOProviderConfig {
   id: string;
@@ -380,12 +368,12 @@ export interface SSOProviderConfig {
 }
 
 /**
- * Account linking strategy for enterprise SSO sign-in.
+ * Account linking strategy for group SSO sign-in.
  *
  * - `"verifiedEmail"` — link accounts when the IdP-provided email matches a verified email on an existing user.
  * - `"none"` — never auto-link; always create a new account.
  */
-export type EnterpriseAccountLinkingPolicy = "verifiedEmail" | "none";
+export type GroupConnectionAccountLinkingPolicy = "verifiedEmail" | "none";
 
 /**
  * Policy for reusing existing users during SCIM provisioning.
@@ -393,16 +381,16 @@ export type EnterpriseAccountLinkingPolicy = "verifiedEmail" | "none";
  * - `"externalId"` — match by the SCIM `externalId` to reuse a previously provisioned user.
  * - `"none"` — always create a new user for each SCIM provision request.
  */
-export type EnterpriseScimReuseUserPolicy = "externalId" | "none";
+export type GroupConnectionScimReuseUserPolicy = "externalId" | "none";
 
 /**
- * Just-in-time provisioning mode for enterprise SSO.
+ * Just-in-time provisioning mode for group SSO.
  *
  * - `"off"` — no JIT provisioning; users must be pre-provisioned.
  * - `"createUser"` — create a user record on first SSO sign-in.
- * - `"createUserAndMembership"` — create a user and add them to the enterprise group on first SSO sign-in.
+ * - `"createUserAndMembership"` — create a user and add them to the group on first SSO sign-in.
  */
-export type EnterpriseJitProvisioningMode =
+export type GroupConnectionJitProvisioningMode =
   | "off"
   | "createUser"
   | "createUserAndMembership";
@@ -413,62 +401,62 @@ export type EnterpriseJitProvisioningMode =
  * - `"soft"` — mark the user as inactive but preserve the record.
  * - `"hard"` — permanently delete the user and associated data.
  */
-export type EnterpriseDeprovisionMode = "soft" | "hard";
+export type GroupConnectionDeprovisionMode = "soft" | "hard";
 
 /**
- * Effective enterprise policy document stored for an SSO/SCIM tenant.
+ * Effective group policy document stored for an SSO/SCIM tenant.
  *
  * Controls account linking, JIT provisioning, SCIM reuse behavior,
  * deprovisioning, and any app-defined extension metadata.
  *
- * @see {@link EnterprisePolicyPatch}
+ * @see {@link GroupConnectionPolicyPatch}
  */
-export interface EnterprisePolicy {
+export interface GroupConnectionPolicy {
   version: 1;
   identity: {
     accountLinking: {
-      oidc: EnterpriseAccountLinkingPolicy;
-      saml: EnterpriseAccountLinkingPolicy;
+      oidc: GroupConnectionAccountLinkingPolicy;
+      saml: GroupConnectionAccountLinkingPolicy;
     };
   };
   provisioning: {
     scimReuse: {
-      user: EnterpriseScimReuseUserPolicy;
+      user: GroupConnectionScimReuseUserPolicy;
     };
     jit: {
-      mode: EnterpriseJitProvisioningMode;
+      mode: GroupConnectionJitProvisioningMode;
       defaultRoleIds: string[];
     };
     deprovision: {
-      mode: EnterpriseDeprovisionMode;
+      mode: GroupConnectionDeprovisionMode;
     };
   };
   extend?: Record<string, unknown>;
 }
 
 /**
- * Partial update payload for {@link EnterprisePolicy}.
+ * Partial update payload for {@link GroupConnectionPolicy}.
  *
- * Use this when patching only selected enterprise policy sections without
+ * Use this when patching only selected group policy sections without
  * replacing the entire stored policy document.
  */
-export interface EnterprisePolicyPatch {
+export interface GroupConnectionPolicyPatch {
   identity?: {
     accountLinking?: {
-      oidc?: EnterpriseAccountLinkingPolicy;
-      saml?: EnterpriseAccountLinkingPolicy;
+      oidc?: GroupConnectionAccountLinkingPolicy;
+      saml?: GroupConnectionAccountLinkingPolicy;
     };
   };
   provisioning?: {
     scimReuse?: {
-      user?: EnterpriseScimReuseUserPolicy;
+      user?: GroupConnectionScimReuseUserPolicy;
     };
     jit?: {
-      mode?: EnterpriseJitProvisioningMode;
+      mode?: GroupConnectionJitProvisioningMode;
       defaultRoleIds?: string[];
     };
     deprovision?: {
-      mode?: EnterpriseDeprovisionMode;
+      mode?: GroupConnectionDeprovisionMode;
     };
   };
   extend?: Record<string, unknown>;
@@ -709,7 +697,7 @@ export interface TotpProviderConfig {
 }
 
 // ============================================================================
-// OAuth types (Arctic-based)
+// OAuth types
 // ============================================================================
 
 /**
@@ -727,10 +715,40 @@ export interface OAuthProfile {
 }
 
 /**
+ * Stable OAuth token shape exposed to provider callbacks.
+ *
+ * This contract is owned by convex-auth so users are insulated from changes
+ * to the underlying OAuth implementation.
+ */
+export interface OAuthTokens {
+  accessToken?: string;
+  refreshToken?: string;
+  idToken?: string;
+  accessTokenExpiresAt?: Date;
+  refreshTokenExpiresAt?: Date;
+  scopes?: string[];
+  raw?: unknown;
+}
+
+/** @internal */
+export interface OAuthRuntimeClient {
+  readonly pkce: "required" | "optional" | "never";
+  createAuthorizationURL(args: {
+    state: string;
+    codeVerifier?: string;
+    scopes: string[];
+    nonce?: string;
+  }): URL;
+  validateAuthorizationCode(args: {
+    code: string;
+    codeVerifier?: string;
+  }): Promise<OAuthTokens>;
+}
+
+/**
  * Internal config shape for an OAuth provider after normalization.
  *
- * This is what the OAuth flow code receives — it maps to the user-facing
- * `OAuthConfig` from `@robelest/convex-auth/providers`.
+ * This is what the OAuth flow code receives after provider normalization.
  *
  * @internal
  */
@@ -738,7 +756,16 @@ export interface OAuthProviderConfig {
   /** OAuth scopes to request. */
   scopes?: string[];
   /** User-provided profile extraction callback. */
-  profile?: (tokens: import("arctic").OAuth2Tokens) => Promise<OAuthProfile>;
+  profile?: (tokens: OAuthTokens) => Promise<OAuthProfile>;
+  /** Whether to issue and validate a nonce cookie. */
+  nonce?: boolean;
+  /** Optional token validation hook after code exchange. */
+  validateTokens?: (
+    tokens: OAuthTokens,
+    ctx: { nonce?: string },
+  ) => Promise<void>;
+  /** Account-linking policy for OAuth identities. */
+  accountLinking?: "verifiedEmail" | "none";
 }
 
 /** Credentials identifying a provider account (e.g. email + hashed password). */
@@ -934,10 +961,7 @@ export interface SAMLAttributeMapping {
 }
 
 /**
- * Materialized OAuth provider config (Arctic-based).
- *
- * Carries the Arctic provider instance along with scopes and profile config.
- * Produced by materializing an `OAuthProviderInstance` during `configDefaults`.
+ * Materialized OAuth provider config.
  */
 export interface OAuthMaterializedConfig {
   /**
@@ -951,10 +975,10 @@ export interface OAuthMaterializedConfig {
    */
   readonly type: "oauth";
   /**
-   * The Arctic provider instance.
+   * The runtime client used for the authorization code flow.
    * @readonly
    */
-  readonly provider: any;
+  readonly provider: OAuthRuntimeClient | null;
   /**
    * OAuth scopes to request.
    * @readonly
@@ -964,9 +988,14 @@ export interface OAuthMaterializedConfig {
    * User-provided profile extraction callback.
    * @readonly
    */
-  readonly profile?: (
-    tokens: import("arctic").OAuth2Tokens,
-  ) => Promise<OAuthProfile>;
+  readonly profile?: (tokens: OAuthTokens) => Promise<OAuthProfile>;
+  /** Whether to issue and verify a nonce cookie during the callback flow. */
+  readonly nonce?: boolean;
+  /** Optional token validation hook after code exchange. */
+  readonly validateTokens?: (
+    tokens: OAuthTokens,
+    ctx: { nonce?: string },
+  ) => Promise<void>;
   /**
    * Account-linking policy for OAuth identities. Defaults to verified email linking.
    * @readonly
@@ -1014,22 +1043,22 @@ export type AuthProviderMaterializedConfig =
   | SSOProviderConfig;
 
 /**
- * Resolves to `true` when the providers list includes `SSO`, otherwise `false`.
+ * Resolves to `true` when the providers list includes `sso()`, otherwise `false`.
  *
- * Used to make `auth.sso` conditionally present on the `createAuth`
- * return type — it only appears when `new SSO()` is in the providers array.
+ * Used to make `auth.group.sso` conditionally present on the `createAuth`
+ * return type — it only appears when `sso()` is in the providers array.
  */
 export type HasSSO<P extends AuthProviderConfig[]> =
-  import("../providers/sso").SSO extends P[number] ? true : false;
+  Extract<P[number], { type: "sso" }> extends never ? false : true;
 
 export type HasPasskeyProvider<P extends AuthProviderConfig[]> =
-  import("../providers/passkey").Passkey extends P[number] ? true : false;
+  Extract<P[number], { type: "passkey" }> extends never ? false : true;
 
 export type HasTotpProvider<P extends AuthProviderConfig[]> =
-  import("../providers/totp").Totp extends P[number] ? true : false;
+  Extract<P[number], { type: "totp" }> extends never ? false : true;
 
 export type HasDeviceProvider<P extends AuthProviderConfig[]> =
-  import("../providers/device").Device extends P[number] ? true : false;
+  Extract<P[number], { type: "device" }> extends never ? false : true;
 
 // ============================================================================
 // API Key types
@@ -1369,137 +1398,156 @@ export type AuthComponentApi = {
     deviceAuthorize: FunctionReference<"mutation", "internal", any, any>;
     deviceUpdateLastPolled: FunctionReference<"mutation", "internal", any, any>;
     deviceDelete: FunctionReference<"mutation", "internal", any, any>;
-    enterpriseCreate: FunctionReference<"mutation", "internal", any, any>;
-    enterpriseGet: FunctionReference<"query", "internal", any, any>;
-    enterpriseGetByGroup: FunctionReference<"query", "internal", any, any>;
-    enterpriseGetByDomain: FunctionReference<"query", "internal", any, any>;
-    enterpriseList: FunctionReference<"query", "internal", any, any>;
-    enterpriseUpdate: FunctionReference<"mutation", "internal", any, any>;
-    enterpriseDelete: FunctionReference<"mutation", "internal", any, any>;
-    enterpriseDomainAdd: FunctionReference<"mutation", "internal", any, any>;
-    enterpriseDomainList: FunctionReference<"query", "internal", any, any>;
-    enterpriseDomainDelete: FunctionReference<"mutation", "internal", any, any>;
-    enterpriseDomainVerificationGet: FunctionReference<
+    groupConnectionCreate: FunctionReference<"mutation", "internal", any, any>;
+    groupConnectionGet: FunctionReference<"query", "internal", any, any>;
+    groupConnectionGetByDomain: FunctionReference<
       "query",
       "internal",
       any,
       any
     >;
-    enterpriseDomainVerificationUpsert: FunctionReference<
+    groupConnectionList: FunctionReference<"query", "internal", any, any>;
+    groupConnectionUpdate: FunctionReference<"mutation", "internal", any, any>;
+    groupConnectionDelete: FunctionReference<"mutation", "internal", any, any>;
+    groupConnectionDomainAdd: FunctionReference<
       "mutation",
       "internal",
       any,
       any
     >;
-    enterpriseDomainVerificationDelete: FunctionReference<
+    groupConnectionDomainList: FunctionReference<"query", "internal", any, any>;
+    groupConnectionDomainDelete: FunctionReference<
       "mutation",
       "internal",
       any,
       any
     >;
-    enterpriseDomainVerify: FunctionReference<"mutation", "internal", any, any>;
-    enterpriseSecretUpsert: FunctionReference<"mutation", "internal", any, any>;
-    enterpriseSecretGet: FunctionReference<"query", "internal", any, any>;
-    enterpriseSecretDelete: FunctionReference<"mutation", "internal", any, any>;
-    enterpriseScimConfigUpsert: FunctionReference<
+    groupConnectionDomainVerificationGet: FunctionReference<
+      "query",
+      "internal",
+      any,
+      any
+    >;
+    groupConnectionDomainVerificationUpsert: FunctionReference<
       "mutation",
       "internal",
       any,
       any
     >;
-    enterpriseScimConfigGetByEnterprise: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
-    enterpriseScimConfigGetByTokenHash: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
-    enterpriseScimIdentityGet: FunctionReference<"query", "internal", any, any>;
-    enterpriseScimIdentityGetByUser: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
-    enterpriseScimIdentityGetByEnterpriseAndUser: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
-    enterpriseScimIdentityGetByMappedGroup: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
-    enterpriseScimIdentityListByEnterprise: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
-    enterpriseScimIdentityUpsert: FunctionReference<
+    groupConnectionDomainVerificationDelete: FunctionReference<
       "mutation",
       "internal",
       any,
       any
     >;
-    enterpriseScimIdentityDelete: FunctionReference<
+    groupConnectionDomainVerify: FunctionReference<
       "mutation",
       "internal",
       any,
       any
     >;
-    enterpriseAuditEventCreate: FunctionReference<
+    groupConnectionSecretUpsert: FunctionReference<
       "mutation",
       "internal",
       any,
       any
     >;
-    enterpriseAuditEventList: FunctionReference<"query", "internal", any, any>;
-    enterpriseWebhookEndpointCreate: FunctionReference<
+    groupConnectionSecretGet: FunctionReference<"query", "internal", any, any>;
+    groupConnectionSecretDelete: FunctionReference<
       "mutation",
       "internal",
       any,
       any
     >;
-    enterpriseWebhookEndpointList: FunctionReference<
+    groupConnectionScimConfigUpsert: FunctionReference<
+      "mutation",
+      "internal",
+      any,
+      any
+    >;
+    groupConnectionScimConfigGetByGroupConnection: FunctionReference<
       "query",
       "internal",
       any,
       any
     >;
-    enterpriseWebhookEndpointGet: FunctionReference<
+    groupConnectionScimConfigGetByTokenHash: FunctionReference<
       "query",
       "internal",
       any,
       any
     >;
-    enterpriseWebhookEndpointUpdate: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
-    enterpriseWebhookDeliveryEnqueue: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
-    enterpriseWebhookDeliveryListReady: FunctionReference<
+    groupConnectionScimIdentityGet: FunctionReference<
       "query",
       "internal",
       any,
       any
     >;
-    enterpriseWebhookDeliveryPatch: FunctionReference<
+    groupConnectionScimIdentityGetByUser: FunctionReference<
+      "query",
+      "internal",
+      any,
+      any
+    >;
+    groupConnectionScimIdentityGetByGroupConnectionAndUser: FunctionReference<
+      "query",
+      "internal",
+      any,
+      any
+    >;
+    groupConnectionScimIdentityGetByMappedGroup: FunctionReference<
+      "query",
+      "internal",
+      any,
+      any
+    >;
+    groupConnectionScimIdentityListByGroupConnection: FunctionReference<
+      "query",
+      "internal",
+      any,
+      any
+    >;
+    groupConnectionScimIdentityUpsert: FunctionReference<
+      "mutation",
+      "internal",
+      any,
+      any
+    >;
+    groupConnectionScimIdentityDelete: FunctionReference<
+      "mutation",
+      "internal",
+      any,
+      any
+    >;
+    groupAuditEventCreate: FunctionReference<"mutation", "internal", any, any>;
+    groupAuditEventList: FunctionReference<"query", "internal", any, any>;
+    groupWebhookEndpointCreate: FunctionReference<
+      "mutation",
+      "internal",
+      any,
+      any
+    >;
+    groupWebhookEndpointList: FunctionReference<"query", "internal", any, any>;
+    groupWebhookEndpointGet: FunctionReference<"query", "internal", any, any>;
+    groupWebhookEndpointUpdate: FunctionReference<
+      "mutation",
+      "internal",
+      any,
+      any
+    >;
+    groupWebhookDeliveryEnqueue: FunctionReference<
+      "mutation",
+      "internal",
+      any,
+      any
+    >;
+    groupWebhookDeliveryListReady: FunctionReference<
+      "query",
+      "internal",
+      any,
+      any
+    >;
+    groupWebhookDeliveryPatch: FunctionReference<
       "mutation",
       "internal",
       any,

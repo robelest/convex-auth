@@ -17,10 +17,10 @@ the user enters on a secondary device.
 ## Setup
 
 ```ts
-import { Device } from "@robelest/convex-auth/providers";
+import { device } from "@robelest/convex-auth/providers";
 
 createAuth(components.auth, {
-  providers: [new Device({ verificationUri: "https://myapp.com/device" })],
+  providers: [device({ verificationUri: "https://myapp.com/device" })],
 });
 ```
 

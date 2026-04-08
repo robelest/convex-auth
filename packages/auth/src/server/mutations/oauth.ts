@@ -6,13 +6,13 @@ import { Infer, v } from "convex/values";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
-import { createSyntheticOAuthMaterializedConfig } from "../enterprise/oidc";
-import { normalizeEnterprisePolicy } from "../enterprise/policy";
+import { createSyntheticOAuthMaterializedConfig } from "../sso/oidc";
+import { normalizeGroupConnectionPolicy } from "../sso/policy";
 import {
-  ENTERPRISE_OIDC_PROVIDER_PREFIX,
-  ENTERPRISE_SAML_PROVIDER_PREFIX,
-  isEnterpriseProviderId,
-} from "../enterprise/shared";
+  GROUP_OIDC_PROVIDER_PREFIX,
+  GROUP_SAML_PROVIDER_PREFIX,
+  isGroupProviderId,
+} from "../sso/shared";
 import { MutationCtx } from "../types";
 import type { AuthProviderMaterializedConfig } from "../types";
 import { upsertUserAndAccount } from "../users";
@@ -39,16 +39,16 @@ function normalizeAccountExtend(
     provider,
     providerAccountId,
   };
-  if (provider.startsWith(ENTERPRISE_OIDC_PROVIDER_PREFIX)) {
-    baseIdentity.type = "enterprise-oidc";
-    baseIdentity.enterpriseId = provider.slice(
-      ENTERPRISE_OIDC_PROVIDER_PREFIX.length,
+  if (provider.startsWith(GROUP_OIDC_PROVIDER_PREFIX)) {
+    baseIdentity.type = "group-connection-oidc";
+    baseIdentity.connectionId = provider.slice(
+      GROUP_OIDC_PROVIDER_PREFIX.length,
     );
   }
-  if (provider.startsWith(ENTERPRISE_SAML_PROVIDER_PREFIX)) {
-    baseIdentity.type = "enterprise-saml";
-    baseIdentity.enterpriseId = provider.slice(
-      ENTERPRISE_SAML_PROVIDER_PREFIX.length,
+  if (provider.startsWith(GROUP_SAML_PROVIDER_PREFIX)) {
+    baseIdentity.type = "group-connection-saml";
+    baseIdentity.connectionId = provider.slice(
+      GROUP_SAML_PROVIDER_PREFIX.length,
     );
   }
   const provided =
@@ -89,37 +89,45 @@ export function userOAuthImpl(
     const existingAccount = yield* Fx.promise(() =>
       db.accounts.get(provider, providerAccountId),
     );
-    const enterpriseId = provider.startsWith(ENTERPRISE_OIDC_PROVIDER_PREFIX)
-      ? provider.slice(ENTERPRISE_OIDC_PROVIDER_PREFIX.length)
-      : provider.startsWith(ENTERPRISE_SAML_PROVIDER_PREFIX)
-        ? provider.slice(ENTERPRISE_SAML_PROVIDER_PREFIX.length)
+    const connectionId = provider.startsWith(GROUP_OIDC_PROVIDER_PREFIX)
+      ? provider.slice(GROUP_OIDC_PROVIDER_PREFIX.length)
+      : provider.startsWith(GROUP_SAML_PROVIDER_PREFIX)
+        ? provider.slice(GROUP_SAML_PROVIDER_PREFIX.length)
         : null;
-    const enterprise =
-      enterpriseId !== null
+    const connection =
+      connectionId !== null
         ? yield* Fx.promise(() =>
-            ctx.runQuery(config.component.public.enterpriseGet, {
-              enterpriseId,
+            ctx.runQuery(config.component.public.groupConnectionGet, {
+              connectionId,
             }),
           )
         : null;
-    const enterprisePolicy = enterprise
-      ? normalizeEnterprisePolicy(enterprise.policy)
+    const group =
+      connection !== null
+        ? yield* Fx.promise(() =>
+            ctx.runQuery(config.component.public.groupGet, {
+              groupId: connection.groupId,
+            }),
+          )
+        : null;
+    const connectionPolicy = connection
+      ? normalizeGroupConnectionPolicy(group?.policy)
       : null;
-    const enterpriseProtocol = provider.startsWith(
-      ENTERPRISE_OIDC_PROVIDER_PREFIX,
+    const connectionProtocol = provider.startsWith(
+      GROUP_OIDC_PROVIDER_PREFIX,
     )
       ? "oidc"
-      : provider.startsWith(ENTERPRISE_SAML_PROVIDER_PREFIX)
+      : provider.startsWith(GROUP_SAML_PROVIDER_PREFIX)
         ? "saml"
         : null;
 
     const existingScimIdentity =
-      enterpriseId !== null &&
+      connectionId !== null &&
       existingAccount === null &&
-      enterprisePolicy?.provisioning.scimReuse.user === "externalId"
+      connectionPolicy?.provisioning.scimReuse.user === "externalId"
         ? yield* Fx.promise(() =>
-            ctx.runQuery(config.component.public.enterpriseScimIdentityGet, {
-              enterpriseId,
+            ctx.runQuery(config.component.public.groupConnectionScimIdentityGet, {
+              connectionId,
               resourceType: "user",
               externalId: providerAccountId,
             }),
@@ -151,13 +159,13 @@ export function userOAuthImpl(
         existingAccount !== null ? { existingAccount } : { providerAccountId },
         {
           type: "oauth",
-          provider: (isEnterpriseProviderId(provider)
+          provider: (isGroupProviderId(provider)
             ? createSyntheticOAuthMaterializedConfig(provider, {
                 accountLinking:
-                  enterpriseProtocol === "oidc"
-                    ? enterprisePolicy?.identity.accountLinking.oidc
-                    : enterpriseProtocol === "saml"
-                      ? enterprisePolicy?.identity.accountLinking.saml
+                  connectionProtocol === "oidc"
+                    ? connectionPolicy?.identity.accountLinking.oidc
+                    : connectionProtocol === "saml"
+                      ? connectionPolicy?.identity.accountLinking.saml
                       : undefined,
               })
             : getProviderOrThrow(provider)) as AuthProviderMaterializedConfig,
@@ -175,17 +183,17 @@ export function userOAuthImpl(
       ),
     );
 
-    // JIT group provisioning: if this is an enterprise SSO sign-in and the
-    // enterprise connection has a groupId, auto-add the user as a member of
+    // JIT group provisioning: if this is an group SSO sign-in and the
+    // group connection has a groupId, auto-add the user as a member of
     // that group if they aren't already a member.
     if (
-      enterpriseId !== null &&
-      enterprisePolicy?.provisioning.jit.mode === "createUserAndMembership"
+      connectionId !== null &&
+      connectionPolicy?.provisioning.jit.mode === "createUserAndMembership"
     ) {
       const account = yield* Fx.promise(() => db.accounts.getById(accountId));
       const userId = account?.userId;
       if (userId) {
-        const groupId = (enterprise as any)?.groupId as string | undefined;
+        const groupId = (connection as any)?.groupId as string | undefined;
         if (groupId) {
           const existingMembership = yield* Fx.promise(() =>
             ctx.runQuery(config.component.public.memberGetByGroupAndUser, {
@@ -198,7 +206,7 @@ export function userOAuthImpl(
               ctx.runMutation(config.component.public.memberAdd, {
                 groupId,
                 userId,
-                roleIds: enterprisePolicy.provisioning.jit.defaultRoleIds,
+                roleIds: connectionPolicy.provisioning.jit.defaultRoleIds,
                 status: "active",
               }),
             );

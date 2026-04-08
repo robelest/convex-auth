@@ -38,16 +38,16 @@ for explicit or self-hosted targets.
 | `--skip-git-check`         | Skip the "outside Git repo" warning                       |
 | `--allow-dirty-git-state`  | Skip all source-control checks                            |
 
-## Enterprise API
+## Group Connection API
 
-Enterprise RPC is app-owned. Create a single file like
-`convex/auth/enterprise.ts` and export only the helpers your app needs:
+Group SSO RPC is app-owned. Create a single file like
+`convex/auth/group.ts` and export only the helpers your app needs:
 
 ```ts
-import { enterprise } from "@robelest/convex-auth/server";
+import { group } from "@robelest/convex-auth/server";
 import { auth, authorized } from "../auth";
 
-export const { createConnection, configureScim } = enterprise(auth, {
+export const { createConnection, configureScim } = group(auth, {
   authorized,
 });
 ```
@@ -64,6 +64,6 @@ Then call the exported functions with normal Convex hooks:
 import { useAction } from "convex/react";
 import { api } from "../convex/_generated/api";
 
-const createConnection = useAction(api.auth.enterprise.createConnection);
-const configureScim = useAction(api.auth.enterprise.configureScim);
+const createConnection = useAction(api.auth.group.createConnection);
+const configureScim = useAction(api.auth.group.configureScim);
 ```

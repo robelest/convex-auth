@@ -2,9 +2,9 @@
  * Credentials provider for custom authentication flows.
  *
  * ```ts
- * import { Credentials } from "@robelest/convex-auth/providers";
+ * import { credentials } from "@robelest/convex-auth/providers";
  *
- * new Credentials({
+ * credentials({
  *   authorize: async (credentials, ctx) => {
  *     // Your custom logic here...
  *   },
@@ -23,21 +23,11 @@ import type {
   GenericActionCtxWithAuthConfig,
 } from "../server/types";
 
-/**
- * Configuration for the Credentials provider.
- *
- * @typeParam DataModel - The Convex data model.
- */
+/** Configuration for the {@link credentials} provider. */
 export interface CredentialsConfig<
   DataModel extends GenericDataModel = GenericDataModel,
 > {
-  /** Uniquely identifies the provider. Defaults to `"credentials"`. */
   id?: string;
-  /**
-   * Handle credentials received from the client-side `signIn` call.
-   *
-   * @returns A user ID for successful login, or `null` to reject.
-   */
   authorize: (
     credentials: Partial<Record<string, Value | undefined>>,
     ctx: GenericActionCtxWithAuthConfig<DataModel>,
@@ -45,58 +35,38 @@ export interface CredentialsConfig<
     userId: GenericId<"User">;
     sessionId?: GenericId<"Session">;
   } | null>;
-  /**
-   * Provide hashing and verification functions for account secrets.
-   */
   crypto?: {
     hashSecret: (secret: string) => Promise<string>;
     verifySecret: (secret: string, hash: string) => Promise<boolean>;
   };
-  /**
-   * Extra providers used internally (e.g. email verification in password flow).
-   * Not exposed to clients.
-   */
   extraProviders?: (AuthProviderConfig | undefined)[];
 }
 
 /**
- * Credentials provider for custom authentication flows.
+ * Create a credentials provider for custom sign-in logic.
  *
- * This is the escape hatch for fully custom auth logic. For email/password
- * flows, use the `Password` class instead.
- *
- * @typeParam DataModel - The Convex data model.
+ * @typeParam DataModel - The Convex data model used by the auth context.
+ * @param config - Custom authorization and hashing hooks.
+ * @returns A configured credentials provider for `createAuth`.
  *
  * @example
  * ```ts
- * import { Credentials } from "@robelest/convex-auth/providers";
+ * import { credentials } from "@robelest/convex-auth/providers";
  *
- * new Credentials({
- *   authorize: async (credentials, ctx) => {
- *     const user = await validateUser(credentials);
+ * credentials({
+ *   authorize: async (params, ctx) => {
+ *     const user = await lookupUser(params.email, params.password, ctx);
  *     return user ? { userId: user._id } : null;
  *   },
  * })
  * ```
  */
-export class Credentials<
+export function credentials<
   DataModel extends GenericDataModel = GenericDataModel,
-> {
-  readonly id: string;
-  readonly type = "credentials" as const;
-  readonly config: CredentialsConfig<DataModel>;
-
-  constructor(config: CredentialsConfig<DataModel>) {
-    this.id = config.id ?? "credentials";
-    this.config = config;
-  }
-
-  /** @internal Convert to the internal materialized config shape. */
-  _toMaterialized(): ConvexCredentialsConfig {
-    return {
-      ...this.config,
-      id: this.id,
-      type: "credentials",
-    } as ConvexCredentialsConfig;
-  }
+>(config: CredentialsConfig<DataModel>): ConvexCredentialsConfig {
+  return {
+    ...config,
+    id: config.id ?? "credentials",
+    type: "credentials",
+  } as ConvexCredentialsConfig;
 }

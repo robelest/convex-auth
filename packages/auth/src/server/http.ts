@@ -522,12 +522,12 @@ export function getCookies(
 
 export type SSORuntimeRoute = {
   pathname?: string;
-  enterpriseId: string;
+  connectionId: string;
   protocol: "oidc" | "saml" | "scim";
   rest: string[];
 };
 
-function parseEnterpriseRuntimeRoute(
+function parseConnectionRuntimeRoute(
   pathname: string,
   routeBase: string,
 ): SSORuntimeRoute | null {
@@ -535,9 +535,9 @@ function parseEnterpriseRuntimeRoute(
   const runtimeParts = pathname.startsWith(runtimePrefix)
     ? pathname.slice(runtimePrefix.length).split("/").filter(Boolean)
     : [];
-  const [runtimeEnterpriseId, protocol, ...rest] = runtimeParts;
+  const [runtimeConnectionId, protocol, ...rest] = runtimeParts;
   if (
-    runtimeEnterpriseId === undefined ||
+    runtimeConnectionId === undefined ||
     (protocol !== "oidc" && protocol !== "saml" && protocol !== "scim") ||
     rest.length === 0
   ) {
@@ -545,7 +545,7 @@ function parseEnterpriseRuntimeRoute(
   }
   return {
     pathname,
-    enterpriseId: runtimeEnterpriseId,
+    connectionId: runtimeConnectionId,
     protocol,
     rest,
   };
@@ -680,14 +680,14 @@ export function addSSORoutes(
     method: "GET",
     handler: httpActionGeneric(
       deps.convertErrorsToResponse(400, async (ctx, request) => {
-        const route = parseEnterpriseRuntimeRoute(
+        const route = parseConnectionRuntimeRoute(
           new URL(request.url).pathname,
           deps.routeBase,
         );
         if (!route) {
           throw Cv.error({
             code: "INVALID_PARAMETERS",
-            message: "Invalid enterprise runtime path.",
+            message: "Invalid connection runtime path.",
           });
         }
         if (route.protocol === "saml" && route.rest.length === 1) {
@@ -717,7 +717,7 @@ export function addSSORoutes(
         }
         throw Cv.error({
           code: "INVALID_PARAMETERS",
-          message: "Invalid enterprise runtime path.",
+          message: "Invalid connection runtime path.",
         });
       }),
     ),
@@ -728,7 +728,7 @@ export function addSSORoutes(
     method: "POST",
     handler: httpActionGeneric(
       deps.convertErrorsToResponse(400, async (ctx, request) => {
-        const route = parseEnterpriseRuntimeRoute(
+        const route = parseConnectionRuntimeRoute(
           new URL(request.url).pathname,
           deps.routeBase,
         );
@@ -745,7 +745,7 @@ export function addSSORoutes(
         }
         throw Cv.error({
           code: "INVALID_PARAMETERS",
-          message: "Invalid enterprise runtime path.",
+          message: "Invalid connection runtime path.",
         });
       }),
     ),
@@ -756,7 +756,7 @@ export function addSSORoutes(
     method: "PUT",
     handler: httpActionGeneric(
       deps.convertErrorsToResponse(400, async (ctx, request) => {
-        const route = parseEnterpriseRuntimeRoute(
+        const route = parseConnectionRuntimeRoute(
           new URL(request.url).pathname,
           deps.routeBase,
         );
@@ -765,7 +765,7 @@ export function addSSORoutes(
         }
         throw Cv.error({
           code: "INVALID_PARAMETERS",
-          message: "Invalid enterprise runtime path.",
+          message: "Invalid connection runtime path.",
         });
       }),
     ),
@@ -776,7 +776,7 @@ export function addSSORoutes(
       pathPrefix: routePrefix,
       method,
       handler: httpActionGeneric(async (ctx, request) => {
-        const route = parseEnterpriseRuntimeRoute(
+        const route = parseConnectionRuntimeRoute(
           new URL(request.url).pathname,
           deps.routeBase,
         );

@@ -1,31 +1,26 @@
 import { Resend } from "@convex-dev/resend";
 import { createAuth } from "@robelest/convex-auth/component";
-import { Email, OAuth, SSO } from "@robelest/convex-auth/providers";
-import { Anonymous } from "@robelest/convex-auth/providers/anonymous";
-import { Device } from "@robelest/convex-auth/providers/device";
-import { Passkey } from "@robelest/convex-auth/providers/passkey";
-import { Password } from "@robelest/convex-auth/providers/password";
-import { Totp } from "@robelest/convex-auth/providers/totp";
-import { Google } from "arctic";
+import {
+  anonymous,
+  device,
+  email,
+  google,
+  passkey,
+  password,
+  sso,
+  totp,
+} from "@robelest/convex-auth/providers";
 
 import { components } from "./_generated/api";
 import { roles } from "./roles";
 
 function maybeGoogleProvider() {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const convexSiteUrl = process.env.CONVEX_SITE_URL;
-  if (!clientId || !clientSecret || !convexSiteUrl) {
+  const clientId = process.env.AUTH_GOOGLE_ID;
+  const clientSecret = process.env.AUTH_GOOGLE_SECRET;
+  if (!clientId || !clientSecret) {
     return null;
   }
-  return OAuth(
-    new Google(
-      clientId,
-      clientSecret,
-      `${convexSiteUrl}/api/auth/callback/google`,
-    ),
-    { scopes: ["openid", "profile", "email"] },
-  );
+  return google({ clientId, clientSecret });
 }
 
 const resend = new Resend(components.resend, {
@@ -35,18 +30,18 @@ const resend = new Resend(components.resend, {
 const googleProvider = maybeGoogleProvider();
 const auth = createAuth(components.auth, {
   providers: [
-    new SSO(),
+    sso(),
     ...(googleProvider ? [googleProvider] : []),
-    new Password(),
-    new Passkey(),
-    new Totp({ issuer: "ConvexAuth Example" }),
-    new Anonymous(),
-    new Device({
+    password(),
+    passkey(),
+    totp({ issuer: "ConvexAuth Example" }),
+    anonymous(),
+    device({
       verificationUri: process.env.APP_URL
         ? `${process.env.APP_URL}/device`
         : "http://localhost:3000/device",
     }),
-    new Email({
+    email({
       from: process.env.AUTH_EMAIL ?? "My App <onboarding@resend.dev>",
       send: async (ctx, params) => {
         await resend.sendEmailManually(

@@ -25,12 +25,12 @@ if (!process.env.RESEND_API_KEY) {
   process.env.RESEND_API_KEY = "test-resend-api-key";
 }
 
-if (!process.env.GOOGLE_CLIENT_ID) {
-  process.env.GOOGLE_CLIENT_ID = "test-google-client-id";
+if (!process.env.AUTH_GOOGLE_ID) {
+  process.env.AUTH_GOOGLE_ID = "test-google-client-id";
 }
 
-if (!process.env.GOOGLE_CLIENT_SECRET) {
-  process.env.GOOGLE_CLIENT_SECRET = "test-google-client-secret";
+if (!process.env.AUTH_GOOGLE_SECRET) {
+  process.env.AUTH_GOOGLE_SECRET = "test-google-client-secret";
 }
 
 if (!process.env.AUTH_SECRET_ENCRYPTION_KEY) {

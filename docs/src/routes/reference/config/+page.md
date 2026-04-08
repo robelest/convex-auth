@@ -64,7 +64,7 @@ const auth = createAuth(components.auth, {
 | `callbacks.afterUserCreatedOrUpdated` | `function`             | —        | Post-sign-in hook                       |
 | `authorization.roles`                 | `Record<string, Role>` | `{}`     | App-defined role definitions and grants |
 
-> **Note:** Email transport is configured via `new Email({ from, send })` in the
+> **Note:** Email transport is configured via `email({ from, send })` in the
 > providers array, not as a top-level config option.
 
 See [Authorization Patterns](/guides/authorization) for the recommended
@@ -85,9 +85,9 @@ authorization model.
 - `auth.invite.*` — Invite helpers
 - `auth.key.*` — API key helpers
 - `auth.http.*` — HTTP route helpers
-- `auth.sso.*` — inbound enterprise SSO helpers (only when `new SSO()` is in
+- `auth.group.sso.*` — inbound group SSO helpers (only when `sso()` is in
   providers)
-- `auth.scim.admin.*` — SCIM provisioning helpers (only when `new SSO()` is in
+- `auth.group.sso.scim.*` — SCIM provisioning helpers (only when `sso()` is in
   providers)
 - `InferClientApi<typeof auth>` — Type-level utility; use as the generic for
   `client()` on the frontend to get conditional passkey/totp/device helpers
@@ -100,22 +100,22 @@ authorization model.
     the frontend auth client.
   </Card>
   <Card title="Helper namespaces">
-    <code>auth.*</code>, <code>auth.sso.*</code>, and <code>auth.scim.admin.*</code> are server-side helper APIs for
+    <code>auth.*</code>, <code>auth.group.sso.*</code>, and <code>auth.group.sso.scim.*</code> are server-side helper APIs for
     your Convex code.
   </Card>
-  <Card title="Mounted enterprise RPC">
-    <code>api.auth.enterprise.*</code> only exists after your app mounts or
-    writes public enterprise wrappers.
+  <Card title="Mounted group SSO RPC">
+    <code>api.auth.group.*</code> only exists after your app mounts or
+    writes public group SSO wrappers.
   </Card>
 </CardGrid>
 
-The `auth.sso.*` and `auth.scim.admin.*` namespaces are server-side helper APIs.
-They are not automatically exposed as client-callable Convex functions just
-because they exist on the returned object.
+The `auth.group.sso.*` and `auth.group.sso.scim.*` namespaces are server-side
+helper APIs. They are not automatically exposed as client-callable Convex
+functions just because they exist on the returned object.
 
-If your app wants public enterprise/admin RPC, mount it explicitly in your app:
+If your app wants public group SSO admin RPC, mount it explicitly in your app:
 
-- write your own Convex wrappers in a file such as `convex/auth/enterprise.ts`.
+- write your own Convex wrappers in a file such as `convex/auth/group.ts`.
 
-See the [Enterprise RPC guide](/sso/rpc/) for the recommended flat enterprise
-RPC shape.
+See the [Group SSO RPC guide](/sso/rpc/) for the recommended flat group SSO RPC
+shape.

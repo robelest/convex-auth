@@ -9,11 +9,15 @@
  */
 
 import type * as auth from "../auth.js";
-import type * as auth_enterprise from "../auth/enterprise.js";
-import type * as demo from "../demo.js";
+import type * as auth_group from "../auth/group.js";
+import type * as comments from "../comments.js";
 import type * as functions from "../functions.js";
+import type * as groups from "../groups.js";
 import type * as http from "../http.js";
+import type * as issues from "../issues.js";
+import type * as projects from "../projects.js";
 import type * as roles from "../roles.js";
+import type * as shared from "../shared.js";
 
 import type {
   ApiFromModules,
@@ -23,11 +27,15 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
-  "auth/enterprise": typeof auth_enterprise;
-  demo: typeof demo;
+  "auth/group": typeof auth_group;
+  comments: typeof comments;
   functions: typeof functions;
+  groups: typeof groups;
   http: typeof http;
+  issues: typeof issues;
+  projects: typeof projects;
   roles: typeof roles;
+  shared: typeof shared;
 }>;
 
 /**
@@ -193,1306 +201,6 @@ export declare const components: {
         "mutation",
         "internal",
         { deviceId: string; lastPolledAt: number },
-        null
-      >;
-      enterprise: {
-        audit: {
-          enterpriseAuditEventCreate: FunctionReference<
-            "mutation",
-            "internal",
-            {
-              actorId?: string;
-              actorType: "user" | "system" | "scim" | "api_key" | "webhook";
-              enterpriseId: string;
-              eventType: string;
-              groupId: string;
-              ip?: string;
-              metadata?: any;
-              occurredAt: number;
-              requestId?: string;
-              status: "success" | "failure";
-              subjectId?: string;
-              subjectType: string;
-            },
-            string
-          >;
-          enterpriseAuditEventList: FunctionReference<
-            "query",
-            "internal",
-            { enterpriseId?: string; groupId?: string; limit?: number },
-            Array<{
-              _creationTime: number;
-              _id: string;
-              actorId?: string;
-              actorType: "user" | "system" | "scim" | "api_key" | "webhook";
-              enterpriseId: string;
-              eventType: string;
-              groupId: string;
-              ip?: string;
-              metadata?: any;
-              occurredAt: number;
-              requestId?: string;
-              status: "success" | "failure";
-              subjectId?: string;
-              subjectType: string;
-            }>
-          >;
-        };
-        core: {
-          enterpriseCreate: FunctionReference<
-            "mutation",
-            "internal",
-            {
-              config?: any;
-              extend?: any;
-              groupId: string;
-              name?: string;
-              policy?: {
-                extend?: any;
-                identity: {
-                  accountLinking: {
-                    oidc: "verifiedEmail" | "none";
-                    saml: "verifiedEmail" | "none";
-                  };
-                };
-                provisioning: {
-                  deprovision: { mode: "soft" | "hard" };
-                  jit: {
-                    defaultRole?: string;
-                    defaultRoleIds?: Array<string>;
-                    mode: "off" | "createUser" | "createUserAndMembership";
-                  };
-                  scimReuse: { user: "externalId" | "none" };
-                };
-                version: 1;
-              };
-              slug?: string;
-              status?: "draft" | "active" | "disabled";
-            },
-            string
-          >;
-          enterpriseDelete: FunctionReference<
-            "mutation",
-            "internal",
-            { enterpriseId: string },
-            null
-          >;
-          enterpriseGet: FunctionReference<
-            "query",
-            "internal",
-            { enterpriseId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              config?: any;
-              extend?: any;
-              groupId: string;
-              name?: string;
-              policy?: {
-                extend?: any;
-                identity: {
-                  accountLinking: {
-                    oidc: "verifiedEmail" | "none";
-                    saml: "verifiedEmail" | "none";
-                  };
-                };
-                provisioning: {
-                  deprovision: { mode: "soft" | "hard" };
-                  jit: {
-                    defaultRole?: string;
-                    defaultRoleIds?: Array<string>;
-                    mode: "off" | "createUser" | "createUserAndMembership";
-                  };
-                  scimReuse: { user: "externalId" | "none" };
-                };
-                version: 1;
-              };
-              slug?: string;
-              status: "draft" | "active" | "disabled";
-            } | null
-          >;
-          enterpriseGetByDomain: FunctionReference<
-            "query",
-            "internal",
-            { domain: string },
-            {
-              domain: {
-                _creationTime: number;
-                _id: string;
-                domain: string;
-                enterpriseId: string;
-                groupId: string;
-                isPrimary: boolean;
-                verifiedAt?: number;
-              };
-              enterprise: {
-                _creationTime: number;
-                _id: string;
-                config?: any;
-                extend?: any;
-                groupId: string;
-                name?: string;
-                policy?: {
-                  extend?: any;
-                  identity: {
-                    accountLinking: {
-                      oidc: "verifiedEmail" | "none";
-                      saml: "verifiedEmail" | "none";
-                    };
-                  };
-                  provisioning: {
-                    deprovision: { mode: "soft" | "hard" };
-                    jit: {
-                      defaultRole?: string;
-                      defaultRoleIds?: Array<string>;
-                      mode: "off" | "createUser" | "createUserAndMembership";
-                    };
-                    scimReuse: { user: "externalId" | "none" };
-                  };
-                  version: 1;
-                };
-                slug?: string;
-                status: "draft" | "active" | "disabled";
-              };
-            } | null
-          >;
-          enterpriseGetByGroup: FunctionReference<
-            "query",
-            "internal",
-            { groupId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              config?: any;
-              extend?: any;
-              groupId: string;
-              name?: string;
-              policy?: {
-                extend?: any;
-                identity: {
-                  accountLinking: {
-                    oidc: "verifiedEmail" | "none";
-                    saml: "verifiedEmail" | "none";
-                  };
-                };
-                provisioning: {
-                  deprovision: { mode: "soft" | "hard" };
-                  jit: {
-                    defaultRole?: string;
-                    defaultRoleIds?: Array<string>;
-                    mode: "off" | "createUser" | "createUserAndMembership";
-                  };
-                  scimReuse: { user: "externalId" | "none" };
-                };
-                version: 1;
-              };
-              slug?: string;
-              status: "draft" | "active" | "disabled";
-            } | null
-          >;
-          enterpriseList: FunctionReference<
-            "query",
-            "internal",
-            {
-              cursor?: string | null;
-              limit?: number;
-              order?: "asc" | "desc";
-              orderBy?: "_creationTime" | "name" | "slug" | "status";
-              where?: {
-                groupId?: string;
-                slug?: string;
-                status?: "draft" | "active" | "disabled";
-              };
-            },
-            {
-              items: Array<{
-                _creationTime: number;
-                _id: string;
-                config?: any;
-                extend?: any;
-                groupId: string;
-                name?: string;
-                policy?: {
-                  extend?: any;
-                  identity: {
-                    accountLinking: {
-                      oidc: "verifiedEmail" | "none";
-                      saml: "verifiedEmail" | "none";
-                    };
-                  };
-                  provisioning: {
-                    deprovision: { mode: "soft" | "hard" };
-                    jit: {
-                      defaultRole?: string;
-                      defaultRoleIds?: Array<string>;
-                      mode: "off" | "createUser" | "createUserAndMembership";
-                    };
-                    scimReuse: { user: "externalId" | "none" };
-                  };
-                  version: 1;
-                };
-                slug?: string;
-                status: "draft" | "active" | "disabled";
-              }>;
-              nextCursor: string | null;
-            }
-          >;
-          enterpriseUpdate: FunctionReference<
-            "mutation",
-            "internal",
-            { data: any; enterpriseId: string },
-            null
-          >;
-        };
-        domains: {
-          enterpriseDomainAdd: FunctionReference<
-            "mutation",
-            "internal",
-            {
-              domain: string;
-              enterpriseId: string;
-              groupId: string;
-              isPrimary?: boolean;
-            },
-            string
-          >;
-          enterpriseDomainDelete: FunctionReference<
-            "mutation",
-            "internal",
-            { domainId: string },
-            null
-          >;
-          enterpriseDomainList: FunctionReference<
-            "query",
-            "internal",
-            { enterpriseId: string },
-            Array<{
-              _creationTime: number;
-              _id: string;
-              domain: string;
-              enterpriseId: string;
-              groupId: string;
-              isPrimary: boolean;
-              verifiedAt?: number;
-            }>
-          >;
-          enterpriseDomainVerificationDelete: FunctionReference<
-            "mutation",
-            "internal",
-            { domainId: string },
-            null
-          >;
-          enterpriseDomainVerificationGet: FunctionReference<
-            "query",
-            "internal",
-            { domainId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              domain: string;
-              domainId: string;
-              enterpriseId: string;
-              expiresAt: number;
-              groupId: string;
-              recordName: string;
-              requestedAt: number;
-              token: string;
-              tokenHash: string;
-            } | null
-          >;
-          enterpriseDomainVerificationUpsert: FunctionReference<
-            "mutation",
-            "internal",
-            {
-              domain: string;
-              domainId: string;
-              enterpriseId: string;
-              expiresAt: number;
-              groupId: string;
-              recordName: string;
-              requestedAt: number;
-              token: string;
-              tokenHash: string;
-            },
-            string
-          >;
-          enterpriseDomainVerify: FunctionReference<
-            "mutation",
-            "internal",
-            { domainId: string; verifiedAt: number },
-            {
-              _creationTime: number;
-              _id: string;
-              domain: string;
-              enterpriseId: string;
-              groupId: string;
-              isPrimary: boolean;
-              verifiedAt?: number;
-            }
-          >;
-        };
-        scim: {
-          enterpriseScimConfigGetByEnterprise: FunctionReference<
-            "query",
-            "internal",
-            { enterpriseId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              basePath: string;
-              enterpriseId: string;
-              extend?: any;
-              groupId: string;
-              lastRotatedAt?: number;
-              status: "draft" | "active" | "disabled";
-              tokenHash: string;
-            } | null
-          >;
-          enterpriseScimConfigGetByTokenHash: FunctionReference<
-            "query",
-            "internal",
-            { tokenHash: string },
-            {
-              _creationTime: number;
-              _id: string;
-              basePath: string;
-              enterpriseId: string;
-              extend?: any;
-              groupId: string;
-              lastRotatedAt?: number;
-              status: "draft" | "active" | "disabled";
-              tokenHash: string;
-            } | null
-          >;
-          enterpriseScimConfigUpsert: FunctionReference<
-            "mutation",
-            "internal",
-            {
-              basePath: string;
-              enterpriseId: string;
-              extend?: any;
-              groupId: string;
-              lastRotatedAt?: number;
-              status: "draft" | "active" | "disabled";
-              tokenHash: string;
-            },
-            string
-          >;
-          enterpriseScimIdentityDelete: FunctionReference<
-            "mutation",
-            "internal",
-            { identityId: string },
-            null
-          >;
-          enterpriseScimIdentityGet: FunctionReference<
-            "query",
-            "internal",
-            {
-              enterpriseId: string;
-              externalId: string;
-              resourceType: "user" | "group";
-            },
-            {
-              _creationTime: number;
-              _id: string;
-              active?: boolean;
-              enterpriseId: string;
-              externalId: string;
-              groupId: string;
-              lastProvisionedAt?: number;
-              mappedGroupId?: string;
-              raw?: any;
-              resourceType: "user" | "group";
-              userId?: string;
-            } | null
-          >;
-          enterpriseScimIdentityGetByEnterpriseAndUser: FunctionReference<
-            "query",
-            "internal",
-            { enterpriseId: string; userId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              active?: boolean;
-              enterpriseId: string;
-              externalId: string;
-              groupId: string;
-              lastProvisionedAt?: number;
-              mappedGroupId?: string;
-              raw?: any;
-              resourceType: "user" | "group";
-              userId?: string;
-            } | null
-          >;
-          enterpriseScimIdentityGetByMappedGroup: FunctionReference<
-            "query",
-            "internal",
-            { mappedGroupId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              active?: boolean;
-              enterpriseId: string;
-              externalId: string;
-              groupId: string;
-              lastProvisionedAt?: number;
-              mappedGroupId?: string;
-              raw?: any;
-              resourceType: "user" | "group";
-              userId?: string;
-            } | null
-          >;
-          enterpriseScimIdentityGetByUser: FunctionReference<
-            "query",
-            "internal",
-            { userId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              active?: boolean;
-              enterpriseId: string;
-              externalId: string;
-              groupId: string;
-              lastProvisionedAt?: number;
-              mappedGroupId?: string;
-              raw?: any;
-              resourceType: "user" | "group";
-              userId?: string;
-            } | null
-          >;
-          enterpriseScimIdentityListByEnterprise: FunctionReference<
-            "query",
-            "internal",
-            { enterpriseId: string },
-            Array<{
-              _creationTime: number;
-              _id: string;
-              active?: boolean;
-              enterpriseId: string;
-              externalId: string;
-              groupId: string;
-              lastProvisionedAt?: number;
-              mappedGroupId?: string;
-              raw?: any;
-              resourceType: "user" | "group";
-              userId?: string;
-            }>
-          >;
-          enterpriseScimIdentityUpsert: FunctionReference<
-            "mutation",
-            "internal",
-            {
-              active?: boolean;
-              enterpriseId: string;
-              externalId: string;
-              groupId: string;
-              lastProvisionedAt?: number;
-              mappedGroupId?: string;
-              raw?: any;
-              resourceType: "user" | "group";
-              userId?: string;
-            },
-            string
-          >;
-        };
-        secrets: {
-          enterpriseSecretDelete: FunctionReference<
-            "mutation",
-            "internal",
-            { enterpriseId: string; kind: "oidc_client_secret" },
-            null
-          >;
-          enterpriseSecretGet: FunctionReference<
-            "query",
-            "internal",
-            { enterpriseId: string; kind: "oidc_client_secret" },
-            {
-              _creationTime: number;
-              _id: string;
-              ciphertext: string;
-              enterpriseId: string;
-              groupId: string;
-              kind: "oidc_client_secret";
-              updatedAt: number;
-            } | null
-          >;
-          enterpriseSecretUpsert: FunctionReference<
-            "mutation",
-            "internal",
-            {
-              ciphertext: string;
-              enterpriseId: string;
-              groupId: string;
-              kind: "oidc_client_secret";
-              updatedAt: number;
-            },
-            string
-          >;
-        };
-        webhooks: {
-          enterpriseWebhookDeliveryEnqueue: FunctionReference<
-            "mutation",
-            "internal",
-            {
-              auditEventId?: string;
-              endpointId: string;
-              enterpriseId: string;
-              eventType: string;
-              nextAttemptAt: number;
-              payload: any;
-            },
-            string
-          >;
-          enterpriseWebhookDeliveryList: FunctionReference<
-            "query",
-            "internal",
-            { enterpriseId: string; limit?: number },
-            Array<{
-              _creationTime: number;
-              _id: string;
-              attemptCount: number;
-              auditEventId?: string;
-              endpointId: string;
-              enterpriseId: string;
-              eventType: string;
-              lastAttemptAt?: number;
-              lastError?: string;
-              lastResponseStatus?: number;
-              nextAttemptAt: number;
-              payload: any;
-              status: "pending" | "processing" | "delivered" | "failed";
-            }>
-          >;
-          enterpriseWebhookDeliveryListReady: FunctionReference<
-            "query",
-            "internal",
-            { limit?: number; now: number },
-            Array<{
-              _creationTime: number;
-              _id: string;
-              attemptCount: number;
-              auditEventId?: string;
-              endpointId: string;
-              enterpriseId: string;
-              eventType: string;
-              lastAttemptAt?: number;
-              lastError?: string;
-              lastResponseStatus?: number;
-              nextAttemptAt: number;
-              payload: any;
-              status: "pending" | "processing" | "delivered" | "failed";
-            }>
-          >;
-          enterpriseWebhookDeliveryPatch: FunctionReference<
-            "mutation",
-            "internal",
-            { data: any; deliveryId: string },
-            null
-          >;
-          enterpriseWebhookEndpointCreate: FunctionReference<
-            "mutation",
-            "internal",
-            {
-              createdByUserId?: string;
-              enterpriseId: string;
-              extend?: any;
-              groupId: string;
-              secretHash: string;
-              status?: "active" | "disabled";
-              subscriptions: Array<string>;
-              url: string;
-            },
-            string
-          >;
-          enterpriseWebhookEndpointGet: FunctionReference<
-            "query",
-            "internal",
-            { endpointId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              createdByUserId?: string;
-              enterpriseId: string;
-              extend?: any;
-              failureCount: number;
-              groupId: string;
-              lastFailureAt?: number;
-              lastSuccessAt?: number;
-              secretHash: string;
-              status: "active" | "disabled";
-              subscriptions: Array<string>;
-              url: string;
-            } | null
-          >;
-          enterpriseWebhookEndpointList: FunctionReference<
-            "query",
-            "internal",
-            { enterpriseId: string },
-            Array<{
-              _creationTime: number;
-              _id: string;
-              createdByUserId?: string;
-              enterpriseId: string;
-              extend?: any;
-              failureCount: number;
-              groupId: string;
-              lastFailureAt?: number;
-              lastSuccessAt?: number;
-              secretHash: string;
-              status: "active" | "disabled";
-              subscriptions: Array<string>;
-              url: string;
-            }>
-          >;
-          enterpriseWebhookEndpointUpdate: FunctionReference<
-            "mutation",
-            "internal",
-            { data: any; endpointId: string },
-            null
-          >;
-        };
-      };
-      enterpriseAuditEventCreate: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          actorId?: string;
-          actorType: "user" | "system" | "scim" | "api_key" | "webhook";
-          enterpriseId: string;
-          eventType: string;
-          groupId: string;
-          ip?: string;
-          metadata?: any;
-          occurredAt: number;
-          requestId?: string;
-          status: "success" | "failure";
-          subjectId?: string;
-          subjectType: string;
-        },
-        string
-      >;
-      enterpriseAuditEventList: FunctionReference<
-        "query",
-        "internal",
-        { enterpriseId?: string; groupId?: string; limit?: number },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          actorId?: string;
-          actorType: "user" | "system" | "scim" | "api_key" | "webhook";
-          enterpriseId: string;
-          eventType: string;
-          groupId: string;
-          ip?: string;
-          metadata?: any;
-          occurredAt: number;
-          requestId?: string;
-          status: "success" | "failure";
-          subjectId?: string;
-          subjectType: string;
-        }>
-      >;
-      enterpriseCreate: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          config?: any;
-          extend?: any;
-          groupId: string;
-          name?: string;
-          policy?: {
-            extend?: any;
-            identity: {
-              accountLinking: {
-                oidc: "verifiedEmail" | "none";
-                saml: "verifiedEmail" | "none";
-              };
-            };
-            provisioning: {
-              deprovision: { mode: "soft" | "hard" };
-              jit: {
-                defaultRole?: string;
-                defaultRoleIds?: Array<string>;
-                mode: "off" | "createUser" | "createUserAndMembership";
-              };
-              scimReuse: { user: "externalId" | "none" };
-            };
-            version: 1;
-          };
-          slug?: string;
-          status?: "draft" | "active" | "disabled";
-        },
-        string
-      >;
-      enterpriseDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { enterpriseId: string },
-        null
-      >;
-      enterpriseDomainAdd: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          domain: string;
-          enterpriseId: string;
-          groupId: string;
-          isPrimary?: boolean;
-        },
-        string
-      >;
-      enterpriseDomainDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { domainId: string },
-        null
-      >;
-      enterpriseDomainList: FunctionReference<
-        "query",
-        "internal",
-        { enterpriseId: string },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          domain: string;
-          enterpriseId: string;
-          groupId: string;
-          isPrimary: boolean;
-          verifiedAt?: number;
-        }>
-      >;
-      enterpriseDomainVerificationDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { domainId: string },
-        null
-      >;
-      enterpriseDomainVerificationGet: FunctionReference<
-        "query",
-        "internal",
-        { domainId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          domain: string;
-          domainId: string;
-          enterpriseId: string;
-          expiresAt: number;
-          groupId: string;
-          recordName: string;
-          requestedAt: number;
-          token: string;
-          tokenHash: string;
-        } | null
-      >;
-      enterpriseDomainVerificationUpsert: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          domain: string;
-          domainId: string;
-          enterpriseId: string;
-          expiresAt: number;
-          groupId: string;
-          recordName: string;
-          requestedAt: number;
-          token: string;
-          tokenHash: string;
-        },
-        string
-      >;
-      enterpriseDomainVerify: FunctionReference<
-        "mutation",
-        "internal",
-        { domainId: string; verifiedAt: number },
-        {
-          _creationTime: number;
-          _id: string;
-          domain: string;
-          enterpriseId: string;
-          groupId: string;
-          isPrimary: boolean;
-          verifiedAt?: number;
-        }
-      >;
-      enterpriseGet: FunctionReference<
-        "query",
-        "internal",
-        { enterpriseId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          config?: any;
-          extend?: any;
-          groupId: string;
-          name?: string;
-          policy?: {
-            extend?: any;
-            identity: {
-              accountLinking: {
-                oidc: "verifiedEmail" | "none";
-                saml: "verifiedEmail" | "none";
-              };
-            };
-            provisioning: {
-              deprovision: { mode: "soft" | "hard" };
-              jit: {
-                defaultRole?: string;
-                defaultRoleIds?: Array<string>;
-                mode: "off" | "createUser" | "createUserAndMembership";
-              };
-              scimReuse: { user: "externalId" | "none" };
-            };
-            version: 1;
-          };
-          slug?: string;
-          status: "draft" | "active" | "disabled";
-        } | null
-      >;
-      enterpriseGetByDomain: FunctionReference<
-        "query",
-        "internal",
-        { domain: string },
-        {
-          domain: {
-            _creationTime: number;
-            _id: string;
-            domain: string;
-            enterpriseId: string;
-            groupId: string;
-            isPrimary: boolean;
-            verifiedAt?: number;
-          };
-          enterprise: {
-            _creationTime: number;
-            _id: string;
-            config?: any;
-            extend?: any;
-            groupId: string;
-            name?: string;
-            policy?: {
-              extend?: any;
-              identity: {
-                accountLinking: {
-                  oidc: "verifiedEmail" | "none";
-                  saml: "verifiedEmail" | "none";
-                };
-              };
-              provisioning: {
-                deprovision: { mode: "soft" | "hard" };
-                jit: {
-                  defaultRole?: string;
-                  defaultRoleIds?: Array<string>;
-                  mode: "off" | "createUser" | "createUserAndMembership";
-                };
-                scimReuse: { user: "externalId" | "none" };
-              };
-              version: 1;
-            };
-            slug?: string;
-            status: "draft" | "active" | "disabled";
-          };
-        } | null
-      >;
-      enterpriseGetByGroup: FunctionReference<
-        "query",
-        "internal",
-        { groupId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          config?: any;
-          extend?: any;
-          groupId: string;
-          name?: string;
-          policy?: {
-            extend?: any;
-            identity: {
-              accountLinking: {
-                oidc: "verifiedEmail" | "none";
-                saml: "verifiedEmail" | "none";
-              };
-            };
-            provisioning: {
-              deprovision: { mode: "soft" | "hard" };
-              jit: {
-                defaultRole?: string;
-                defaultRoleIds?: Array<string>;
-                mode: "off" | "createUser" | "createUserAndMembership";
-              };
-              scimReuse: { user: "externalId" | "none" };
-            };
-            version: 1;
-          };
-          slug?: string;
-          status: "draft" | "active" | "disabled";
-        } | null
-      >;
-      enterpriseList: FunctionReference<
-        "query",
-        "internal",
-        {
-          cursor?: string | null;
-          limit?: number;
-          order?: "asc" | "desc";
-          orderBy?: "_creationTime" | "name" | "slug" | "status";
-          where?: {
-            groupId?: string;
-            slug?: string;
-            status?: "draft" | "active" | "disabled";
-          };
-        },
-        {
-          items: Array<{
-            _creationTime: number;
-            _id: string;
-            config?: any;
-            extend?: any;
-            groupId: string;
-            name?: string;
-            policy?: {
-              extend?: any;
-              identity: {
-                accountLinking: {
-                  oidc: "verifiedEmail" | "none";
-                  saml: "verifiedEmail" | "none";
-                };
-              };
-              provisioning: {
-                deprovision: { mode: "soft" | "hard" };
-                jit: {
-                  defaultRole?: string;
-                  defaultRoleIds?: Array<string>;
-                  mode: "off" | "createUser" | "createUserAndMembership";
-                };
-                scimReuse: { user: "externalId" | "none" };
-              };
-              version: 1;
-            };
-            slug?: string;
-            status: "draft" | "active" | "disabled";
-          }>;
-          nextCursor: string | null;
-        }
-      >;
-      enterpriseScimConfigGetByEnterprise: FunctionReference<
-        "query",
-        "internal",
-        { enterpriseId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          basePath: string;
-          enterpriseId: string;
-          extend?: any;
-          groupId: string;
-          lastRotatedAt?: number;
-          status: "draft" | "active" | "disabled";
-          tokenHash: string;
-        } | null
-      >;
-      enterpriseScimConfigGetByTokenHash: FunctionReference<
-        "query",
-        "internal",
-        { tokenHash: string },
-        {
-          _creationTime: number;
-          _id: string;
-          basePath: string;
-          enterpriseId: string;
-          extend?: any;
-          groupId: string;
-          lastRotatedAt?: number;
-          status: "draft" | "active" | "disabled";
-          tokenHash: string;
-        } | null
-      >;
-      enterpriseScimConfigUpsert: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          basePath: string;
-          enterpriseId: string;
-          extend?: any;
-          groupId: string;
-          lastRotatedAt?: number;
-          status: "draft" | "active" | "disabled";
-          tokenHash: string;
-        },
-        string
-      >;
-      enterpriseScimIdentityDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { identityId: string },
-        null
-      >;
-      enterpriseScimIdentityGet: FunctionReference<
-        "query",
-        "internal",
-        {
-          enterpriseId: string;
-          externalId: string;
-          resourceType: "user" | "group";
-        },
-        {
-          _creationTime: number;
-          _id: string;
-          active?: boolean;
-          enterpriseId: string;
-          externalId: string;
-          groupId: string;
-          lastProvisionedAt?: number;
-          mappedGroupId?: string;
-          raw?: any;
-          resourceType: "user" | "group";
-          userId?: string;
-        } | null
-      >;
-      enterpriseScimIdentityGetByEnterpriseAndUser: FunctionReference<
-        "query",
-        "internal",
-        { enterpriseId: string; userId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          active?: boolean;
-          enterpriseId: string;
-          externalId: string;
-          groupId: string;
-          lastProvisionedAt?: number;
-          mappedGroupId?: string;
-          raw?: any;
-          resourceType: "user" | "group";
-          userId?: string;
-        } | null
-      >;
-      enterpriseScimIdentityGetByMappedGroup: FunctionReference<
-        "query",
-        "internal",
-        { mappedGroupId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          active?: boolean;
-          enterpriseId: string;
-          externalId: string;
-          groupId: string;
-          lastProvisionedAt?: number;
-          mappedGroupId?: string;
-          raw?: any;
-          resourceType: "user" | "group";
-          userId?: string;
-        } | null
-      >;
-      enterpriseScimIdentityGetByUser: FunctionReference<
-        "query",
-        "internal",
-        { userId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          active?: boolean;
-          enterpriseId: string;
-          externalId: string;
-          groupId: string;
-          lastProvisionedAt?: number;
-          mappedGroupId?: string;
-          raw?: any;
-          resourceType: "user" | "group";
-          userId?: string;
-        } | null
-      >;
-      enterpriseScimIdentityListByEnterprise: FunctionReference<
-        "query",
-        "internal",
-        { enterpriseId: string },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          active?: boolean;
-          enterpriseId: string;
-          externalId: string;
-          groupId: string;
-          lastProvisionedAt?: number;
-          mappedGroupId?: string;
-          raw?: any;
-          resourceType: "user" | "group";
-          userId?: string;
-        }>
-      >;
-      enterpriseScimIdentityUpsert: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          active?: boolean;
-          enterpriseId: string;
-          externalId: string;
-          groupId: string;
-          lastProvisionedAt?: number;
-          mappedGroupId?: string;
-          raw?: any;
-          resourceType: "user" | "group";
-          userId?: string;
-        },
-        string
-      >;
-      enterpriseSecretDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { enterpriseId: string; kind: "oidc_client_secret" },
-        null
-      >;
-      enterpriseSecretGet: FunctionReference<
-        "query",
-        "internal",
-        { enterpriseId: string; kind: "oidc_client_secret" },
-        {
-          _creationTime: number;
-          _id: string;
-          ciphertext: string;
-          enterpriseId: string;
-          groupId: string;
-          kind: "oidc_client_secret";
-          updatedAt: number;
-        } | null
-      >;
-      enterpriseSecretUpsert: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          ciphertext: string;
-          enterpriseId: string;
-          groupId: string;
-          kind: "oidc_client_secret";
-          updatedAt: number;
-        },
-        string
-      >;
-      enterpriseUpdate: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; enterpriseId: string },
-        null
-      >;
-      enterpriseWebhookDeliveryEnqueue: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          auditEventId?: string;
-          endpointId: string;
-          enterpriseId: string;
-          eventType: string;
-          nextAttemptAt: number;
-          payload: any;
-        },
-        string
-      >;
-      enterpriseWebhookDeliveryList: FunctionReference<
-        "query",
-        "internal",
-        { enterpriseId: string; limit?: number },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          attemptCount: number;
-          auditEventId?: string;
-          endpointId: string;
-          enterpriseId: string;
-          eventType: string;
-          lastAttemptAt?: number;
-          lastError?: string;
-          lastResponseStatus?: number;
-          nextAttemptAt: number;
-          payload: any;
-          status: "pending" | "processing" | "delivered" | "failed";
-        }>
-      >;
-      enterpriseWebhookDeliveryListReady: FunctionReference<
-        "query",
-        "internal",
-        { limit?: number; now: number },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          attemptCount: number;
-          auditEventId?: string;
-          endpointId: string;
-          enterpriseId: string;
-          eventType: string;
-          lastAttemptAt?: number;
-          lastError?: string;
-          lastResponseStatus?: number;
-          nextAttemptAt: number;
-          payload: any;
-          status: "pending" | "processing" | "delivered" | "failed";
-        }>
-      >;
-      enterpriseWebhookDeliveryPatch: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; deliveryId: string },
-        null
-      >;
-      enterpriseWebhookEndpointCreate: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          createdByUserId?: string;
-          enterpriseId: string;
-          extend?: any;
-          groupId: string;
-          secretHash: string;
-          status?: "active" | "disabled";
-          subscriptions: Array<string>;
-          url: string;
-        },
-        string
-      >;
-      enterpriseWebhookEndpointGet: FunctionReference<
-        "query",
-        "internal",
-        { endpointId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          createdByUserId?: string;
-          enterpriseId: string;
-          extend?: any;
-          failureCount: number;
-          groupId: string;
-          lastFailureAt?: number;
-          lastSuccessAt?: number;
-          secretHash: string;
-          status: "active" | "disabled";
-          subscriptions: Array<string>;
-          url: string;
-        } | null
-      >;
-      enterpriseWebhookEndpointList: FunctionReference<
-        "query",
-        "internal",
-        { enterpriseId: string },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          createdByUserId?: string;
-          enterpriseId: string;
-          extend?: any;
-          failureCount: number;
-          groupId: string;
-          lastFailureAt?: number;
-          lastSuccessAt?: number;
-          secretHash: string;
-          status: "active" | "disabled";
-          subscriptions: Array<string>;
-          url: string;
-        }>
-      >;
-      enterpriseWebhookEndpointUpdate: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; endpointId: string },
         null
       >;
       factors: {
@@ -1725,6 +433,423 @@ export declare const components: {
           >;
         };
       };
+      groupAuditEventCreate: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          actorId?: string;
+          actorType: "user" | "system" | "scim" | "api_key" | "webhook";
+          connectionId?: string;
+          eventType: string;
+          groupId: string;
+          ip?: string;
+          metadata?: any;
+          occurredAt: number;
+          requestId?: string;
+          status: "success" | "failure";
+          subjectId?: string;
+          subjectType: string;
+        },
+        string
+      >;
+      groupAuditEventList: FunctionReference<
+        "query",
+        "internal",
+        { connectionId?: string; groupId?: string; limit?: number },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          actorId?: string;
+          actorType: "user" | "system" | "scim" | "api_key" | "webhook";
+          connectionId?: string;
+          eventType: string;
+          groupId: string;
+          ip?: string;
+          metadata?: any;
+          occurredAt: number;
+          requestId?: string;
+          status: "success" | "failure";
+          subjectId?: string;
+          subjectType: string;
+        }>
+      >;
+      groupConnectionCreate: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          config?: any;
+          extend?: any;
+          groupId: string;
+          name?: string;
+          protocol: "oidc" | "saml";
+          slug?: string;
+          status?: "draft" | "active" | "disabled";
+        },
+        string
+      >;
+      groupConnectionDelete: FunctionReference<
+        "mutation",
+        "internal",
+        { connectionId: string },
+        null
+      >;
+      groupConnectionDomainAdd: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          connectionId: string;
+          domain: string;
+          groupId: string;
+          isPrimary?: boolean;
+        },
+        string
+      >;
+      groupConnectionDomainDelete: FunctionReference<
+        "mutation",
+        "internal",
+        { domainId: string },
+        null
+      >;
+      groupConnectionDomainList: FunctionReference<
+        "query",
+        "internal",
+        { connectionId: string },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          connectionId: string;
+          domain: string;
+          groupId: string;
+          isPrimary: boolean;
+          verifiedAt?: number;
+        }>
+      >;
+      groupConnectionDomainVerificationDelete: FunctionReference<
+        "mutation",
+        "internal",
+        { domainId: string },
+        null
+      >;
+      groupConnectionDomainVerificationGet: FunctionReference<
+        "query",
+        "internal",
+        { domainId: string },
+        {
+          _creationTime: number;
+          _id: string;
+          connectionId: string;
+          domain: string;
+          domainId: string;
+          expiresAt: number;
+          groupId: string;
+          recordName: string;
+          requestedAt: number;
+          token: string;
+          tokenHash: string;
+        } | null
+      >;
+      groupConnectionDomainVerificationUpsert: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          connectionId: string;
+          domain: string;
+          domainId: string;
+          expiresAt: number;
+          groupId: string;
+          recordName: string;
+          requestedAt: number;
+          token: string;
+          tokenHash: string;
+        },
+        string
+      >;
+      groupConnectionDomainVerify: FunctionReference<
+        "mutation",
+        "internal",
+        { domainId: string; verifiedAt: number },
+        {
+          _creationTime: number;
+          _id: string;
+          connectionId: string;
+          domain: string;
+          groupId: string;
+          isPrimary: boolean;
+          verifiedAt?: number;
+        }
+      >;
+      groupConnectionGet: FunctionReference<
+        "query",
+        "internal",
+        { connectionId: string },
+        {
+          _creationTime: number;
+          _id: string;
+          config?: any;
+          extend?: any;
+          groupId: string;
+          name?: string;
+          protocol: "oidc" | "saml";
+          slug?: string;
+          status: "draft" | "active" | "disabled";
+        } | null
+      >;
+      groupConnectionGetByDomain: FunctionReference<
+        "query",
+        "internal",
+        { domain: string },
+        {
+          connection: {
+            _creationTime: number;
+            _id: string;
+            config?: any;
+            extend?: any;
+            groupId: string;
+            name?: string;
+            protocol: "oidc" | "saml";
+            slug?: string;
+            status: "draft" | "active" | "disabled";
+          };
+          domain: {
+            _creationTime: number;
+            _id: string;
+            connectionId: string;
+            domain: string;
+            groupId: string;
+            isPrimary: boolean;
+            verifiedAt?: number;
+          };
+        } | null
+      >;
+      groupConnectionList: FunctionReference<
+        "query",
+        "internal",
+        {
+          cursor?: string | null;
+          limit?: number;
+          order?: "asc" | "desc";
+          orderBy?: "_creationTime" | "name" | "slug" | "status";
+          where?: {
+            groupId?: string;
+            slug?: string;
+            status?: "draft" | "active" | "disabled";
+          };
+        },
+        {
+          items: Array<{
+            _creationTime: number;
+            _id: string;
+            config?: any;
+            extend?: any;
+            groupId: string;
+            name?: string;
+            protocol: "oidc" | "saml";
+            slug?: string;
+            status: "draft" | "active" | "disabled";
+          }>;
+          nextCursor: string | null;
+        }
+      >;
+      groupConnectionScimConfigGetByGroupConnection: FunctionReference<
+        "query",
+        "internal",
+        { connectionId: string },
+        {
+          _creationTime: number;
+          _id: string;
+          basePath: string;
+          connectionId: string;
+          extend?: any;
+          groupId: string;
+          lastRotatedAt?: number;
+          status: "draft" | "active" | "disabled";
+          tokenHash: string;
+        } | null
+      >;
+      groupConnectionScimConfigGetByTokenHash: FunctionReference<
+        "query",
+        "internal",
+        { tokenHash: string },
+        {
+          _creationTime: number;
+          _id: string;
+          basePath: string;
+          connectionId: string;
+          extend?: any;
+          groupId: string;
+          lastRotatedAt?: number;
+          status: "draft" | "active" | "disabled";
+          tokenHash: string;
+        } | null
+      >;
+      groupConnectionScimConfigUpsert: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          basePath: string;
+          connectionId: string;
+          extend?: any;
+          groupId: string;
+          lastRotatedAt?: number;
+          status: "draft" | "active" | "disabled";
+          tokenHash: string;
+        },
+        string
+      >;
+      groupConnectionScimIdentityDelete: FunctionReference<
+        "mutation",
+        "internal",
+        { identityId: string },
+        null
+      >;
+      groupConnectionScimIdentityGet: FunctionReference<
+        "query",
+        "internal",
+        {
+          connectionId: string;
+          externalId: string;
+          resourceType: "user" | "group";
+        },
+        {
+          _creationTime: number;
+          _id: string;
+          active?: boolean;
+          connectionId: string;
+          externalId: string;
+          groupId: string;
+          lastProvisionedAt?: number;
+          mappedGroupId?: string;
+          raw?: any;
+          resourceType: "user" | "group";
+          userId?: string;
+        } | null
+      >;
+      groupConnectionScimIdentityGetByGroupConnectionAndUser: FunctionReference<
+        "query",
+        "internal",
+        { connectionId: string; userId: string },
+        {
+          _creationTime: number;
+          _id: string;
+          active?: boolean;
+          connectionId: string;
+          externalId: string;
+          groupId: string;
+          lastProvisionedAt?: number;
+          mappedGroupId?: string;
+          raw?: any;
+          resourceType: "user" | "group";
+          userId?: string;
+        } | null
+      >;
+      groupConnectionScimIdentityGetByMappedGroup: FunctionReference<
+        "query",
+        "internal",
+        { mappedGroupId: string },
+        {
+          _creationTime: number;
+          _id: string;
+          active?: boolean;
+          connectionId: string;
+          externalId: string;
+          groupId: string;
+          lastProvisionedAt?: number;
+          mappedGroupId?: string;
+          raw?: any;
+          resourceType: "user" | "group";
+          userId?: string;
+        } | null
+      >;
+      groupConnectionScimIdentityGetByUser: FunctionReference<
+        "query",
+        "internal",
+        { userId: string },
+        {
+          _creationTime: number;
+          _id: string;
+          active?: boolean;
+          connectionId: string;
+          externalId: string;
+          groupId: string;
+          lastProvisionedAt?: number;
+          mappedGroupId?: string;
+          raw?: any;
+          resourceType: "user" | "group";
+          userId?: string;
+        } | null
+      >;
+      groupConnectionScimIdentityListByGroupConnection: FunctionReference<
+        "query",
+        "internal",
+        { connectionId: string },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          active?: boolean;
+          connectionId: string;
+          externalId: string;
+          groupId: string;
+          lastProvisionedAt?: number;
+          mappedGroupId?: string;
+          raw?: any;
+          resourceType: "user" | "group";
+          userId?: string;
+        }>
+      >;
+      groupConnectionScimIdentityUpsert: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          active?: boolean;
+          connectionId: string;
+          externalId: string;
+          groupId: string;
+          lastProvisionedAt?: number;
+          mappedGroupId?: string;
+          raw?: any;
+          resourceType: "user" | "group";
+          userId?: string;
+        },
+        string
+      >;
+      groupConnectionSecretDelete: FunctionReference<
+        "mutation",
+        "internal",
+        { connectionId: string; kind: "oidc_client_secret" },
+        null
+      >;
+      groupConnectionSecretGet: FunctionReference<
+        "query",
+        "internal",
+        { connectionId: string; kind: "oidc_client_secret" },
+        {
+          _creationTime: number;
+          _id: string;
+          ciphertext: string;
+          connectionId: string;
+          groupId: string;
+          kind: "oidc_client_secret";
+          updatedAt: number;
+        } | null
+      >;
+      groupConnectionSecretUpsert: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          ciphertext: string;
+          connectionId: string;
+          groupId: string;
+          kind: "oidc_client_secret";
+          updatedAt: number;
+        },
+        string
+      >;
+      groupConnectionUpdate: FunctionReference<
+        "mutation",
+        "internal",
+        { connectionId: string; data: any },
+        null
+      >;
       groupCreate: FunctionReference<
         "mutation",
         "internal",
@@ -1755,6 +880,25 @@ export declare const components: {
           isRoot?: boolean;
           name: string;
           parentGroupId?: string;
+          policy?: {
+            extend?: any;
+            identity: {
+              accountLinking: {
+                oidc: "verifiedEmail" | "none";
+                saml: "verifiedEmail" | "none";
+              };
+            };
+            provisioning: {
+              deprovision: { mode: "soft" | "hard" };
+              jit: {
+                defaultRole?: string;
+                defaultRoleIds?: Array<string>;
+                mode: "off" | "createUser" | "createUserAndMembership";
+              };
+              scimReuse: { user: "externalId" | "none" };
+            };
+            version: 1;
+          };
           rootGroupId?: string;
           slug?: string;
           tags?: Array<{ key: string; value: string }>;
@@ -1787,6 +931,25 @@ export declare const components: {
             isRoot?: boolean;
             name: string;
             parentGroupId?: string;
+            policy?: {
+              extend?: any;
+              identity: {
+                accountLinking: {
+                  oidc: "verifiedEmail" | "none";
+                  saml: "verifiedEmail" | "none";
+                };
+              };
+              provisioning: {
+                deprovision: { mode: "soft" | "hard" };
+                jit: {
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
+                  mode: "off" | "createUser" | "createUserAndMembership";
+                };
+                scimReuse: { user: "externalId" | "none" };
+              };
+              version: 1;
+            };
             rootGroupId?: string;
             slug?: string;
             tags?: Array<{ key: string; value: string }>;
@@ -1827,6 +990,25 @@ export declare const components: {
               isRoot?: boolean;
               name: string;
               parentGroupId?: string;
+              policy?: {
+                extend?: any;
+                identity: {
+                  accountLinking: {
+                    oidc: "verifiedEmail" | "none";
+                    saml: "verifiedEmail" | "none";
+                  };
+                };
+                provisioning: {
+                  deprovision: { mode: "soft" | "hard" };
+                  jit: {
+                    defaultRole?: string;
+                    defaultRoleIds?: Array<string>;
+                    mode: "off" | "createUser" | "createUserAndMembership";
+                  };
+                  scimReuse: { user: "externalId" | "none" };
+                };
+                version: 1;
+              };
               rootGroupId?: string;
               slug?: string;
               tags?: Array<{ key: string; value: string }>;
@@ -1859,6 +1041,25 @@ export declare const components: {
                 isRoot?: boolean;
                 name: string;
                 parentGroupId?: string;
+                policy?: {
+                  extend?: any;
+                  identity: {
+                    accountLinking: {
+                      oidc: "verifiedEmail" | "none";
+                      saml: "verifiedEmail" | "none";
+                    };
+                  };
+                  provisioning: {
+                    deprovision: { mode: "soft" | "hard" };
+                    jit: {
+                      defaultRole?: string;
+                      defaultRoleIds?: Array<string>;
+                      mode: "off" | "createUser" | "createUserAndMembership";
+                    };
+                    scimReuse: { user: "externalId" | "none" };
+                  };
+                  version: 1;
+                };
                 rootGroupId?: string;
                 slug?: string;
                 tags?: Array<{ key: string; value: string }>;
@@ -2114,6 +1315,126 @@ export declare const components: {
         "mutation",
         "internal",
         { data: any; groupId: string },
+        null
+      >;
+      groupWebhookDeliveryEnqueue: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          auditEventId?: string;
+          connectionId: string;
+          endpointId: string;
+          eventType: string;
+          nextAttemptAt: number;
+          payload: any;
+        },
+        string
+      >;
+      groupWebhookDeliveryList: FunctionReference<
+        "query",
+        "internal",
+        { connectionId: string; limit?: number },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          attemptCount: number;
+          auditEventId?: string;
+          connectionId: string;
+          endpointId: string;
+          eventType: string;
+          lastAttemptAt?: number;
+          lastError?: string;
+          lastResponseStatus?: number;
+          nextAttemptAt: number;
+          payload: any;
+          status: "pending" | "processing" | "delivered" | "failed";
+        }>
+      >;
+      groupWebhookDeliveryListReady: FunctionReference<
+        "query",
+        "internal",
+        { limit?: number; now: number },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          attemptCount: number;
+          auditEventId?: string;
+          connectionId: string;
+          endpointId: string;
+          eventType: string;
+          lastAttemptAt?: number;
+          lastError?: string;
+          lastResponseStatus?: number;
+          nextAttemptAt: number;
+          payload: any;
+          status: "pending" | "processing" | "delivered" | "failed";
+        }>
+      >;
+      groupWebhookDeliveryPatch: FunctionReference<
+        "mutation",
+        "internal",
+        { data: any; deliveryId: string },
+        null
+      >;
+      groupWebhookEndpointCreate: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          connectionId: string;
+          createdByUserId?: string;
+          extend?: any;
+          groupId: string;
+          secretHash: string;
+          status?: "active" | "disabled";
+          subscriptions: Array<string>;
+          url: string;
+        },
+        string
+      >;
+      groupWebhookEndpointGet: FunctionReference<
+        "query",
+        "internal",
+        { endpointId: string },
+        {
+          _creationTime: number;
+          _id: string;
+          connectionId: string;
+          createdByUserId?: string;
+          extend?: any;
+          failureCount: number;
+          groupId: string;
+          lastFailureAt?: number;
+          lastSuccessAt?: number;
+          secretHash: string;
+          status: "active" | "disabled";
+          subscriptions: Array<string>;
+          url: string;
+        } | null
+      >;
+      groupWebhookEndpointList: FunctionReference<
+        "query",
+        "internal",
+        { connectionId: string },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          connectionId: string;
+          createdByUserId?: string;
+          extend?: any;
+          failureCount: number;
+          groupId: string;
+          lastFailureAt?: number;
+          lastSuccessAt?: number;
+          secretHash: string;
+          status: "active" | "disabled";
+          subscriptions: Array<string>;
+          url: string;
+        }>
+      >;
+      groupWebhookEndpointUpdate: FunctionReference<
+        "mutation",
+        "internal",
+        { data: any; endpointId: string },
         null
       >;
       identity: {
@@ -3284,6 +2605,557 @@ export declare const components: {
           userId: string;
         }>
       >;
+      sso: {
+        audit: {
+          groupAuditEventCreate: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              actorId?: string;
+              actorType: "user" | "system" | "scim" | "api_key" | "webhook";
+              connectionId?: string;
+              eventType: string;
+              groupId: string;
+              ip?: string;
+              metadata?: any;
+              occurredAt: number;
+              requestId?: string;
+              status: "success" | "failure";
+              subjectId?: string;
+              subjectType: string;
+            },
+            string
+          >;
+          groupAuditEventList: FunctionReference<
+            "query",
+            "internal",
+            { connectionId?: string; groupId?: string; limit?: number },
+            Array<{
+              _creationTime: number;
+              _id: string;
+              actorId?: string;
+              actorType: "user" | "system" | "scim" | "api_key" | "webhook";
+              connectionId?: string;
+              eventType: string;
+              groupId: string;
+              ip?: string;
+              metadata?: any;
+              occurredAt: number;
+              requestId?: string;
+              status: "success" | "failure";
+              subjectId?: string;
+              subjectType: string;
+            }>
+          >;
+        };
+        core: {
+          groupConnectionCreate: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              config?: any;
+              extend?: any;
+              groupId: string;
+              name?: string;
+              protocol: "oidc" | "saml";
+              slug?: string;
+              status?: "draft" | "active" | "disabled";
+            },
+            string
+          >;
+          groupConnectionDelete: FunctionReference<
+            "mutation",
+            "internal",
+            { connectionId: string },
+            null
+          >;
+          groupConnectionGet: FunctionReference<
+            "query",
+            "internal",
+            { connectionId: string },
+            {
+              _creationTime: number;
+              _id: string;
+              config?: any;
+              extend?: any;
+              groupId: string;
+              name?: string;
+              protocol: "oidc" | "saml";
+              slug?: string;
+              status: "draft" | "active" | "disabled";
+            } | null
+          >;
+          groupConnectionGetByDomain: FunctionReference<
+            "query",
+            "internal",
+            { domain: string },
+            {
+              connection: {
+                _creationTime: number;
+                _id: string;
+                config?: any;
+                extend?: any;
+                groupId: string;
+                name?: string;
+                protocol: "oidc" | "saml";
+                slug?: string;
+                status: "draft" | "active" | "disabled";
+              };
+              domain: {
+                _creationTime: number;
+                _id: string;
+                connectionId: string;
+                domain: string;
+                groupId: string;
+                isPrimary: boolean;
+                verifiedAt?: number;
+              };
+            } | null
+          >;
+          groupConnectionList: FunctionReference<
+            "query",
+            "internal",
+            {
+              cursor?: string | null;
+              limit?: number;
+              order?: "asc" | "desc";
+              orderBy?: "_creationTime" | "name" | "slug" | "status";
+              where?: {
+                groupId?: string;
+                slug?: string;
+                status?: "draft" | "active" | "disabled";
+              };
+            },
+            {
+              items: Array<{
+                _creationTime: number;
+                _id: string;
+                config?: any;
+                extend?: any;
+                groupId: string;
+                name?: string;
+                protocol: "oidc" | "saml";
+                slug?: string;
+                status: "draft" | "active" | "disabled";
+              }>;
+              nextCursor: string | null;
+            }
+          >;
+          groupConnectionUpdate: FunctionReference<
+            "mutation",
+            "internal",
+            { connectionId: string; data: any },
+            null
+          >;
+        };
+        domains: {
+          groupConnectionDomainAdd: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              connectionId: string;
+              domain: string;
+              groupId: string;
+              isPrimary?: boolean;
+            },
+            string
+          >;
+          groupConnectionDomainDelete: FunctionReference<
+            "mutation",
+            "internal",
+            { domainId: string },
+            null
+          >;
+          groupConnectionDomainList: FunctionReference<
+            "query",
+            "internal",
+            { connectionId: string },
+            Array<{
+              _creationTime: number;
+              _id: string;
+              connectionId: string;
+              domain: string;
+              groupId: string;
+              isPrimary: boolean;
+              verifiedAt?: number;
+            }>
+          >;
+          groupConnectionDomainVerificationDelete: FunctionReference<
+            "mutation",
+            "internal",
+            { domainId: string },
+            null
+          >;
+          groupConnectionDomainVerificationGet: FunctionReference<
+            "query",
+            "internal",
+            { domainId: string },
+            {
+              _creationTime: number;
+              _id: string;
+              connectionId: string;
+              domain: string;
+              domainId: string;
+              expiresAt: number;
+              groupId: string;
+              recordName: string;
+              requestedAt: number;
+              token: string;
+              tokenHash: string;
+            } | null
+          >;
+          groupConnectionDomainVerificationUpsert: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              connectionId: string;
+              domain: string;
+              domainId: string;
+              expiresAt: number;
+              groupId: string;
+              recordName: string;
+              requestedAt: number;
+              token: string;
+              tokenHash: string;
+            },
+            string
+          >;
+          groupConnectionDomainVerify: FunctionReference<
+            "mutation",
+            "internal",
+            { domainId: string; verifiedAt: number },
+            {
+              _creationTime: number;
+              _id: string;
+              connectionId: string;
+              domain: string;
+              groupId: string;
+              isPrimary: boolean;
+              verifiedAt?: number;
+            }
+          >;
+        };
+        scim: {
+          groupConnectionScimConfigGetByGroupConnection: FunctionReference<
+            "query",
+            "internal",
+            { connectionId: string },
+            {
+              _creationTime: number;
+              _id: string;
+              basePath: string;
+              connectionId: string;
+              extend?: any;
+              groupId: string;
+              lastRotatedAt?: number;
+              status: "draft" | "active" | "disabled";
+              tokenHash: string;
+            } | null
+          >;
+          groupConnectionScimConfigGetByTokenHash: FunctionReference<
+            "query",
+            "internal",
+            { tokenHash: string },
+            {
+              _creationTime: number;
+              _id: string;
+              basePath: string;
+              connectionId: string;
+              extend?: any;
+              groupId: string;
+              lastRotatedAt?: number;
+              status: "draft" | "active" | "disabled";
+              tokenHash: string;
+            } | null
+          >;
+          groupConnectionScimConfigUpsert: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              basePath: string;
+              connectionId: string;
+              extend?: any;
+              groupId: string;
+              lastRotatedAt?: number;
+              status: "draft" | "active" | "disabled";
+              tokenHash: string;
+            },
+            string
+          >;
+          groupConnectionScimIdentityDelete: FunctionReference<
+            "mutation",
+            "internal",
+            { identityId: string },
+            null
+          >;
+          groupConnectionScimIdentityGet: FunctionReference<
+            "query",
+            "internal",
+            {
+              connectionId: string;
+              externalId: string;
+              resourceType: "user" | "group";
+            },
+            {
+              _creationTime: number;
+              _id: string;
+              active?: boolean;
+              connectionId: string;
+              externalId: string;
+              groupId: string;
+              lastProvisionedAt?: number;
+              mappedGroupId?: string;
+              raw?: any;
+              resourceType: "user" | "group";
+              userId?: string;
+            } | null
+          >;
+          groupConnectionScimIdentityGetByGroupConnectionAndUser: FunctionReference<
+            "query",
+            "internal",
+            { connectionId: string; userId: string },
+            {
+              _creationTime: number;
+              _id: string;
+              active?: boolean;
+              connectionId: string;
+              externalId: string;
+              groupId: string;
+              lastProvisionedAt?: number;
+              mappedGroupId?: string;
+              raw?: any;
+              resourceType: "user" | "group";
+              userId?: string;
+            } | null
+          >;
+          groupConnectionScimIdentityGetByMappedGroup: FunctionReference<
+            "query",
+            "internal",
+            { mappedGroupId: string },
+            {
+              _creationTime: number;
+              _id: string;
+              active?: boolean;
+              connectionId: string;
+              externalId: string;
+              groupId: string;
+              lastProvisionedAt?: number;
+              mappedGroupId?: string;
+              raw?: any;
+              resourceType: "user" | "group";
+              userId?: string;
+            } | null
+          >;
+          groupConnectionScimIdentityGetByUser: FunctionReference<
+            "query",
+            "internal",
+            { userId: string },
+            {
+              _creationTime: number;
+              _id: string;
+              active?: boolean;
+              connectionId: string;
+              externalId: string;
+              groupId: string;
+              lastProvisionedAt?: number;
+              mappedGroupId?: string;
+              raw?: any;
+              resourceType: "user" | "group";
+              userId?: string;
+            } | null
+          >;
+          groupConnectionScimIdentityListByGroupConnection: FunctionReference<
+            "query",
+            "internal",
+            { connectionId: string },
+            Array<{
+              _creationTime: number;
+              _id: string;
+              active?: boolean;
+              connectionId: string;
+              externalId: string;
+              groupId: string;
+              lastProvisionedAt?: number;
+              mappedGroupId?: string;
+              raw?: any;
+              resourceType: "user" | "group";
+              userId?: string;
+            }>
+          >;
+          groupConnectionScimIdentityUpsert: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              active?: boolean;
+              connectionId: string;
+              externalId: string;
+              groupId: string;
+              lastProvisionedAt?: number;
+              mappedGroupId?: string;
+              raw?: any;
+              resourceType: "user" | "group";
+              userId?: string;
+            },
+            string
+          >;
+        };
+        secrets: {
+          groupConnectionSecretDelete: FunctionReference<
+            "mutation",
+            "internal",
+            { connectionId: string; kind: "oidc_client_secret" },
+            null
+          >;
+          groupConnectionSecretGet: FunctionReference<
+            "query",
+            "internal",
+            { connectionId: string; kind: "oidc_client_secret" },
+            {
+              _creationTime: number;
+              _id: string;
+              ciphertext: string;
+              connectionId: string;
+              groupId: string;
+              kind: "oidc_client_secret";
+              updatedAt: number;
+            } | null
+          >;
+          groupConnectionSecretUpsert: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              ciphertext: string;
+              connectionId: string;
+              groupId: string;
+              kind: "oidc_client_secret";
+              updatedAt: number;
+            },
+            string
+          >;
+        };
+        webhooks: {
+          groupWebhookDeliveryEnqueue: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              auditEventId?: string;
+              connectionId: string;
+              endpointId: string;
+              eventType: string;
+              nextAttemptAt: number;
+              payload: any;
+            },
+            string
+          >;
+          groupWebhookDeliveryList: FunctionReference<
+            "query",
+            "internal",
+            { connectionId: string; limit?: number },
+            Array<{
+              _creationTime: number;
+              _id: string;
+              attemptCount: number;
+              auditEventId?: string;
+              connectionId: string;
+              endpointId: string;
+              eventType: string;
+              lastAttemptAt?: number;
+              lastError?: string;
+              lastResponseStatus?: number;
+              nextAttemptAt: number;
+              payload: any;
+              status: "pending" | "processing" | "delivered" | "failed";
+            }>
+          >;
+          groupWebhookDeliveryListReady: FunctionReference<
+            "query",
+            "internal",
+            { limit?: number; now: number },
+            Array<{
+              _creationTime: number;
+              _id: string;
+              attemptCount: number;
+              auditEventId?: string;
+              connectionId: string;
+              endpointId: string;
+              eventType: string;
+              lastAttemptAt?: number;
+              lastError?: string;
+              lastResponseStatus?: number;
+              nextAttemptAt: number;
+              payload: any;
+              status: "pending" | "processing" | "delivered" | "failed";
+            }>
+          >;
+          groupWebhookDeliveryPatch: FunctionReference<
+            "mutation",
+            "internal",
+            { data: any; deliveryId: string },
+            null
+          >;
+          groupWebhookEndpointCreate: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              connectionId: string;
+              createdByUserId?: string;
+              extend?: any;
+              groupId: string;
+              secretHash: string;
+              status?: "active" | "disabled";
+              subscriptions: Array<string>;
+              url: string;
+            },
+            string
+          >;
+          groupWebhookEndpointGet: FunctionReference<
+            "query",
+            "internal",
+            { endpointId: string },
+            {
+              _creationTime: number;
+              _id: string;
+              connectionId: string;
+              createdByUserId?: string;
+              extend?: any;
+              failureCount: number;
+              groupId: string;
+              lastFailureAt?: number;
+              lastSuccessAt?: number;
+              secretHash: string;
+              status: "active" | "disabled";
+              subscriptions: Array<string>;
+              url: string;
+            } | null
+          >;
+          groupWebhookEndpointList: FunctionReference<
+            "query",
+            "internal",
+            { connectionId: string },
+            Array<{
+              _creationTime: number;
+              _id: string;
+              connectionId: string;
+              createdByUserId?: string;
+              extend?: any;
+              failureCount: number;
+              groupId: string;
+              lastFailureAt?: number;
+              lastSuccessAt?: number;
+              secretHash: string;
+              status: "active" | "disabled";
+              subscriptions: Array<string>;
+              url: string;
+            }>
+          >;
+          groupWebhookEndpointUpdate: FunctionReference<
+            "mutation",
+            "internal",
+            { data: any; endpointId: string },
+            null
+          >;
+        };
+      };
       totpDelete: FunctionReference<
         "mutation",
         "internal",

@@ -1,7 +1,7 @@
 /**
- * Arctic-based OAuth flow implementation.
+ * OAuth flow implementation.
  *
- * Uses Arctic for OAuth provider integration.
+ * Uses convex-auth's internal runtime contract for provider integration.
  *
  * All functions return `Fx<A, ConvexError<any>>` composed via `Fx.gen` pipelines.
  *
@@ -15,18 +15,16 @@ import * as arctic from "arctic";
 import type { ConvexError } from "convex/values";
 
 import { SHARED_COOKIE_OPTIONS } from "./cookies";
-import type { OAuthProfile } from "./types";
+import type { OAuthProfile, OAuthRuntimeClient, OAuthTokens } from "./types";
 import { logWithLevel } from "./utils";
 import { isLocalHost } from "./utils";
 
 type OAuthProviderConfigLike = {
   scopes?: string[];
-  profile?: (tokens: arctic.OAuth2Tokens) => Promise<OAuthProfile>;
+  provider: OAuthRuntimeClient | null;
+  profile?: (tokens: OAuthTokens) => Promise<OAuthProfile>;
   nonce?: boolean;
-  validateTokens?: (
-    tokens: arctic.OAuth2Tokens,
-    ctx: { nonce?: string },
-  ) => Promise<void>;
+  validateTokens?: (tokens: OAuthTokens, ctx: { nonce?: string }) => Promise<void>;
 };
 
 // ============================================================================
@@ -114,19 +112,11 @@ export function getAuthorizationSignature({
 }
 
 // ============================================================================
-// PKCE Detection
+// PKCE Handling
 // ============================================================================
 
-/**
- * Detect whether an Arctic provider uses PKCE by checking the arity
- * of `createAuthorizationURL`. PKCE providers take 3 args
- * (state, codeVerifier, scopes), non-PKCE take 2 (state, scopes).
- */
-function isPKCEProvider(provider: any): boolean {
-  return (
-    typeof provider.createAuthorizationURL === "function" &&
-    provider.createAuthorizationURL.length >= 3
-  );
+function requiresPKCE(provider: OAuthRuntimeClient) {
+  return provider.pkce === "required" || provider.pkce === "optional";
 }
 
 // ============================================================================
@@ -134,19 +124,16 @@ function isPKCEProvider(provider: any): boolean {
 // ============================================================================
 
 /**
- * Exchange the authorization code for tokens via Arctic.
+ * Exchange the authorization code for tokens via the configured runtime client.
  * Maps Arctic-specific errors to typed `ConvexError<any>` failures.
  */
 function exchangeCode(
-  arcticProvider: any,
+  provider: OAuthRuntimeClient,
   code: string,
   codeVerifier: string | undefined,
-): Fx<arctic.OAuth2Tokens, ConvexError<any>> {
+): Fx<OAuthTokens, ConvexError<any>> {
   return Fx.from({
-    ok: () =>
-      isPKCEProvider(arcticProvider)
-        ? arcticProvider.validateAuthorizationCode(code, codeVerifier)
-        : arcticProvider.validateAuthorizationCode(code),
+    ok: () => provider.validateAuthorizationCode({ code, codeVerifier }),
     err: (e) => {
       if (e instanceof arctic.OAuth2RequestError) {
         return Cv.error({
@@ -186,11 +173,9 @@ function exchangeCode(
 function extractProfile(
   providerId: string,
   oauthConfig: OAuthProviderConfigLike,
-  tokens: arctic.OAuth2Tokens,
+  tokens: OAuthTokens,
 ): Fx<OAuthProfile, ConvexError<any>> {
-  const hasIdToken =
-    "id_token" in tokens.data &&
-    typeof (tokens.data as any).id_token === "string";
+  const hasIdToken = typeof tokens.idToken === "string";
   const profileSource = oauthConfig.profile
     ? { source: "callback" as const }
     : hasIdToken
@@ -208,10 +193,7 @@ function extractProfile(
           }),
       }),
     idToken: (_profileSource) => {
-      const claims = arctic.decodeIdToken(tokens.idToken()) as Record<
-        string,
-        unknown
-      >;
+      const claims = arctic.decodeIdToken(tokens.idToken!) as Record<string, unknown>;
       return Fx.succeed({
         id: (claims.sub as string) ?? crypto.randomUUID(),
         name: (claims.name as string) ?? undefined,
@@ -224,7 +206,7 @@ function extractProfile(
         code: "OAUTH_INVALID_PROFILE",
         message:
           `Provider "${providerId}" does not return an ID token. ` +
-          `Add a \`profile\` callback in the OAuth() config to extract user info from the access token.`,
+          "Configure a profile extractor for this provider to derive user info from the access token.",
       }),
   });
 }
@@ -249,39 +231,41 @@ function validateProfileId(
 // ============================================================================
 
 /**
- * Create an OAuth authorization URL using an Arctic provider.
- *
- * Handles PKCE detection, state generation, and cookie creation.
+ * Create an OAuth authorization URL using the configured runtime client.
  */
 /** @internal */
 export async function createOAuthAuthorizationURL(
   providerId: string,
-  arcticProvider: any,
   oauthConfig: OAuthProviderConfigLike,
 ): Promise<AuthorizationResult> {
+  if (oauthConfig.provider === null) {
+    throw new Error(`OAuth provider "${providerId}" is missing a runtime client.`);
+  }
   const state = arctic.generateState();
   const cookies: OAuthCookie[] = [];
   let codeVerifier: string | undefined;
 
   const scopes = oauthConfig.scopes ?? [];
 
-  let url: URL;
-
-  if (isPKCEProvider(arcticProvider)) {
+  if (requiresPKCE(oauthConfig.provider)) {
     codeVerifier = arctic.generateCodeVerifier();
-    url = arcticProvider.createAuthorizationURL(state, codeVerifier, scopes);
     cookies.push(createCookie("pkce", providerId, codeVerifier));
-  } else {
-    url = arcticProvider.createAuthorizationURL(state, scopes);
   }
 
   cookies.push(createCookie("state", providerId, state));
 
+  let nonce: string | undefined;
   if (oauthConfig.nonce === true) {
-    const nonce = arctic.generateState();
-    url.searchParams.set("nonce", nonce);
+    nonce = arctic.generateState();
     cookies.push(createCookie("nonce", providerId, nonce));
   }
+
+  const url = oauthConfig.provider.createAuthorizationURL({
+    state,
+    codeVerifier,
+    scopes,
+    nonce,
+  });
 
   logWithLevel("DEBUG", "OAuth authorization URL created", {
     url: url.toString(),
@@ -311,12 +295,17 @@ export async function createOAuthAuthorizationURL(
 /** @internal */
 export function handleOAuthCallback(
   providerId: string,
-  arcticProvider: any,
   oauthConfig: OAuthProviderConfigLike,
   params: Record<string, string>,
   cookies: Record<string, string | undefined>,
 ): Fx<CallbackResult, ConvexError<any>> {
   return Fx.gen(function* () {
+    if (oauthConfig.provider === null) {
+      return yield* Cv.fail({
+        code: "OAUTH_PROVIDER_ERROR",
+        message: `OAuth provider "${providerId}" is missing a runtime client.`,
+      });
+    }
     const resCookies: OAuthCookie[] = [];
 
     // 1. Validate state
@@ -358,7 +347,7 @@ export function handleOAuthCallback(
 
     // 3. Read PKCE verifier from cookie if applicable
     let codeVerifier: string | undefined;
-    if (isPKCEProvider(arcticProvider)) {
+    if (requiresPKCE(oauthConfig.provider)) {
       const pkceCookieName = oauthCookieName("pkce", providerId);
       codeVerifier = yield* cookies[pkceCookieName] != null
         ? Fx.succeed(cookies[pkceCookieName]!)
@@ -382,7 +371,7 @@ export function handleOAuthCallback(
     }
 
     // 4. Exchange code for tokens
-    const tokens = yield* exchangeCode(arcticProvider, code, codeVerifier);
+    const tokens = yield* exchangeCode(oauthConfig.provider, code, codeVerifier);
 
     if (oauthConfig.validateTokens !== undefined) {
       yield* Fx.from({

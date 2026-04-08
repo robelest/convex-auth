@@ -7,8 +7,8 @@ one setup API, full TypeScript support.
 
 - **Convex-native setup API** — `createAuth(components.auth, { providers })`
   gives you everything.
-- **OAuth via Arctic** — 50+ providers through [Arctic](https://arcticjs.dev),
-  zero-dependency OAuth 2.0.
+- **First-party OAuth providers** — Google, GitHub, Apple, and Microsoft with
+  product-owned wrappers and sane defaults.
 - **Fluent Convex builders (recommended)** — cleaner auth-aware API handling
   with middleware and explicit `.public()` / `.internal()` exports.
 - **Password, passkeys, TOTP, magic links, OTP, phone, anonymous** — all built
@@ -65,15 +65,15 @@ export default app;
 ```ts
 // convex/auth.ts
 import { createAuth } from "@robelest/convex-auth/component";
+import { github } from "@robelest/convex-auth/providers";
 import { components } from "./_generated/api";
-import { GitHub } from "arctic";
-import { OAuth } from "@robelest/convex-auth/providers";
 
 const auth = createAuth(components.auth, {
   providers: [
-    OAuth(
-      new GitHub(process.env.AUTH_GITHUB_ID!, process.env.AUTH_GITHUB_SECRET!),
-    ),
+    github({
+      clientId: process.env.AUTH_GITHUB_ID!,
+      clientSecret: process.env.AUTH_GITHUB_SECRET!,
+    }),
   ],
 });
 
@@ -123,29 +123,38 @@ export const mutation = convex.mutation().use(withRequiredAuth).extend(WithZod);
 
 | Provider          | Import                                                                  |
 | ----------------- | ----------------------------------------------------------------------- |
-| OAuth (Arctic)    | `import { OAuth } from "@robelest/convex-auth/providers"`               |
-| Password          | `import { Password } from "@robelest/convex-auth/providers"`            |
-| Passkey           | `import { Passkey } from "@robelest/convex-auth/providers"`             |
-| TOTP              | `import { Totp } from "@robelest/convex-auth/providers"`                |
-| Phone/SMS         | `import { Phone } from "@robelest/convex-auth/providers"`               |
-| Anonymous         | `import { Anonymous } from "@robelest/convex-auth/providers"`           |
-| Device (RFC 8628) | `import { Device } from "@robelest/convex-auth/providers"`              |
+| Google            | `import { google } from "@robelest/convex-auth/providers"`              |
+| GitHub            | `import { github } from "@robelest/convex-auth/providers"`              |
+| Apple             | `import { apple } from "@robelest/convex-auth/providers"`                |
+| Microsoft         | `import { microsoft } from "@robelest/convex-auth/providers"`            |
+| Password          | `import { password } from "@robelest/convex-auth/providers"`            |
+| Passkey           | `import { passkey } from "@robelest/convex-auth/providers"`             |
+| TOTP              | `import { totp } from "@robelest/convex-auth/providers"`                |
+| Phone/SMS         | `import { phone } from "@robelest/convex-auth/providers"`               |
+| Anonymous         | `import { anonymous } from "@robelest/convex-auth/providers"`           |
+| Device (RFC 8628) | `import { device } from "@robelest/convex-auth/providers"`              |
+| Custom OAuth      | `import { custom } from "@robelest/convex-auth/providers"`              |
 
-## Enterprise
+OAuth provider-specific setup details live in the docs:
 
-The enterprise direction is a headless SDK/API rather than a hosted admin UI.
+- Google, GitHub, Apple, Microsoft: `/getting-started/providers`
+- Required env vars: `/getting-started/environment`
 
-- `auth.sso.*` stores enterprise config on top of `auth.group`, with distinct
-  `admin` and `client` helper surfaces.
-- Standardized helpers are exposed as `auth.sso.admin.connection.*`,
-  `auth.sso.admin.connection.domain.*`, `auth.sso.admin.oidc.*`,
-  `auth.sso.admin.saml.*`, `auth.sso.admin.policy.*`,
-  `auth.sso.admin.audit.list`, `auth.sso.admin.webhook.endpoint.*`,
-  `auth.sso.client.signIn`, `auth.sso.client.metadata`, and
-  `auth.scim.admin.configure/get/validate`.
-- Enterprise helpers are server-side primitives. Consumers can build and expose
+## Group SSO
+
+The group direction is a headless SDK/API rather than a hosted admin UI.
+
+- `auth.group.sso.*` stores group connection config alongside `auth.group`, with
+  group-level policy owned by `auth.group.sso.policy.*`.
+- Standardized helpers are exposed as `auth.group.sso.connection.*`,
+  `auth.group.sso.connection.domain.*`, `auth.group.sso.oidc.*`,
+  `auth.group.sso.saml.*`, `auth.group.sso.policy.*`,
+  `auth.group.sso.audit.list`, `auth.group.sso.webhook.endpoint.*`,
+  `auth.group.sso.signIn`, `auth.group.sso.metadata`, and
+  `auth.group.sso.scim.configure/get/validate`.
+- Group SSO helpers are server-side primitives. Consumers can build and expose
   their own Convex RPC wrappers when needed.
-- `auth.sso.client.metadata(...)` uses the local `@robelest/samlify` package to
+- `auth.group.sso.metadata(...)` uses the local `@robelest/samlify` package to
   parse IdP metadata and generate SP metadata from the same setup state.
 
 ## Documentation

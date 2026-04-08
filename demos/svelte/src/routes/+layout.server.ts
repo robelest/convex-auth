@@ -13,7 +13,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
       null,
     authProviders: {
       google: Boolean(
-        env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.CONVEX_SITE_URL,
+        env.AUTH_GOOGLE_ID && env.AUTH_GOOGLE_SECRET && env.CONVEX_SITE_URL,
       ),
     },
     auth: {

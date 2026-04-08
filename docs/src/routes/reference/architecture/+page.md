@@ -35,18 +35,18 @@ Your app registers the auth component and wires three files:
 
 The component owns its own isolated tables:
 
-| Table        | Purpose                                      |
-| ------------ | -------------------------------------------- |
-| `User`       | User records                                 |
-| `Account`    | Linked auth accounts (OAuth, password, etc.) |
-| `Session`    | Active sessions                              |
-| `Group`      | Organizations / teams                        |
-| `Member`     | Group memberships with roles                 |
-| `Invite`     | Pending invitations                          |
-| `ApiKey`     | API keys with scopes                         |
-| `Passkey`    | WebAuthn credentials                         |
-| `Totp`       | TOTP enrollments                             |
-| `Enterprise` | SSO connections (OIDC/SAML/SCIM config)      |
+| Table              | Purpose                                      |
+| ------------------ | -------------------------------------------- |
+| `User`             | User records                                 |
+| `Account`          | Linked auth accounts (OAuth, password, etc.) |
+| `Session`          | Active sessions                              |
+| `Group`            | Organizations / teams                        |
+| `Member`           | Group memberships with roles                 |
+| `Invite`           | Pending invitations                          |
+| `ApiKey`           | API keys with scopes                         |
+| `Passkey`          | WebAuthn credentials                         |
+| `Totp`             | TOTP enrollments                             |
+| `Group Connection` | SSO connections (OIDC/SAML/SCIM config)      |
 
 ## Auth flow
 
@@ -63,7 +63,8 @@ For subsequent requests:
 
 - Queries/mutations call `ctx.auth.getUserIdentity()` which returns
   `{ subject: "userId|sessionId" }`
-- `auth.ctx()` / `auth.context(ctx)` resolves `{ userId, user, groupId, role, grants }`
+- `auth.ctx()` / `auth.context(ctx)` resolves
+  `{ userId, user, groupId, role, grants }`
 
 ## Key design constraints
 
@@ -81,10 +82,10 @@ For subsequent requests:
 - **Helpers**: `auth.user.*`, `auth.session.*`, `auth.group.*`, etc. —
   server-side primitives
 - **HTTP**: `auth.http.add(http)` — registers OAuth callbacks and JWKS
-- **SSO** (conditional): `auth.sso.*` — only present when `new SSO()` is in
+- **SSO** (conditional): `auth.group.sso.*` — only present when `sso()` is in
   providers
-- **SCIM** (conditional): `auth.scim.admin.*` — provisioning helpers when
-  `new SSO()` is in providers
+- **SCIM** (conditional): `auth.group.sso.scim.*` — provisioning helpers when
+  `sso()` is in providers
 
 ## Where `ctx.auth` comes from
 
@@ -107,21 +108,22 @@ export const authMutation = customMutation(mutation, auth.ctx());
 export const authAction = customAction(action, auth.ctx());
 ```
 
-Inside those handlers, `ctx.auth` includes `{ userId, user, groupId, role,
-grants }` and unauthenticated callers are rejected before your handler runs.
+Inside those handlers, `ctx.auth` includes
+`{ userId, user, groupId, role, grants }` and unauthenticated callers are
+rejected before your handler runs.
 
 ## API layers
 
-| Layer                  | What it is                                                        | Typical usage                                                               |
-| ---------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Auth-flow actions      | Required client-callable functions exported from `convex/auth.ts` | `api.auth.signIn`, `api.auth.signOut`, `api.auth.store`                     |
-| Helper namespaces      | Server-side helper APIs returned by `createAuth(...)`             | `auth.member.require(ctx, ...)`, `auth.sso.admin.connection.create(ctx, ...)` |
-| Mounted enterprise RPC | Optional app-owned public RPC for enterprise/admin UI             | `api.auth.enterprise.createConnection`, `api.auth.enterprise.configureScim` |
+| Layer                 | What it is                                                        | Typical usage                                                                 |
+| --------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Auth-flow actions     | Required client-callable functions exported from `convex/auth.ts` | `api.auth.signIn`, `api.auth.signOut`, `api.auth.store`                       |
+| Helper namespaces     | Server-side helper APIs returned by `createAuth(...)`             | `auth.member.require(ctx, ...)`, `auth.group.sso.connection.create(ctx, ...)` |
+| Mounted group SSO RPC | Optional app-owned public RPC for group SSO admin UI              | `api.auth.group.createConnection`, `api.auth.group.configureScim`             |
 
 Only the first layer is required for the frontend auth client. The third layer
-exists only if your app explicitly exposes app-owned enterprise wrappers or
-custom enterprise wrappers. For the app-facing RPC surface, see the
-[Enterprise RPC guide](/sso/rpc/).
+exists only if your app explicitly exposes app-owned group SSO wrappers or
+custom group SSO wrappers. For the app-facing RPC surface, see the
+[Group SSO RPC guide](/sso/rpc/).
 
 `auth.oauth.*` is the planned provider-mode namespace and is intentionally not
 part of the current stable surface yet.
@@ -130,14 +132,14 @@ part of the current stable surface yet.
 
 Every auth path resolves to the same `userId`:
 
-| Access pattern                     | How `userId` is available                            |
-| ---------------------------------- | ---------------------------------------------------- |
-| Browser (password, OAuth, passkey) | `ctx.auth.userId` via `auth.ctx()`                   |
-| Enterprise SSO (OIDC / SAML)       | Same as browser - SSO completes as a session         |
-| Device flow (CLI / IoT)            | Same as browser - device poll returns session tokens |
+| Access pattern                     | How `userId` is available                                    |
+| ---------------------------------- | ------------------------------------------------------------ |
+| Browser (password, OAuth, passkey) | `ctx.auth.userId` via `auth.ctx()`                           |
+| Group SSO (OIDC / SAML)            | Same as browser - SSO completes as a session                 |
+| Device flow (CLI / IoT)            | Same as browser - device poll returns session tokens         |
 | API key (machine / automation)     | `ctx.key.userId` or `auth.http.context(ctx, request).userId` |
 
 The `userId` is the single shared anchor — server logic works regardless of how
-the caller authenticated. In app code, prefer `auth.ctx()` and `ctx.auth.userId`.
-Use `auth.http.context(ctx, request)` for advanced raw HTTP handlers that accept
-either a session or an API key.
+the caller authenticated. In app code, prefer `auth.ctx()` and
+`ctx.auth.userId`. Use `auth.http.context(ctx, request)` for advanced raw HTTP
+handlers that accept either a session or an API key.

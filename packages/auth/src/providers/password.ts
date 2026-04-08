@@ -1,7 +1,7 @@
 /**
- * Configure {@link Password} provider for email/password authentication.
+ * Configure the password provider for email/password authentication.
  *
- * The `Password` provider supports the following flows, determined
+ * The password provider supports the following flows, determined
  * by the `flow` parameter:
  *
  * - `"signUp"`: Create a new account with a password.
@@ -12,9 +12,9 @@
  *    included in params, verify an OTP.
  *
  * ```ts
- * import { Password } from "@robelest/convex-auth/providers";
+ * import { password } from "@robelest/convex-auth/providers";
  *
- * new Password()
+ * password()
  * ```
  *
  * @module
@@ -37,15 +37,13 @@ import type {
   AuthProviderConfig,
   ConvexCredentialsConfig,
 } from "../server/types";
-import { Credentials, type CredentialsConfig } from "./credentials";
+import { credentials, type CredentialsConfig } from "./credentials";
 
-/**
- * The available options to a {@link Password} provider for Convex Auth.
- */
+/** Configuration for the {@link password} provider. */
 export interface PasswordConfig<DataModel extends GenericDataModel> {
   /**
    * Uniquely identifies the provider, allowing to use
-   * multiple different {@link Password} providers.
+   * multiple different password providers.
    */
   id?: string;
   /**
@@ -135,218 +133,210 @@ function decodePasswordFlow(flow: unknown): PasswordFlowDispatch {
  *
  * @example
  * ```ts
- * import { Password } from "@robelest/convex-auth/providers";
+ * import { password } from "@robelest/convex-auth/providers";
  *
- * new Password()
- * new Password({ verify: myEmailProvider })
+ * password()
+ * password({ verify: myEmailProvider })
  * ```
+ *
+ * @typeParam DataModel - The Convex data model used by the auth context.
+ * @param config - Password flow hooks and optional verification providers.
+ * @returns A configured password provider for `createAuth`.
+ * @throws {Error} During sign-in flows when required password params are missing or reset is not enabled.
  */
-export class Password<DataModel extends GenericDataModel = GenericDataModel> {
-  readonly id: string;
-  readonly type = "credentials" as const;
-  readonly config: PasswordConfig<DataModel>;
+export function password<DataModel extends GenericDataModel = GenericDataModel>(
+  config: PasswordConfig<DataModel> = {} as PasswordConfig<DataModel>,
+): ConvexCredentialsConfig {
+  const provider = config.id ?? "password";
 
-  constructor(
-    config: PasswordConfig<DataModel> = {} as PasswordConfig<DataModel>,
-  ) {
-    this.id = config.id ?? "password";
-    this.config = config;
-  }
+  return credentials<DataModel>({
+    id: provider,
+    authorize: async (params, ctx) => {
+      const flowDispatch = decodePasswordFlow(params.flow);
 
-  /** @internal Convert to the internal materialized config shape. */
-  _toMaterialized(): ConvexCredentialsConfig {
-    const config = this.config;
-    const provider = this.id;
+      const validatePasswordRequirements = (password: string) => {
+        if (config.validatePasswordRequirements !== undefined) {
+          config.validatePasswordRequirements(password);
+          return;
+        }
+        validateDefaultPasswordRequirements(password);
+      };
 
-    return new Credentials<DataModel>({
-      id: "password",
-      authorize: async (params, ctx) => {
-        const flowDispatch = decodePasswordFlow(params.flow);
+      await Fx.run(
+        Fx.match(flowDispatch, flowDispatch.tag, {
+          signUp: () =>
+            Fx.sync(() => {
+              validatePasswordRequirements(params.password as string);
+            }),
+          resetVerification: () =>
+            Fx.sync(() => {
+              validatePasswordRequirements(params.newPassword as string);
+            }),
+          signIn: () => Fx.succeed(undefined),
+          reset: () => Fx.succeed(undefined),
+          emailVerification: () => Fx.succeed(undefined),
+          invalid: () => Fx.succeed(undefined),
+        }),
+      );
 
-        const validatePasswordRequirements = (password: string) => {
-          if (config.validatePasswordRequirements !== undefined) {
-            config.validatePasswordRequirements(password);
-            return;
-          }
-          validateDefaultPasswordRequirements(password);
-        };
+      const profile = config.profile?.(params, ctx) ?? defaultProfile(params);
+      const { email } = profile;
+      const requirePasswordParam = (
+        value: unknown,
+        flow: "signUp" | "signIn",
+      ) => {
+        if (typeof value !== "string" || value.length === 0) {
+          throw new Error(`Missing \`password\` param for \`${flow}\` flow`);
+        }
+        return value;
+      };
 
-        await Fx.run(
-          Fx.match(flowDispatch, flowDispatch.tag, {
-            signUp: () =>
-              Fx.sync(() => {
-                validatePasswordRequirements(params.password as string);
-              }),
-            resetVerification: () =>
-              Fx.sync(() => {
-                validatePasswordRequirements(params.newPassword as string);
-              }),
-            signIn: () => Fx.succeed(undefined),
-            reset: () => Fx.succeed(undefined),
-            emailVerification: () => Fx.succeed(undefined),
-            invalid: () => Fx.succeed(undefined),
-          }),
-        );
+      const finalizeCredentialsResult = async (
+        account: GenericDoc<DataModel, "Account">,
+        user: GenericDoc<DataModel, "User">,
+      ) => {
+        if (config.verify && !account.emailVerified) {
+          return await ctx.auth.provider.signIn(
+            ctx,
+            config.verify as AuthProviderConfig,
+            {
+              accountId: account._id,
+              params,
+            },
+          );
+        }
+        return { userId: user._id };
+      };
 
-        const profile = config.profile?.(params, ctx) ?? defaultProfile(params);
-        const { email } = profile;
-        const requirePasswordParam = (
-          value: unknown,
-          flow: "signUp" | "signIn",
-        ) => {
-          if (typeof value !== "string" || value.length === 0) {
-            throw new Error(`Missing \`password\` param for \`${flow}\` flow`);
-          }
-          return value;
-        };
-
-        const finalizeCredentialsResult = async (
-          account: GenericDoc<DataModel, "Account">,
-          user: GenericDoc<DataModel, "User">,
-        ) => {
-          if (config.verify && !account.emailVerified) {
-            return await ctx.auth.provider.signIn(
-              ctx,
-              config.verify as AuthProviderConfig,
-              {
-                accountId: account._id,
-                params,
-              },
-            );
-          }
-          return { userId: user._id };
-        };
-
-        return await Fx.run(
-          Fx.match(flowDispatch, flowDispatch.tag, {
-            signUp: () =>
-              Fx.promise(async () => {
-                const secret = requirePasswordParam(params.password, "signUp");
-                const created = await ctx.auth.account.create(ctx, {
-                  provider,
-                  account: { id: email, secret },
-                  profile: profile as any,
-                  shouldLinkViaEmail: config.verify !== undefined,
-                  shouldLinkViaPhone: false,
-                });
-                return await finalizeCredentialsResult(
-                  created.account,
-                  created.user,
+      return await Fx.run(
+        Fx.match(flowDispatch, flowDispatch.tag, {
+          signUp: () =>
+            Fx.promise(async () => {
+              const secret = requirePasswordParam(params.password, "signUp");
+              const created = await ctx.auth.account.create(ctx, {
+                provider,
+                account: { id: email, secret },
+                profile: profile as any,
+                shouldLinkViaEmail: config.verify !== undefined,
+                shouldLinkViaPhone: false,
+              });
+              return await finalizeCredentialsResult(
+                created.account,
+                created.user,
+              );
+            }),
+          signIn: () =>
+            Fx.promise(async () => {
+              const secret = requirePasswordParam(params.password, "signIn");
+              const retrieved = await ctx.auth.account.get(ctx, {
+                provider,
+                account: { id: email, secret },
+              });
+              if (retrieved === null) {
+                throw new Error("Invalid credentials");
+              }
+              return await finalizeCredentialsResult(
+                retrieved.account,
+                retrieved.user,
+              );
+            }),
+          reset: () =>
+            Fx.promise(async () => {
+              if (!config.reset) {
+                throw new Error(
+                  `Password reset is not enabled for ${provider}`,
                 );
-              }),
-            signIn: () =>
-              Fx.promise(async () => {
-                const secret = requirePasswordParam(params.password, "signIn");
-                const retrieved = await ctx.auth.account.get(ctx, {
-                  provider,
-                  account: { id: email, secret },
-                });
-                if (retrieved === null) {
-                  throw new Error("Invalid credentials");
-                }
-                return await finalizeCredentialsResult(
-                  retrieved.account,
-                  retrieved.user,
+              }
+              const { account } = await ctx.auth.account.get(ctx, {
+                provider,
+                account: { id: email },
+              });
+              return await ctx.auth.provider.signIn(
+                ctx,
+                config.reset as AuthProviderConfig,
+                {
+                  accountId: account._id,
+                  params,
+                },
+              );
+            }),
+          resetVerification: () =>
+            Fx.promise(async () => {
+              if (!config.reset) {
+                throw new Error(
+                  `Password reset is not enabled for ${provider}`,
                 );
-              }),
-            reset: () =>
-              Fx.promise(async () => {
-                if (!config.reset) {
-                  throw new Error(
-                    `Password reset is not enabled for ${provider}`,
-                  );
-                }
-                const { account } = await ctx.auth.account.get(ctx, {
-                  provider,
-                  account: { id: email },
-                });
-                return await ctx.auth.provider.signIn(
-                  ctx,
-                  config.reset as AuthProviderConfig,
-                  {
-                    accountId: account._id,
-                    params,
-                  },
+              }
+              if (params.newPassword === undefined) {
+                throw new Error(
+                  "Missing `newPassword` param for `reset-verification` flow",
                 );
-              }),
-            resetVerification: () =>
-              Fx.promise(async () => {
-                if (!config.reset) {
-                  throw new Error(
-                    `Password reset is not enabled for ${provider}`,
-                  );
-                }
-                if (params.newPassword === undefined) {
-                  throw new Error(
-                    "Missing `newPassword` param for `reset-verification` flow",
-                  );
-                }
-                const result = await ctx.auth.provider.signIn(
-                  ctx,
-                  config.reset as AuthProviderConfig,
-                  { params },
+              }
+              const result = await ctx.auth.provider.signIn(
+                ctx,
+                config.reset as AuthProviderConfig,
+                { params },
+              );
+              if (result === null) {
+                throw new Error("Invalid code");
+              }
+              const { userId, sessionId } = result;
+              const secret = params.newPassword as string;
+              await ctx.auth.account.update(ctx, {
+                provider,
+                account: { id: email, secret },
+              });
+              await ctx.auth.session.invalidate(ctx, {
+                userId,
+                except: [sessionId],
+              });
+              return { userId, sessionId };
+            }),
+          emailVerification: () =>
+            Fx.promise(async () => {
+              if (!config.verify) {
+                throw new Error(
+                  `Email verification is not enabled for ${provider}`,
                 );
-                if (result === null) {
-                  throw new Error("Invalid code");
-                }
-                const { userId, sessionId } = result;
-                const secret = params.newPassword as string;
-                await ctx.auth.account.update(ctx, {
-                  provider,
-                  account: { id: email, secret },
-                });
-                await ctx.auth.session.invalidate(ctx, {
-                  userId,
-                  except: [sessionId],
-                });
-                return { userId, sessionId };
-              }),
-            emailVerification: () =>
-              Fx.promise(async () => {
-                if (!config.verify) {
-                  throw new Error(
-                    `Email verification is not enabled for ${provider}`,
-                  );
-                }
-                const { account } = await ctx.auth.account.get(ctx, {
-                  provider,
-                  account: { id: email },
-                });
-                return await ctx.auth.provider.signIn(
-                  ctx,
-                  config.verify as AuthProviderConfig,
-                  {
-                    accountId: account._id,
-                    params,
-                  },
-                );
-              }),
-            invalid: () =>
-              Fx.fatal(
-                new Error(
-                  "Missing `flow` param, it must be one of " +
-                    '"signUp", "signIn", "reset", "reset-verification" or ' +
-                    '"email-verification"!',
-                ),
+              }
+              const { account } = await ctx.auth.account.get(ctx, {
+                provider,
+                account: { id: email },
+              });
+              return await ctx.auth.provider.signIn(
+                ctx,
+                config.verify as AuthProviderConfig,
+                {
+                  accountId: account._id,
+                  params,
+                },
+              );
+            }),
+          invalid: () =>
+            Fx.fatal(
+              new Error(
+                "Missing `flow` param, it must be one of " +
+                  '"signUp", "signIn", "reset", "reset-verification" or ' +
+                  '"email-verification"!',
               ),
-          }),
-        );
+            ),
+        }),
+      );
+    },
+    crypto: config.crypto ?? {
+      async hashSecret(password: string) {
+        return await hashPassword(password);
       },
-      crypto: config.crypto ?? {
-        async hashSecret(password: string) {
-          return await hashPassword(password);
-        },
-        async verifySecret(password: string, hash: string) {
-          return await verifyPassword(password, hash);
-        },
+      async verifySecret(password: string, hash: string) {
+        return await verifyPassword(password, hash);
       },
-      extraProviders: [
-        config.reset as AuthProviderConfig | undefined,
-        config.verify as AuthProviderConfig | undefined,
-      ],
-      ...config,
-    })._toMaterialized();
-  }
+    },
+    extraProviders: [
+      config.reset as AuthProviderConfig | undefined,
+      config.verify as AuthProviderConfig | undefined,
+    ],
+    ...config,
+  });
 }
 
 // ============================================================================

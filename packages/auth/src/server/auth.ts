@@ -115,11 +115,11 @@ type MemberApiWithAuthorization<
  * Provides core namespaces — `signIn`, `signOut`, `user`, `session`,
  * `member`, `invite`, `group`, `key`, and `http` — that are
  * always available regardless of which providers are configured.
- * Enterprise namespaces (`sso`, `scim`) are added conditionally by
+ * Group SSO helpers under `group.sso` are added conditionally by
  * {@link AuthApi} when an SSO provider is present.
  *
  * Use this type when you want to describe code that only depends on the
- * standard auth surface and should not assume enterprise features exist.
+ * standard auth surface and should not assume group connection features exist.
  *
  * @typeParam TAuthorization - The authorization config, used to narrow
  *   role IDs and grant strings on the `member` API.
@@ -160,19 +160,19 @@ export type AuthApiBase<
    * ```
    *
    * @example Direct usage in a handler
-    * ```ts
-    * const authContext = await auth.context(ctx);
-    * const { userId, grants } = authContext;
-    * ```
-    *
-    * @example Optional usage
-    * ```ts
-    * const authContext = await auth.context(ctx, { optional: true });
-    * if (authContext.userId === null) {
-    *   return null;
-    * }
-    * ```
-    */
+   * ```ts
+   * const authContext = await auth.context(ctx);
+   * const { userId, grants } = authContext;
+   * ```
+   *
+   * @example Optional usage
+   * ```ts
+   * const authContext = await auth.context(ctx, { optional: true });
+   * if (authContext.userId === null) {
+   *   return null;
+   * }
+   * ```
+   */
   context: AuthContextResolver;
   /**
    * Context enrichment for convex-helpers `customQuery` / `customMutation` /
@@ -331,20 +331,22 @@ type AuthContextFactory = {
 
 type InternalSsoApi = ReturnType<typeof AuthFactory>["auth"]["sso"];
 
-type PublicSsoAdminApi = {
+type PublicGroupSsoApi = {
+  signIn: InternalSsoApi["signIn"];
+  metadata: InternalSsoApi["saml"]["metadata"];
   connection: InternalSsoApi["connection"] & {
     domain: {
       list: InternalSsoApi["domain"]["list"];
       validate: InternalSsoApi["domain"]["validate"];
       set: (
         ctx: Parameters<InternalSsoApi["connection"]["create"]>[0],
-        enterpriseId: string,
+        connectionId: string,
         domains: Array<{
           domain: string;
           isPrimary?: boolean;
         }>,
       ) => Promise<{
-        enterpriseId: string;
+        connectionId: string;
         domains: Array<{
           domainId: string;
           domain: string;
@@ -356,9 +358,9 @@ type PublicSsoAdminApi = {
       verification: {
         request: (
           ctx: Parameters<InternalSsoApi["connection"]["create"]>[0],
-          args: { enterpriseId: string; domain: string },
+          args: { connectionId: string; domain: string },
         ) => Promise<{
-          enterpriseId: string;
+          connectionId: string;
           domain: string;
           requestedAt: number;
           expiresAt: number;
@@ -370,9 +372,9 @@ type PublicSsoAdminApi = {
         }>;
         confirm: (
           ctx: Parameters<InternalSsoApi["connection"]["create"]>[0],
-          args: { enterpriseId: string; domain: string },
+          args: { connectionId: string; domain: string },
         ) => Promise<{
-          enterpriseId: string;
+          connectionId: string;
           domain: string;
           verifiedAt?: number;
           checks: Array<{ name: string; ok: boolean; message?: string }>;
@@ -392,31 +394,18 @@ type PublicSsoAdminApi = {
       list: InternalSsoApi["webhook"]["delivery"]["list"];
     };
   };
-};
-
-type PublicSsoClientApi = {
-  signIn: InternalSsoApi["oidc"]["signIn"];
-  metadata: InternalSsoApi["saml"]["metadata"];
-};
-
-type PublicSsoApi = {
-  admin: PublicSsoAdminApi;
-  client: PublicSsoClientApi;
-};
-
-type PublicScimApi = {
-  admin: Omit<InternalSsoApi["scim"], "getConfigByToken" | "identity">;
+  scim: Omit<InternalSsoApi["scim"], "getConfigByToken" | "identity">;
 };
 
 /**
- * Extended auth API that includes enterprise SSO and SCIM namespaces.
+ * Extended auth API that includes group SSO and SCIM namespaces.
  *
- * This type is the union of {@link AuthApiBase} plus `sso` (SSO connection
- * management, OIDC/SAML, domain verification, policies, audit, webhooks)
- * and `scim` (SCIM provisioning configuration). It is returned by
- * {@link createAuth} only when `new SSO()` is included in the providers
+ * This type is the union of {@link AuthApiBase} plus `group.sso`
+ * (SSO connection management, OIDC/SAML, SCIM, domain verification,
+ * policies, audit, and webhooks). It is returned by
+ * {@link createAuth} only when `sso()` is included in the providers
  * array; otherwise the narrower {@link AuthApiBase} is returned instead.
- * Attempting to access `auth.sso` or `auth.scim` without an SSO provider
+ * Attempting to access `auth.group.sso` without an SSO provider
  * produces a compile-time error because the return type narrows back to
  * {@link AuthApiBase}.
  *
@@ -426,19 +415,20 @@ type PublicScimApi = {
 export type AuthApi<
   TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
 > = AuthApiBase<TAuthorization> & {
-  sso: PublicSsoApi;
-  scim: PublicScimApi;
+  group: AuthApiBase<TAuthorization>["group"] & {
+    sso: PublicGroupSsoApi;
+  };
 };
 
 /**
  * The return type of {@link createAuth}.
  *
- * Resolves to {@link AuthApi} (with `sso` and `scim` namespaces) when
- * `new SSO()` is present in the providers array, or to the narrower
+ * Resolves to {@link AuthApi} (with `group.sso` helpers) when
+ * `sso()` is present in the providers array, or to the narrower
  * {@link AuthApiBase} otherwise. This conditional type ensures that
- * enterprise-only APIs are only accessible when the SSO provider is
+ * group connection-only APIs are only accessible when the SSO provider is
  * configured, producing a compile-time error if you try to access
- * `auth.sso` without it.
+ * `auth.group.sso` without it.
  * This lets application code keep a single `createAuth()` call while still
  * getting provider-aware typing on the resulting API object.
  *
@@ -489,9 +479,9 @@ export type AuthLike = Pick<AuthApiBase, "user" | "member">;
 /**
  * Create an auth API object.
  *
- * When `new SSO()` is included in providers, `auth.sso` and `auth.scim`
- * are available on the returned object. Without it, those namespaces are
- * absent and accessing them is a TypeScript compile error.
+ * When `sso()` is included in providers, `auth.group.sso` is available
+ * on the returned object. Without it, that namespace is absent and
+ * accessing it is a TypeScript compile error.
  *
  * @param component - The installed auth component reference from
  *   `components.auth` in your Convex app definition.
@@ -499,7 +489,7 @@ export type AuthLike = Pick<AuthApiBase, "user" | "member">;
  *   `authorization`. All fields from {@link AuthConfig} are accepted
  *   except `component` (passed as the first argument).
  * @returns A {@link ConvexAuthResult} object — either {@link AuthApi}
- *   (with `sso`/`scim`) or {@link AuthApiBase}, depending on whether
+ *   (with `group.sso`) or {@link AuthApiBase}, depending on whether
  *   an SSO provider is present.
  *
  * @example
@@ -586,22 +576,23 @@ export function createAuth<
     ...restSso
   } = authResult.auth.sso as InternalSsoApi;
 
-  type SetEnterpriseDomains = PublicSsoAdminApi["connection"]["domain"]["set"];
-  type EnterpriseDomainInput = Array<{
+  type SetGroupConnectionDomains =
+    PublicGroupSsoApi["connection"]["domain"]["set"];
+  type GroupConnectionDomainInput = Array<{
     domain: string;
     isPrimary?: boolean;
   }>;
-  const setEnterpriseDomains: PublicSsoAdminApi["connection"]["domain"]["set"] =
+  const setGroupConnectionDomains: PublicGroupSsoApi["connection"]["domain"]["set"] =
     async (
-      ctx: Parameters<SetEnterpriseDomains>[0],
-      enterpriseId: Parameters<SetEnterpriseDomains>[1],
-      domains: EnterpriseDomainInput,
+      ctx: Parameters<SetGroupConnectionDomains>[0],
+      connectionId: Parameters<SetGroupConnectionDomains>[1],
+      domains: GroupConnectionDomainInput,
     ) => {
-      const enterprise = await connectionApi.get(ctx, enterpriseId);
-      if (enterprise === null) {
+      const connection = await connectionApi.get(ctx, connectionId);
+      if (connection === null) {
         throw Cv.error({
           code: "INVALID_PARAMETERS",
-          message: "Enterprise not found.",
+          message: "Connection not found.",
         });
       }
 
@@ -640,7 +631,7 @@ export function createAuth<
         nextDomains[0] = { ...nextDomains[0], isPrimary: true };
       }
 
-      const currentDomains = await domainApi.list(ctx, enterpriseId);
+      const currentDomains = await domainApi.list(ctx, connectionId);
       const currentByDomain = new Map<string, (typeof currentDomains)[number]>(
         currentDomains.map((entry: (typeof currentDomains)[number]) => [
           entry.domain.toLowerCase(),
@@ -663,14 +654,14 @@ export function createAuth<
           await domainApi.remove(ctx, current._id);
         }
         const domainId = await domainApi.add(ctx, {
-          enterpriseId: enterprise._id,
-          groupId: enterprise.groupId,
+          connectionId: connection._id,
+          groupId: connection.groupId,
           domain: nextDomain.domain,
           isPrimary: nextDomain.isPrimary,
         });
         if (current?.verifiedAt !== undefined) {
           await (ctx as any).runMutation(
-            component.public.enterpriseDomainVerify,
+            component.public.groupConnectionDomainVerify,
             {
               domainId,
               verifiedAt: current.verifiedAt,
@@ -679,9 +670,9 @@ export function createAuth<
         }
       }
 
-      const updatedDomains = await domainApi.list(ctx, enterpriseId);
+      const updatedDomains = await domainApi.list(ctx, connectionId);
       return {
-        enterpriseId,
+        connectionId,
         domains: updatedDomains.map(
           (domain: (typeof updatedDomains)[number]) => ({
             domainId: domain._id,
@@ -694,41 +685,42 @@ export function createAuth<
       };
     };
 
-  const publicSso: PublicSsoApi = {
-    admin: {
-      ...restSso,
-      oidc: {
-        ...oidcApi,
-      },
-      saml: {
-        ...samlApi,
-      },
-      connection: {
-        ...connectionApi,
-        domain: {
-          list: domainApi.list,
-          validate: domainApi.validate,
-          set: setEnterpriseDomains,
-          verification: {
-            request: domainApi.verification.request,
-            confirm: domainApi.verification.confirm,
-          },
-        },
-      },
-      policy: restSso.policy,
-      audit: {
-        list: auditApi.list,
-      },
-      webhook: {
-        endpoint: webhookApi.endpoint,
-        delivery: {
-          list: webhookApi.delivery.list,
+  const publicGroupSso: PublicGroupSsoApi = {
+    ...restSso,
+    signIn: oidcApi.signIn,
+    metadata: samlApi.metadata,
+    oidc: {
+      ...oidcApi,
+    },
+    saml: {
+      ...samlApi,
+    },
+    connection: {
+      ...connectionApi,
+      domain: {
+        list: domainApi.list,
+        validate: domainApi.validate,
+        set: setGroupConnectionDomains,
+        verification: {
+          request: domainApi.verification.request,
+          confirm: domainApi.verification.confirm,
         },
       },
     },
-    client: {
-      signIn: oidcApi.signIn,
-      metadata: samlApi.metadata,
+    policy: restSso.policy,
+    audit: {
+      list: auditApi.list,
+    },
+    webhook: {
+      endpoint: webhookApi.endpoint,
+      delivery: {
+        list: webhookApi.delivery.list,
+      },
+    },
+    scim: {
+      configure: scimApi.configure,
+      get: scimApi.get,
+      validate: scimApi.validate,
     },
   };
 
@@ -740,25 +732,27 @@ export function createAuth<
     session: authResult.auth.session,
     provider: authResult.auth.provider,
     account: authResult.auth.account,
-    group: authResult.auth.group,
+    group: {
+      ...authResult.auth.group,
+      sso: publicGroupSso,
+    },
     member: authResult.auth.member,
     invite: authResult.auth.invite,
     key: authResult.auth.key,
-    sso: publicSso,
-    scim: {
-      admin: {
-        configure: scimApi.configure,
-        get: scimApi.get,
-        validate: scimApi.validate,
-      },
-    },
     http: authResult.auth.http,
 
     context: ((ctx: any, config?: AuthContextConfig<any>) =>
-      createPublicAuthContext(authResult.auth, ctx, config)) as AuthContextResolver,
+      createPublicAuthContext(
+        authResult.auth,
+        ctx,
+        config,
+      )) as AuthContextResolver,
 
     ctx: ((config?: AuthContextConfig<any>) =>
-      createAuthContextCustomization(authResult.auth, config)) as AuthContextFactory,
+      createAuthContextCustomization(
+        authResult.auth,
+        config,
+      )) as AuthContextFactory,
   } as unknown as ConvexAuthResult<P, TAuthorization>;
 }
 
@@ -847,11 +841,11 @@ export type AuthContextConfig<
  *
  * @example
  * ```ts
-    * const authCtx = auth.ctx({
-    *   optional: true,
-    *   resolve: async (_ctx, user) => ({ plan: user.extend?.plan ?? null }),
-    * });
-    * ```
+ * const authCtx = auth.ctx({
+ *   optional: true,
+ *   resolve: async (_ctx, user) => ({ plan: user.extend?.plan ?? null }),
+ * });
+ * ```
  *
  * @see {@link createAuth}
  */
@@ -869,10 +863,10 @@ export type AuthContextConfig<
  *
  * @example
  * ```ts
-    * const authCtx = auth.ctx({
-    *   resolve: async (_ctx, user) => ({ email: user.email }),
-    * });
-    * ```
+ * const authCtx = auth.ctx({
+ *   resolve: async (_ctx, user) => ({ email: user.email }),
+ * });
+ * ```
  *
  * @see {@link createAuth}
  */

@@ -161,17 +161,21 @@ test("parseAuthCookies does not fall back to old cookie names", () => {
 
 test("OAuth callback rejects PKCE provider when verifier cookie is missing", async () => {
   const provider = {
-    createAuthorizationURL(
-      _state: string,
-      _codeVerifier: string,
-      _scopes: string[],
-    ) {
+    pkce: "required" as const,
+    createAuthorizationURL(_args: {
+      state: string;
+      codeVerifier?: string;
+      scopes: string[];
+      nonce?: string;
+    }) {
       return new URL("https://accounts.example.com/oauth");
     },
     validateAuthorizationCode: vi.fn(),
   };
 
-  const authResult = await createOAuthAuthorizationURL("google", provider, {});
+  const authResult = await createOAuthAuthorizationURL("google", {
+    provider,
+  });
   const stateCookie = authResult.cookies.find((cookie) =>
     cookie.name.endsWith("OAuthstate"),
   );
@@ -181,8 +185,7 @@ test("OAuth callback rejects PKCE provider when verifier cookie is missing", asy
     Fx.run(
       handleOAuthCallback(
         "google",
-        provider,
-        {},
+        { provider },
         { state: stateCookie!.value, code: "oauth-code" },
         {
           [stateCookie!.name]: stateCookie!.value,

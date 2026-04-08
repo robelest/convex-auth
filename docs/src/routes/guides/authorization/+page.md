@@ -10,12 +10,10 @@ description: Identity, profile, and access control patterns.
 
 # Authorization Patterns
 
-Convex Auth's authorization model is:
-
-- app-defined roles in `createAuth({ authorization: { roles } })`
-- per-group membership assignment via `roleIds`
-- grant-based enforcement via `auth.member.require(...)` or
-  `auth.member.inspect(...)`
+Convex Auth keeps authorization simple. You define roles in
+`createAuth({ authorization: { roles } })`, assign those role ids to group
+memberships, and enforce access by checking grants with
+`auth.member.require(...)` or `auth.member.inspect(...)`.
 
 ## Define roles
 
@@ -57,12 +55,13 @@ export const auth = createAuth(components.auth, {
 });
 ```
 
-Role names are completely app-defined. What matters is the grants attached to
-them.
+Role names are labels for humans. Grants are what your code should trust.
 
 ## Assign roles with memberships
 
-Memberships store `roleIds`.
+Memberships store `roleIds`. That keeps authorization attached to a user's
+relationship with a group instead of scattering permission state across your own
+tables.
 
 ```ts
 await auth.member.create(ctx, {
@@ -72,7 +71,7 @@ await auth.member.create(ctx, {
 });
 ```
 
-Update them the same way:
+You update memberships the same way:
 
 ```ts
 await auth.member.update(ctx, memberId, {
@@ -80,7 +79,7 @@ await auth.member.update(ctx, memberId, {
 });
 ```
 
-Invites can also pre-assign role ids:
+Invites can pre-assign role ids before the user joins:
 
 ```ts
 await auth.invite.create(ctx, {
@@ -92,20 +91,20 @@ await auth.invite.create(ctx, {
 
 ## Use `userId` for authorization
 
-- Use `userId` for authorization checks (stable identity)
-- Use email only for lookup/bootstrap UX (human input)
-- Persist admin grants by `userId` in your app table
+Key authorization to `userId`, not email and not provider account ids. `userId`
+is the stable identity in your app. Email is useful for lookup and onboarding,
+but people change email addresses and some providers do not guarantee one.
+
+If your app persists admin or support access outside memberships, store that
+state by `userId`.
 
 ## Why email is not on `getUserIdentity()`
 
 `ctx.auth.getUserIdentity()` returns Convex identity claims from the JWT. The
 token subject is `userId|sessionId`, and email is stored on the user document.
 
-This is intentional:
-
-- Email can change
-- Some providers don't guarantee email
-- Sessions should remain valid even if profile fields change
+This is intentional. Email can change, some providers do not guarantee one, and
+sessions should stay valid even if profile fields change.
 
 In app code, resolve authentication once with `auth.ctx()` and then use
 `ctx.auth.userId` / `ctx.auth.user` in handlers.
@@ -116,7 +115,10 @@ These examples assume your handlers use auth-aware builders that inject
 `ctx.auth` once in `convex/functions.ts`:
 
 ```ts
-import { customMutation, customQuery } from "convex-helpers/server/customFunctions";
+import {
+  customMutation,
+  customQuery,
+} from "convex-helpers/server/customFunctions";
 import { mutation, query } from "./_generated/server";
 import { auth } from "./auth";
 
@@ -140,7 +142,8 @@ export const canAccessAdminTools = authQuery({
 });
 ```
 
-Prefer checking grants instead of checking role names directly.
+Check grants instead of role names. A role name is a label. The grants attached
+to it are the real contract.
 
 ```ts
 // Use this when the handler should fail instead of returning a boolean.
@@ -190,13 +193,13 @@ const permissions = {
 This avoids redundant round trips when you need to check multiple grants for the
 same user and group.
 
-## Enterprise mounted RPC
+## Group Connection mounted RPC
 
-When mounting enterprise RPC, keep the authorization callback and initial admin
-role assignment together:
+When you mount group SSO RPC, keep the authorization callback and the initial
+admin role assignment in the same block:
 
 ```ts
-export const enterpriseApi = enterprise(auth, {
+export const groupApi = group(auth, {
   admin: {
     authorized,
     roles: [roles.orgAdmin],
@@ -204,36 +207,31 @@ export const enterpriseApi = enterprise(auth, {
 });
 ```
 
-- `admin.authorized` decides whether the caller may perform the requested admin
-  operation.
-- `admin.roles` are assigned to the creator when `createConnection` auto-creates
-  a new enterprise group.
+`admin.authorized` decides whether the caller may perform the requested admin
+operation. `admin.roles` are assigned to the creator when `createConnection`
+auto-creates a new group.
 
 ## Account/User relationship
 
-Accounts are many-to-one with users:
-
-- One `User` can have many linked `Account` records (GitHub + Google + password)
-- Each `Account` belongs to exactly one `User`
+Accounts are many-to-one with users. One `User` can have many linked `Account`
+records, such as GitHub, Google, and password. Each `Account` still belongs to
+exactly one `User`.
 
 This is why authorization should be keyed on `userId`, not provider account IDs.
 
 ## Common patterns
 
-- **Need a signed-in user?** Use `auth.ctx()` so handlers receive `ctx.auth.userId`
-  and `ctx.auth.user`
-- **Need a boolean access check?** Use `auth.member.inspect(...)`
-- **Need to enforce permissions?** Use `auth.member.require(...)`
-- **Need optional auth?** Use `auth.ctx({ optional: true })`
+Use `auth.ctx()` when a handler should always receive `ctx.auth.userId` and
+`ctx.auth.user`. Use `auth.member.inspect(...)` when you need a boolean-style
+access check. Use `auth.member.require(...)` when the handler should throw on
+failure. Use `auth.ctx({ optional: true })` when the same handler should work
+for both guests and signed-in users.
 
 ## Recommended pattern
 
-- define roles globally in config
-- assign `roleIds` per membership
-- check grants in server functions
-- treat role ids as labels and grants as the actual authorization contract
+Define roles once in config. Assign `roleIds` per membership. Check grants in
+server functions. Treat role ids as labels and grants as the actual
+authorization contract.
 
-See also:
-
-- [`auth.member`](/api/member)
-- [Enterprise RPC](/sso/rpc)
+See [`auth.member`](/api/member) for the API surface and
+[Group SSO RPC](/sso/rpc) for the mounted admin flow.

@@ -1,29 +1,29 @@
 ---
-title: auth.sso.admin.webhook
-description: SSO webhooks — manage enterprise webhook endpoints.
+title: auth.group.sso.webhook
+description: SSO webhooks — manage group webhook endpoints.
 ---
 
 <svelte:head>
 
-  <title>auth.sso.admin.webhook - convex-auth</title>
+  <title>auth.group.sso.webhook - convex-auth</title>
 </svelte:head>
 
-# auth.sso.admin.webhook
+# auth.group.sso.webhook
 
-The `auth.sso.admin.webhook` namespace manages enterprise webhook endpoints for
+The `auth.group.sso.webhook` namespace manages group webhook endpoints for
 SSO-related events.
 
 > This page documents the **server-side helper API**:
-> [`auth.sso.admin.webhook.*`](/sso/webhook/). Public RPC like
-> [`api.auth.enterprise.createWebhookEndpoint`](/sso/rpc/) only exists after
-> your app exposes app-owned enterprise wrappers.
+> [`auth.group.sso.webhook.*`](/sso/webhook/). Public RPC like
+> [`api.auth.group.createWebhookEndpoint`](/sso/rpc/) only exists after
+> your app exposes app-owned group SSO wrappers.
 
 ## Endpoint methods
 
 | Method             | Signature                                                               | Returns          | Description                                                                               |
 | ------------------ | ----------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------- |
-| `endpoint.create`  | `(ctx, { enterpriseId, url, secret, subscriptions, createdByUserId? })` | `{ endpointId }` | Creates a webhook endpoint that listens for specific events.                              |
-| `endpoint.list`    | `(ctx, enterpriseId)`                                                   | Endpoint[]       | Lists all webhook endpoints for a connection.                                             |
+| `endpoint.create`  | `(ctx, { connectionId, url, secret, subscriptions, createdByUserId? })` | `{ endpointId }` | Creates a webhook endpoint that listens for specific events.                              |
+| `endpoint.list`    | `(ctx, connectionId)`                                                   | Endpoint[]       | Lists all webhook endpoints for a connection.                                             |
 | `endpoint.disable` | `(ctx, endpointId)`                                                     | `{ endpointId }` | Disables a webhook endpoint (stops delivery). Throws `ConvexError` if endpoint not found. |
 
 ## Example
@@ -31,10 +31,10 @@ SSO-related events.
 ### Set up a webhook endpoint
 
 ```ts
-const { endpointId } = await auth.sso.admin.webhook.endpoint.create(ctx, {
-  enterpriseId,
+const { endpointId } = await auth.group.sso.webhook.endpoint.create(ctx, {
+  connectionId,
   url: "https://api.acme.com/webhooks/sso",
-  subscriptions: ["enterprise.oidc.registered", "enterprise.scim.configured"],
+  subscriptions: ["group.sso.oidc.registered", "group.sso.scim.configured"],
   secret: "whsec_...",
 });
 ```
@@ -42,5 +42,5 @@ const { endpointId } = await auth.sso.admin.webhook.endpoint.create(ctx, {
 ### Disable an endpoint
 
 ```ts
-await auth.sso.admin.webhook.endpoint.disable(ctx, endpointId);
+await auth.group.sso.webhook.endpoint.disable(ctx, endpointId);
 ```

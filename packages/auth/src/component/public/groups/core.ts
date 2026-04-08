@@ -49,7 +49,7 @@ function normalizeTags(tags: TagPair[]): TagPair[] {
  *   name: "Acme Corp",
  *   slug: "acme-corp",
  *   type: "organization",
- *   tags: [{ key: "plan", value: "enterprise" }],
+ *   tags: [{ key: "plan", value: "group-sso" }],
  * });
  * ```
  */

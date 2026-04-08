@@ -2,9 +2,9 @@
  * Anonymous authentication provider.
  *
  * ```ts
- * import { Anonymous } from "@robelest/convex-auth/providers";
+ * import { anonymous } from "@robelest/convex-auth/providers";
  *
- * new Anonymous()
+ * anonymous()
  * ```
  *
  * @module
@@ -18,33 +18,16 @@ import {
 import { Value } from "convex/values";
 
 import type {
-  GenericActionCtxWithAuthConfig,
   ConvexCredentialsConfig,
+  GenericActionCtxWithAuthConfig,
 } from "../server/types";
-import { Credentials } from "./credentials";
+import { credentials } from "./credentials";
 
-/**
- * The available options to an {@link Anonymous} provider for Convex Auth.
- */
+/** Configuration for the {@link anonymous} provider. */
 export interface AnonymousConfig<DataModel extends GenericDataModel> {
-  /**
-   * Uniquely identifies the provider, allowing to use
-   * multiple different {@link Anonymous} providers.
-   */
   id?: string;
-  /**
-   * Perform checks on provided params and customize the user
-   * information stored after sign in.
-   */
   profile?: (
-    /**
-     * The values passed to the `signIn` function.
-     */
     params: Record<string, Value | undefined>,
-    /**
-     * Convex ActionCtx in case you want to read from or write to
-     * the database.
-     */
     ctx: GenericActionCtxWithAuthConfig<DataModel>,
   ) => WithoutSystemFields<DocumentByName<DataModel, "User">> & {
     isAnonymous: true;
@@ -52,48 +35,37 @@ export interface AnonymousConfig<DataModel extends GenericDataModel> {
 }
 
 /**
- * Anonymous authentication provider.
+ * Create an anonymous sign-in provider.
  *
- * Creates a new anonymous user account without requiring any
- * user-provided information. Useful for guest access or
- * progressive profiling.
+ * @typeParam DataModel - The Convex data model used by the auth context.
+ * @param config - Optional provider id and profile customization.
+ * @returns A configured anonymous provider for `createAuth`.
  *
  * @example
  * ```ts
- * import { Anonymous } from "@robelest/convex-auth/providers";
+ * import { anonymous } from "@robelest/convex-auth/providers";
  *
- * new Anonymous()
+ * anonymous()
  * ```
  */
-export class Anonymous<DataModel extends GenericDataModel = GenericDataModel> {
-  readonly id: string;
-  readonly type = "credentials" as const;
-  readonly config: AnonymousConfig<DataModel>;
+export function anonymous<
+  DataModel extends GenericDataModel = GenericDataModel,
+>(
+  config: AnonymousConfig<DataModel> = {} as AnonymousConfig<DataModel>,
+): ConvexCredentialsConfig {
+  const provider = config.id ?? "anonymous";
 
-  constructor(
-    config: AnonymousConfig<DataModel> = {} as AnonymousConfig<DataModel>,
-  ) {
-    this.id = config.id ?? "anonymous";
-    this.config = config;
-  }
-
-  /** @internal Convert to the internal materialized config shape. */
-  _toMaterialized(): ConvexCredentialsConfig {
-    const config = this.config;
-    const provider = this.id;
-
-    return new Credentials<DataModel>({
-      id: "anonymous",
-      authorize: async (params, ctx) => {
-        const profile = config.profile?.(params, ctx) ?? { isAnonymous: true };
-        const { user } = await ctx.auth.account.create(ctx, {
-          provider,
-          account: { id: crypto.randomUUID() },
-          profile: profile as any,
-        });
-        return { userId: user._id };
-      },
-      ...config,
-    })._toMaterialized();
-  }
+  return credentials<DataModel>({
+    id: provider,
+    authorize: async (params, ctx) => {
+      const profile = config.profile?.(params, ctx) ?? { isAnonymous: true };
+      const { user } = await ctx.auth.account.create(ctx, {
+        provider,
+        account: { id: crypto.randomUUID() },
+        profile: profile as any,
+      });
+      return { userId: user._id };
+    },
+    ...config,
+  });
 }

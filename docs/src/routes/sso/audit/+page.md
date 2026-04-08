@@ -1,28 +1,28 @@
 ---
-title: auth.sso.admin.audit
-description: SSO audit log query helpers for enterprise admin tooling.
+title: auth.group.sso.audit
+description: SSO audit log query helpers for group SSO admin tooling.
 ---
 
 <svelte:head>
 
-  <title>auth.sso.admin.audit - convex-auth</title>
+  <title>auth.group.sso.audit - convex-auth</title>
 </svelte:head>
 
-# auth.sso.admin.audit
+# auth.group.sso.audit
 
-The `auth.sso.admin.audit` namespace exposes read-only audit log queries for
-enterprise admin tooling.
+The `auth.group.sso.audit` namespace exposes read-only audit log queries for
+group SSO admin tooling.
 
 > This page documents the **server-side helper API**:
-> [`auth.sso.admin.audit.*`](/sso/audit/). Public RPC like
-> [`api.auth.enterprise.listAudit`](/sso/rpc/) only exists after your app
-> exposes app-owned enterprise wrappers.
+> [`auth.group.sso.audit.*`](/sso/audit/). Public RPC like
+> [`api.auth.group.listAudit`](/sso/rpc/) only exists after your app
+> exposes app-owned group SSO wrappers.
 
 ## Methods
 
 | Method | Signature                                    | Returns | Description                                                |
 | ------ | -------------------------------------------- | ------- | ---------------------------------------------------------- |
-| `list` | `(ctx, { enterpriseId?, groupId?, limit? })` | Event[] | Lists audit events with optional enterprise/group filters. |
+| `list` | `(ctx, { connectionId?, groupId?, limit? })` | Event[] | Lists audit events with optional connection/group filters. |
 
 ## Example
 
@@ -30,13 +30,13 @@ enterprise admin tooling.
 
 ```ts
 // List all events for an SSO connection
-const logs = await auth.sso.admin.audit.list(ctx, {
-  enterpriseId,
+const logs = await auth.group.sso.audit.list(ctx, {
+  connectionId,
   limit: 50,
 });
 
 // List all events for a tenant group
-const userLogs = await auth.sso.admin.audit.list(ctx, {
+const userLogs = await auth.group.sso.audit.list(ctx, {
   groupId: orgId,
 });
 ```

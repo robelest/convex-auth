@@ -8,9 +8,10 @@ import {
   vAuditActorType,
   vAuditStatus,
   vDeviceStatus,
-  vEnterprisePolicy,
-  vEnterpriseSecretKind,
-  vEnterpriseStatus,
+  vGroupConnectionPolicy,
+  vGroupConnectionProtocol,
+  vGroupConnectionSecretKind,
+  vGroupConnectionStatus,
   vInviteStatus,
   vScimResourceType,
   vScimStatus,
@@ -225,6 +226,7 @@ export default defineSchema({
     isRoot: v.optional(v.boolean()),
     /** Faceted classification tags. Normalized at write time (trimmed, lowercased). */
     tags: v.optional(v.array(vTag)),
+    policy: v.optional(vGroupConnectionPolicy),
     extend: v.optional(v.any()),
   })
     .index("slug", ["slug"])
@@ -295,18 +297,18 @@ export default defineSchema({
     .index("group_id_status", ["groupId", "status"]),
 
   /**
-   * Enterprise configuration attached to a root group/organization.
+   * Group Connection configuration attached to a root group/organization.
    *
-   * The `config` payload intentionally stays flexible so the headless enterprise
+   * The `config` payload intentionally stays flexible so the headless group connection
    * SDK can evolve without forcing schema churn for every protocol-specific
    * field addition.
    */
-  Enterprise: defineTable({
+  GroupConnection: defineTable({
     groupId: v.id("Group"),
     slug: v.optional(v.string()),
     name: v.optional(v.string()),
-    status: vEnterpriseStatus,
-    policy: v.optional(vEnterprisePolicy),
+    protocol: vGroupConnectionProtocol,
+    status: vGroupConnectionStatus,
     config: v.optional(v.any()),
     extend: v.optional(v.any()),
   })
@@ -315,26 +317,26 @@ export default defineSchema({
     .index("status", ["status"]),
 
   /**
-   * Verified or pending domains linked to an enterprise record.
+   * Verified or pending domains linked to an group connection record.
    */
-  EnterpriseDomain: defineTable({
-    enterpriseId: v.id("Enterprise"),
+  GroupConnectionDomain: defineTable({
+    connectionId: v.id("GroupConnection"),
     groupId: v.id("Group"),
     domain: v.string(),
     isPrimary: v.boolean(),
     verifiedAt: v.optional(v.number()),
   })
-    .index("enterprise_id", ["enterpriseId"])
+    .index("connection_id", ["connectionId"])
     .index("group_id", ["groupId"])
     .index("domain", ["domain"]),
 
   /**
-   * Pending DNS TXT verification challenges for enterprise domains.
+   * Pending DNS TXT verification challenges for group connection domains.
    */
-  EnterpriseDomainVerification: defineTable({
-    enterpriseId: v.id("Enterprise"),
+  GroupConnectionDomainVerification: defineTable({
+    connectionId: v.id("GroupConnection"),
     groupId: v.id("Group"),
-    domainId: v.id("EnterpriseDomain"),
+    domainId: v.id("GroupConnectionDomain"),
     domain: v.string(),
     recordName: v.string(),
     token: v.string(),
@@ -342,29 +344,29 @@ export default defineSchema({
     requestedAt: v.number(),
     expiresAt: v.number(),
   })
-    .index("enterprise_id", ["enterpriseId"])
+    .index("connection_id", ["connectionId"])
     .index("domain_id", ["domainId"])
     .index("token_hash", ["tokenHash"]),
 
   /**
-   * Encrypted enterprise secrets stored separately from protocol config.
+   * Encrypted group connection secrets stored separately from protocol config.
    */
-  EnterpriseSecret: defineTable({
-    enterpriseId: v.id("Enterprise"),
+  GroupConnectionSecret: defineTable({
+    connectionId: v.id("GroupConnection"),
     groupId: v.id("Group"),
-    kind: vEnterpriseSecretKind,
+    kind: vGroupConnectionSecretKind,
     ciphertext: v.string(),
     updatedAt: v.number(),
   })
-    .index("enterprise_id", ["enterpriseId"])
-    .index("enterprise_id_kind", ["enterpriseId", "kind"])
+    .index("connection_id", ["connectionId"])
+    .index("connection_id_kind", ["connectionId", "kind"])
     .index("group_id", ["groupId"]),
 
   /**
-   * SCIM configuration for an enterprise tenant.
+   * SCIM configuration for an group connection tenant.
    */
-  EnterpriseScimConfig: defineTable({
-    enterpriseId: v.id("Enterprise"),
+  GroupConnectionScimConfig: defineTable({
+    connectionId: v.id("GroupConnection"),
     groupId: v.id("Group"),
     status: vScimStatus,
     basePath: v.string(),
@@ -372,7 +374,7 @@ export default defineSchema({
     lastRotatedAt: v.optional(v.number()),
     extend: v.optional(v.any()),
   })
-    .index("enterprise_id", ["enterpriseId"])
+    .index("group_connection_id", ["connectionId"])
     .index("group_id", ["groupId"])
     .index("token_hash", ["tokenHash"])
     .index("status", ["status"]),
@@ -380,8 +382,8 @@ export default defineSchema({
   /**
    * External SCIM identities mapped into local users/groups.
    */
-  EnterpriseScimIdentity: defineTable({
-    enterpriseId: v.id("Enterprise"),
+  GroupConnectionScimIdentity: defineTable({
+    connectionId: v.id("GroupConnection"),
     groupId: v.id("Group"),
     resourceType: vScimResourceType,
     externalId: v.string(),
@@ -391,22 +393,22 @@ export default defineSchema({
     active: v.optional(v.boolean()),
     raw: v.optional(v.any()),
   })
-    .index("enterprise_id", ["enterpriseId"])
+    .index("group_connection_id", ["connectionId"])
     .index("group_id", ["groupId"])
-    .index("enterprise_id_resource_type_external_id", [
-      "enterpriseId",
+    .index("group_connection_id_resource_type_external_id", [
+      "connectionId",
       "resourceType",
       "externalId",
     ])
-    .index("enterprise_id_user_id", ["enterpriseId", "userId"])
+    .index("group_connection_id_user_id", ["connectionId", "userId"])
     .index("user_id", ["userId"])
     .index("mapped_group_id", ["mappedGroupId"]),
 
   /**
-   * Immutable audit trail for enterprise operations.
+   * Immutable audit trail for group connection operations.
    */
-  EnterpriseAuditEvent: defineTable({
-    enterpriseId: v.id("Enterprise"),
+  GroupAuditEvent: defineTable({
+    connectionId: v.optional(v.id("GroupConnection")),
     groupId: v.id("Group"),
     eventType: v.string(),
     actorType: vAuditActorType,
@@ -419,15 +421,15 @@ export default defineSchema({
     ip: v.optional(v.string()),
     metadata: v.optional(v.any()),
   })
-    .index("enterprise_id_occurred_at", ["enterpriseId", "occurredAt"])
+    .index("group_connection_id_occurred_at", ["connectionId", "occurredAt"])
     .index("group_id_occurred_at", ["groupId", "occurredAt"])
     .index("event_type_occurred_at", ["eventType", "occurredAt"]),
 
   /**
-   * Webhook endpoints subscribed to enterprise audit and lifecycle events.
+   * Webhook endpoints subscribed to group audit and lifecycle events.
    */
-  EnterpriseWebhookEndpoint: defineTable({
-    enterpriseId: v.id("Enterprise"),
+  GroupWebhookEndpoint: defineTable({
+    connectionId: v.id("GroupConnection"),
     groupId: v.id("Group"),
     url: v.string(),
     status: vWebhookEndpointStatus,
@@ -439,17 +441,17 @@ export default defineSchema({
     failureCount: v.number(),
     extend: v.optional(v.any()),
   })
-    .index("enterprise_id", ["enterpriseId"])
+    .index("group_connection_id", ["connectionId"])
     .index("group_id", ["groupId"])
     .index("status", ["status"]),
 
   /**
-   * Delivery queue for outbound enterprise webhooks.
+   * Delivery queue for outbound group webhooks.
    */
-  EnterpriseWebhookDelivery: defineTable({
-    enterpriseId: v.id("Enterprise"),
-    endpointId: v.id("EnterpriseWebhookEndpoint"),
-    auditEventId: v.optional(v.id("EnterpriseAuditEvent")),
+  GroupWebhookDelivery: defineTable({
+    connectionId: v.id("GroupConnection"),
+    endpointId: v.id("GroupWebhookEndpoint"),
+    auditEventId: v.optional(v.id("GroupAuditEvent")),
     eventType: v.string(),
     status: vWebhookDeliveryStatus,
     attemptCount: v.number(),
@@ -459,7 +461,7 @@ export default defineSchema({
     lastError: v.optional(v.string()),
     payload: v.any(),
   })
-    .index("enterprise_id", ["enterpriseId"])
+    .index("group_connection_id", ["connectionId"])
     .index("status_next_attempt_at", ["status", "nextAttemptAt"])
     .index("endpoint_id_status", ["endpointId", "status"])
     .index("audit_event_id", ["auditEventId"]),

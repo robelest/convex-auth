@@ -204,7 +204,7 @@ export async function decryptSecret(ciphertext: string) {
   if (!ivEncoded || !payloadEncoded) {
     throw Cv.error({
       code: "INVALID_PARAMETERS",
-      message: "Stored enterprise secret is malformed.",
+      message: "Stored group connection secret is malformed.",
     });
   }
   const key = await getSecretCryptoKey();

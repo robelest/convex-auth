@@ -30,6 +30,7 @@ export default defineConfig([
   {
     entry: {
       "authorization/index": "src/authorization/index.ts",
+      test: "src/test.ts",
     },
     format: "esm",
     outDir: "dist",

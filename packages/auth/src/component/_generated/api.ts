@@ -12,12 +12,6 @@ import type * as functions from "../functions.js";
 import type * as index from "../index.js";
 import type * as model from "../model.js";
 import type * as public_ from "../public.js";
-import type * as public_enterprise_audit from "../public/enterprise/audit.js";
-import type * as public_enterprise_core from "../public/enterprise/core.js";
-import type * as public_enterprise_domains from "../public/enterprise/domains.js";
-import type * as public_enterprise_scim from "../public/enterprise/scim.js";
-import type * as public_enterprise_secrets from "../public/enterprise/secrets.js";
-import type * as public_enterprise_webhooks from "../public/enterprise/webhooks.js";
 import type * as public_factors_devices from "../public/factors/devices.js";
 import type * as public_factors_passkeys from "../public/factors/passkeys.js";
 import type * as public_factors_totp from "../public/factors/totp.js";
@@ -32,6 +26,12 @@ import type * as public_identity_users from "../public/identity/users.js";
 import type * as public_identity_verifiers from "../public/identity/verifiers.js";
 import type * as public_security_keys from "../public/security/keys.js";
 import type * as public_security_limits from "../public/security/limits.js";
+import type * as public_sso_audit from "../public/sso/audit.js";
+import type * as public_sso_core from "../public/sso/core.js";
+import type * as public_sso_domains from "../public/sso/domains.js";
+import type * as public_sso_scim from "../public/sso/scim.js";
+import type * as public_sso_secrets from "../public/sso/secrets.js";
+import type * as public_sso_webhooks from "../public/sso/webhooks.js";
 
 import type {
   ApiFromModules,
@@ -45,12 +45,6 @@ const fullApi: ApiFromModules<{
   index: typeof index;
   model: typeof model;
   public: typeof public_;
-  "public/enterprise/audit": typeof public_enterprise_audit;
-  "public/enterprise/core": typeof public_enterprise_core;
-  "public/enterprise/domains": typeof public_enterprise_domains;
-  "public/enterprise/scim": typeof public_enterprise_scim;
-  "public/enterprise/secrets": typeof public_enterprise_secrets;
-  "public/enterprise/webhooks": typeof public_enterprise_webhooks;
   "public/factors/devices": typeof public_factors_devices;
   "public/factors/passkeys": typeof public_factors_passkeys;
   "public/factors/totp": typeof public_factors_totp;
@@ -65,6 +59,12 @@ const fullApi: ApiFromModules<{
   "public/identity/verifiers": typeof public_identity_verifiers;
   "public/security/keys": typeof public_security_keys;
   "public/security/limits": typeof public_security_limits;
+  "public/sso/audit": typeof public_sso_audit;
+  "public/sso/core": typeof public_sso_core;
+  "public/sso/domains": typeof public_sso_domains;
+  "public/sso/scim": typeof public_sso_scim;
+  "public/sso/secrets": typeof public_sso_secrets;
+  "public/sso/webhooks": typeof public_sso_webhooks;
 }> = anyApi as any;
 
 /**

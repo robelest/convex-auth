@@ -1,7 +1,5 @@
 <script lang="ts">
   import type { ConvexClient } from "convex/browser";
-  import type { Id, Infer } from "convex/values";
-  import type { demoIssueStatus, demoIssuePriority } from "$convex/schema.js";
   import { api } from "$convex/_generated/api.js";
   import { useQuery } from "convex-svelte";
   import X from "phosphor-svelte/lib/X";
@@ -12,12 +10,12 @@
     permissions,
     members,
     currentUserId,
-    workspaceGroupId,
+    groupId,
     client,
     onclose,
   } = $props<{
     issue: {
-      issueId: Id<"demoIssues">;
+      issueId: string;
       identifier: string;
       number: number;
       title: string;
@@ -40,14 +38,14 @@
     };
     members: Array<{ userId: string; name: string }>;
     currentUserId: string;
-    workspaceGroupId: string;
+    groupId: string;
     client: ConvexClient;
     onclose: () => void;
   }>();
 
   // Only comments need a subscription — everything else is already loaded
   const commentsQuery = useQuery(
-    api.demo.issueComments,
+    api.comments.issueComments,
     () => ({
       issueId: issue.issueId,
     }),
@@ -77,7 +75,10 @@
   let editDescription = $state("");
   let errorMessage = $state<string | null>(null);
 
-  const statusOptions = [
+  type IssueStatus = "backlog" | "todo" | "in_progress" | "done" | "cancelled";
+  type IssuePriority = "urgent" | "high" | "medium" | "low" | "none";
+
+  const statusOptions: Array<{ value: IssueStatus; label: string }> = [
     { value: "backlog", label: "Backlog" },
     { value: "todo", label: "Todo" },
     { value: "in_progress", label: "In progress" },
@@ -85,7 +86,7 @@
     { value: "cancelled", label: "Cancelled" },
   ];
 
-  const priorityOptions = [
+  const priorityOptions: Array<{ value: IssuePriority; label: string }> = [
     { value: "urgent", label: "Urgent" },
     { value: "high", label: "High" },
     { value: "medium", label: "Medium" },
@@ -103,7 +104,7 @@
   async function saveEdit() {
     errorMessage = null;
     try {
-      await client.mutation(api.demo.updateIssue, {
+      await client.mutation(api.issues.updateIssue, {
         issueId: issue.issueId,
         title: editTitle,
         description: editDescription,
@@ -114,11 +115,11 @@
     }
   }
 
-  async function handleStatusChange(newStatus: Infer<typeof demoIssueStatus>) {
+  async function handleStatusChange(newStatus: string) {
     if (!canMove) return;
     errorMessage = null;
     try {
-      await client.mutation(api.demo.updateIssue, {
+      await client.mutation(api.issues.updateIssue, {
         issueId: issue.issueId,
         status: newStatus,
       });
@@ -127,11 +128,11 @@
     }
   }
 
-  async function handlePriorityChange(newPriority: Infer<typeof demoIssuePriority>) {
+  async function handlePriorityChange(newPriority: string) {
     if (!canEdit) return;
     errorMessage = null;
     try {
-      await client.mutation(api.demo.updateIssue, {
+      await client.mutation(api.issues.updateIssue, {
         issueId: issue.issueId,
         priority: newPriority,
       });
@@ -143,7 +144,7 @@
   async function handleAssigneeChange(newAssigneeUserId: string) {
     errorMessage = null;
     try {
-      const result = await client.mutation(api.demo.updateIssue, {
+      const result = await client.mutation(api.issues.updateIssue, {
         issueId: issue.issueId,
         assigneeUserId: newAssigneeUserId || null,
       });
@@ -160,7 +161,7 @@
     isSubmittingComment = true;
     errorMessage = null;
     try {
-      await client.mutation(api.demo.createComment, {
+      await client.mutation(api.comments.createComment, {
         issueId: issue.issueId,
         body: newComment,
       });
@@ -175,8 +176,8 @@
   async function handleDeleteComment(commentId: string) {
     errorMessage = null;
     try {
-      await client.mutation(api.demo.deleteComment, {
-        commentId: commentId as Id<"demoComments">,
+      await client.mutation(api.comments.deleteComment, {
+        commentId,
       });
     } catch (e: unknown) {
       errorMessage = e instanceof Error ? e.message : "Failed to delete comment";
@@ -192,7 +193,7 @@
     }
     errorMessage = null;
     try {
-      await client.mutation(api.demo.deleteIssue, {
+      await client.mutation(api.issues.deleteIssue, {
         issueId: issue.issueId,
       });
       onclose();
@@ -213,7 +214,7 @@
   <!-- Viewer banner -->
   {#if isViewer}
     <div class="px-3 py-2 bg-gray-200 border border-gray-300 font-label text-[0.75rem] text-gray-600">
-      You're a <strong>Viewer</strong> in this workspace — this issue is read-only. Ask an admin to upgrade your role.
+      You're a <strong>Viewer</strong> in this organization — this issue is read-only. Ask an admin to upgrade your role.
     </div>
   {/if}
 
@@ -227,13 +228,17 @@
           <button class="button button--accent button--compact" onclick={saveEdit}>Save</button>
           <button class="button button--secondary button--compact" onclick={() => { isEditing = false; }}>Cancel</button>
         </div>
+      {:else if canEdit}
+        <button
+          class="m-0 border-0 bg-transparent p-0 text-left font-sans text-base font-semibold leading-tight text-gray-900 cursor-pointer hover:text-accent-600"
+          onclick={startEditing}
+          type="button"
+        >{issue.title}</button>
+        {#if issue.description}
+          <p class="m-0 mt-1 text-[0.8125rem] text-gray-700 leading-relaxed">{issue.description}</p>
+        {/if}
       {:else}
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <h3
-          class="m-0 font-sans text-base font-semibold text-gray-900 leading-tight {canEdit ? 'cursor-pointer hover:text-accent-600' : ''}"
-          onclick={() => { if (canEdit) startEditing(); }}
-        >{issue.title}</h3>
+        <h3 class="m-0 font-sans text-base font-semibold text-gray-900 leading-tight">{issue.title}</h3>
         {#if issue.description}
           <p class="m-0 mt-1 text-[0.8125rem] text-gray-700 leading-relaxed">{issue.description}</p>
         {/if}
@@ -252,7 +257,7 @@
           value={issue.status}
           onchange={(e) => handleStatusChange(e.currentTarget.value)}
         >
-          {#each statusOptions as opt}
+          {#each statusOptions as opt (opt.value)}
             <option value={opt.value}>{opt.label}</option>
           {/each}
         </select>
@@ -269,7 +274,7 @@
           value={issue.priority}
           onchange={(e) => handlePriorityChange(e.currentTarget.value)}
         >
-          {#each priorityOptions as opt}
+          {#each priorityOptions as opt (opt.value)}
             <option value={opt.value}>{opt.label}</option>
           {/each}
         </select>
@@ -287,7 +292,7 @@
           onchange={(e) => handleAssigneeChange(e.currentTarget.value)}
         >
           <option value="">Unassigned</option>
-          {#each members as member}
+          {#each members as member (member.userId)}
             <option value={member.userId}>{member.name}</option>
           {/each}
         </select>
@@ -312,7 +317,7 @@
   <!-- Labels -->
   {#if issue.labels.length > 0}
     <div class="flex gap-1 flex-wrap">
-      {#each issue.labels as label}
+      {#each issue.labels as label (`${issue.issueId}-${label}`)}
         <span class="chip chip--grant">{label}</span>
       {/each}
     </div>
@@ -381,3 +386,5 @@
     <p class="error-banner">{errorMessage}</p>
   {/if}
 </div>
+  type IssueStatus = "backlog" | "todo" | "in_progress" | "done" | "cancelled";
+  type IssuePriority = "urgent" | "high" | "medium" | "low" | "none";

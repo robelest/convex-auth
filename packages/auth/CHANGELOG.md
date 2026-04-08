@@ -2,28 +2,28 @@
 
 ## Unreleased
 
-- Stabilize the enterprise namespace model around `auth.sso.*` for inbound SSO,
-  `auth.scim.*` for provisioning, and a planned `auth.oauth.*` provider-mode
-  surface.
-- Move public domain ownership under `auth.sso.connection.*` and keep the next
-  release focused on shipping this stable core shape before larger enterprise
+- Stabilize the group/connection namespace model around `auth.group.sso.*` for
+  inbound SSO, `auth.group.sso.scim.*` for provisioning, and a planned
+  `auth.oauth.*` provider-mode surface.
+- Move public domain ownership under `auth.group.sso.connection.*` and keep the
+  next release focused on shipping this stable core shape before larger group
   features land.
-- Harden enterprise SSO management surfaces by adding tenant-admin checks to the
+- Harden group SSO management surfaces by adding tenant-admin checks to the
   app-level Convex wrappers and tightening their public return schemas.
 - Redact sensitive OIDC and webhook secret material from public reads and stop
   advertising incomplete provider-mode metadata from discovery.
 - Centralize identity subject parsing for device, passkey, and TOTP flows and
   add regression coverage for normalized public API outputs.
-- Store enterprise OIDC client secrets outside raw enterprise config and have
+- Store group OIDC client secrets outside raw group connection config and have
   the CLI provision `AUTH_SECRET_ENCRYPTION_KEY` automatically.
-- Refresh enterprise docs to reflect the current policy scope and provider-mode
+- Refresh group docs to reflect the current policy scope and provider-mode
   status.
-- Add first-class enterprise domain verification with
-  `auth.sso.admin.connection.domain.verification.request/confirm` and flat
+- Add first-class group connection domain verification with
+  `auth.group.sso.connection.domain.verification.request/confirm` and flat
   `requestDomainVerification` / `confirmDomainVerification` RPC helpers.
-- Require verified enterprise domains for
-  `auth.sso.client.signIn({ email | domain })` routing while keeping explicit
-  `enterpriseId` sign-in available for setup.
+- Require verified group connection domains for
+  `auth.group.sso.signIn({ email | domain })` routing while keeping explicit
+  `connectionId` sign-in available for setup.
 
 ## 0.0.4-preview.12
 
@@ -84,10 +84,10 @@ Migration note:
 - Breaking preview update: renamed auth component tables to PascalCase
   identifiers (for example `User`, `Session`, `Account`, `RefreshToken`) and
   propagated the new names through component/server types and queries.
-- Breaking preview update: provider API continues to use `OAuth(...)` and
-  class-based providers (`new Password()`, `new Passkey()`, `new Totp()`,
-  `new Device()`, `new Anonymous()`) without deprecated default-export provider
-  helpers.
+- Breaking preview update: provider APIs now use lowercase factory functions
+  (`google(...)`, `github(...)`, `password(...)`, `passkey(...)`, `totp(...)`,
+  `device(...)`, `anonymous(...)`, `email(...)`, `phone(...)`, `sso(...)`) with
+  no class-based aliases.
 
 ## 0.0.4-preview.7
 

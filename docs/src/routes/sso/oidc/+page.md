@@ -1,5 +1,5 @@
 ---
-title: auth.sso.admin.oidc
+title: auth.group.sso.oidc
 description:
   OIDC provider configuration — discovery, claim mapping, and sign-in
   resolution.
@@ -7,43 +7,43 @@ description:
 
 <svelte:head>
 
-  <title>auth.sso.admin.oidc - convex-auth</title>
+  <title>auth.group.sso.oidc - convex-auth</title>
 </svelte:head>
 
-# auth.sso.admin.oidc
+# auth.group.sso.oidc
 
-The `auth.sso.admin.oidc` namespace configures OpenID Connect identity providers
+The `auth.group.sso.oidc` namespace configures OpenID Connect identity providers
 for SSO connections.
 
 > This page documents the **server-side helper API**:
-> [`auth.sso.admin.oidc.*`](/sso/oidc/) plus
-> [`auth.sso.client.signIn(...)`](/sso/rpc/). Public RPC like
-> [`api.auth.enterprise.configureOidc`](/sso/rpc/) only exists after your app
-> exposes app-owned enterprise wrappers.
+> [`auth.group.sso.oidc.*`](/sso/oidc/) plus
+> [`auth.group.sso.signIn(...)`](/sso/rpc/). Public RPC like
+> [`api.auth.group.configureOidc`](/sso/rpc/) only exists after your app
+> exposes app-owned group SSO wrappers.
 
-Use the `enterpriseId` returned by
-[`auth.sso.admin.connection.create(...)`](/sso/connection/) when configuring
+Use the `connectionId` returned by
+[`auth.group.sso.connection.create(...)`](/sso/connection/) when configuring
 OIDC.
 
 ## Methods
 
 | Method                          | Signature                                                                                                      | Returns                   | Description                                                                                                      |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `auth.sso.admin.oidc.configure` | `(ctx, { enterpriseId, issuer?, discoveryUrl?, clientId, clientSecret?, scopes?, authorizationParams?, ... })` | OIDC config document      | Configures OIDC settings for a connection and stores the normalized config.                                      |
-| `auth.sso.admin.oidc.get`       | `(ctx, enterpriseId)`                                                                                          | OIDC config document      | Returns the current OIDC configuration for a connection.                                                         |
-| `auth.sso.admin.oidc.validate`  | `(ctx, enterpriseId)`                                                                                          | `{ checks: [...] }`       | Validates that the OIDC configuration is complete and the IdP is reachable. Each check has its own `ok` field.   |
-| `auth.sso.client.signIn`        | `(ctx, { enterpriseId?, email?, domain?, redirectTo? })`                                                       | Sign-in route description | Resolves the client-facing OIDC sign-in route for a connection. Domain/email routing requires a verified domain. |
+| `auth.group.sso.oidc.configure` | `(ctx, { connectionId, issuer?, discoveryUrl?, clientId, clientSecret?, scopes?, authorizationParams?, ... })` | OIDC config document      | Configures OIDC settings for a connection and stores the normalized config.                                      |
+| `auth.group.sso.oidc.get`       | `(ctx, connectionId)`                                                                                          | OIDC config document      | Returns the current OIDC configuration for a connection.                                                         |
+| `auth.group.sso.oidc.validate`  | `(ctx, connectionId)`                                                                                          | `{ checks: [...] }`       | Validates that the OIDC configuration is complete and the IdP is reachable. Each check has its own `ok` field.   |
+| `auth.group.sso.signIn`               | `(ctx, { connectionId?, email?, domain?, redirectTo? })`                                                       | Sign-in route description | Resolves the client-facing OIDC sign-in route for a connection. Domain/email routing requires a verified domain. |
 
 `clientSecret` is write-only. Configure it through
-[`auth.sso.admin.oidc.configure(...)`](/sso/oidc/), but expect
-[`auth.sso.admin.oidc.get(...)`](/sso/oidc/) and other public reads to return a
+[`auth.group.sso.oidc.configure(...)`](/sso/oidc/), but expect
+[`auth.group.sso.oidc.get(...)`](/sso/oidc/) and other public reads to return a
 redacted view of the OIDC config.
 
 ## `configure` arguments
 
 | Argument                | Type       | Description                                                                        |
 | ----------------------- | ---------- | ---------------------------------------------------------------------------------- |
-| `enterpriseId`          | `string`   | The SSO connection ID to configure.                                                |
+| `connectionId`          | `string`   | The SSO connection ID to configure.                                                |
 | `issuer`                | `string`   | The OIDC issuer URL (e.g. `https://accounts.google.com`). Used for auto-discovery. |
 | `discoveryUrl`          | `string`   | Optional explicit discovery URL when issuer-based discovery is not enough.         |
 | `clientId`              | `string`   | The OAuth client ID from the IdP.                                                  |
@@ -59,8 +59,8 @@ redacted view of the OIDC config.
 Use `extraFields` to map custom IdP claims to user document fields:
 
 ```ts
-await auth.sso.admin.oidc.configure(ctx, {
-  enterpriseId,
+await auth.group.sso.oidc.configure(ctx, {
+  connectionId,
   issuer: "https://login.microsoftonline.com/tenant-id/v2.0",
   clientId: "...",
   clientSecret: "...",
@@ -86,7 +86,7 @@ available yet.
 After configuring, validate that the connection is working:
 
 ```ts
-const { checks } = await auth.sso.admin.oidc.validate(ctx, enterpriseId);
+const { checks } = await auth.group.sso.oidc.validate(ctx, connectionId);
 
 const failures = checks.filter((check) => !check.ok);
 if (failures.length > 0) {
@@ -97,8 +97,8 @@ if (failures.length > 0) {
 ## Resolve a sign-in route
 
 ```ts
-const route = await auth.sso.client.signIn(ctx, {
-  enterpriseId,
+const route = await auth.group.sso.signIn(ctx, {
+  connectionId,
   redirectTo: "/dashboard",
 });
 

@@ -1,31 +1,40 @@
 /**
  * Provider exports for `@robelest/convex-auth/providers`.
  *
- * All non-OAuth providers are classes following the Arctic pattern.
- * OAuth providers are wrapped via the `OAuth()` factory which attaches
- * scopes and profile config to an Arctic provider instance.
- *
  * @module
  */
 
-export { OAuth } from "./oauth";
-export type { OAuthConfig } from "./oauth";
-export { Password } from "./password";
+export { password } from "./password";
 export type { PasswordConfig } from "./password";
-export { Passkey } from "./passkey";
+export { passkey } from "./passkey";
 export type { PasskeyConfig } from "./passkey";
-export { Totp } from "./totp";
+export { totp } from "./totp";
 export type { TotpConfig } from "./totp";
-export { Anonymous } from "./anonymous";
+export { google } from "./google";
+export type { GoogleConfig } from "./google";
+export { github } from "./github";
+export type { GitHubConfig } from "./github";
+export { apple } from "./apple";
+export type { AppleConfig } from "./apple";
+export { microsoft } from "./microsoft";
+export type { MicrosoftConfig } from "./microsoft";
+export { custom } from "./custom";
+export type {
+  CustomOAuthAuthorizationConfig,
+  CustomOAuthConfig,
+  CustomOAuthTokenConfig,
+} from "./custom";
+export { anonymous } from "./anonymous";
 export type { AnonymousConfig } from "./anonymous";
-export { Credentials } from "./credentials";
+export { credentials } from "./credentials";
 export type { CredentialsConfig } from "./credentials";
-export { Device } from "./device";
+export { device } from "./device";
 export type { DeviceConfig } from "./device";
-export { SSO } from "./sso";
-export { Email } from "./email";
+export { sso } from "./sso";
+export { email } from "./email";
 export type { EmailProviderConfig } from "./email";
 export type { EmailConfig } from "../server/types";
-export { Phone } from "./phone";
+export type { OAuthProfile, OAuthTokens } from "../server/types";
+export { phone } from "./phone";
 export type { PhoneProviderConfig } from "./phone";
 export type { PhoneConfig } from "../server/types";

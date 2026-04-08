@@ -1,17 +1,16 @@
 <script lang="ts">
   import type { ConvexClient } from "convex/browser";
-  import type { Id } from "convex/values";
   import { api } from "$convex/_generated/api.js";
   import { useQuery } from "convex-svelte";
   import IssueDetailPanel from "./IssueDetailPanel.svelte";
 
-  let { project, permissions, members, currentUserId, workspaceGroupId, client } = $props<{
+  let { project, permissions, members, currentUserId, groupId, client } = $props<{
     project: {
-      projectId: Id<"demoProjects">;
+      projectId: string;
       name: string;
       identifier: string;
       slug: string;
-      teamGroupId: string;
+      teamGroupId: string | null;
       teamName: string;
       description: string;
     };
@@ -26,12 +25,12 @@
     };
     members: Array<{ userId: string; name: string }>;
     currentUserId: string;
-    workspaceGroupId: string;
+    groupId: string;
     client: ConvexClient;
   }>();
 
   const issuesQuery = useQuery(
-    api.demo.projectIssues,
+    api.issues.projectIssues,
     () => ({
       projectId: project.projectId,
     }),
@@ -83,8 +82,11 @@
     const groups: StatusGroup[] = [];
     for (const status of statusOrder) {
       const grouped = issues
-        .filter((i) => i.status === status)
-        .sort((a, b) => (priorityWeight[a.priority] ?? 4) - (priorityWeight[b.priority] ?? 4));
+        .filter((issue: IssueType) => issue.status === status)
+        .sort(
+          (a: IssueType, b: IssueType) =>
+            (priorityWeight[a.priority] ?? 4) - (priorityWeight[b.priority] ?? 4),
+        );
       if (grouped.length > 0) {
         groups.push({ status, label: statusLabels[status], issues: grouped });
       }
@@ -112,7 +114,7 @@
     isCreating = true;
     errorMessage = null;
     try {
-      const result = await client.mutation(api.demo.createIssue, {
+      const result = await client.mutation(api.issues.createIssue, {
         projectId: project.projectId,
         title: newTitle,
       });
@@ -199,7 +201,7 @@
             {/if}
 
             <!-- Labels -->
-            {#each issue.labels.slice(0, 2) as label}
+            {#each issue.labels.slice(0, 2) as label (`${issue.issueId}-${label}`)}
               <span class="chip chip--grant shrink-0">{label}</span>
             {/each}
 
@@ -217,7 +219,7 @@
                 {permissions}
                 {members}
                 {currentUserId}
-                {workspaceGroupId}
+                {groupId}
                 {client}
                 onclose={() => { expandedIssueId = null; }}
               />

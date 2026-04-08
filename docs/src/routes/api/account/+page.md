@@ -24,7 +24,7 @@ passkey credentials, and TOTP enrollments.
 
 ## Passkey methods
 
-Manage WebAuthn passkey credentials. Requires `new Passkey()` in providers.
+Manage WebAuthn passkey credentials. Requires `passkey()` in providers.
 
 | Method          | Signature                | Returns             | Description                               |
 | --------------- | ------------------------ | ------------------- | ----------------------------------------- |
@@ -39,7 +39,7 @@ await auth.account.deletePasskey(ctx, passkeyId);
 
 ## TOTP methods
 
-Manage TOTP two-factor authentication. Requires `new Totp()` in providers.
+Manage TOTP two-factor authentication. Requires `totp()` in providers.
 
 | Method       | Signature           | Returns          | Description                        |
 | ------------ | ------------------- | ---------------- | ---------------------------------- |

@@ -34,7 +34,7 @@ Tags are useful for categorizing groups (e.g. plan tier, region):
 ```ts
 const { groupId } = await auth.group.create(ctx, {
   name: "Acme Corp",
-  tags: ["enterprise", "us-east"],
+  tags: ["group-sso", "us-east"],
 });
 ```
 
@@ -59,7 +59,7 @@ const ancestors = await auth.group.ancestors(ctx, teamId);
 
 ```ts
 await auth.group.update(ctx, groupId, {
-  tags: ["enterprise", "us-west"],
+  tags: ["group-sso", "us-west"],
   metadata: { plan: "pro" },
 });
 ```

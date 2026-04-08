@@ -83,7 +83,6 @@ type CoreDeps = {
 export function createCoreDomains(deps: CoreDeps) {
   const {
     config,
-    getAuth,
     callInvalidateSessions,
     callCreateAccountFromCredentials,
     callRetrieveAccountWithCredentials,

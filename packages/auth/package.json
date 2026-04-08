@@ -1,14 +1,12 @@
 {
   "name": "@robelest/convex-auth",
-  "version": "0.0.4-preview.25",
+  "version": "0.0.4-preview.26",
   "description": "Authentication for Convex",
   "keywords": [
     "auth",
     "authentication",
     "authorization",
-    "convex",
-    "login",
-    "sign"
+    "convex"
   ],
   "homepage": "https://auth.estifanos.com/",
   "bugs": "https://github.com/robelest/convex-auth/issues",
@@ -20,8 +18,8 @@
   },
   "bin": "./dist/bin.js",
   "files": [
-    "dist",
-    "src"
+    "dist/**/*.js",
+    "dist/**/*.d.ts"
   ],
   "type": "module",
   "sideEffects": false,
@@ -29,7 +27,10 @@
     "./_generated/component.js": {
       "types": "./dist/component/_generated/component.d.ts"
     },
-    "./test": "./src/test.ts",
+    "./test": {
+      "types": "./dist/test.d.ts",
+      "import": "./dist/test.js"
+    },
     "./client": {
       "types": "./dist/client/index.d.ts",
       "import": "./dist/client/index.js"
@@ -120,7 +121,6 @@
   },
   "@comment devDependencies": [
     "The CLI deps (@clack/prompts, @commander-js/extra-typings, dotenv,",
-    "valibot) are devDependencies because they are bundled into dist/bin.js",
-    "via esbuild."
+    "valibot) are devDependencies because they are bundled into dist/bin.js"
   ]
 }

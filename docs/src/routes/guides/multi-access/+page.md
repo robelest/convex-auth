@@ -66,7 +66,7 @@ http.route({
 | How the user authenticated                | How `userId` is available                            |
 | ----------------------------------------- | ---------------------------------------------------- |
 | Browser (password, email, passkey, OAuth) | `ctx.auth.userId` via `auth.ctx()`                   |
-| Enterprise SSO (OIDC/SAML)                | Same as browser - SSO completes as a session         |
+| Group SSO (OIDC/SAML)                | Same as browser - SSO completes as a session         |
 | Device flow (RFC 8628, CLI/TV)            | Same as browser - device poll returns session tokens |
 | API key (machine/automation)              | `ctx.key.userId` or `auth.http.context(ctx, request).userId` |
 

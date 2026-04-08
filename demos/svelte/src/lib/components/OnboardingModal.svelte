@@ -20,9 +20,11 @@
     errorMessage = null;
 
     try {
-      const result = await client.mutation(api.demo.createWorkspace, { name });
+      const result = await client.mutation(api.groups.createGroup, { name });
       if ("ok" in result && !result.ok && "message" in result) {
         errorMessage = (result as any).message;
+      } else if ("groupId" in result) {
+        window.location.href = `/${result.groupId}`;
       }
     } catch (e) {
       errorMessage = e instanceof Error ? e.message : "Something went wrong.";
@@ -33,10 +35,10 @@
 </script>
 
 <div class="flex w-full max-w-80 flex-col gap-2.5 border border-gray-300 bg-white p-5">
-  <h2 class="heading text-xl m-0">New workspace</h2>
+  <h2 class="heading text-xl m-0">New organization</h2>
 
   <form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); handleCreate(); }}>
-    <input bind:value={name} class="input" type="text" maxlength="60" placeholder="Workspace name" />
+    <input bind:value={name} class="input" type="text" maxlength="60" placeholder="Organization name" />
     <button class="button button--accent button--block" disabled={isSubmitting} type="submit">
       {isSubmitting ? "Creating..." : "Create"}
     </button>

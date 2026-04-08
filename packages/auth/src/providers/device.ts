@@ -5,9 +5,9 @@
  * by displaying a short code that the user enters on a secondary device.
  *
  * ```ts
- * import { Device } from "@robelest/convex-auth/providers";
+ * import { device } from "@robelest/convex-auth/providers";
  *
- * new Device()
+ * device()
  * ```
  *
  * @module
@@ -15,73 +15,38 @@
 
 import type { DeviceProviderConfig } from "../server/types";
 
-/**
- * Configuration for the Device authorization provider.
- */
+/** Configuration for the {@link device} provider. */
 export interface DeviceConfig {
-  /**
-   * User code character set.
-   * Default: `"BCDFGHJKLMNPQRSTVWXZ"` (base-20, no vowels per RFC 8628 §6.1).
-   */
   charset?: string;
-  /** User code length (before formatting). Default: 8. */
   userCodeLength?: number;
-  /** Device code + user code lifetime in seconds. Default: 900 (15 min). */
   expiresIn?: number;
-  /** Minimum polling interval in seconds. Default: 5. */
   interval?: number;
-  /**
-   * Base URL for the verification page where users enter the device code.
-   *
-   * Example: `"http://localhost:3000/device"` or `"https://myapp.com/device"`.
-   *
-   * If not provided, falls back to `SITE_URL + "/device"`.
-   */
   verificationUri?: string;
 }
 
-/** No-vowel base-20 charset per RFC 8628 §6.1 recommendation. */
 const DEFAULT_CHARSET = "BCDFGHJKLMNPQRSTVWXZ";
 
 /**
- * Device authorization provider (RFC 8628).
+ * Create a device authorization provider.
  *
- * Enables input-constrained devices (CLIs, TVs, IoT) to authenticate
- * by displaying a short user code. The user visits a verification page
- * on a secondary device, signs in with any existing provider, and
- * enters the code to authorize the device.
+ * @param config - Optional device flow code and polling settings.
+ * @returns A configured device flow provider for `createAuth`.
  *
  * @example
  * ```ts
- * import { createAuth } from "@robelest/convex-auth/component";
- * import { Device } from "@robelest/convex-auth/providers";
- * import { components } from "./_generated/api";
+ * import { device } from "@robelest/convex-auth/providers";
  *
- * const auth = createAuth(components.auth, {
- *   providers: [new Device()],
- * });
+ * device({ verificationUri: "https://example.com/device" })
  * ```
  */
-export class Device {
-  readonly id: string;
-  readonly type = "device" as const;
-  readonly config: DeviceConfig;
-
-  constructor(config: DeviceConfig = {}) {
-    this.id = "device";
-    this.config = config;
-  }
-
-  /** @internal Convert to the internal materialized config shape. */
-  _toMaterialized(): DeviceProviderConfig {
-    return {
-      id: this.id,
-      type: "device",
-      charset: this.config.charset ?? DEFAULT_CHARSET,
-      userCodeLength: this.config.userCodeLength ?? 8,
-      expiresIn: this.config.expiresIn ?? 900,
-      interval: this.config.interval ?? 5,
-      verificationUri: this.config.verificationUri,
-    };
-  }
+export function device(config: DeviceConfig = {}): DeviceProviderConfig {
+  return {
+    id: "device",
+    type: "device",
+    charset: config.charset ?? DEFAULT_CHARSET,
+    userCodeLength: config.userCodeLength ?? 8,
+    expiresIn: config.expiresIn ?? 900,
+    interval: config.interval ?? 5,
+    verificationUri: config.verificationUri,
+  };
 }

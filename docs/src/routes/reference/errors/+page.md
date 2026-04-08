@@ -55,7 +55,7 @@ try {
 | `INTERNAL_ERROR`          | Unexpected server error          |
 | `PROVIDER_NOT_CONFIGURED` | Provider not in config           |
 
-Mounted enterprise admin APIs may also throw `FORBIDDEN` when the app-level
+Mounted group SSO admin APIs may also throw `FORBIDDEN` when the app-level
 authorization callback rejects the caller.
 
 ## API key errors

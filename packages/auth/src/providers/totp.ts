@@ -2,9 +2,9 @@
  * TOTP (Time-based One-Time Password) two-factor authentication provider.
  *
  * ```ts
- * import { Totp } from "@robelest/convex-auth/providers";
+ * import { totp } from "@robelest/convex-auth/providers";
  *
- * new Totp({ issuer: "My App" })
+ * totp({ issuer: "My App" })
  * ```
  *
  * @module
@@ -12,51 +12,34 @@
 
 import type { TotpProviderConfig } from "../server/types";
 
-/**
- * Configuration for the TOTP provider.
- */
+/** Configuration for the {@link totp} provider. */
 export interface TotpConfig {
-  /** Issuer name shown in authenticator apps (e.g. "My App"). */
   issuer?: string;
-  /** Number of digits in each code (default: 6). */
   digits?: number;
-  /** Time period in seconds for code rotation (default: 30). */
   period?: number;
 }
 
 /**
- * TOTP (Time-based One-Time Password) two-factor authentication provider.
+ * Create a TOTP provider.
  *
- * Generates time-based one-time passwords compatible with authenticator
- * apps like Google Authenticator and Authy.
+ * @param config - Optional issuer and token generation settings.
+ * @returns A configured TOTP provider for `createAuth`.
  *
  * @example
  * ```ts
- * import { Totp } from "@robelest/convex-auth/providers";
+ * import { totp } from "@robelest/convex-auth/providers";
  *
- * new Totp({ issuer: "My App" })
+ * totp({ issuer: "My App" })
  * ```
  */
-export class Totp {
-  readonly id: string;
-  readonly type = "totp" as const;
-  readonly config: TotpConfig;
-
-  constructor(config: TotpConfig = {}) {
-    this.id = "totp";
-    this.config = config;
-  }
-
-  /** @internal Convert to the internal materialized config shape. */
-  _toMaterialized(): TotpProviderConfig {
-    return {
-      id: this.id,
-      type: "totp",
-      options: {
-        issuer: this.config.issuer ?? "ConvexAuth",
-        digits: this.config.digits ?? 6,
-        period: this.config.period ?? 30,
-      },
-    };
-  }
+export function totp(config: TotpConfig = {}): TotpProviderConfig {
+  return {
+    id: "totp",
+    type: "totp",
+    options: {
+      issuer: config.issuer ?? "ConvexAuth",
+      digits: config.digits ?? 6,
+      period: config.period ?? 30,
+    },
+  };
 }

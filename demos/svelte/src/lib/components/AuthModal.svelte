@@ -1,15 +1,22 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
+	import { getContext, onMount } from 'svelte';
 	import { useConvexClient } from 'convex-svelte';
 	import { api } from '$convex/_generated/api.js';
-	import type { AuthClientBase } from '@robelest/convex-auth/client';
 	import ArrowLeft from 'phosphor-svelte/lib/ArrowLeft';
+
+	type AuthContext = {
+		invite?: { email?: string } | null;
+		signIn: (provider: string, args?: Record<string, unknown>) => Promise<{
+			kind: 'signedIn' | 'redirect';
+			redirect?: URL | string;
+		}>;
+	};
 
 	let { authProviders } = $props<{
 		authProviders: { google: boolean };
 	}>();
 
-	const auth = getContext<AuthClientBase>('auth');
+	const auth = getContext<AuthContext>('auth');
 	const convexClient = useConvexClient();
 
 	let errorMessage: string | null = $state(null);
@@ -24,18 +31,34 @@
 	let mode: 'signIn' | 'signUp' = $state('signIn');
 	let step: 'email' | 'password' | 'checking' = $state('email');
 
-	// Auto-detect sign-in vs sign-up for invite links
-	$effect(() => {
-		if (isInvite && prefillEmail && step === 'email') {
-			step = 'checking';
-			convexClient.query(api.demo.checkEmailExists, { email: prefillEmail }).then((exists: boolean) => {
+	function getErrorMessage(error: unknown) {
+		if (error instanceof Error) {
+			return error.message;
+		}
+		return String(error);
+	}
+
+	function isNoMatchingSsoError(error: unknown) {
+		const message = getErrorMessage(error);
+		return message.includes('No group connection matched the provided input.');
+	}
+
+	onMount(() => {
+		if (!isInvite || !prefillEmail || step !== 'email') {
+			return;
+		}
+
+		step = 'checking';
+		void convexClient
+			.query(api.groups.checkEmailExists, { email: prefillEmail })
+			.then((exists: boolean) => {
 				mode = exists ? 'signIn' : 'signUp';
 				step = 'password';
-			}).catch(() => {
+			})
+			.catch(() => {
 				mode = 'signUp';
 				step = 'password';
 			});
-		}
 	});
 
 	async function handleEmailContinue() {
@@ -43,30 +66,47 @@
 		isSubmitting = true;
 		errorMessage = null;
 
+		let shouldFallbackToPassword = false;
 
 		// Try SSO first
 		try {
-			const ssoInfo = await convexClient.query(api.auth.enterprise.signIn, { email });
-			const result = await auth.signIn('enterprise-sso', { enterpriseId: ssoInfo.enterpriseId });
-			if (result.kind === 'redirect') {
+			console.log('[group-sso] lookup:start', { email });
+			const ssoInfo = await convexClient.query(api.auth.group.signIn, { email });
+			console.log('[group-sso] lookup:result', ssoInfo);
+			console.log('[group-sso] signin:start', {
+				connectionId: ssoInfo.connectionId,
+				protocol: ssoInfo.protocol,
+				signInPath: ssoInfo.signInPath,
+			});
+			const result = await auth.signIn('sso', { connectionId: ssoInfo.connectionId });
+			console.log('[group-sso] signin:result', result);
+			if (result.kind === 'redirect' && result.redirect) {
 				window.location.href = result.redirect.toString();
 				return;
 			}
 			window.location.reload();
 			return;
-		} catch {
-			// No SSO — check if account exists
+		} catch (error) {
+			console.error('[group-sso] flow:failed', error);
+			if (!isNoMatchingSsoError(error)) {
+				errorMessage = getErrorMessage(error);
+				isSubmitting = false;
+				return;
+			}
+			shouldFallbackToPassword = true;
 		}
 
-		try {
-			const exists = await convexClient.query(api.demo.checkEmailExists, { email });
-			mode = exists ? 'signIn' : 'signUp';
-		} catch {
-			// Default to sign-in
-		}
+		if (shouldFallbackToPassword) {
+			try {
+				const exists = await convexClient.query(api.groups.checkEmailExists, { email });
+				mode = exists ? 'signIn' : 'signUp';
+			} catch {
+				// Default to sign-in
+			}
 
-		isSubmitting = false;
-		step = 'password';
+			isSubmitting = false;
+			step = 'password';
+		}
 	}
 
 	async function handlePasswordSubmit() {
@@ -77,7 +117,7 @@
 			const result = await auth.signIn('password', { flow: mode, email, password });
 			if (result.kind === 'signedIn') {
 				window.location.reload();
-			} else if (result.kind === 'redirect') {
+			} else if (result.kind === 'redirect' && result.redirect) {
 				window.location.href = result.redirect.toString();
 			}
 		} catch (e) {
@@ -98,7 +138,7 @@
 
 		try {
 			const result = await auth.signIn('google');
-			if (result.kind === 'redirect') {
+			if (result.kind === 'redirect' && result.redirect) {
 				window.location.href = result.redirect.toString();
 			} else if (result.kind === 'signedIn') {
 				window.location.reload();
@@ -119,7 +159,7 @@
 
 <div class="flex w-full max-w-80 flex-col gap-3 border border-gray-300 bg-white p-5 max-md:max-w-full max-md:p-4 max-md:border-x-0">
 	{#if isInvite}
-		<p class="font-label text-[0.6875rem] text-accent-500 m-0">You've been invited to a workspace</p>
+		<p class="font-label text-[0.6875rem] text-accent-500 m-0">You've been invited to an organization</p>
 	{/if}
 	<h2 class="heading text-xl m-0">
 		{#if step === 'checking'}

@@ -8,8 +8,8 @@ import {
   type InferAuth,
 } from "@robelest/convex-auth/component";
 import auth from "@robelest/convex-auth/convex.config";
-import { OAuth } from "@robelest/convex-auth/providers";
-import { Password } from "@robelest/convex-auth/providers/password";
+import { password } from "@robelest/convex-auth/providers";
+import { google } from "@robelest/convex-auth/providers/google";
 import type { AuthContext } from "@robelest/convex-auth/server";
 
 type _ClientFactory = typeof client;
@@ -21,8 +21,8 @@ type _AuthContextConfig = AuthContextConfig;
 type _CreateAuthFactory = typeof createAuth;
 type _AuthConfig = ConvexAuthConfig;
 type _AuthContext = AuthContext;
-type _OAuthFactory = typeof OAuth;
-type _PasswordClass = typeof Password;
+type _GoogleFactory = typeof google;
+type _PasswordFactory = typeof password;
 type _ConvexConfig = typeof auth;
 
 declare const authLike: Pick<AuthApi, "ctx" | "context" | "http">;
@@ -73,8 +73,8 @@ const _typecheck: {
   defineRoles: _DefineRolesFactory;
   createAuth: _CreateAuthFactory;
   config: _ConvexConfig;
-  OAuth: _OAuthFactory;
-  password: _PasswordClass;
+  google: _GoogleFactory;
+  password: _PasswordFactory;
   authConfig: _AuthConfig | null;
   authContextConfig: _AuthContextConfig | null;
   authContext: _AuthContext | null;
@@ -86,8 +86,8 @@ const _typecheck: {
   defineRoles,
   createAuth,
   config: auth,
-  OAuth,
-  password: Password,
+  google,
+  password,
   authConfig: null,
   authContextConfig: null,
   authContext: null,

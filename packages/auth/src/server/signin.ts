@@ -76,6 +76,10 @@ export async function signInImpl(
   options: {
     generateTokens: boolean;
     allowExtraProviders: boolean;
+    resolveSsoProtocol?: (
+      ctx: EnrichedActionCtx,
+      connectionId: string,
+    ) => Promise<"oidc" | "saml">;
   },
 ): Promise<SignInResult> {
   const fx = signInFx(ctx, provider, args, options);
@@ -101,6 +105,10 @@ function signInFx(
   options: {
     generateTokens: boolean;
     allowExtraProviders: boolean;
+    resolveSsoProtocol?: (
+      ctx: EnrichedActionCtx,
+      connectionId: string,
+    ) => Promise<"oidc" | "saml">;
   },
 ): FxType<SignInResult, ConvexError<any>> {
   return Fx.gen(function* () {
@@ -145,7 +153,7 @@ function signInFx(
       passkey: (p) => handlePasskeyFx(ctx, p, args),
       totp: (p) => handleTotp(ctx, p, args),
       device: (p) => handleDevice(ctx, p, args),
-      sso: (_p) => handleSsoProviderFx(ctx, args),
+      sso: (_p) => handleSsoProviderFx(ctx, args, options),
     });
   });
 }
@@ -395,7 +403,7 @@ function handleOAuthProviderFx(
 }
 
 // ============================================================================
-// SSO (Enterprise OIDC / SAML)
+// SSO (Group Connection OIDC / SAML)
 // ============================================================================
 
 function handleSsoProviderFx(
@@ -403,20 +411,40 @@ function handleSsoProviderFx(
   args: {
     params?: Record<string, any>;
   },
+  options: {
+    resolveSsoProtocol?: (
+      ctx: EnrichedActionCtx,
+      connectionId: string,
+    ) => Promise<"oidc" | "saml">;
+  },
 ): FxType<
   { kind: "redirect"; redirect: string; verifier: string },
   ConvexError<any>
 > {
   return Fx.gen(function* () {
-    const enterpriseId = args.params?.enterpriseId;
-    if (!enterpriseId || typeof enterpriseId !== "string") {
+    const connectionId = args.params?.connectionId;
+    if (!connectionId || typeof connectionId !== "string") {
       return yield* Cv.fail({
         code: "SIGN_IN_MISSING_PARAMS",
-        message: "enterpriseId is required for SSO sign-in.",
+        message: "connectionId is required for SSO sign-in.",
       });
     }
 
-    const protocol: "oidc" | "saml" = args.params?.protocol ?? "oidc";
+    const protocol: "oidc" | "saml" =
+      args.params?.protocol ??
+      (options.resolveSsoProtocol
+        ? yield* Fx.promise(() =>
+            options.resolveSsoProtocol!(ctx, connectionId),
+          )
+        : "oidc");
+    console.log("[group-sso] signin:resolved", {
+      connectionId,
+      protocol,
+      redirectTo:
+        typeof args.params?.redirectTo === "string"
+          ? args.params.redirectTo
+          : undefined,
+    });
     if (protocol !== "oidc" && protocol !== "saml") {
       return yield* Cv.fail({
         code: "SIGN_IN_MISSING_PARAMS",
@@ -428,13 +456,18 @@ function handleSsoProviderFx(
     const siteUrl =
       process.env.CUSTOM_AUTH_SITE_URL ?? requireEnv("CONVEX_SITE_URL");
     const redirect = new URL(
-      `${siteUrl}/api/auth/sso/${enterpriseId}/${protocol}/signin`,
+      `${siteUrl}/api/auth/connections/${connectionId}/${protocol}/signin`,
     );
     redirect.searchParams.set("code", verifier);
 
     if (typeof args.params?.redirectTo === "string") {
       redirect.searchParams.set("redirectTo", args.params.redirectTo);
     }
+    console.log("[group-sso] signin:redirect", {
+      connectionId,
+      protocol,
+      redirect: redirect.toString(),
+    });
 
     return {
       kind: "redirect" as const,

@@ -20,33 +20,6 @@
 	</a>
 </div>
 
-<div class="card-grid">
-	<div class="card">
-		<p class="card-title">Convex-native</p>
-		<p><code>createAuth(components.auth, {'{providers}'})</code> — auth, helpers, and HTTP in one call.</p>
-	</div>
-	<div class="card">
-		<p class="card-title">Every auth method</p>
-		<p>Password, OAuth, magic links, passkeys, TOTP, anonymous, device flow, phone.</p>
-	</div>
-	<div class="card">
-		<p class="card-title">Groups & memberships</p>
-		<p>Hierarchical groups with roles, invites, and cascade deletes.</p>
-	</div>
-	<div class="card">
-		<p class="card-title">API keys</p>
-		<p>Scoped permissions, SHA-256 hashing, per-key rate limiting, rotation.</p>
-	</div>
-	<div class="card">
-		<p class="card-title">Enterprise SSO</p>
-		<p>OIDC, SAML 2.0, SCIM 2.0 via <code>new SSO()</code>. Conditional TypeScript gating.</p>
-	</div>
-	<div class="card">
-		<p class="card-title">SSR ready</p>
-		<p>Cookie API for SvelteKit, TanStack Start, and Next.js.</p>
-	</div>
-</div>
-
 <style>
 	.hero-title {
 		font-family: var(--font-sans);
@@ -111,52 +84,4 @@
 		color: var(--color-gray-900);
 	}
 
-	.card-grid {
-		display: grid;
-		grid-template-columns: 1fr;
-		gap: 1rem;
-	}
-
-	@media (min-width: 640px) {
-		.card-grid {
-			grid-template-columns: 1fr 1fr;
-		}
-	}
-
-	.card {
-		border: 1px solid var(--color-gray-300);
-		padding: 1.25rem;
-	}
-
-	:global([data-theme='dark']) .card {
-		border-color: var(--color-gray-700);
-	}
-
-	.card-title {
-		font-weight: 600;
-		margin-bottom: 0.25rem;
-	}
-
-	.card p:last-child {
-		font-size: 0.875rem;
-		color: var(--color-gray-600);
-		margin: 0;
-	}
-
-	:global([data-theme='dark']) .card p:last-child {
-		color: var(--color-gray-400);
-	}
-
-	.card code {
-		font-family: var(--font-mono);
-		font-size: 0.8125em;
-		background: var(--color-gray-200);
-		padding: 0.125rem 0.3rem;
-		border: 1px solid var(--color-gray-300);
-	}
-
-	:global([data-theme='dark']) .card code {
-		background: var(--color-gray-800);
-		border-color: var(--color-gray-700);
-	}
 </style>

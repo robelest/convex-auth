@@ -3,11 +3,14 @@
   import { api } from "$convex/_generated/api.js";
   import { useQuery } from "convex-svelte";
   import { getContext } from "svelte";
-  import type { AuthClientBase } from "@robelest/convex-auth/client";
 
-  const auth = getContext<AuthClientBase>("auth");
+  type AuthContext = {
+    signOut: () => Promise<void>;
+  };
 
-  let { user, userRoleLabel, members, teams, permissions, workspaceGroupId, client } = $props<{
+  const auth = getContext<AuthContext>("auth");
+
+  let { user, userRoleLabel, members, teams, permissions, groupId, client } = $props<{
     user: { name: string; email: string | null };
     userRoleLabel: string;
     members: Array<{
@@ -27,7 +30,7 @@
       canManageMembers: boolean;
       canManageSso: boolean;
     };
-    workspaceGroupId: string;
+    groupId: string;
     client: ConvexClient;
   }>();
 
@@ -45,8 +48,8 @@
   let inviteSentTo = $state<string | null>(null);
 
   const invitesQuery = useQuery(
-    api.demo.listInvites,
-    () => permissions.canManageMembers ? { workspaceId: workspaceGroupId } : "skip" as any,
+    api.groups.listInvites,
+    () => permissions.canManageMembers ? { groupId: groupId } : "skip" as any,
   );
   const pendingInvites = $derived(invitesQuery.data ?? []);
 
@@ -67,8 +70,8 @@
     isSubmitting = true;
     errorMessage = null;
     try {
-      await client.mutation(api.demo.createTeam, {
-        workspaceId: workspaceGroupId,
+      await client.mutation(api.groups.createTeam, {
+        groupId: groupId,
         name: newTeamName,
       });
       newTeamName = "";
@@ -82,8 +85,8 @@
   async function handleRoleChange(memberId: string, newRoleId: string) {
     errorMessage = null;
     try {
-      await client.mutation(api.demo.updateMemberRole, {
-        workspaceId: workspaceGroupId,
+      await client.mutation(api.groups.updateMemberRole, {
+        groupId: groupId,
         memberId,
         roleId: newRoleId,
       });
@@ -111,8 +114,8 @@
     inviteSentTo = null;
     const emailToSend = inviteEmail;
     try {
-      const result = await client.action(api.demo.inviteMember, {
-        workspaceId: workspaceGroupId,
+      const result = await client.action(api.groups.inviteMember, {
+        groupId: groupId,
         email: inviteEmail,
         roleId: inviteRoleId,
       });
@@ -133,8 +136,8 @@
   async function handleRevokeInvite(inviteId: string) {
     errorMessage = null;
     try {
-      await client.mutation(api.demo.revokeInvite, {
-        workspaceId: workspaceGroupId,
+      await client.mutation(api.groups.revokeInvite, {
+        groupId: groupId,
         inviteId,
       });
     } catch (e: unknown) {
@@ -152,7 +155,7 @@
     { label: "Create projects", admin: true, member: false, viewer: false },
     { label: "Manage teams", admin: true, member: false, viewer: false },
     { label: "Manage members & roles", admin: true, member: false, viewer: false },
-    { label: "Configure enterprise SSO", admin: true, member: false, viewer: false },
+    { label: "Configure group SSO", admin: true, member: false, viewer: false },
   ];
 
   const tabs = [
@@ -178,7 +181,7 @@
 
   <!-- Tabs -->
   <div class="flex gap-0 border-b border-gray-300">
-    {#each tabs as t}
+    {#each tabs as t (t.id)}
       <button
         class="py-2 px-4 border-0 border-b-2 bg-transparent font-label text-[0.75rem] font-medium cursor-pointer {tab === t.id ? 'border-b-accent-500 text-accent-600 font-semibold' : 'border-b-transparent text-gray-500 hover:text-gray-700'}"
         onclick={() => { tab = t.id; }}
@@ -198,7 +201,7 @@
           >{showInviteForm ? "Cancel" : "Invite member"}</button>
         {/if}
         {#if permissions.canManageSso}
-          <a class="button button--secondary button--compact no-underline" href="/admin/setup?workspace={workspaceGroupId}">
+          <a class="button button--secondary button--compact no-underline" href="/{groupId}/sso">
             Configure SSO
           </a>
         {/if}
@@ -216,7 +219,7 @@
             placeholder="Email address"
           />
           <select class="select select--compact" bind:value={inviteRoleId}>
-            {#each roleOptions as role}
+            {#each roleOptions as role (role.id)}
               <option value={role.id}>{role.label}</option>
             {/each}
           </select>
@@ -268,7 +271,7 @@
               value={member.roleIds[0] ?? "viewer"}
               onchange={(e) => handleRoleChange(member.memberId, e.currentTarget.value)}
             >
-              {#each roleOptions as role}
+              {#each roleOptions as role (role.id)}
                 <option value={role.id}>{role.label}</option>
               {/each}
             </select>
@@ -315,7 +318,7 @@
           </tr>
         </thead>
         <tbody>
-          {#each permissionMatrix as row}
+          {#each permissionMatrix as row (row.label)}
             <tr class="border-b border-gray-200">
               <td class="py-1.5 pr-4 text-gray-700">{row.label}</td>
               <td class="text-center py-1.5 px-3 {row.admin ? 'text-green-600' : 'text-gray-300'}">{row.admin ? "yes" : "—"}</td>

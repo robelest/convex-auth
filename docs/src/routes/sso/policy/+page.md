@@ -1,44 +1,44 @@
 ---
-title: auth.sso.admin.policy
+title: auth.group.sso.policy
 description:
-  Enterprise policy management — centralize account linking, SCIM reuse, JIT,
+  Group policy management — centralize account linking, SCIM reuse, JIT,
   and deprovision behavior.
 ---
 
 <svelte:head>
 
-  <title>auth.sso.admin.policy - convex-auth</title>
+  <title>auth.group.sso.policy - convex-auth</title>
 </svelte:head>
 
-# auth.sso.admin.policy
+# auth.group.sso.policy
 
-The `auth.sso.admin.policy` namespace manages enterprise behavior for an SSO
-connection. Use it to configure how OIDC and SAML account linking works, how
+The `auth.group.sso.policy` namespace manages group SSO behavior for a group.
+Use it to configure how OIDC and SAML account linking works, how
 SCIM-provisioned users are reused, whether JIT membership is created on sign-in,
 and how deprovisioning behaves.
 
 > This page documents the **server-side helper API**:
-> [`auth.sso.admin.policy.*`](/sso/policy/). Public RPC like
-> [`api.auth.enterprise.updatePolicy`](/sso/rpc/) only exists after your app
-> exposes app-owned enterprise wrappers.
+> [`auth.group.sso.policy.*`](/sso/policy/). Public RPC like
+> [`api.auth.group.updatePolicy`](/sso/rpc/) only exists after your app
+> exposes app-owned group SSO wrappers.
 
 This policy surface is deliberately small today. Keep connector mechanics in
-[`auth.sso.admin.oidc`](/sso/oidc/), [`auth.sso.admin.saml`](/sso/saml/), and
-[`auth.scim.admin`](/sso/scim/), and keep broader tenant access rules in your
+[`auth.group.sso.oidc`](/sso/oidc/), [`auth.group.sso.saml`](/sso/saml/), and
+[`auth.group.sso.scim`](/sso/scim/), and keep broader tenant access rules in your
 application until dedicated policy fields land.
 
 ## Methods
 
 | Method     | Signature                    | Returns             | Description                                                                        |
 | ---------- | ---------------------------- | ------------------- | ---------------------------------------------------------------------------------- |
-| `get`      | `(ctx, enterpriseId)`        | `EnterprisePolicy`  | Returns the canonical policy for a connection.                                     |
-| `update`   | `(ctx, enterpriseId, patch)` | `EnterprisePolicy`  | Applies a partial update and returns the new policy.                               |
-| `validate` | `(ctx, enterpriseId)`        | `{ checks: [...] }` | Validates the policy document for a connection. Each check has its own `ok` field. |
+| `get`      | `(ctx, groupId)`             | `GroupConnectionPolicy` | Returns the canonical policy for a group.                                      |
+| `update`   | `(ctx, groupId, patch)`      | `GroupConnectionPolicy` | Applies a partial update and returns the new policy.                            |
+| `validate` | `(ctx, groupId)`             | `{ checks: [...] }` | Validates the policy document for a group. Each check has its own `ok` field.      |
 
 ## Default policy
 
 ```ts
-const policy = await auth.sso.admin.policy.get(ctx, enterpriseId);
+const policy = await auth.group.sso.policy.get(ctx, groupId);
 
 policy.identity.accountLinking.oidc; // "verifiedEmail"
 policy.identity.accountLinking.saml; // "verifiedEmail"
@@ -51,7 +51,7 @@ policy.provisioning.deprovision.mode; // "soft"
 ## Example
 
 ```ts
-await auth.sso.admin.policy.update(ctx, enterpriseId, {
+await auth.group.sso.policy.update(ctx, groupId, {
   identity: {
     accountLinking: {
       saml: "none",
@@ -85,5 +85,5 @@ Not first-class yet:
 
 Connector settings such as OIDC issuer URLs, client secrets, SAML metadata, and
 SCIM bearer tokens remain in their respective
-[`auth.sso.admin.oidc`](/sso/oidc/), [`auth.sso.admin.saml`](/sso/saml/), and
-[`auth.scim.admin`](/sso/scim/) configuration APIs.
+[`auth.group.sso.oidc`](/sso/oidc/), [`auth.group.sso.saml`](/sso/saml/), and
+[`auth.group.sso.scim`](/sso/scim/) configuration APIs.

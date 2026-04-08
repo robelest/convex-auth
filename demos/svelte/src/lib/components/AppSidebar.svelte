@@ -6,18 +6,18 @@
   import X from "phosphor-svelte/lib/X";
 
   let {
-    workspaces,
-    selectedWorkspace,
+    groups,
+    selectedGroup,
     projects,
     teams,
     permissions,
     activeTab = $bindable("issues"),
     selectedProjectSlug = $bindable(null),
     client,
-    workspaceGroupId,
+    groupId,
   } = $props<{
-    workspaces: Array<{ groupId: string; name: string }>;
-    selectedWorkspace: { groupId: string; name: string };
+    groups: Array<{ groupId: string; name: string }>;
+    selectedGroup: { groupId: string; name: string };
     projects: Array<{
       projectId: string;
       name: string;
@@ -38,7 +38,7 @@
     activeTab: "issues" | "settings";
     selectedProjectSlug: string | null;
     client: ConvexClient;
-    workspaceGroupId: string;
+    groupId: string;
   }>();
 
   let mobileOpen = $state(false);
@@ -63,25 +63,38 @@
   });
 
   const hasTeams = $derived(allTeamGroups.length > 0);
-  const workspaceProjects = $derived(projects.filter((p) => !p.teamGroupId));
+  const rootProjects = $derived(
+    projects.filter((project: (typeof projects)[number]) => !project.teamGroupId),
+  );
 
   const teamsWithProjects = $derived.by(() => {
     return teams
-      .map((team) => {
-        const teamProjects = projects.filter((p) => p.teamGroupId === team.groupId);
+      .map((team: (typeof teams)[number]) => {
+        const teamProjects = projects.filter(
+          (project: (typeof projects)[number]) => project.teamGroupId === team.groupId,
+        );
         const childrenWithProjects = team.children
-          .map((child) => ({
+          .map((child: (typeof team.children)[number]) => ({
             ...child,
-            projects: projects.filter((p) => p.teamGroupId === child.groupId),
+            projects: projects.filter(
+              (project: (typeof projects)[number]) =>
+                project.teamGroupId === child.groupId,
+            ),
           }))
-          .filter((c) => c.projects.length > 0);
+          .filter(
+            (child: { projects: Array<(typeof projects)[number]> }) =>
+              child.projects.length > 0,
+          );
         return { ...team, projects: teamProjects, children: childrenWithProjects };
       })
-      .filter((t) => t.projects.length > 0 || t.children.length > 0);
+      .filter(
+        (team: { projects: Array<(typeof projects)[number]>; children: unknown[] }) =>
+          team.projects.length > 0 || team.children.length > 0,
+      );
   });
 
-  function switchWorkspace(id: string) {
-    window.location.search = `?workspace=${id}`;
+  function switchGroup(id: string) {
+    window.location.pathname = `/${id}`;
   }
 
   function selectProject(slug: string) {
@@ -103,8 +116,8 @@
     isCreatingProject = true;
     newProjectError = null;
     try {
-      const result = await client.mutation(api.demo.createProject, {
-        workspaceId: workspaceGroupId,
+      const result = await client.mutation(api.projects.createProject, {
+        groupId: groupId,
         ...(newProjectTeamId ? { teamGroupId: newProjectTeamId } : {}),
         name: newProjectName.trim(),
         identifier: newProjectIdentifier.trim(),
@@ -137,7 +150,7 @@
   >
     <List size={20} />
   </button>
-  <span class="font-label text-[0.75rem] font-semibold text-gray-700 truncate">{selectedWorkspace.name}</span>
+  <span class="font-label text-[0.75rem] font-semibold text-gray-700 truncate">{selectedGroup.name}</span>
 </header>
 
 <!-- Mobile: slide-out sheet -->
@@ -182,10 +195,10 @@
   <div class="px-3 mt-1">
     <select
       class="select select--compact w-full"
-      value={selectedWorkspace.groupId}
-      onchange={(e) => switchWorkspace(e.currentTarget.value)}
+      value={selectedGroup.groupId}
+      onchange={(e) => switchGroup(e.currentTarget.value)}
     >
-      {#each workspaces as ws}
+      {#each groups as ws (ws.groupId)}
         <option value={ws.groupId}>{ws.name}</option>
       {/each}
     </select>
@@ -207,7 +220,7 @@
         {#if hasTeams}
           <select class="select select--compact w-full" bind:value={newProjectTeamId}>
             <option value={null}>No team</option>
-            {#each allTeamGroups as tg}
+            {#each allTeamGroups as tg (tg.groupId)}
               <option value={tg.groupId}>{tg.indent ? "  " : ""}{tg.name}</option>
             {/each}
           </select>
@@ -226,7 +239,7 @@
       </form>
     {/if}
 
-    {#each workspaceProjects as project}
+    {#each rootProjects as project (project.projectId)}
       <button
         class="block w-full py-[0.3rem] px-3 border-0 border-l-2 border-l-transparent bg-transparent font-label text-[0.75rem] font-medium text-left text-gray-700 cursor-pointer hover:text-accent-600 hover:bg-gray-100 {selectedProjectSlug === project.slug && activeTab === 'issues' ? 'border-l-accent-500 !text-accent-600 font-semibold bg-gray-100' : ''}"
         onclick={() => selectProject(project.slug)}
@@ -239,9 +252,9 @@
       </button>
     {/each}
 
-    {#each teamsWithProjects as team}
+    {#each teamsWithProjects as team (team.groupId)}
       <span class="px-3 py-1 mt-1 font-label text-[0.6875rem] font-semibold text-gray-500">{team.name}</span>
-      {#each team.projects as project}
+      {#each team.projects as project (project.projectId)}
         <button
           class="block w-full py-[0.3rem] px-3 pl-5 border-0 border-l-2 border-l-transparent bg-transparent font-label text-[0.75rem] font-medium text-left text-gray-700 cursor-pointer hover:text-accent-600 hover:bg-gray-100 {selectedProjectSlug === project.slug && activeTab === 'issues' ? 'border-l-accent-500 !text-accent-600 font-semibold bg-gray-100' : ''}"
           onclick={() => selectProject(project.slug)}
@@ -253,9 +266,9 @@
           {/if}
         </button>
       {/each}
-      {#each team.children as child}
+      {#each team.children as child (child.groupId)}
         <span class="px-3 pl-5 py-0.5 font-label text-[0.625rem] text-gray-400">{child.name}</span>
-        {#each child.projects as project}
+        {#each child.projects as project (project.projectId)}
           <button
             class="block w-full py-[0.3rem] px-3 pl-7 border-0 border-l-2 border-l-transparent bg-transparent font-label text-[0.75rem] font-medium text-left text-gray-700 cursor-pointer hover:text-accent-600 hover:bg-gray-100 {selectedProjectSlug === project.slug && activeTab === 'issues' ? 'border-l-accent-500 !text-accent-600 font-semibold bg-gray-100' : ''}"
             onclick={() => selectProject(project.slug)}

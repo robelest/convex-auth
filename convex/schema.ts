@@ -1,12 +1,12 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
-export const demoProjectStatus = v.union(
+export const projectStatus = v.union(
   v.literal("active"),
   v.literal("archived"),
 );
 
-export const demoIssueStatus = v.union(
+export const issueStatus = v.union(
   v.literal("backlog"),
   v.literal("todo"),
   v.literal("in_progress"),
@@ -14,7 +14,7 @@ export const demoIssueStatus = v.union(
   v.literal("cancelled"),
 );
 
-export const demoIssuePriority = v.union(
+export const issuePriority = v.union(
   v.literal("urgent"),
   v.literal("high"),
   v.literal("medium"),
@@ -23,14 +23,14 @@ export const demoIssuePriority = v.union(
 );
 
 export default defineSchema({
-  demoProjects: defineTable({
+  projects: defineTable({
     groupId: v.string(),
     teamGroupId: v.optional(v.string()),
     name: v.string(),
     identifier: v.string(),
     slug: v.string(),
     description: v.string(),
-    status: demoProjectStatus,
+    status: projectStatus,
     createdByUserId: v.string(),
     issueCounter: v.number(),
     openIssueCount: v.optional(v.number()),
@@ -40,15 +40,15 @@ export default defineSchema({
     .index("by_groupId_and_slug", ["groupId", "slug"])
     .index("by_groupId_and_identifier", ["groupId", "identifier"]),
 
-  demoIssues: defineTable({
-    projectId: v.id("demoProjects"),
+  issues: defineTable({
+    projectId: v.id("projects"),
     groupId: v.string(),
     scopeGroupId: v.string(),
     number: v.number(),
     title: v.string(),
     description: v.string(),
-    status: demoIssueStatus,
-    priority: demoIssuePriority,
+    status: issueStatus,
+    priority: issuePriority,
     assigneeUserId: v.optional(v.string()),
     createdByUserId: v.string(),
     labels: v.optional(v.array(v.string())),
@@ -59,8 +59,8 @@ export default defineSchema({
     .index("by_groupId", ["groupId"])
     .index("by_assigneeUserId", ["assigneeUserId"]),
 
-  demoComments: defineTable({
-    issueId: v.id("demoIssues"),
+  comments: defineTable({
+    issueId: v.id("issues"),
     groupId: v.string(),
     authorUserId: v.string(),
     body: v.string(),

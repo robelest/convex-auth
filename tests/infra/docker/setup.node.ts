@@ -148,14 +148,7 @@ export default async function setupNodeInterop(project: {
       );
       await run(
         "vp",
-        [
-          "exec",
-          "convex",
-          "env",
-          "set",
-          "GOOGLE_CLIENT_ID",
-          env.GOOGLE_CLIENT_ID,
-        ],
+        ["exec", "convex", "env", "set", "AUTH_GOOGLE_ID", env.AUTH_GOOGLE_ID],
         convexEnv,
       );
       await run(
@@ -165,8 +158,8 @@ export default async function setupNodeInterop(project: {
           "convex",
           "env",
           "set",
-          "GOOGLE_CLIENT_SECRET",
-          env.GOOGLE_CLIENT_SECRET,
+          "AUTH_GOOGLE_SECRET",
+          env.AUTH_GOOGLE_SECRET,
         ],
         convexEnv,
       );
@@ -216,8 +209,8 @@ function baseEnv() {
     SITE_URL: "http://127.0.0.1:3211",
     APP_URL: "http://localhost:5173",
     AUTH_EMAIL: "test@example.com",
-    GOOGLE_CLIENT_ID: "test-google-client-id",
-    GOOGLE_CLIENT_SECRET: "test-google-client-secret",
+    AUTH_GOOGLE_ID: "test-google-client-id",
+    AUTH_GOOGLE_SECRET: "test-google-client-secret",
     RESEND_API_KEY: "test-resend-api-key",
     ZITADEL_BASE_URL: "http://127.0.0.1:8080",
     ZITADEL_RUNTIME_BASE_URL: "http://zitadel:8080",

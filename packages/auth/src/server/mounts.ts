@@ -4,33 +4,33 @@ import { ConvexError, v } from "convex/values";
 
 import type { AuthApi } from "./auth";
 import {
-  enterpriseConnectionWhereValidator,
-  enterpriseDomainInputValidator,
-  enterpriseDomainVerificationInputValidator,
-  enterprisePolicyPatchValidator,
-  enterpriseSamlAttributeMappingValidator,
-  enterpriseSamlSpValidator,
-  enterpriseStatusValidator,
-} from "./enterprise/validators";
+  groupConnectionWhereValidator,
+  groupConnectionDomainInputValidator,
+  groupConnectionDomainVerificationInputValidator,
+  groupPolicyPatchValidator,
+  ssoSamlAttributeMappingValidator,
+  ssoSamlSpValidator,
+  groupConnectionStatusValidator,
+} from "./sso/validators";
 import type { AuthAuthorizationConfig, AuthRoleId } from "./types";
 
 /**
- * Permission identifiers used by mounted enterprise admin APIs.
+ * Permission identifiers used by mounted group SSO admin APIs.
  *
- * These permission strings are passed to your {@link EnterpriseAuthorizer}
+ * These permission strings are passed to your {@link SsoAuthorizer}
  * callback so app code can decide whether the current user may perform a
  * specific SSO or SCIM management operation.
  *
  * @example
  * ```ts
- * const authorized: EnterpriseAuthorizer = async (ctx, input) => {
+ * const authorized: SsoAuthorizer = async (ctx, input) => {
  *   if (input.permission === "sso.connection.create") {
  *     // Only org admins may create SSO connections
  *   }
  * };
  * ```
  */
-export type EnterpriseAdminPermission =
+export type SsoAdminPermission =
   | "sso.connection.create"
   | "sso.connection.read"
   | "sso.connection.manage"
@@ -42,69 +42,69 @@ export type EnterpriseAdminPermission =
   | "scim.manage";
 
 /**
- * Input passed to an {@link EnterpriseAuthorizer}.
+ * Input passed to an {@link SsoAuthorizer}.
  *
  * Contains the acting user, the requested permission, and the resolved
- * enterprise/group scope for the operation being authorized.
+ * group connection/group scope for the operation being authorized.
  */
-export type EnterpriseAdminAuthorizationInput = {
+export type SsoAdminAuthorizationInput = {
   /** The signed-in user's ID performing the admin action. */
   userId: string;
-  /** The {@link EnterpriseAdminPermission} being requested. */
-  permission: EnterpriseAdminPermission;
-  /** Enterprise document ID, if the operation targets a specific enterprise. */
-  enterpriseId?: string;
+  /** The {@link SsoAdminPermission} being requested. */
+  permission: SsoAdminPermission;
+  /** Connection document ID, if the operation targets a specific SSO connection. */
+  connectionId?: string;
   /** Group document ID, if explicitly provided by the caller. */
   groupId?: string;
-  /** Resolved group ID from the enterprise record, or `null` when no enterprise context. */
+  /** Resolved group ID from the connection record, or `null` when no connection context. */
   resolvedGroupId: string | null;
 };
 
 /**
- * App-defined authorization hook for mounted enterprise admin APIs.
+ * App-defined authorization hook for mounted group SSO admin APIs.
  *
  * Return `void` (or resolve) to allow the operation, or throw to deny it.
  *
  * @param ctx - Convex context with `ctx.auth` for identity checks.
- * @param input - The {@link EnterpriseAdminAuthorizationInput} describing who is doing what.
+ * @param input - The {@link SsoAdminAuthorizationInput} describing who is doing what.
  * @returns `void` to allow; throw to deny.
  *
  * @example
  * ```ts
- * import { EnterpriseAuthorizer } from "@robelest/convex-auth/server";
+ * import { SsoAuthorizer } from "@robelest/convex-auth/server";
  *
- * const authorized: EnterpriseAuthorizer = async (ctx, input) => {
+ * const authorized: SsoAuthorizer = async (ctx, input) => {
  *   const identity = await ctx.auth.getUserIdentity();
  *   if (!identity) throw new Error("Forbidden");
  *   // Allow all admin ops for the org owner
  * };
  * ```
  */
-export type EnterpriseAuthorizer = (
+export type SsoAuthorizer = (
   ctx: { auth: import("convex/server").Auth },
-  input: EnterpriseAdminAuthorizationInput,
+  input: SsoAdminAuthorizationInput,
 ) => Promise<void>;
 
 type RoleRef<TRoleId extends string> = { id: TRoleId };
 
-type MountedEnterpriseOptions<TRoleId extends string = string> = {
+export type MountedGroupOptions<TRoleId extends string = string> = {
   admin?: {
-    authorized?: EnterpriseAuthorizer;
+    authorized?: SsoAuthorizer;
     roles?: Array<TRoleId | RoleRef<TRoleId>>;
   };
 };
 
 /**
- * Configuration for {@link enterprise}, {@link sso}, and {@link scim}
+ * Configuration for {@link group}, {@link sso}, and {@link scim}
  * mounted admin APIs.
  *
- * @typeParam TRoleId - Role IDs that may be assigned to enterprise creators.
+ * @typeParam TRoleId - Role IDs that may be assigned to group connection creators.
  *
  * @example
  * ```ts
- * import { enterprise, EnterpriseMountOptions } from "@robelest/convex-auth/server";
+ * import { group, GroupMountOptions } from "@robelest/convex-auth/server";
  *
- * const options: EnterpriseMountOptions = {
+ * const options: GroupMountOptions = {
  *   admin: {
  *     authorized: async (ctx, input) => {
  *       // Verify the user has permission for `input.permission`
@@ -114,15 +114,15 @@ type MountedEnterpriseOptions<TRoleId extends string = string> = {
  * };
  * ```
  */
-export type EnterpriseMountOptions<TRoleId extends string = string> = {
+export type GroupMountOptions<TRoleId extends string = string> = {
   admin: {
-    authorized: EnterpriseAuthorizer;
+    authorized: SsoAuthorizer;
     roles?: Array<TRoleId | RoleRef<TRoleId>>;
   };
 };
 
-type MountedEnterpriseTarget = {
-  enterpriseId?: string;
+type MountedGroupTarget = {
+  connectionId?: string;
   groupId?: string;
   domain?: string;
 };
@@ -141,72 +141,72 @@ function normalizeCreatorRoleIds<TRoleId extends string>(
   return roles?.map((role) => (typeof role === "string" ? role : role.id));
 }
 
-async function resolveMountedEnterpriseTarget(
-  auth: Pick<AuthApi, "sso">,
+async function resolveMountedGroupTarget(
+  auth: Pick<AuthApi, "group">,
   ctx: { auth: import("convex/server").Auth },
-  target: MountedEnterpriseTarget,
+  target: MountedGroupTarget,
 ) {
   if (target.groupId !== undefined) {
     return {
-      enterpriseId: target.enterpriseId,
+      connectionId: target.connectionId,
       groupId: target.groupId,
       resolvedGroupId: target.groupId,
     };
   }
 
-  if (target.enterpriseId !== undefined) {
-    const enterprise = await auth.sso.admin.connection.get(
+  if (target.connectionId !== undefined) {
+    const connection = await auth.group.sso.connection.get(
       ctx as never,
-      target.enterpriseId,
+      target.connectionId,
     );
-    if (enterprise === null) {
+    if (connection === null) {
       throw new ConvexError({
         code: "INVALID_PARAMETERS",
-        message: "Enterprise not found.",
+        message: "Connection not found.",
       });
     }
     return {
-      enterpriseId: enterprise._id,
-      groupId: enterprise.groupId,
-      resolvedGroupId: enterprise.groupId,
+      connectionId: connection._id,
+      groupId: connection.groupId,
+      resolvedGroupId: connection.groupId,
     };
   }
 
   if (target.domain !== undefined) {
-    const resolved = await auth.sso.admin.connection.getByDomain(
+    const resolved = await auth.group.sso.connection.getByDomain(
       ctx as never,
       target.domain,
     );
-    if (resolved?.enterprise === undefined) {
+    if (resolved?.connection === undefined) {
       throw new ConvexError({
         code: "INVALID_PARAMETERS",
-        message: "Enterprise not found.",
+        message: "Connection not found.",
       });
     }
     return {
-      enterpriseId: resolved.enterprise._id,
-      groupId: resolved.enterprise.groupId,
-      resolvedGroupId: resolved.enterprise.groupId,
+      connectionId: resolved.connection._id,
+      groupId: resolved.connection.groupId,
+      resolvedGroupId: resolved.connection.groupId,
     };
   }
 
   return {
-    enterpriseId: undefined,
+    connectionId: undefined,
     groupId: undefined,
     resolvedGroupId: null,
   };
 }
 
 function createMountedAdminAuthorizer(
-  auth: Pick<AuthApi, "context" | "sso">,
-  options?: MountedEnterpriseOptions,
+  auth: Pick<AuthApi, "context" | "group">,
+  options?: GroupMountOptions,
 ) {
   const requireUserId = requireSignedInUser(auth);
 
   return async (
     ctx: { auth: import("convex/server").Auth },
-    permission: EnterpriseAdminPermission,
-    target: MountedEnterpriseTarget = {},
+    permission: SsoAdminPermission,
+    target: MountedGroupTarget = {},
   ) => {
     const userId = await requireUserId(ctx);
     if (userId === null) {
@@ -221,11 +221,11 @@ function createMountedAdminAuthorizer(
         message: "Access denied.",
       });
     }
-    const resolved = await resolveMountedEnterpriseTarget(auth, ctx, target);
+    const resolved = await resolveMountedGroupTarget(auth, ctx, target);
     await options.admin.authorized(ctx, {
       userId,
       permission,
-      enterpriseId: resolved.enterpriseId,
+      connectionId: resolved.connectionId,
       groupId: resolved.groupId,
       resolvedGroupId: resolved.resolvedGroupId,
     });
@@ -235,14 +235,14 @@ function createMountedAdminAuthorizer(
 
 /**
  * Build optional public SSO management actions that apps can mount under
- * `convex/auth/sso/**` when they want client-callable enterprise APIs.
+ * `convex/auth/sso/**` when they want client-callable group SSO APIs.
  *
  * `admin` is for tenant-admin control-plane operations and should be mounted
  * with an explicit authorization policy. `client` is for end-user sign-in
  * helpers and does not require tenant-admin authorization.
  *
  * @param auth - Auth API subset providing `group`, `member`, `sso`, and `user` namespaces.
- * @param options - Optional admin authorization config. See {@link EnterpriseMountOptions}.
+ * @param options - Optional admin authorization config. See {@link GroupMountOptions}.
  * @typeParam TAuthorization - Optional authorization config for typed role IDs.
  * @returns An object with `admin` (connection CRUD, OIDC/SAML protocol config, policy,
  *   audit, webhooks, domain management) and `client` (signIn, metadata) namespaces.
@@ -264,16 +264,13 @@ function createMountedAdminAuthorizer(
  * ```
  *
  * @see {@link scim}
- * @see {@link enterprise}
+ * @see {@link group connection}
  */
 export function sso<
   TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
 >(
-  auth: Pick<
-    AuthApi<TAuthorization>,
-    "context" | "group" | "member" | "sso"
-  >,
-  options?: MountedEnterpriseOptions<AuthRoleId<TAuthorization>>,
+  auth: Pick<AuthApi<TAuthorization>, "context" | "group" | "member">,
+  options?: GroupMountOptions<AuthRoleId<TAuthorization>>,
 ) {
   const authorize = createMountedAdminAuthorizer(auth, options);
   const adminRoleIds = normalizeCreatorRoleIds(options?.admin?.roles);
@@ -286,7 +283,8 @@ export function sso<
             groupId: v.optional(v.string()),
             name: v.optional(v.string()),
             slug: v.optional(v.string()),
-            status: v.optional(enterpriseStatusValidator),
+            protocol: v.union(v.literal("oidc"), v.literal("saml")),
+            status: v.optional(groupConnectionStatusValidator),
             domain: v.optional(v.string()),
           },
           handler: async (ctx, args) => {
@@ -299,31 +297,32 @@ export function sso<
               args.groupId ??
               (
                 await auth.group.create(ctx as never, {
-                  name: args.name?.trim() || args.slug?.trim() || "Enterprise",
+                  name: args.name?.trim() || args.slug?.trim() || "Group Connection",
                   slug: args.slug,
-                  type: "enterprise",
+                  type: "group connection",
                 })
               ).groupId;
             if (createsGroup) {
               await auth.member.create(ctx as never, {
                 groupId,
                 userId,
-                roleIds: adminRoleIds,
+                roleIds: adminRoleIds as AuthRoleId<TAuthorization>[] | undefined,
               });
             }
-            const created = await auth.sso.admin.connection.create(
+            const created = await auth.group.sso.connection.create(
               ctx as never,
               {
                 groupId,
                 name: args.name,
                 slug: args.slug,
+                protocol: args.protocol,
                 status: args.status,
               },
             );
             if (args.domain) {
-              await auth.sso.admin.connection.domain.set(
+              await auth.group.sso.connection.domain.set(
                 ctx as never,
-                created.enterpriseId,
+                created.connectionId,
                 [{ domain: args.domain, isPrimary: true }],
               );
             }
@@ -335,26 +334,14 @@ export function sso<
           },
         }),
         get: queryGeneric({
-          args: { enterpriseId: v.string() },
+          args: { connectionId: v.string() },
           handler: async (ctx, args) => {
             await authorize(ctx, "sso.connection.read", {
-              enterpriseId: args.enterpriseId,
+              connectionId: args.connectionId,
             });
-            return await auth.sso.admin.connection.get(
+            return await auth.group.sso.connection.get(
               ctx as never,
-              args.enterpriseId,
-            );
-          },
-        }),
-        getByGroup: queryGeneric({
-          args: { groupId: v.string() },
-          handler: async (ctx, args) => {
-            await authorize(ctx, "sso.connection.read", {
-              groupId: args.groupId,
-            });
-            return await auth.sso.admin.connection.getByGroup(
-              ctx as never,
-              args.groupId,
+              args.connectionId,
             );
           },
         }),
@@ -364,7 +351,7 @@ export function sso<
             await authorize(ctx, "sso.connection.read", {
               domain: args.domain,
             });
-            return await auth.sso.admin.connection.getByDomain(
+            return await auth.group.sso.connection.getByDomain(
               ctx as never,
               args.domain,
             );
@@ -372,7 +359,7 @@ export function sso<
         }),
         list: queryGeneric({
           args: {
-            where: v.optional(enterpriseConnectionWhereValidator),
+            where: v.optional(groupConnectionWhereValidator),
             limit: v.optional(v.number()),
             cursor: v.optional(v.union(v.string(), v.null())),
             orderBy: v.optional(v.string()),
@@ -382,7 +369,7 @@ export function sso<
             await authorize(ctx, "sso.connection.read", {
               groupId: args.where?.groupId,
             });
-            return await auth.sso.admin.connection.list(
+            return await auth.group.sso.connection.list(
               ctx as never,
               args as never,
             );
@@ -390,110 +377,110 @@ export function sso<
         }),
         update: mutationGeneric({
           args: {
-            enterpriseId: v.string(),
+            connectionId: v.string(),
             data: v.object({
               name: v.optional(v.string()),
               slug: v.optional(v.string()),
-              status: v.optional(enterpriseStatusValidator),
+              status: v.optional(groupConnectionStatusValidator),
             }),
           },
           handler: async (ctx, args) => {
             await authorize(ctx, "sso.connection.manage", {
-              enterpriseId: args.enterpriseId,
+              connectionId: args.connectionId,
             });
-            await auth.sso.admin.connection.update(
+            await auth.group.sso.connection.update(
               ctx as never,
-              args.enterpriseId,
+              args.connectionId,
               args.data,
             );
-            return { enterpriseId: args.enterpriseId };
+            return { connectionId: args.connectionId };
           },
         }),
         delete: mutationGeneric({
-          args: { enterpriseId: v.string() },
+          args: { connectionId: v.string() },
           handler: async (ctx, args) => {
             await authorize(ctx, "sso.connection.manage", {
-              enterpriseId: args.enterpriseId,
+              connectionId: args.connectionId,
             });
-            return await auth.sso.admin.connection.delete(
+            return await auth.group.sso.connection.delete(
               ctx as never,
-              args.enterpriseId,
+              args.connectionId,
             );
           },
         }),
         status: queryGeneric({
-          args: { enterpriseId: v.string() },
+          args: { connectionId: v.string() },
           handler: async (ctx, args) => {
             await authorize(ctx, "sso.connection.read", {
-              enterpriseId: args.enterpriseId,
+              connectionId: args.connectionId,
             });
-            return await auth.sso.admin.connection.status(
+            return await auth.group.sso.connection.status(
               ctx as never,
-              args.enterpriseId,
+              args.connectionId,
             );
           },
         }),
         domain: {
           list: queryGeneric({
-            args: { enterpriseId: v.string() },
+            args: { connectionId: v.string() },
             handler: async (ctx, args) => {
               await authorize(ctx, "sso.connection.read", {
-                enterpriseId: args.enterpriseId,
+                connectionId: args.connectionId,
               });
-              return await auth.sso.admin.connection.domain.list(
+              return await auth.group.sso.connection.domain.list(
                 ctx as never,
-                args.enterpriseId,
+                args.connectionId,
               );
             },
           }),
           validate: queryGeneric({
-            args: { enterpriseId: v.string() },
+            args: { connectionId: v.string() },
             handler: async (ctx, args) => {
               await authorize(ctx, "sso.domain.manage", {
-                enterpriseId: args.enterpriseId,
+                connectionId: args.connectionId,
               });
-              return await auth.sso.admin.connection.domain.validate(
+              return await auth.group.sso.connection.domain.validate(
                 ctx as never,
-                args.enterpriseId,
+                args.connectionId,
               );
             },
           }),
           set: mutationGeneric({
             args: {
-              enterpriseId: v.string(),
-              domains: v.array(enterpriseDomainInputValidator),
+              connectionId: v.string(),
+              domains: v.array(groupConnectionDomainInputValidator),
             },
             handler: async (ctx, args) => {
               await authorize(ctx, "sso.domain.manage", {
-                enterpriseId: args.enterpriseId,
+                connectionId: args.connectionId,
               });
-              return await auth.sso.admin.connection.domain.set(
+              return await auth.group.sso.connection.domain.set(
                 ctx as never,
-                args.enterpriseId,
+                args.connectionId,
                 args.domains,
               );
             },
           }),
           verification: {
             request: mutationGeneric({
-              args: enterpriseDomainVerificationInputValidator,
+              args: groupConnectionDomainVerificationInputValidator,
               handler: async (ctx, args) => {
                 await authorize(ctx, "sso.domain.manage", {
-                  enterpriseId: args.enterpriseId,
+                  connectionId: args.connectionId,
                 });
-                return await auth.sso.admin.connection.domain.verification.request(
+                return await auth.group.sso.connection.domain.verification.request(
                   ctx as never,
                   args,
                 );
               },
             }),
             confirm: actionGeneric({
-              args: enterpriseDomainVerificationInputValidator,
+              args: groupConnectionDomainVerificationInputValidator,
               handler: async (ctx, args) => {
                 await authorize(ctx, "sso.domain.manage", {
-                  enterpriseId: args.enterpriseId,
+                  connectionId: args.connectionId,
                 });
-                return await auth.sso.admin.connection.domain.verification.confirm(
+                return await auth.group.sso.connection.domain.verification.confirm(
                   ctx as never,
                   args,
                 );
@@ -505,7 +492,7 @@ export function sso<
       oidc: {
         configure: mutationGeneric({
           args: {
-            enterpriseId: v.string(),
+            connectionId: v.string(),
             issuer: v.optional(v.string()),
             discoveryUrl: v.optional(v.string()),
             clientId: v.string(),
@@ -518,32 +505,35 @@ export function sso<
           },
           handler: async (ctx, args) => {
             await authorize(ctx, "sso.protocol.manage", {
-              enterpriseId: args.enterpriseId,
+              connectionId: args.connectionId,
             });
-            return await auth.sso.admin.oidc.configure(ctx as never, args);
+            return await auth.group.sso.oidc.configure(ctx as never, {
+              ...args,
+              connectionId: args.connectionId,
+            });
           },
         }),
         get: queryGeneric({
-          args: { enterpriseId: v.string() },
+          args: { connectionId: v.string() },
           handler: async (ctx, args) => {
             await authorize(ctx, "sso.connection.read", {
-              enterpriseId: args.enterpriseId,
+              connectionId: args.connectionId,
             });
-            return await auth.sso.admin.oidc.get(
+            return await auth.group.sso.oidc.get(
               ctx as never,
-              args.enterpriseId,
+              args.connectionId,
             );
           },
         }),
         validate: actionGeneric({
-          args: { enterpriseId: v.string() },
+          args: { connectionId: v.string() },
           handler: async (ctx, args) => {
             await authorize(ctx, "sso.protocol.manage", {
-              enterpriseId: args.enterpriseId,
+              connectionId: args.connectionId,
             });
-            return await auth.sso.admin.oidc.validate(
+            return await auth.group.sso.oidc.validate(
               ctx as never,
-              args.enterpriseId,
+              args.connectionId,
             );
           },
         }),
@@ -551,74 +541,77 @@ export function sso<
       saml: {
         configure: actionGeneric({
           args: {
-            enterpriseId: v.string(),
+            connectionId: v.string(),
             metadataXml: v.optional(v.string()),
             metadataUrl: v.optional(v.string()),
             domains: v.optional(v.array(v.string())),
             signAuthnRequests: v.optional(v.boolean()),
             attributeMapping: v.optional(
-              enterpriseSamlAttributeMappingValidator,
+              ssoSamlAttributeMappingValidator,
             ),
-            sp: v.optional(enterpriseSamlSpValidator),
+            sp: v.optional(ssoSamlSpValidator),
           },
           handler: async (ctx, args) => {
             await authorize(ctx, "sso.protocol.manage", {
-              enterpriseId: args.enterpriseId,
+              connectionId: args.connectionId,
             });
-            return await auth.sso.admin.saml.configure(ctx as never, args);
+            return await auth.group.sso.saml.configure(ctx as never, {
+              ...args,
+              connectionId: args.connectionId,
+            });
           },
         }),
         validate: queryGeneric({
-          args: { enterpriseId: v.string() },
+          args: { connectionId: v.string() },
           handler: async (ctx, args) => {
             await authorize(ctx, "sso.protocol.manage", {
-              enterpriseId: args.enterpriseId,
+              connectionId: args.connectionId,
             });
-            return await auth.sso.admin.saml.validate(
+            return await auth.group.sso.saml.validate(
               ctx as never,
-              args.enterpriseId,
+              args.connectionId,
             );
           },
         }),
       },
       policy: {
         get: queryGeneric({
-          args: { enterpriseId: v.string() },
+          args: { groupId: v.string() },
           handler: async (ctx, args) => {
-            await authorize(ctx, "sso.connection.read", {
-              enterpriseId: args.enterpriseId,
+            await authorize(ctx, "sso.policy.manage", {
+              groupId: args.groupId,
             });
-            return await auth.sso.admin.policy.get(
+            return await auth.group.sso.policy.get(
               ctx as never,
-              args.enterpriseId,
+              args.groupId,
             );
           },
         }),
         update: mutationGeneric({
           args: {
-            enterpriseId: v.string(),
-            patch: enterprisePolicyPatchValidator,
+            groupId: v.string(),
+            patch: groupPolicyPatchValidator,
           },
           handler: async (ctx, args) => {
             await authorize(ctx, "sso.policy.manage", {
-              enterpriseId: args.enterpriseId,
+              groupId: args.groupId,
             });
-            return await auth.sso.admin.policy.update(
+            return await auth.group.sso.policy.update(
               ctx as never,
-              args.enterpriseId,
+              args.groupId,
               args.patch,
             );
           },
         }),
         validate: queryGeneric({
-          args: { enterpriseId: v.string() },
+          args: { groupId: v.string() },
           handler: async (ctx, args) => {
             await authorize(ctx, "sso.policy.manage", {
-              enterpriseId: args.enterpriseId,
+              groupId: args.groupId,
             });
-            return await auth.sso.admin.policy.validate(
+            return await auth.group.sso.policy.validate(
               ctx as never,
-              args.enterpriseId,
+              args.groupId,
             );
           },
         }),
@@ -626,16 +619,16 @@ export function sso<
       audit: {
         list: queryGeneric({
           args: {
-            enterpriseId: v.optional(v.string()),
             groupId: v.optional(v.string()),
+            connectionId: v.optional(v.string()),
             limit: v.optional(v.number()),
           },
           handler: async (ctx, args) => {
             await authorize(ctx, "sso.audit.read", {
-              enterpriseId: args.enterpriseId,
+              connectionId: args.connectionId,
               groupId: args.groupId,
             });
-            return await auth.sso.admin.audit.list(ctx as never, args);
+            return await auth.group.sso.audit.list(ctx as never, args);
           },
         }),
       },
@@ -643,14 +636,14 @@ export function sso<
         delivery: {
           list: queryGeneric({
             args: {
-              enterpriseId: v.string(),
+              connectionId: v.string(),
               limit: v.optional(v.number()),
             },
             handler: async (ctx, args) => {
               await authorize(ctx, "sso.webhook.manage", {
-                enterpriseId: args.enterpriseId,
+                connectionId: args.connectionId,
               });
-              return await (auth.sso.admin.webhook as any).delivery.list(
+              return await (auth.group.sso.webhook as any).delivery.list(
                 ctx as never,
                 args,
               );
@@ -660,7 +653,7 @@ export function sso<
         endpoint: {
           create: mutationGeneric({
             args: {
-              enterpriseId: v.string(),
+              connectionId: v.string(),
               url: v.string(),
               secret: v.string(),
               subscriptions: v.array(v.string()),
@@ -668,10 +661,10 @@ export function sso<
             },
             handler: async (ctx, args) => {
               const authResult = await authorize(ctx, "sso.webhook.manage", {
-                enterpriseId: args.enterpriseId,
+                connectionId: args.connectionId,
               });
               const { userId } = authResult;
-              const result = await auth.sso.admin.webhook.endpoint.create(
+              const result = await auth.group.sso.webhook.endpoint.create(
                 ctx as never,
                 {
                   ...args,
@@ -680,7 +673,7 @@ export function sso<
               );
               return {
                 _id: result.endpointId,
-                enterpriseId: args.enterpriseId,
+                connectionId: args.connectionId,
                 url: args.url,
                 subscriptions: args.subscriptions,
                 createdByUserId: args.createdByUserId ?? userId,
@@ -690,14 +683,14 @@ export function sso<
             },
           }),
           list: queryGeneric({
-            args: { enterpriseId: v.string() },
+            args: { connectionId: v.string() },
             handler: async (ctx, args) => {
               await authorize(ctx, "sso.webhook.manage", {
-                enterpriseId: args.enterpriseId,
+                connectionId: args.connectionId,
               });
-              const endpoints = await auth.sso.admin.webhook.endpoint.list(
+              const endpoints = await auth.group.sso.webhook.endpoint.list(
                 ctx as never,
-                args.enterpriseId,
+                args.connectionId,
               );
               return endpoints.map((endpoint: Record<string, unknown>) => {
                 const { secretHash: _secretHash, ...rest } = endpoint;
@@ -708,7 +701,7 @@ export function sso<
           disable: mutationGeneric({
             args: { endpointId: v.string() },
             handler: async (ctx, args) => {
-              const endpoint = await auth.sso.admin.webhook.endpoint.get(
+              const endpoint = await auth.group.sso.webhook.endpoint.get(
                 ctx as never,
                 args.endpointId,
               );
@@ -719,10 +712,10 @@ export function sso<
                 });
               }
               await authorize(ctx, "sso.webhook.manage", {
-                enterpriseId: endpoint.enterpriseId,
+                connectionId: endpoint.connectionId,
                 groupId: endpoint.groupId,
               });
-              return await auth.sso.admin.webhook.endpoint.disable(
+              return await auth.group.sso.webhook.endpoint.disable(
                 ctx as never,
                 args.endpointId,
               );
@@ -734,24 +727,30 @@ export function sso<
     client: {
       signIn: queryGeneric({
         args: {
-          enterpriseId: v.optional(v.string()),
+          connectionId: v.optional(v.string()),
           email: v.optional(v.string()),
           domain: v.optional(v.string()),
           redirectTo: v.optional(v.string()),
         },
         handler: async (ctx, args) => {
-          return await auth.sso.client.signIn(ctx as never, args);
+          return await auth.group.sso.signIn(ctx as never, {
+            ...args,
+            connectionId: args.connectionId,
+          });
         },
       }),
       metadata: queryGeneric({
         args: {
-          enterpriseId: v.string(),
+          connectionId: v.string(),
           entityId: v.optional(v.string()),
           acsUrl: v.optional(v.string()),
           sloUrl: v.optional(v.string()),
         },
         handler: async (ctx, args) => {
-          return await auth.sso.client.metadata(ctx as never, args);
+          return await auth.group.sso.metadata(ctx as never, {
+            ...args,
+            connectionId: args.connectionId,
+          });
         },
       }),
     },
@@ -760,16 +759,16 @@ export function sso<
 
 /**
  * Build optional public SCIM management actions that apps can mount under
- * `convex/auth/scim/**` when they want client-callable enterprise admin APIs.
+ * `convex/auth/group/**` when they want client-callable group SSO admin APIs.
  *
- * @param auth - Auth API subset providing `scim`, `sso`, and `user` namespaces.
- * @param options - Optional admin authorization config. See {@link EnterpriseMountOptions}.
+ * @param auth - Auth API subset providing `group` and `context` namespaces.
+ * @param options - Optional admin authorization config. See {@link GroupMountOptions}.
  * @typeParam TAuthorization - Optional authorization config for typed role IDs.
  * @returns An object with `admin.configure`, `admin.get`, and `admin.validate` actions.
  *
  * @example
  * ```ts
- * // convex/auth/scim.ts
+ * // convex/auth/group.ts
  * import { scim } from "@robelest/convex-auth/server";
  * import { auth } from "../auth";
  *
@@ -785,13 +784,13 @@ export function sso<
  * ```
  *
  * @see {@link sso}
- * @see {@link enterprise}
+ * @see {@link group connection}
  */
 export function scim<
   TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
 >(
-  auth: Pick<AuthApi<TAuthorization>, "context" | "scim" | "sso">,
-  options?: MountedEnterpriseOptions<AuthRoleId<TAuthorization>>,
+  auth: Pick<AuthApi<TAuthorization>, "context" | "group">,
+  options?: GroupMountOptions<AuthRoleId<TAuthorization>>,
 ) {
   const authorize = createMountedAdminAuthorizer(auth, options);
 
@@ -799,35 +798,38 @@ export function scim<
     admin: {
       configure: mutationGeneric({
         args: {
-          enterpriseId: v.string(),
+          connectionId: v.string(),
           basePath: v.optional(v.string()),
-          status: v.optional(enterpriseStatusValidator),
+          status: v.optional(groupConnectionStatusValidator),
         },
         handler: async (ctx, args) => {
           await authorize(ctx, "scim.manage", {
-            enterpriseId: args.enterpriseId,
+            connectionId: args.connectionId,
           });
-          return await auth.scim.admin.configure(ctx as never, args);
+          return await auth.group.sso.scim.configure(ctx as never, {
+            ...args,
+            connectionId: args.connectionId,
+          });
         },
       }),
       get: queryGeneric({
-        args: { enterpriseId: v.string() },
+        args: { connectionId: v.string() },
         handler: async (ctx, args) => {
           await authorize(ctx, "scim.manage", {
-            enterpriseId: args.enterpriseId,
+            connectionId: args.connectionId,
           });
-          return await auth.scim.admin.get(ctx as never, args.enterpriseId);
+          return await auth.group.sso.scim.get(ctx as never, args.connectionId);
         },
       }),
       validate: queryGeneric({
-        args: { enterpriseId: v.string() },
+        args: { connectionId: v.string() },
         handler: async (ctx, args) => {
           await authorize(ctx, "scim.manage", {
-            enterpriseId: args.enterpriseId,
+            connectionId: args.connectionId,
           });
-          return await auth.scim.admin.validate(
+          return await auth.group.sso.scim.validate(
             ctx as never,
-            args.enterpriseId,
+            args.connectionId,
           );
         },
       }),
@@ -836,26 +838,26 @@ export function scim<
 }
 
 /**
- * Build a flat mounted enterprise API surface for app-owned Convex exports.
+ * Build a flat mounted group SSO API surface for app-owned Convex exports.
  *
  * Combines {@link sso} and {@link scim} into a single flat object with
  * all SSO connection, protocol, policy, audit, webhook, and SCIM
  * management functions plus end-user sign-in helpers. The `authorized`
  * callback is required for all admin operations.
  *
- * @param auth - Auth API subset providing `group`, `member`, `scim`, `sso`, and `user` namespaces.
- * @param options - Required {@link EnterpriseMountOptions} with an `admin.authorized` callback.
+ * @param auth - Auth API subset providing `group`, `member`, and `context` namespaces.
+ * @param options - Required {@link GroupMountOptions} with an `admin.authorized` callback.
  * @typeParam TAuthorization - Optional authorization config for typed role IDs.
- * @returns A flat object with all enterprise management functions (e.g. `createConnection`,
+ * @returns A flat object with all group connection management functions (e.g. `createConnection`,
  *   `configureOidc`, `configureScim`, `signIn`, etc.).
  *
  * @example
  * ```ts
- * // convex/auth/enterprise.ts
- * import { enterprise } from "@robelest/convex-auth/server";
+ * // convex/auth/group.ts
+ * import { group connection } from "@robelest/convex-auth/server";
  * import { auth } from "../auth";
  *
- * const api = enterprise(auth, {
+ * const api = group(auth, {
  *   admin: {
  *     authorized: async (ctx, input) => { /* check permissions *\/ },
  *     roles: ["admin"],
@@ -870,14 +872,11 @@ export function scim<
  * @see {@link sso}
  * @see {@link scim}
  */
-export function enterprise<
+export function group<
   TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
 >(
-  auth: Pick<
-    AuthApi<TAuthorization>,
-    "context" | "group" | "member" | "scim" | "sso"
-  >,
-  options: EnterpriseMountOptions<AuthRoleId<TAuthorization>>,
+  auth: Pick<AuthApi<TAuthorization>, "context" | "group" | "member">,
+  options: GroupMountOptions<AuthRoleId<TAuthorization>>,
 ) {
   const mountedSso = sso(auth, {
     admin: options.admin,
@@ -889,7 +888,6 @@ export function enterprise<
   return {
     createConnection: mountedSso.admin.connection.create,
     getConnection: mountedSso.admin.connection.get,
-    getConnectionByGroup: mountedSso.admin.connection.getByGroup,
     getConnectionByDomain: mountedSso.admin.connection.getByDomain,
     listConnections: mountedSso.admin.connection.list,
     updateConnection: mountedSso.admin.connection.update,

@@ -1,6 +1,7 @@
 import { api } from "@convex/_generated/api";
 import schema from "@convex/schema";
-import { expect, test } from "vite-plus/test";
+import { custom } from "@robelest/convex-auth/providers";
+import { expect, test, vi } from "vite-plus/test";
 
 import { convexTest } from "./convex.setup";
 
@@ -58,4 +59,124 @@ test("redirectTo with oauth preserves auth redirect semantics", async () => {
   expect(redirect.origin).toBe(process.env.CONVEX_SITE_URL);
   expect(redirect.pathname).toBe("/api/auth/signin/google");
   expect(redirect.searchParams.get("code")).toBe(result.verifier);
+});
+
+test("custom oauth provider builds authorization URL from stable config", async () => {
+  const provider = custom({
+    id: "discord",
+    clientId: "discord-client-id",
+    clientSecret: "discord-client-secret",
+    redirectUri: "https://app.example.com/api/auth/callback/discord",
+    authorization: {
+      url: "https://discord.com/oauth2/authorize",
+      pkce: "optional",
+      clientIdParam: "client_key",
+      scopeSeparator: ",",
+      extraParams: { prompt: "consent" },
+    },
+    token: {
+      url: "https://discord.com/api/oauth2/token",
+      authMethod: "body",
+    },
+  });
+
+  const url = provider.provider!.createAuthorizationURL({
+    state: "test-state",
+    codeVerifier: "test-code-verifier",
+    scopes: ["identify", "email"],
+    nonce: "test-nonce",
+  });
+
+  expect(url.toString()).toContain("https://discord.com/oauth2/authorize");
+  expect(url.searchParams.get("response_type")).toBe("code");
+  expect(url.searchParams.get("client_key")).toBe("discord-client-id");
+  expect(url.searchParams.get("redirect_uri")).toBe(
+    "https://app.example.com/api/auth/callback/discord",
+  );
+  expect(url.searchParams.get("state")).toBe("test-state");
+  expect(url.searchParams.get("scope")).toBe("identify,email");
+  expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+  expect(url.searchParams.get("code_challenge")).toBeTruthy();
+  expect(url.searchParams.get("nonce")).toBe("test-nonce");
+  expect(url.searchParams.get("prompt")).toBe("consent");
+});
+
+test("custom oauth provider exchanges code with configurable token request", async () => {
+  vi.unstubAllGlobals();
+  const fetchMock = vi.fn(async () => {
+    return new Response(
+      JSON.stringify({
+        access_token: "access-token",
+        refresh_token: "refresh-token",
+        id_token: "id-token",
+        expires_in: 3600,
+        scope: "identify,email",
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  const provider = custom({
+    id: "tiktok",
+    clientId: "tiktok-client-id",
+    clientSecret: "tiktok-client-secret",
+    redirectUri: "https://app.example.com/api/auth/callback/tiktok",
+    scopes: ["user.info.basic", "video.list"],
+    authorization: {
+      url: "https://www.tiktok.com/v2/auth/authorize/",
+      pkce: "required",
+      clientIdParam: "client_key",
+      scopeSeparator: ",",
+    },
+    token: {
+      url: "https://open.tiktokapis.com/v2/oauth/token/",
+      authMethod: "body",
+      clientIdParam: "client_key",
+      includeScopes: true,
+      scopeSeparator: ",",
+      extraParams: { audience: "users.read" },
+    },
+  });
+
+  const tokens = await provider.provider!.validateAuthorizationCode({
+    code: "oauth-code",
+    codeVerifier: "oauth-verifier",
+  });
+
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  const [url, init] = fetchMock.mock.calls[0] as unknown as [
+    string,
+    RequestInit,
+  ];
+  expect(url).toBe("https://open.tiktokapis.com/v2/oauth/token/");
+  expect(init?.method).toBe("POST");
+  expect(init?.headers).toBeInstanceOf(Headers);
+  expect(init?.body).toBeInstanceOf(URLSearchParams);
+
+  const body = init?.body as URLSearchParams;
+  expect(body.get("grant_type")).toBe("authorization_code");
+  expect(body.get("code")).toBe("oauth-code");
+  expect(body.get("redirect_uri")).toBe(
+    "https://app.example.com/api/auth/callback/tiktok",
+  );
+  expect(body.get("code_verifier")).toBe("oauth-verifier");
+  expect(body.get("client_key")).toBe("tiktok-client-id");
+  expect(body.get("client_secret")).toBe("tiktok-client-secret");
+  expect(body.get("scope")).toBe("user.info.basic,video.list");
+  expect(body.get("audience")).toBe("users.read");
+
+  expect(tokens.accessToken).toBe("access-token");
+  expect(tokens.refreshToken).toBe("refresh-token");
+  expect(tokens.idToken).toBe("id-token");
+  expect(tokens.accessTokenExpiresAt).toBeInstanceOf(Date);
+  expect(tokens.scopes).toEqual(["identify", "email"]);
+  expect(tokens.raw).toEqual(
+    expect.objectContaining({ access_token: "access-token" }),
+  );
+
+  vi.unstubAllGlobals();
 });

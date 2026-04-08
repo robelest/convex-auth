@@ -222,7 +222,7 @@
 }
 
 .doc-content ul {
-  list-style-type: "– ";
+  list-style: disc;
   padding-left: 1.25rem;
   margin-bottom: 0.75rem;
 }
@@ -233,7 +233,7 @@
 }
 
 .doc-content li {
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.15rem;
 }
 
 .doc-content code:not(pre code) {

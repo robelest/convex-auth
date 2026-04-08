@@ -125,7 +125,7 @@ export default defineConfig({
         },
         test: {
           name: "convex",
-          include: ["*.test.ts", "enterprise/**/*.test.ts"],
+          include: ["*.test.ts", "sso/**/*.test.ts"],
           exclude: ["**/*.node.test.ts"],
           environment: "edge-runtime",
           setupFiles: ["./vitest.setup.ts"],
@@ -142,7 +142,7 @@ export default defineConfig({
         test: {
           name: "node",
           include: ["*.node.test.ts"],
-          exclude: ["enterprise/**/*.node.test.ts"],
+          exclude: ["sso/**/*.node.test.ts"],
           environment: "node",
           setupFiles: ["./vitest.setup.ts"],
           server: { deps: { inline: ["convex-test"] } },
@@ -157,7 +157,7 @@ export default defineConfig({
         },
         test: {
           name: "interop",
-          include: ["enterprise/**/*.node.test.ts"],
+          include: ["sso/**/*.node.test.ts"],
           environment: "node",
           globalSetup: ["./infra/docker/setup.node.ts"],
           setupFiles: ["./vitest.setup.ts"],

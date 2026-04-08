@@ -1,34 +1,34 @@
 ---
-title: Enterprise RPC
+title: Group SSO RPC
 description:
-  App-owned client-callable enterprise RPC built from convex-auth server
+  App-owned client-callable group SSO RPC built from convex-auth server
   helpers.
 ---
 
 <svelte:head>
 
-  <title>Enterprise RPC - convex-auth</title>
+  <title>Group SSO RPC - convex-auth</title>
 </svelte:head>
 
-# Enterprise RPC
+# Group SSO RPC
 
-`api.auth.enterprise.*` is an optional, app-owned RPC surface for enterprise
-admin UI and enterprise sign-in flows.
+`api.auth.group.*` is an optional, app-owned RPC surface for group
+admin UI and group SSO sign-in flows.
 
 It is **not** created automatically by `createAuth(...)`.
 
-- `auth.sso.*` and `auth.scim.admin.*` are server-side helper namespaces
-- `api.auth.enterprise.*` exists only after your app exports Convex functions
-  from a file such as `convex/auth/enterprise.ts`
+- `auth.group.sso.*` is the server-side helper namespace
+- `api.auth.group.*` exists only after your app exports Convex functions
+  from a file such as `convex/auth/group.ts`
 
 ## When you need it
 
-Use `api.auth.enterprise.*` when your app needs client-callable functions for:
+Use `api.auth.group.*` when your app needs client-callable functions for:
 
-- creating and managing enterprise SSO connections
+- creating and managing group SSO connections
 - configuring OIDC, SAML, and SCIM from an admin UI
-- validating enterprise setup from the browser
-- resolving enterprise sign-in flows from app code
+- validating group SSO setup from the browser
+- resolving group SSO sign-in flows from app code
 
 If you only need normal sign-in/sign-out, you do **not** need this surface. The
 frontend auth client still only depends on:
@@ -42,8 +42,8 @@ frontend auth client still only depends on:
 Create one app-owned file and export only what your app needs:
 
 ```ts
-// convex/auth/enterprise.ts
-import { enterprise } from "@robelest/convex-auth/server";
+// convex/auth/group.ts
+import { group } from "@robelest/convex-auth/server";
 
 import { auth, authorized } from "../auth";
 
@@ -71,7 +71,7 @@ export const {
   validateScim,
   signIn,
   metadata,
-} = enterprise(auth, {
+} = group(auth, {
   admin: {
     authorized,
     roles: [roles.orgAdmin],
@@ -88,11 +88,11 @@ app-owned functions:
 import { useAction, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 
-const createConnection = useAction(api.auth.enterprise.createConnection);
-const configureOidc = useAction(api.auth.enterprise.configureOidc);
-const configureScim = useAction(api.auth.enterprise.configureScim);
+const createConnection = useAction(api.auth.group.createConnection);
+const configureOidc = useAction(api.auth.group.configureOidc);
+const configureScim = useAction(api.auth.group.configureScim);
 
-const signIn = useQuery(api.auth.enterprise.signIn, {
+const signIn = useQuery(api.auth.group.signIn, {
   domain: "acme.com",
   redirectTo: "/dashboard",
 });
@@ -100,20 +100,20 @@ const signIn = useQuery(api.auth.enterprise.signIn, {
 
 ## Authorization
 
-`enterprise(auth, { admin: { authorized, roles? } })` requires an app-owned
+`group(auth, { admin: { authorized, roles? } })` requires an app-owned
 authorization callback for admin operations.
 
 When `createConnection` creates a new group automatically, `admin.roles` are
 assigned to the creator's initial membership in that group.
 
 See [Authorization Patterns](/guides/authorization) for how role objects and
-grant checks fit into this mounted enterprise pattern.
+grant checks fit into this mounted group SSO pattern.
 
 The callback receives a normalized authorization input, including:
 
 - `userId`
 - `permission`
-- `enterpriseId?`
+- `connectionId?`
 - `groupId?`
 - `resolvedGroupId`
 
@@ -143,13 +143,12 @@ export async function authorized(
 
 ## What gets exported
 
-The flat enterprise RPC builder exposes verb-first functions:
+The flat group SSO RPC builder exposes verb-first functions:
 
 ### Connection
 
 - `createConnection`
 - `getConnection`
-- `getConnectionByGroup`
 - `getConnectionByDomain`
 - `listConnections`
 - `updateConnection`
@@ -204,14 +203,15 @@ The flat enterprise RPC builder exposes verb-first functions:
 The flat RPC surface is only a convenience layer over the structured server
 helpers:
 
-- `auth.sso.admin.connection.*`
-- `auth.sso.admin.oidc.*`
-- `auth.sso.admin.saml.*`
-- `auth.sso.admin.policy.*`
-- `auth.sso.admin.audit.*`
-- `auth.sso.admin.webhook.*`
-- `auth.sso.client.*`
-- `auth.scim.admin.*`
+- `auth.group.sso.connection.*`
+- `auth.group.sso.oidc.*`
+- `auth.group.sso.saml.*`
+- `auth.group.sso.policy.*`
+- `auth.group.sso.audit.*`
+- `auth.group.sso.webhook.*`
+- `auth.group.sso.signIn`
+- `auth.group.sso.metadata`
+- `auth.group.sso.scim.*`
 
-If you need a custom public shape, skip `enterprise(...)` and expose your own
+If you need a custom public shape, skip `group(...)` and expose your own
 Convex functions directly from those server helpers.

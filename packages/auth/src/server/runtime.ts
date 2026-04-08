@@ -20,25 +20,27 @@ import {
   getSamlConfig,
   upsertProtocolConfig,
   withOidcSecretState,
-} from "./enterprise/config";
-import { createEnterpriseDomain } from "./enterprise/domain";
-import { addEnterpriseHttpRuntime } from "./enterprise/http";
+} from "./sso/config";
+import { createGroupConnectionDomain } from "./sso/domain";
+import { addGroupHttpRuntime } from "./sso/http";
 import {
-  normalizeEnterprisePolicy,
-  patchEnterprisePolicy,
-} from "./enterprise/policy";
+  normalizeGroupConnectionPolicy,
+  patchGroupConnectionPolicy,
+} from "./sso/policy";
 import {
   createServiceProviderMetadata,
   getSamlServiceProviderOptions,
   parseSamlIdpMetadata,
-} from "./enterprise/saml";
-import { parseScimPath } from "./enterprise/scim";
+} from "./sso/saml";
+import { parseScimPath } from "./sso/scim";
 import {
-  enterpriseOidcProviderId,
-  getEnterpriseOidcUrls,
-  isEnterpriseSamlSourceActive,
+  groupOidcProviderId,
+  groupSamlProviderId,
+  getGroupOidcUrls,
+  getGroupSamlUrls,
+  isGroupSamlSourceActive,
   normalizeDomain,
-} from "./enterprise/shared";
+} from "./sso/shared";
 import {
   addAuthRoutes,
   addOpenIdRoutes,
@@ -80,7 +82,7 @@ import {
 } from "./utils";
 import { requireEnv } from "./utils";
 
-const ENTERPRISE_OIDC_CLIENT_SECRET_KIND = "oidc_client_secret" as const;
+const GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND = "oidc_client_secret" as const;
 
 /**
  * The type of the signIn Convex Action returned from the auth() helper.
@@ -184,25 +186,25 @@ export function Auth(config_: ConvexAuthConfig) {
     "runQuery" | "runMutation"
   >;
   type ComponentReadCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
-  const getEnterpriseSecret = async (
+  const getGroupConnectionSecret = async (
     ctx: ComponentReadCtx | ComponentCtx,
-    enterpriseId: string,
-    kind: typeof ENTERPRISE_OIDC_CLIENT_SECRET_KIND,
+    connectionId: string,
+    kind: typeof GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
   ) => {
-    return await ctx.runQuery(config.component.public.enterpriseSecretGet, {
-      enterpriseId,
+    return await ctx.runQuery(config.component.public.groupConnectionSecretGet, {
+      connectionId,
       kind,
     });
   };
-  const getEnterpriseOidcConfigWithSecret = async (
+  const getGroupConnectionOidcConfigWithSecret = async (
     ctx: ComponentReadCtx | ComponentCtx,
-    enterprise: { _id: string; config?: unknown },
+    connection: { _id: string; config?: unknown },
   ): Promise<Record<string, any>> => {
-    const oidc = getOidcConfig(enterprise.config);
-    const secret = await getEnterpriseSecret(
+    const oidc = getOidcConfig(connection.config);
+    const secret = await getGroupConnectionSecret(
       ctx,
-      enterprise._id,
-      ENTERPRISE_OIDC_CLIENT_SECRET_KIND,
+      connection._id,
+      GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
     );
     return {
       ...oidc,
@@ -215,93 +217,126 @@ export function Auth(config_: ConvexAuthConfig) {
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   const INVITE_TOKEN_LENGTH = 48;
 
-  const enterpriseNotFoundError = "Enterprise not found.";
+  const connectionNotFoundError = "Connection not found.";
 
-  const ENTERPRISE_CONTROL_ROUTE_BASE = "/api/auth/sso";
+  const GROUP_CONNECTION_ROUTE_BASE = "/api/auth/connections";
 
-  const getPolicyFromEnterprise = (enterprise: { policy?: unknown }) =>
-    normalizeEnterprisePolicy(enterprise.policy);
+  const getPolicyFromGroup = (group: { policy?: unknown }) =>
+    normalizeGroupConnectionPolicy(group.policy);
 
-  const loadEnterpriseOrThrow = async (
+  const loadGroupPolicyOrThrow = async (
     ctx: ComponentReadCtx,
-    enterpriseId: string,
+    groupId: string,
   ) => {
-    const enterprise = await ctx.runQuery(
-      config.component.public.enterpriseGet,
+    const group = await ctx.runQuery(config.component.public.groupGet, {
+      groupId,
+    });
+    if (!group) {
+      throw Cv.error({
+        code: "INVALID_PARAMETERS",
+        message: "Group not found.",
+      });
+    }
+    return getPolicyFromGroup(group);
+  };
+
+  const loadConnectionOrThrow = async (
+    ctx: ComponentReadCtx,
+    connectionId: string,
+  ) => {
+    const connection = await ctx.runQuery(
+      config.component.public.groupConnectionGet,
       {
-        enterpriseId,
+        connectionId,
       },
     );
-    if (!enterprise) {
+    if (!connection) {
       throw Cv.error({
         code: "INVALID_PARAMETERS",
-        message: enterpriseNotFoundError,
+        message: connectionNotFoundError,
       });
     }
-    return enterprise;
+    return connection;
   };
 
-  const loadActiveEnterpriseOrThrow = async (
+  const loadActiveGroupConnectionOrThrow = async (
     ctx: ComponentReadCtx,
-    enterpriseId: string,
+    connectionId: string,
   ) => {
-    const enterprise = await loadEnterpriseOrThrow(ctx, enterpriseId);
-    if (enterprise.status !== "active") {
+    const connection = await loadConnectionOrThrow(ctx, connectionId);
+    if (connection.status !== "active") {
       throw Cv.error({
         code: "INVALID_PARAMETERS",
-        message: "Enterprise connection is not active.",
+        message: "Group connection is not active.",
       });
     }
-    return enterprise;
+    return connection;
   };
 
-  const loadActiveEnterpriseSamlOrThrow = async (
+  const loadActiveConnectionSamlOrThrow = async (
     ctx: ComponentReadCtx,
-    enterpriseId: string,
+    connectionId: string,
   ) => {
-    const enterprise = await loadEnterpriseOrThrow(ctx, enterpriseId);
+    const connection = await loadConnectionOrThrow(ctx, connectionId);
     const loaded = {
       source: {
-        kind: "enterprise" as const,
-        id: enterpriseId,
+        kind: "connection" as const,
+        id: connectionId,
       },
-      config: enterprise.config,
-      status: enterprise.status,
-      enterprise,
+      config: connection.config,
+      status: connection.status,
+      connection,
     };
-    if (!isEnterpriseSamlSourceActive(loaded)) {
+    if (!isGroupSamlSourceActive(loaded)) {
       throw Cv.error({
         code: "INVALID_PARAMETERS",
-        message: "Enterprise connection is not active.",
+        message: "Group connection is not active.",
       });
     }
     const saml = getSamlConfig(loaded.config);
     if (!saml.idp?.metadataXml) {
       throw Cv.error({
         code: "PROVIDER_NOT_CONFIGURED",
-        message: "SAML is not configured for this enterprise.",
+        message: "SAML is not configured for this connection.",
       });
     }
-    return { loaded, enterprise, saml };
+    return { loaded, connection, saml };
   };
 
-  const loadEnterpriseOidcOrThrow = async (
+  const loadConnectionOidcOrThrow = async (
     ctx: ComponentReadCtx,
-    enterpriseId: string,
+    connectionId: string,
   ) => {
-    const enterprise = await loadActiveEnterpriseOrThrow(ctx, enterpriseId);
-    const oidc = await getEnterpriseOidcConfigWithSecret(ctx, enterprise);
+    const connection = await loadActiveGroupConnectionOrThrow(ctx, connectionId);
+    const oidc = await getGroupConnectionOidcConfigWithSecret(ctx, connection);
     if (oidc.enabled !== true) {
       throw Cv.error({
         code: "PROVIDER_NOT_CONFIGURED",
-        message: "OIDC is not configured for this enterprise.",
+        message: "OIDC is not configured for this connection.",
       });
     }
-    return { enterprise, oidc };
+    return { connection, oidc };
   };
 
-  const validateEnterprisePolicy = (
-    policy: ReturnType<typeof normalizeEnterprisePolicy>,
+  const resolveGroupConnectionSsoProtocolOrThrow = async (
+    ctx: ComponentReadCtx,
+    connectionId: string,
+  ): Promise<"oidc" | "saml"> => {
+    const connection = await loadActiveGroupConnectionOrThrow(ctx, connectionId);
+    if (connection.protocol === "oidc") {
+      return "oidc";
+    }
+    if (connection.protocol === "saml") {
+      return "saml";
+    }
+    throw Cv.error({
+      code: "PROVIDER_NOT_CONFIGURED",
+      message: "Group connection protocol is not configured.",
+    });
+  };
+
+  const validateGroupConnectionPolicy = (
+    policy: ReturnType<typeof normalizeGroupConnectionPolicy>,
   ) => {
     const checks: Array<{
       name: string;
@@ -342,10 +377,10 @@ export function Auth(config_: ConvexAuthConfig) {
     return checks;
   };
 
-  const recordEnterpriseAuditEvent = async (
+  const recordGroupAuditEvent = async (
     ctx: ComponentCtx,
     data: {
-      enterpriseId: string;
+      connectionId?: string;
       groupId: string;
       eventType: string;
       actorType: "user" | "system" | "scim" | "api_key" | "webhook";
@@ -360,7 +395,7 @@ export function Auth(config_: ConvexAuthConfig) {
   ) => {
     const { ok, ...rest } = data;
     return (await ctx.runMutation(
-      config.component.public.enterpriseAuditEventCreate,
+      config.component.public.groupAuditEventCreate,
       {
         ...rest,
         status: ok ? "success" : "failure",
@@ -369,18 +404,18 @@ export function Auth(config_: ConvexAuthConfig) {
     )) as string;
   };
 
-  const emitEnterpriseWebhookDeliveries = async (
+  const emitGroupWebhookDeliveries = async (
     ctx: ComponentCtx,
     data: {
-      enterpriseId: string;
+      connectionId: string;
       eventType: string;
       payload: Record<string, unknown>;
       auditEventId?: string;
     },
   ) => {
     const endpoints = await ctx.runQuery(
-      config.component.public.enterpriseWebhookEndpointList,
-      { enterpriseId: data.enterpriseId },
+      config.component.public.groupWebhookEndpointList,
+      { connectionId: data.connectionId },
     );
     for (const endpoint of endpoints) {
       if (
@@ -390,9 +425,9 @@ export function Auth(config_: ConvexAuthConfig) {
         continue;
       }
       await ctx.runMutation(
-        config.component.public.enterpriseWebhookDeliveryEnqueue,
+        config.component.public.groupWebhookDeliveryEnqueue,
         {
-          enterpriseId: data.enterpriseId,
+          connectionId: data.connectionId,
           endpointId: endpoint._id,
           auditEventId: data.auditEventId,
           eventType: data.eventType,
@@ -403,7 +438,7 @@ export function Auth(config_: ConvexAuthConfig) {
     }
   };
 
-  const getEnterpriseScimContext = async (
+  const getGroupConnectionScimContext = async (
     ctx: ComponentReadCtx,
     request: Request,
   ) => {
@@ -416,7 +451,7 @@ export function Auth(config_: ConvexAuthConfig) {
     }
     const token = authHeader.slice(7);
     const scimConfig = await ctx.runQuery(
-      config.component.public.enterpriseScimConfigGetByTokenHash,
+      config.component.public.groupConnectionScimConfigGetByTokenHash,
       { tokenHash: await sha256(token) },
     );
     if (!scimConfig || scimConfig.status !== "active") {
@@ -426,25 +461,25 @@ export function Auth(config_: ConvexAuthConfig) {
       });
     }
     const parsedPath = parseScimPath(new URL(request.url).pathname);
-    if (parsedPath.enterpriseId !== scimConfig.enterpriseId) {
+    if (parsedPath.connectionId !== scimConfig.connectionId) {
       throw Cv.error({
         code: "INVALID_API_KEY",
         message: "SCIM token/tenant mismatch.",
       });
     }
-    const enterprise = await ctx.runQuery(
-      config.component.public.enterpriseGet,
+    const connection = await ctx.runQuery(
+      config.component.public.groupConnectionGet,
       {
-        enterpriseId: scimConfig.enterpriseId,
+        connectionId: scimConfig.connectionId,
       },
     );
-    if (enterprise === null) {
+    if (connection === null) {
       throw Cv.error({
         code: "INVALID_PARAMETERS",
-        message: "Enterprise not found.",
+        message: "Connection not found.",
       });
     }
-    return { scimConfig, enterprise, parsedPath };
+    return { scimConfig, connection, parsedPath };
   };
 
   let auth: any;
@@ -461,21 +496,21 @@ export function Auth(config_: ConvexAuthConfig) {
       inviteTokenLength: INVITE_TOKEN_LENGTH,
     }),
     /**
-     * SSO namespace — enterprise SSO connection management, domain, OIDC,
+     * SSO namespace — group connection management, domain, OIDC,
      * SAML, SCIM, audit, and webhook helpers.
      */
-    sso: createEnterpriseDomain({
+    sso: createGroupConnectionDomain({
       config,
       getAuth: () => auth,
-      normalizeEnterprisePolicy,
+      normalizeGroupConnectionPolicy,
       normalizeDomain,
-      getEnterpriseSecret,
-      loadEnterpriseOrThrow,
-      validateEnterprisePolicy,
-      recordEnterpriseAuditEvent,
-      emitEnterpriseWebhookDeliveries,
-      enterpriseNotFoundError,
-      ENTERPRISE_OIDC_CLIENT_SECRET_KIND,
+      getGroupConnectionSecret,
+      loadConnectionOrThrow,
+      validateGroupConnectionPolicy,
+      recordGroupAuditEvent,
+      emitGroupWebhookDeliveries,
+      connectionNotFoundError,
+      GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
       requireEnv,
       generateRandomString,
       INVITE_TOKEN_ALPHABET,
@@ -488,10 +523,14 @@ export function Auth(config_: ConvexAuthConfig) {
       getPublicOidcConfig,
       withOidcSecretState,
       getOidcConfig,
-      getEnterpriseOidcUrls,
-      enterpriseOidcProviderId,
-      getPolicyFromEnterprise,
-      patchEnterprisePolicy,
+      getSamlConfig,
+      getGroupOidcUrls,
+      groupOidcProviderId,
+      getGroupSamlUrls,
+      groupSamlProviderId,
+      getPolicyFromGroup,
+      loadGroupPolicyOrThrow,
+      patchGroupConnectionPolicy,
     }),
   };
 
@@ -530,20 +569,20 @@ export function Auth(config_: ConvexAuthConfig) {
         getJwks: () => requireEnv("JWKS"),
       });
 
-      addEnterpriseHttpRuntime({
+      addGroupHttpRuntime({
         http,
         hasSSO,
         auth,
         config,
-        routeBase: ENTERPRISE_CONTROL_ROUTE_BASE,
+        routeBase: GROUP_CONNECTION_ROUTE_BASE,
         requireEnv,
-        loadActiveEnterpriseSamlOrThrow,
-        loadEnterpriseOidcOrThrow,
-        getEnterpriseScimContext,
-        getPolicyFromEnterprise,
-        normalizeEnterprisePolicy,
-        recordEnterpriseAuditEvent,
-        emitEnterpriseWebhookDeliveries,
+        loadActiveConnectionSamlOrThrow,
+        loadConnectionOidcOrThrow,
+        getGroupConnectionScimContext,
+        loadGroupPolicyOrThrow,
+        normalizeGroupConnectionPolicy,
+        recordGroupAuditEvent,
+        emitGroupWebhookDeliveries,
         generateRandomString,
         inviteTokenAlphabet: INVITE_TOKEN_ALPHABET,
         callUserOAuth,
@@ -573,11 +612,7 @@ export function Auth(config_: ConvexAuthConfig) {
 
             const oauthConfig = provider as OAuthMaterializedConfig;
             const { redirect, cookies, signature } =
-              await createOAuthAuthorizationURL(
-                providerId,
-                oauthConfig.provider,
-                oauthConfig,
-              );
+              await createOAuthAuthorizationURL(providerId, oauthConfig);
 
             await callVerifierSignature(ctx, {
               verifier,
@@ -645,7 +680,6 @@ export function Auth(config_: ConvexAuthConfig) {
                   const result = await Fx.run(
                     handleOAuthCallback(
                       providerId,
-                      oauthConfig.provider,
                       oauthConfig,
                       Object.fromEntries(params.entries()),
                       cookies,
@@ -837,6 +871,7 @@ export function Auth(config_: ConvexAuthConfig) {
         const result = await signInImpl(enrichCtx(ctx), provider, args, {
           generateTokens: true,
           allowExtraProviders: false,
+          resolveSsoProtocol: resolveGroupConnectionSsoProtocolOrThrow,
         });
         return Fx.run(
           Fx.match(result, result.kind, {

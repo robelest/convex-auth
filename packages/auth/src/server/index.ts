@@ -17,12 +17,12 @@ export type {
   OptionalHttpAuthContext,
 } from "./http";
 export type {
-  EnterpriseAdminAuthorizationInput,
-  EnterpriseAdminPermission,
-  EnterpriseAuthorizer,
-  EnterpriseMountOptions,
+  SsoAdminAuthorizationInput,
+  SsoAdminPermission,
+  SsoAuthorizer,
+  GroupMountOptions,
 } from "./mounts";
-export { enterprise, scim, sso } from "./mounts";
+export { group, scim, sso } from "./mounts";
 export type {
   AuthCookie,
   AuthCookieConfig,

@@ -90,12 +90,12 @@ The wizard handles everything:
     functions. Frontends use them through <code>client({'{'} convex, api: api.auth {'}'}).</code>
   </Card>
   <Card title="Server helpers">
-    `auth.user.*`, `auth.sso.*`, and `auth.scim.admin.*` are server-side helpers for
+    `auth.user.*`, `auth.group.sso.*`, and `auth.group.sso.scim.*` are server-side helpers for
     Convex code. They are not automatically public RPC.
   </Card>
-  <Card title="Optional enterprise RPC">
-    If your app wants client-callable enterprise admin APIs, expose app-owned
-    wrappers such as <code>convex/auth/enterprise.ts</code>.
+  <Card title="Optional group SSO RPC">
+    If your app wants client-callable group SSO admin APIs, expose app-owned
+    wrappers such as <code>convex/auth/group.ts</code>.
   </Card>
 </CardGrid>
 
@@ -117,14 +117,14 @@ export default app;
 // convex/auth.ts
 import { createAuth } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
-import { GitHub } from "arctic";
-import { OAuth } from "@robelest/convex-auth/providers";
+import { github } from "@robelest/convex-auth/providers/github";
 
 const auth = createAuth(components.auth, {
   providers: [
-    OAuth(
-      new GitHub(process.env.AUTH_GITHUB_ID!, process.env.AUTH_GITHUB_SECRET!),
-    ),
+    github({
+      clientId: process.env.AUTH_GITHUB_ID!,
+      clientSecret: process.env.AUTH_GITHUB_SECRET!,
+    }),
   ],
 });
 

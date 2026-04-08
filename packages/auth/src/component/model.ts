@@ -14,15 +14,15 @@ export const TABLES = {
   GroupTag: "GroupTag",
   GroupMember: "GroupMember",
   GroupInvite: "GroupInvite",
-  Enterprise: "Enterprise",
-  EnterpriseDomain: "EnterpriseDomain",
-  EnterpriseDomainVerification: "EnterpriseDomainVerification",
-  EnterpriseSecret: "EnterpriseSecret",
-  EnterpriseScimConfig: "EnterpriseScimConfig",
-  EnterpriseScimIdentity: "EnterpriseScimIdentity",
-  EnterpriseAuditEvent: "EnterpriseAuditEvent",
-  EnterpriseWebhookEndpoint: "EnterpriseWebhookEndpoint",
-  EnterpriseWebhookDelivery: "EnterpriseWebhookDelivery",
+  GroupConnection: "GroupConnection",
+  GroupConnectionDomain: "GroupConnectionDomain",
+  GroupConnectionDomainVerification: "GroupConnectionDomainVerification",
+  GroupConnectionSecret: "GroupConnectionSecret",
+  GroupConnectionScimConfig: "GroupConnectionScimConfig",
+  GroupConnectionScimIdentity: "GroupConnectionScimIdentity",
+  GroupAuditEvent: "GroupAuditEvent",
+  GroupWebhookEndpoint: "GroupWebhookEndpoint",
+  GroupWebhookDelivery: "GroupWebhookDelivery",
   ApiKey: "ApiKey",
   DeviceCode: "DeviceCode",
 } as const;
@@ -48,52 +48,57 @@ export const vDeviceStatus = v.union(
   v.literal("denied"),
 );
 
-export const vEnterpriseAccountLinkingPolicy = v.union(
+export const vGroupConnectionAccountLinkingPolicy = v.union(
   v.literal("verifiedEmail"),
   v.literal("none"),
 );
 
-export const vEnterpriseScimReuseUserPolicy = v.union(
+export const vGroupConnectionScimReuseUserPolicy = v.union(
   v.literal("externalId"),
   v.literal("none"),
 );
 
-export const vEnterpriseJitProvisioningMode = v.union(
+export const vGroupConnectionJitProvisioningMode = v.union(
   v.literal("off"),
   v.literal("createUser"),
   v.literal("createUserAndMembership"),
 );
 
-export const vEnterpriseDeprovisionMode = v.union(
+export const vGroupConnectionDeprovisionMode = v.union(
   v.literal("soft"),
   v.literal("hard"),
 );
 
-export const vEnterpriseStatus = v.union(
+export const vGroupConnectionStatus = v.union(
   v.literal("draft"),
   v.literal("active"),
   v.literal("disabled"),
 );
 
-export const vEnterprisePolicy = v.object({
+export const vGroupConnectionProtocol = v.union(
+  v.literal("oidc"),
+  v.literal("saml"),
+);
+
+export const vGroupConnectionPolicy = v.object({
   version: v.literal(1),
   identity: v.object({
     accountLinking: v.object({
-      oidc: vEnterpriseAccountLinkingPolicy,
-      saml: vEnterpriseAccountLinkingPolicy,
+      oidc: vGroupConnectionAccountLinkingPolicy,
+      saml: vGroupConnectionAccountLinkingPolicy,
     }),
   }),
   provisioning: v.object({
     scimReuse: v.object({
-      user: vEnterpriseScimReuseUserPolicy,
+      user: vGroupConnectionScimReuseUserPolicy,
     }),
     jit: v.object({
-      mode: vEnterpriseJitProvisioningMode,
+      mode: vGroupConnectionJitProvisioningMode,
       defaultRole: v.optional(v.string()),
       defaultRoleIds: v.optional(v.array(v.string())),
     }),
     deprovision: v.object({
-      mode: vEnterpriseDeprovisionMode,
+      mode: vGroupConnectionDeprovisionMode,
     }),
   }),
   extend: v.optional(v.any()),
@@ -155,7 +160,9 @@ export const vApiKeyRateLimitState = v.object({
   lastAttemptTime: v.number(),
 });
 
-export const vEnterpriseSecretKind = v.union(v.literal("oidc_client_secret"));
+export const vGroupConnectionSecretKind = v.union(
+  v.literal("oidc_client_secret"),
+);
 
 function vDocMeta<T extends (typeof TABLES)[keyof typeof TABLES]>(
   tableName: T,
@@ -263,6 +270,7 @@ export const vGroupDoc = v.object({
   rootGroupId: v.optional(v.id(TABLES.Group)),
   isRoot: v.optional(v.boolean()),
   tags: v.optional(v.array(vTag)),
+  policy: v.optional(vGroupConnectionPolicy),
   extend: v.optional(v.any()),
 });
 
@@ -319,31 +327,31 @@ export const vDeviceCodeDoc = v.object({
   lastPolledAt: v.optional(v.number()),
 });
 
-export const vEnterpriseDoc = v.object({
-  ...vDocMeta(TABLES.Enterprise),
+export const vGroupConnectionDoc = v.object({
+  ...vDocMeta(TABLES.GroupConnection),
   groupId: v.id(TABLES.Group),
   slug: v.optional(v.string()),
   name: v.optional(v.string()),
-  status: vEnterpriseStatus,
-  policy: v.optional(vEnterprisePolicy),
+  protocol: vGroupConnectionProtocol,
+  status: vGroupConnectionStatus,
   config: v.optional(v.any()),
   extend: v.optional(v.any()),
 });
 
-export const vEnterpriseDomainDoc = v.object({
-  ...vDocMeta(TABLES.EnterpriseDomain),
-  enterpriseId: v.id(TABLES.Enterprise),
+export const vGroupConnectionDomainDoc = v.object({
+  ...vDocMeta(TABLES.GroupConnectionDomain),
+  connectionId: v.id(TABLES.GroupConnection),
   groupId: v.id(TABLES.Group),
   domain: v.string(),
   isPrimary: v.boolean(),
   verifiedAt: v.optional(v.number()),
 });
 
-export const vEnterpriseDomainVerificationDoc = v.object({
-  ...vDocMeta(TABLES.EnterpriseDomainVerification),
-  enterpriseId: v.id(TABLES.Enterprise),
+export const vGroupConnectionDomainVerificationDoc = v.object({
+  ...vDocMeta(TABLES.GroupConnectionDomainVerification),
+  connectionId: v.id(TABLES.GroupConnection),
   groupId: v.id(TABLES.Group),
-  domainId: v.id(TABLES.EnterpriseDomain),
+  domainId: v.id(TABLES.GroupConnectionDomain),
   domain: v.string(),
   recordName: v.string(),
   token: v.string(),
@@ -352,18 +360,18 @@ export const vEnterpriseDomainVerificationDoc = v.object({
   expiresAt: v.number(),
 });
 
-export const vEnterpriseSecretDoc = v.object({
-  ...vDocMeta(TABLES.EnterpriseSecret),
-  enterpriseId: v.id(TABLES.Enterprise),
+export const vGroupConnectionSecretDoc = v.object({
+  ...vDocMeta(TABLES.GroupConnectionSecret),
+  connectionId: v.id(TABLES.GroupConnection),
   groupId: v.id(TABLES.Group),
-  kind: vEnterpriseSecretKind,
+  kind: vGroupConnectionSecretKind,
   ciphertext: v.string(),
   updatedAt: v.number(),
 });
 
-export const vEnterpriseScimConfigDoc = v.object({
-  ...vDocMeta(TABLES.EnterpriseScimConfig),
-  enterpriseId: v.id(TABLES.Enterprise),
+export const vGroupConnectionScimConfigDoc = v.object({
+  ...vDocMeta(TABLES.GroupConnectionScimConfig),
+  connectionId: v.id(TABLES.GroupConnection),
   groupId: v.id(TABLES.Group),
   status: vScimStatus,
   basePath: v.string(),
@@ -372,9 +380,9 @@ export const vEnterpriseScimConfigDoc = v.object({
   extend: v.optional(v.any()),
 });
 
-export const vEnterpriseScimIdentityDoc = v.object({
-  ...vDocMeta(TABLES.EnterpriseScimIdentity),
-  enterpriseId: v.id(TABLES.Enterprise),
+export const vGroupConnectionScimIdentityDoc = v.object({
+  ...vDocMeta(TABLES.GroupConnectionScimIdentity),
+  connectionId: v.id(TABLES.GroupConnection),
   groupId: v.id(TABLES.Group),
   resourceType: vScimResourceType,
   externalId: v.string(),
@@ -385,9 +393,9 @@ export const vEnterpriseScimIdentityDoc = v.object({
   raw: v.optional(v.any()),
 });
 
-export const vEnterpriseAuditEventDoc = v.object({
-  ...vDocMeta(TABLES.EnterpriseAuditEvent),
-  enterpriseId: v.id(TABLES.Enterprise),
+export const vGroupAuditEventDoc = v.object({
+  ...vDocMeta(TABLES.GroupAuditEvent),
+  connectionId: v.optional(v.id(TABLES.GroupConnection)),
   groupId: v.id(TABLES.Group),
   eventType: v.string(),
   actorType: vAuditActorType,
@@ -401,9 +409,9 @@ export const vEnterpriseAuditEventDoc = v.object({
   metadata: v.optional(v.any()),
 });
 
-export const vEnterpriseWebhookEndpointDoc = v.object({
-  ...vDocMeta(TABLES.EnterpriseWebhookEndpoint),
-  enterpriseId: v.id(TABLES.Enterprise),
+export const vGroupWebhookEndpointDoc = v.object({
+  ...vDocMeta(TABLES.GroupWebhookEndpoint),
+  connectionId: v.id(TABLES.GroupConnection),
   groupId: v.id(TABLES.Group),
   url: v.string(),
   status: vWebhookEndpointStatus,
@@ -416,11 +424,11 @@ export const vEnterpriseWebhookEndpointDoc = v.object({
   extend: v.optional(v.any()),
 });
 
-export const vEnterpriseWebhookDeliveryDoc = v.object({
-  ...vDocMeta(TABLES.EnterpriseWebhookDelivery),
-  enterpriseId: v.id(TABLES.Enterprise),
-  endpointId: v.id(TABLES.EnterpriseWebhookEndpoint),
-  auditEventId: v.optional(v.id(TABLES.EnterpriseAuditEvent)),
+export const vGroupWebhookDeliveryDoc = v.object({
+  ...vDocMeta(TABLES.GroupWebhookDelivery),
+  connectionId: v.id(TABLES.GroupConnection),
+  endpointId: v.id(TABLES.GroupWebhookEndpoint),
+  auditEventId: v.optional(v.id(TABLES.GroupAuditEvent)),
   eventType: v.string(),
   status: vWebhookDeliveryStatus,
   attemptCount: v.number(),

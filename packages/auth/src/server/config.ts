@@ -1,29 +1,9 @@
 import {
-  isOAuthProvider,
-  type OAuthProviderInstance,
-} from "../providers/oauth";
-import {
   AuthAuthorizationConfig,
   AuthProviderConfig,
   AuthProviderMaterializedConfig,
   ConvexAuthConfig,
-  OAuthMaterializedConfig,
 } from "./types";
-
-// ============================================================================
-// Provider class detection
-// ============================================================================
-
-/** Check if something is a new-style class provider with `_toMaterialized()`. */
-function isClassProvider(
-  provider: any,
-): provider is { _toMaterialized(): AuthProviderMaterializedConfig } {
-  return (
-    typeof provider === "object" &&
-    provider !== null &&
-    typeof provider._toMaterialized === "function"
-  );
-}
 
 // ============================================================================
 // Public API
@@ -90,63 +70,14 @@ function materializeProviders(providers: AuthProviderConfig[]) {
   return config.providers as AuthProviderMaterializedConfig[];
 }
 
-type ProviderMaterializationDispatch =
-  | { tag: "oauth"; raw: OAuthProviderInstance }
-  | {
-      tag: "class";
-      raw: { _toMaterialized(): AuthProviderMaterializedConfig };
-    }
-  | { tag: "factoryOrObject"; raw: AuthProviderConfig };
-
-type ProviderMaterializationHandlers<T> = {
-  oauth: (
-    dispatch: Extract<ProviderMaterializationDispatch, { tag: "oauth" }>,
-  ) => T;
-  class: (
-    dispatch: Extract<ProviderMaterializationDispatch, { tag: "class" }>,
-  ) => T;
-  factoryOrObject: (
-    dispatch: Extract<
-      ProviderMaterializationDispatch,
-      { tag: "factoryOrObject" }
-    >,
-  ) => T;
-};
-
-function decodeProviderMaterializationDispatch(
+function materializeProviderConfig(
   raw: AuthProviderConfig,
-): ProviderMaterializationDispatch {
-  if (isOAuthProvider(raw)) {
-    return { tag: "oauth", raw };
-  }
-  if (isClassProvider(raw)) {
-    return { tag: "class", raw };
-  }
-  return { tag: "factoryOrObject", raw };
-}
-
-function matchProviderMaterializationDispatch<T>(
-  dispatch: ProviderMaterializationDispatch,
-  handlers: ProviderMaterializationHandlers<T>,
-): T {
-  return (
-    handlers[dispatch.tag] as (dispatch: ProviderMaterializationDispatch) => T
-  )(dispatch);
-}
-
-function materializeProviderConfig(raw: AuthProviderConfig) {
-  const dispatch = decodeProviderMaterializationDispatch(raw);
-  return matchProviderMaterializationDispatch(dispatch, {
-    oauth: (d) => materializeOAuthProvider(d.raw),
-    class: (d) => d.raw._toMaterialized(),
-    factoryOrObject: (d) => {
-      const resolved = typeof d.raw === "function" ? d.raw() : (d.raw as any);
-      const merged = resolved.options
-        ? { ...resolved, ...resolved.options }
-        : resolved;
-      return merged as AuthProviderMaterializedConfig;
-    },
-  });
+): AuthProviderMaterializedConfig {
+  const resolved = typeof raw === "function" ? raw() : (raw as any);
+  const merged = resolved.options
+    ? { ...resolved, ...resolved.options }
+    : resolved;
+  return merged as AuthProviderMaterializedConfig;
 }
 
 function materializeAndDefaultProviders(config_: ConvexAuthConfig) {
@@ -182,19 +113,4 @@ function normalizeAuthorizationConfig(
     ]),
   );
   return { roles };
-}
-
-/**
- * Materialize an Arctic-based `OAuthProviderInstance` into the runtime config.
- */
-function materializeOAuthProvider(
-  instance: OAuthProviderInstance,
-): OAuthMaterializedConfig {
-  return {
-    id: instance.id,
-    type: "oauth",
-    provider: instance.provider,
-    scopes: instance.scopes,
-    profile: instance.profile,
-  };
 }

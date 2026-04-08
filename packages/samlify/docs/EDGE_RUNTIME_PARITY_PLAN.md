@@ -3,7 +3,7 @@
 ## Purpose
 
 This document is the execution plan for building an edge-runtime-compatible fork
-of SAMLify with full enterprise SAML feature coverage. It is designed as a
+of SAMLify with full group SSO feature coverage. It is designed as a
 handoff artifact for autonomous coding agents and human contributors.
 
 ## Ownership and Repo Policy
@@ -36,7 +36,7 @@ Encryption behavior, plus preserving SAMLify compatibility.
 1. Keep SAMLify public API compatibility as close as practical.
 2. Remove Node builtin dependencies from runtime-critical code paths.
 3. Support edge runtimes without runtime split logic.
-4. Preserve enterprise feature scope for SAML SSO/SLO and encrypted assertions.
+4. Preserve group feature scope for SAML SSO/SLO and encrypted assertions.
 5. Ship hardened validation behavior against known SAML attack vectors.
 
 ## Non-Goals
@@ -333,7 +333,7 @@ Exit Criteria:
 
 ### Interop Tests
 
-- provider fixtures for major enterprise IdPs
+- provider fixtures for major group IdPs
 - signed response only
 - signed assertion only
 - both signed

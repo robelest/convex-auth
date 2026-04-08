@@ -2,7 +2,7 @@
   "extends": "./tsconfig.json",
   "include": [
     "./*.ts",
-    "./enterprise/**/*.ts"
+    "./sso/**/*.ts"
   ],
   "exclude": [
     "./samlify/**",

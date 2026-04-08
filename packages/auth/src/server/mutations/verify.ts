@@ -4,8 +4,8 @@ import { Infer, v } from "convex/values";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
-import { createSyntheticOAuthMaterializedConfig } from "../enterprise/oidc";
-import { isEnterpriseProviderId } from "../enterprise/shared";
+import { createSyntheticOAuthMaterializedConfig } from "../sso/oidc";
+import { isGroupProviderId } from "../sso/shared";
 import {
   isSignInRateLimited,
   recordFailedSignIn,
@@ -109,7 +109,7 @@ export async function verifyCodeAndSignInImpl(
       );
     }
 
-    const codeProvider = isEnterpriseProviderId(code.provider)
+    const codeProvider = isGroupProviderId(code.provider)
       ? createSyntheticOAuthMaterializedConfig(code.provider)
       : getProviderOrThrow(code.provider, allowExtraProviders);
 
@@ -121,7 +121,7 @@ export async function verifyCodeAndSignInImpl(
       await codeProvider.authorize(args.params, account);
     }
 
-    const methodProvider = isEnterpriseProviderId(account.provider)
+    const methodProvider = isGroupProviderId(account.provider)
       ? createSyntheticOAuthMaterializedConfig(account.provider)
       : getProviderOrThrow(account.provider);
 
