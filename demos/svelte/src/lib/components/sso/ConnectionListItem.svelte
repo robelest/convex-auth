@@ -3,13 +3,20 @@
   import { api } from "$convex/_generated/api.js";
   import CaretRight from "phosphor-svelte/lib/CaretRight";
 
+  type ConnectionListItem = {
+    _id: string;
+    name?: string;
+    status?: string;
+    protocol?: "oidc" | "saml";
+  };
+  type DomainRecord = {
+    domain: string;
+    isPrimary?: boolean;
+    verifiedAt?: number;
+  };
+
   let { connection, groupId } = $props<{
-    connection: {
-      _id: string;
-      name?: string;
-      status?: string;
-      protocol?: "oidc" | "saml";
-    };
+    connection: ConnectionListItem;
     groupId: string;
   }>();
 
@@ -17,7 +24,7 @@
     connectionId: connection._id,
   }));
 
-  const domainList = $derived((domains.data as Array<any> | undefined) ?? []);
+  const domainList = $derived.by(() => (domains.data ?? []) as DomainRecord[]);
   const primaryDomain = $derived(domainList.find((d) => d.isPrimary) ?? domainList[0] ?? null);
   const verifiedCount = $derived(domainList.filter((d) => Boolean(d.verifiedAt)).length);
   const isActive = $derived(connection.status === "active");

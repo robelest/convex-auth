@@ -22,7 +22,7 @@
     try {
       const result = await client.mutation(api.groups.createGroup, { name });
       if ("ok" in result && !result.ok && "message" in result) {
-        errorMessage = (result as any).message;
+        errorMessage = typeof result.message === "string" ? result.message : "Something went wrong.";
       } else if ("groupId" in result) {
         window.location.href = `/${result.groupId}`;
       }

@@ -1,4 +1,5 @@
 import { redirect } from "@sveltejs/kit";
+import type { GroupSummary } from "../../../../../convex/shared";
 
 import { api } from "$convex/_generated/api.js";
 import { getConvexClient } from "$lib/server/convex";
@@ -17,9 +18,9 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   const demo = await client.query(api.groups.getDashboard, {
     groupId: params.groupId,
   });
+  const groups = demo.groups as GroupSummary[];
 
   if (!demo.selectedGroup) {
-    const groups = demo.groups as Array<{ groupId: string }>;
     const fallbackGroupId = groups.length > 0 ? groups[0]!.groupId : null;
     if (fallbackGroupId) {
       throw redirect(302, `/${fallbackGroupId}`);

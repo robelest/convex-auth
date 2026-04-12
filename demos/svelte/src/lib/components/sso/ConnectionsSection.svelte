@@ -15,7 +15,9 @@
 
   const connections = useQuery(api.auth.group.listConnections, () => ({ where: { groupId } }));
   const visibleConnections = $derived.by(() =>
-    (connections.data?.items ?? []).filter((connection) => connection.status !== "draft"),
+    (connections.data?.items ?? []).filter(
+      (connection) => connection.status !== "draft",
+    ),
   );
 </script>
 

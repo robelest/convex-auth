@@ -23,23 +23,8 @@ export const projectSummary = v.object({
   slug: v.string(),
   description: v.string(),
   status: v.string(),
-  teamGroupId: v.union(v.string(), v.null()),
-  teamName: v.union(v.string(), v.null()),
   issueCount: v.number(),
   openIssueCount: v.number(),
-});
-
-export const teamSummary = v.object({
-  groupId: v.string(),
-  name: v.string(),
-  type: v.string(),
-  children: v.array(
-    v.object({
-      groupId: v.string(),
-      name: v.string(),
-      type: v.string(),
-    }),
-  ),
 });
 
 export const memberSummary = v.object({
@@ -62,7 +47,6 @@ export const permissionsValidator = v.object({
   canDeleteIssues: v.boolean(),
   canCreateComments: v.boolean(),
   canDeleteComments: v.boolean(),
-  canManageTeams: v.boolean(),
   canManageMembers: v.boolean(),
   canManageSso: v.boolean(),
   canManageScim: v.boolean(),
@@ -135,7 +119,6 @@ export function getPermissions(grants: string[]) {
     canDeleteIssues: grants.includes("issues.delete"),
     canCreateComments: grants.includes("comments.create"),
     canDeleteComments: grants.includes("comments.delete"),
-    canManageTeams: grants.includes("teams.manage"),
     canManageMembers: grants.includes("members.manage"),
     canManageSso: grants.includes("sso.connection.manage"),
     canManageScim: grants.includes("scim.manage"),
@@ -149,7 +132,10 @@ export function getUserRoleLabel(roleIds: string[]) {
   if (roleIds.includes(roles.member.id)) {
     return "Member";
   }
-  return "Viewer";
+  if (roleIds.includes(roles.viewer.id)) {
+    return "Viewer";
+  }
+  return "Unassigned";
 }
 
 export const validRoleIds = [

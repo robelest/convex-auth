@@ -127,9 +127,13 @@
       const discoveryUrl = selectedTemplate.buildDiscoveryUrl(fieldValues);
       await client.mutation(api.auth.group.configureOidc, {
         connectionId,
-        discoveryUrl: discoveryUrl || undefined,
-        clientId: fieldValues.clientId || "",
-        clientSecret: fieldValues.clientSecret || undefined,
+        discovery: {
+          discoveryUrl: discoveryUrl || undefined,
+        },
+        client: {
+          id: fieldValues.clientId || "",
+          secret: fieldValues.clientSecret || undefined,
+        },
       });
       await applyDomains();
       await client.mutation(api.auth.group.updateConnection, {
@@ -150,15 +154,21 @@
     try {
       await client.action(api.auth.group.configureSaml, {
         connectionId,
-        metadataUrl: metadataUrl || undefined,
-        metadataXml: metadataXml || undefined,
-        signAuthnRequests: samlSignAuthnRequests,
-        attributeMapping: {
-          subject: samlSubjectAttr.trim() || undefined,
-          email: samlEmailAttr.trim() || undefined,
-          name: samlNameAttr.trim() || undefined,
-          firstName: samlFirstNameAttr.trim() || undefined,
-          lastName: samlLastNameAttr.trim() || undefined,
+        metadata: {
+          url: metadataUrl || undefined,
+          xml: metadataXml || undefined,
+        },
+        request: {
+          signAuthnRequests: samlSignAuthnRequests,
+        },
+        profile: {
+          mapping: {
+            subject: samlSubjectAttr.trim() || undefined,
+            email: samlEmailAttr.trim() || undefined,
+            name: samlNameAttr.trim() || undefined,
+            firstName: samlFirstNameAttr.trim() || undefined,
+            lastName: samlLastNameAttr.trim() || undefined,
+          },
         },
       });
       await applyDomains();

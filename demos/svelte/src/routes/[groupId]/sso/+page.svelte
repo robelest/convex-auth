@@ -13,7 +13,9 @@
     where: { groupId: data.groupId },
   }));
   const visibleConnections = $derived.by(() =>
-    (connections.data?.items ?? []).filter((connection) => connection.status !== "draft"),
+    (connections.data?.items ?? []).filter(
+      (connection) => connection.status !== "draft",
+    ),
   );
 </script>
 

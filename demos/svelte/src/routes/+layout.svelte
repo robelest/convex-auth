@@ -3,13 +3,12 @@
 	import favicon from "$lib/assets/favicon.svg";
 	import { page } from "$app/state";
 	import { setupConvex, useConvexClient } from "convex-svelte";
-	import { setContext } from "svelte";
-	import { client as createAuthClient } from "@robelest/convex-auth/client";
+	import { setContext, untrack } from "svelte";
+	import { client as createAuthClient } from "@robelest/convex-auth/browser";
 
 	let { data, children } = $props();
-
-	const convexUrl = data.convexUrl!;
-	const tokenSeed = data.auth.token ?? null;
+	const convexUrl = untrack(() => data.convexUrl!);
+	const tokenSeed = untrack(() => data.auth.token ?? null);
 
 	setupConvex(convexUrl);
 

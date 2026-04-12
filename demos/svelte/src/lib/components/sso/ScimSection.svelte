@@ -16,14 +16,14 @@
 
   const isConfigured = $derived(scim.data != null || scimCredentials != null);
   const displayBasePath = $derived(scimCredentials?.basePath ?? scim.data?.basePath ?? "");
-  const displayToken = $derived(scimCredentials?.token ?? scim.data?.token ?? "");
+  const displayToken = $derived(scimCredentials?.token ?? "");
 
   async function handleEnable() {
     isEnabling = true;
     errorMessage = null;
     try {
       const result = await client.mutation(api.auth.group.configureScim, { connectionId });
-      scimCredentials = result as { basePath: string; token: string };
+      scimCredentials = result;
     } catch (e: unknown) {
       errorMessage = e instanceof Error ? e.message : "Failed to enable SCIM";
     } finally {

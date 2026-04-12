@@ -16,7 +16,6 @@ export const roles = defineRoles({
       "comments.delete",
       "members.manage",
       "members.read",
-      "teams.manage",
       "workspace.settings",
       "sso.connection.create",
       "sso.connection.read",

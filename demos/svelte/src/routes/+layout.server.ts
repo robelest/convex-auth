@@ -1,9 +1,14 @@
 import { env } from "$env/dynamic/private";
 
+import { api } from "$convex/_generated/api.js";
+import { getConvexClient } from "$lib/server/convex";
+
 import type { LayoutServerLoad } from "./$types";
 
 export const load: LayoutServerLoad = async ({ locals }) => {
   const token = locals.authToken ?? null;
+  const client = getConvexClient(token);
+  const authProviders = await client.query(api.groups.getAuthProviders, {});
 
   return {
     convexUrl: env.VITE_CONVEX_URL,
@@ -11,11 +16,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
       env.CONVEX_SITE_URL ??
       env.VITE_CONVEX_URL?.replace(".cloud", ".site") ??
       null,
-    authProviders: {
-      google: Boolean(
-        env.AUTH_GOOGLE_ID && env.AUTH_GOOGLE_SECRET && env.CONVEX_SITE_URL,
-      ),
-    },
+    authProviders,
     auth: {
       token,
       isAuthenticated: locals.isAuthenticated ?? false,

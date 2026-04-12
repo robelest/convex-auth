@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";
-import { internalMutation } from "./_generated/server";
+import { internalMutation, query } from "./_generated/server";
 import { auth } from "./auth";
 import { authAction, authMutation, authQuery } from "./functions";
 import {
@@ -13,7 +13,6 @@ import {
   memberSummary,
   permissionsValidator,
   projectSummary,
-  teamSummary,
   toSlug,
   type GroupSummary,
   userSummary,
@@ -32,6 +31,54 @@ export const checkEmailExists = authQuery({
   },
 });
 
+export const getAuthProviders = query({
+  args: {},
+  returns: v.object({
+    google: v.boolean(),
+  }),
+  handler: async () => {
+    return {
+      google: Boolean(
+        process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET,
+      ),
+    };
+  },
+});
+
+export const listMyGroups = authQuery({
+  args: {},
+  returns: v.array(
+    v.object({
+      groupId: v.string(),
+      name: v.string(),
+      roleIds: v.array(v.string()),
+      userRoleLabel: v.string(),
+    }),
+  ),
+  handler: async (ctx) => {
+    const memberships = await auth.member.list(ctx, {
+      where: { userId: ctx.auth.userId },
+      limit: 50,
+      orderBy: "_creationTime",
+      order: "asc",
+    });
+    const groups = await Promise.all(
+      memberships.items.map(async (membership: any) => {
+        const group = await auth.group.get(ctx, membership.groupId);
+        return group
+          ? {
+              groupId: group._id,
+              name: group.name,
+              roleIds: membership.roleIds,
+              userRoleLabel: getUserRoleLabel(membership.roleIds),
+            }
+          : null;
+      }),
+    );
+    return groups.filter((group): group is NonNullable<typeof group> => group !== null);
+  },
+});
+
 export const getDashboard = authQuery({
   args: {
     groupId: v.optional(v.string()),
@@ -47,7 +94,6 @@ export const getDashboard = authQuery({
         grants: v.array(v.string()),
         userRoleLabel: v.string(),
         projects: v.array(projectSummary),
-        teams: v.array(teamSummary),
         members: v.array(memberSummary),
         permissions: permissionsValidator,
       }),
@@ -99,57 +145,23 @@ export const getDashboard = authQuery({
       groups.find((group) => group.groupId === args.groupId) ?? groups[0]!;
     const permissions = getPermissions(selectedGroup.grants);
 
-    const projects = await ctx.db
-      .query("projects")
-      .withIndex("by_groupId", (q) => q.eq("groupId", selectedGroup.groupId))
-      .take(50);
+    const projects = permissions.canReadProjects
+      ? await ctx.db
+          .query("projects")
+          .withIndex("by_groupId", (q) => q.eq("groupId", selectedGroup.groupId))
+          .take(50)
+      : [];
 
-    const projectSummaries = await Promise.all(
-      projects.map(async (project) => {
-        const teamGroup = project.teamGroupId
-          ? await auth.group.get(ctx, project.teamGroupId)
-          : null;
-        return {
-          projectId: project._id,
-          name: project.name,
-          identifier: project.identifier,
-          slug: project.slug,
-          description: project.description,
-          status: project.status,
-          teamGroupId: project.teamGroupId ?? null,
-          teamName: teamGroup?.name ?? null,
-          issueCount: project.issueCounter,
-          openIssueCount: project.openIssueCount ?? 0,
-        };
-      }),
-    );
-
-    const teams = await auth.group.list(ctx, {
-      where: { parentGroupId: selectedGroup.groupId },
-      limit: 20,
-      orderBy: "name",
-      order: "asc",
-    });
-    const teamSummaries = await Promise.all(
-      teams.items.map(async (team: (typeof teams.items)[number]) => {
-        const children = await auth.group.list(ctx, {
-          where: { parentGroupId: team._id },
-          limit: 20,
-          orderBy: "name",
-          order: "asc",
-        });
-        return {
-          groupId: team._id,
-          name: team.name,
-          type: team.type ?? "team",
-          children: children.items.map((child: (typeof children.items)[number]) => ({
-            groupId: child._id,
-            name: child.name,
-            type: child.type ?? "team",
-          })),
-        };
-      }),
-    );
+    const projectSummaries = projects.map((project) => ({
+      projectId: project._id,
+      name: project.name,
+      identifier: project.identifier,
+      slug: project.slug,
+      description: project.description,
+      status: project.status,
+      issueCount: project.issueCounter,
+      openIssueCount: project.openIssueCount ?? 0,
+    }));
 
     const members = await auth.member.list(ctx, {
       where: { groupId: selectedGroup.groupId },
@@ -185,7 +197,6 @@ export const getDashboard = authQuery({
         grants: selectedGroup.grants,
         userRoleLabel: getUserRoleLabel(selectedGroup.roleIds),
         projects: projectSummaries,
-        teams: teamSummaries,
         members: memberSummaries,
         permissions,
       },
@@ -210,39 +221,6 @@ export const createGroup = authMutation({
       userId,
       groupId,
       roleIds: [validRoleIds[0]],
-    });
-    return { groupId };
-  },
-});
-
-export const createTeam = authMutation({
-  args: {
-    groupId: v.string(),
-    name: v.string(),
-    parentTeamId: v.optional(v.string()),
-  },
-  returns: v.object({ groupId: v.string() }),
-  handler: async (ctx, args) => {
-    const { userId } = ctx.auth;
-    const teamName = args.name.trim();
-    if (teamName.length < 2) {
-      throw new ConvexError({
-        code: "INVALID_INPUT",
-        message: "Team name must be at least 2 characters.",
-      });
-    }
-
-    await auth.member.require(ctx, {
-      userId,
-      groupId: args.groupId,
-      grants: ["teams.manage"],
-    });
-
-    const { groupId } = await auth.group.create(ctx, {
-      name: teamName,
-      parentGroupId: args.parentTeamId ?? args.groupId,
-      type: "team",
-      tags: [{ key: "demo", value: "team" }],
     });
     return { groupId };
   },

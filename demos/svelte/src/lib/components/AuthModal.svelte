@@ -10,6 +10,13 @@
 			kind: 'signedIn' | 'redirect';
 			redirect?: URL | string;
 		}>;
+		passkey?: {
+			isSupported: () => boolean;
+			authenticate: (opts?: Record<string, unknown>) => Promise<{
+				kind: 'signedIn' | 'redirect';
+				redirect?: URL | string;
+			}>;
+		};
 	};
 
 	let { authProviders } = $props<{
@@ -30,6 +37,7 @@
 
 	let mode: 'signIn' | 'signUp' = $state('signIn');
 	let step: 'email' | 'password' | 'checking' = $state('email');
+	const passkeySupported = $derived(auth.passkey?.isSupported() ?? false);
 
 	function getErrorMessage(error: unknown) {
 		if (error instanceof Error) {
@@ -150,6 +158,25 @@
 		}
 	}
 
+	async function handlePasskeySignIn() {
+		if (!auth.passkey) return;
+		isSubmitting = true;
+		errorMessage = null;
+
+		try {
+			const result = await auth.passkey.authenticate();
+			if (result.kind === 'redirect' && result.redirect) {
+				window.location.href = result.redirect.toString();
+			} else if (result.kind === 'signedIn') {
+				window.location.reload();
+			}
+		} catch (e) {
+			errorMessage = e instanceof Error ? e.message : 'Something went wrong';
+		} finally {
+			isSubmitting = false;
+		}
+	}
+
 	function goBackToEmail() {
 		step = 'email';
 		password = '';
@@ -173,6 +200,14 @@
 		<p class="muted">Checking your account...</p>
 
 	{:else if step === 'email'}
+		{#if passkeySupported}
+			<button
+				class="button button--secondary button--block"
+				disabled={isSubmitting}
+				onclick={handlePasskeySignIn}
+			>Continue with passkey</button>
+			<div class="divider"><span>or</span></div>
+		{/if}
 		<form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); handleEmailContinue(); }}>
 			<input
 				bind:value={email}

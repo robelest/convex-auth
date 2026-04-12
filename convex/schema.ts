@@ -25,7 +25,6 @@ export const issuePriority = v.union(
 export default defineSchema({
   projects: defineTable({
     groupId: v.string(),
-    teamGroupId: v.optional(v.string()),
     name: v.string(),
     identifier: v.string(),
     slug: v.string(),
@@ -36,7 +35,6 @@ export default defineSchema({
     openIssueCount: v.optional(v.number()),
   })
     .index("by_groupId", ["groupId"])
-    .index("by_teamGroupId", ["teamGroupId"])
     .index("by_groupId_and_slug", ["groupId", "slug"])
     .index("by_groupId_and_identifier", ["groupId", "identifier"]),
 

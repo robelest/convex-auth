@@ -9,7 +9,6 @@
     groups,
     selectedGroup,
     projects,
-    teams,
     permissions,
     activeTab = $bindable("issues"),
     selectedProjectSlug = $bindable(null),
@@ -23,16 +22,9 @@
       name: string;
       identifier: string;
       slug: string;
-      teamGroupId: string | null;
       openIssueCount: number;
     }>;
-    teams: Array<{
-      groupId: string;
-      name: string;
-      children: Array<{ groupId: string; name: string }>;
-    }>;
     permissions: {
-      canManageTeams: boolean;
       canCreateProjects: boolean;
     };
     activeTab: "issues" | "settings";
@@ -45,53 +37,10 @@
 
   // New project form
   let showNewProject = $state(false);
-  let newProjectTeamId = $state<string | null>(null);
   let newProjectName = $state("");
   let newProjectIdentifier = $state("");
   let newProjectError = $state<string | null>(null);
   let isCreatingProject = $state(false);
-
-  const allTeamGroups = $derived.by(() => {
-    const result: Array<{ groupId: string; name: string; indent: boolean }> = [];
-    for (const team of teams) {
-      result.push({ groupId: team.groupId, name: team.name, indent: false });
-      for (const child of team.children) {
-        result.push({ groupId: child.groupId, name: child.name, indent: true });
-      }
-    }
-    return result;
-  });
-
-  const hasTeams = $derived(allTeamGroups.length > 0);
-  const rootProjects = $derived(
-    projects.filter((project: (typeof projects)[number]) => !project.teamGroupId),
-  );
-
-  const teamsWithProjects = $derived.by(() => {
-    return teams
-      .map((team: (typeof teams)[number]) => {
-        const teamProjects = projects.filter(
-          (project: (typeof projects)[number]) => project.teamGroupId === team.groupId,
-        );
-        const childrenWithProjects = team.children
-          .map((child: (typeof team.children)[number]) => ({
-            ...child,
-            projects: projects.filter(
-              (project: (typeof projects)[number]) =>
-                project.teamGroupId === child.groupId,
-            ),
-          }))
-          .filter(
-            (child: { projects: Array<(typeof projects)[number]> }) =>
-              child.projects.length > 0,
-          );
-        return { ...team, projects: teamProjects, children: childrenWithProjects };
-      })
-      .filter(
-        (team: { projects: Array<(typeof projects)[number]>; children: unknown[] }) =>
-          team.projects.length > 0 || team.children.length > 0,
-      );
-  });
 
   function switchGroup(id: string) {
     window.location.pathname = `/${id}`;
@@ -105,7 +54,6 @@
 
   function openNewProject() {
     showNewProject = true;
-    newProjectTeamId = hasTeams ? allTeamGroups[0].groupId : null;
     newProjectName = "";
     newProjectIdentifier = "";
     newProjectError = null;
@@ -118,13 +66,12 @@
     try {
       const result = await client.mutation(api.projects.createProject, {
         groupId: groupId,
-        ...(newProjectTeamId ? { teamGroupId: newProjectTeamId } : {}),
         name: newProjectName.trim(),
         identifier: newProjectIdentifier.trim(),
         description: "",
       });
       if ("ok" in result && !result.ok && "message" in result) {
-        newProjectError = (result as any).message;
+        newProjectError = typeof result.message === "string" ? result.message : "Failed to create project";
       } else {
         showNewProject = false;
       }
@@ -217,14 +164,6 @@
 
     {#if showNewProject}
       <form class="px-3 pb-2 flex flex-col gap-1.5 border-b border-gray-200 mb-1" onsubmit={(e) => { e.preventDefault(); handleCreateProject(); }}>
-        {#if hasTeams}
-          <select class="select select--compact w-full" bind:value={newProjectTeamId}>
-            <option value={null}>No team</option>
-            {#each allTeamGroups as tg (tg.groupId)}
-              <option value={tg.groupId}>{tg.indent ? "  " : ""}{tg.name}</option>
-            {/each}
-          </select>
-        {/if}
         <input class="input input--compact w-full" bind:value={newProjectName} placeholder="Project name" maxlength="50" type="text" />
         <input class="input input--compact w-full" bind:value={newProjectIdentifier} placeholder="ID (e.g. AUTH)" maxlength="6" type="text" style="text-transform: uppercase" />
         <div class="flex gap-1">
@@ -239,7 +178,7 @@
       </form>
     {/if}
 
-    {#each rootProjects as project (project.projectId)}
+    {#each projects as project (project.projectId)}
       <button
         class="block w-full py-[0.3rem] px-3 border-0 border-l-2 border-l-transparent bg-transparent font-label text-[0.75rem] font-medium text-left text-gray-700 cursor-pointer hover:text-accent-600 hover:bg-gray-100 {selectedProjectSlug === project.slug && activeTab === 'issues' ? 'border-l-accent-500 !text-accent-600 font-semibold bg-gray-100' : ''}"
         onclick={() => selectProject(project.slug)}
@@ -250,37 +189,6 @@
           <span class="ml-1 text-[0.625rem] text-gray-400">{project.openIssueCount}</span>
         {/if}
       </button>
-    {/each}
-
-    {#each teamsWithProjects as team (team.groupId)}
-      <span class="px-3 py-1 mt-1 font-label text-[0.6875rem] font-semibold text-gray-500">{team.name}</span>
-      {#each team.projects as project (project.projectId)}
-        <button
-          class="block w-full py-[0.3rem] px-3 pl-5 border-0 border-l-2 border-l-transparent bg-transparent font-label text-[0.75rem] font-medium text-left text-gray-700 cursor-pointer hover:text-accent-600 hover:bg-gray-100 {selectedProjectSlug === project.slug && activeTab === 'issues' ? 'border-l-accent-500 !text-accent-600 font-semibold bg-gray-100' : ''}"
-          onclick={() => selectProject(project.slug)}
-        >
-          <span class="font-semibold text-gray-400">{project.identifier}</span>
-          <span class="ml-1">{project.name}</span>
-          {#if project.openIssueCount > 0}
-            <span class="ml-1 text-[0.625rem] text-gray-400">{project.openIssueCount}</span>
-          {/if}
-        </button>
-      {/each}
-      {#each team.children as child (child.groupId)}
-        <span class="px-3 pl-5 py-0.5 font-label text-[0.625rem] text-gray-400">{child.name}</span>
-        {#each child.projects as project (project.projectId)}
-          <button
-            class="block w-full py-[0.3rem] px-3 pl-7 border-0 border-l-2 border-l-transparent bg-transparent font-label text-[0.75rem] font-medium text-left text-gray-700 cursor-pointer hover:text-accent-600 hover:bg-gray-100 {selectedProjectSlug === project.slug && activeTab === 'issues' ? 'border-l-accent-500 !text-accent-600 font-semibold bg-gray-100' : ''}"
-            onclick={() => selectProject(project.slug)}
-          >
-            <span class="font-semibold text-gray-400">{project.identifier}</span>
-            <span class="ml-1">{project.name}</span>
-            {#if project.openIssueCount > 0}
-              <span class="ml-1 text-[0.625rem] text-gray-400">{project.openIssueCount}</span>
-            {/if}
-          </button>
-        {/each}
-      {/each}
     {/each}
   </nav>
 

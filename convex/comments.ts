@@ -19,7 +19,7 @@ export const issueComments = authQuery({
 
     await auth.member.require(ctx, {
       userId,
-      groupId: issue.scopeGroupId,
+      groupId: issue.groupId,
       grants: ["projects.read"],
     });
 
@@ -67,7 +67,7 @@ export const createComment = authMutation({
 
     await auth.member.require(ctx, {
       userId,
-      groupId: issue.scopeGroupId,
+      groupId: issue.groupId,
       grants: ["comments.create"],
     });
 
@@ -108,7 +108,7 @@ export const deleteComment = authMutation({
       }
       await auth.member.require(ctx, {
         userId,
-        groupId: issue.scopeGroupId,
+        groupId: issue.groupId,
         grants: ["comments.delete"],
       });
     }

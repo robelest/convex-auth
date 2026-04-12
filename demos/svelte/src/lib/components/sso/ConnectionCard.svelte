@@ -8,15 +8,36 @@ type ValidationResult = {
   ok: boolean;
   checks: Array<{ name: string; ok: boolean; message?: string }>;
 };
+type DomainRecord = { domain: string; isPrimary?: boolean; verifiedAt?: number };
+type SamlStoredConfig = {
+  idp?: { metadataXml?: string; metadataUrl?: string; entityId?: string };
+  request?: { signAuthnRequests?: boolean };
+  profile?: {
+    mapping?: {
+      subject?: string;
+      email?: string;
+      name?: string;
+      firstName?: string;
+      lastName?: string;
+    };
+  };
+};
+type ConnectionListItem = {
+  _id: string;
+  name?: string;
+  status?: string;
+  protocol?: "oidc" | "saml";
+};
+type OidcConfigDraft = {
+  discoveryUrl?: string;
+  issuer?: string;
+  clientId?: string;
+  hasClientSecret?: boolean;
+};
 
 let { client, connection, siteUrl } = $props<{
   client: ConvexClient;
-  connection: {
-    _id: string;
-    name?: string;
-    status?: string;
-    protocol?: "oidc" | "saml";
-  };
+  connection: ConnectionListItem;
   siteUrl: string | null;
 }>();
 
@@ -56,45 +77,17 @@ const oidcConfigQuery = useQuery(
   () =>
     (connectionQuery.data?.protocol ?? connection.protocol) === "oidc"
       ? { connectionId: connection._id }
-      : ("skip" as any),
+      : "skip",
 );
 
-const connectionDoc = $derived(
-  (connectionQuery.data ?? connection) as {
-    _id: string;
-    name?: string;
-    status?: string;
-    protocol?: "oidc" | "saml";
-    config?: Record<string, any>;
-  },
-);
+const connectionDoc = $derived(connectionQuery.data ?? connection);
 const protocol = $derived(connectionDoc?.protocol ?? "oidc");
 const domainList = $derived.by(() => {
-  const raw = domainsQuery.data;
-  if (!raw) return [] as Array<{ domain: string; isPrimary?: boolean; verifiedAt?: number }>;
-  return (Array.isArray(raw) ? raw : (raw.items ?? [])) as Array<{
-    domain: string;
-    isPrimary?: boolean;
-    verifiedAt?: number;
-  }>;
+  return domainsQuery.data ?? [];
 });
 const primaryDomain = $derived(domainList.find((domain) => domain.isPrimary) ?? null);
 const verifiedDomainCount = $derived(domainList.filter((domain) => Boolean(domain.verifiedAt)).length);
-const samlStoredConfig = $derived(
-  ((connectionQuery.data?.config as any)?.protocols?.saml ?? null) as
-    | {
-        idp?: { metadataXml?: string; entityId?: string };
-        signAuthnRequests?: boolean;
-        attributeMapping?: {
-          subject?: string;
-          email?: string;
-          name?: string;
-          firstName?: string;
-          lastName?: string;
-        };
-      }
-    | null,
-);
+const samlStoredConfig = $derived(readSamlStoredConfig(connectionQuery.data?.config));
 const samlSetup = $derived(
   siteUrl
     ? {
@@ -105,16 +98,7 @@ const samlSetup = $derived(
       }
     : null,
 );
-const currentOidcConfig = $derived(
-  ((oidcConfigQuery.data as any) ?? null) as
-    | {
-        discoveryUrl?: string | null;
-        issuer?: string | null;
-        clientId?: string | null;
-        clientSecretStored?: boolean;
-      }
-    | null,
-);
+const currentOidcConfig = $derived(readOidcConfig(oidcConfigQuery.data));
 
 function resetMessages() {
   errorMessage = null;
@@ -126,6 +110,98 @@ function copyToClipboard(text: string) {
   navigator.clipboard.writeText(text);
 }
 
+function readSamlStoredConfig(config: unknown): SamlStoredConfig | null {
+  if (!config || typeof config !== "object") return null;
+  const protocols = "protocols" in config ? config.protocols : undefined;
+  if (!protocols || typeof protocols !== "object") return null;
+  const saml = "saml" in protocols ? protocols.saml : undefined;
+  if (!saml || typeof saml !== "object") return null;
+  const record = saml as Record<string, unknown>;
+  const idp =
+    typeof record.idp === "object" && record.idp !== null
+      ? (record.idp as Record<string, unknown>)
+      : undefined;
+  const profile =
+    typeof record.profile === "object" && record.profile !== null
+      ? (record.profile as Record<string, unknown>)
+      : undefined;
+  const attributeMapping =
+    typeof profile?.mapping === "object" && profile.mapping !== null
+      ? (profile.mapping as Record<string, unknown>)
+      : undefined;
+  return {
+    idp:
+      idp !== undefined
+        ? {
+            metadataUrl:
+              typeof idp.metadataUrl === "string" ? idp.metadataUrl : undefined,
+            metadataXml:
+              typeof idp.metadataXml === "string" ? idp.metadataXml : undefined,
+            entityId: typeof idp.entityId === "string" ? idp.entityId : undefined,
+          }
+        : undefined,
+    request: {
+      signAuthnRequests:
+      typeof (record.request as { signAuthnRequests?: unknown } | undefined)
+        ?.signAuthnRequests === "boolean"
+        ? ((record.request as { signAuthnRequests: boolean }).signAuthnRequests)
+        : undefined,
+    },
+    profile:
+      attributeMapping !== undefined
+        ? {
+            mapping: {
+              subject:
+                typeof attributeMapping.subject === "string"
+                  ? attributeMapping.subject
+                  : undefined,
+              email:
+                typeof attributeMapping.email === "string"
+                  ? attributeMapping.email
+                  : undefined,
+              name:
+                typeof attributeMapping.name === "string"
+                  ? attributeMapping.name
+                  : undefined,
+              firstName:
+                typeof attributeMapping.firstName === "string"
+                  ? attributeMapping.firstName
+                  : undefined,
+              lastName:
+                typeof attributeMapping.lastName === "string"
+                  ? attributeMapping.lastName
+                  : undefined,
+            },
+          }
+        : undefined,
+  };
+}
+
+function readOidcConfig(config: unknown): OidcConfigDraft | null {
+  if (!config || typeof config !== "object") return null;
+  const record = config as Record<string, unknown>;
+  const discovery =
+    typeof record.discovery === "object" && record.discovery !== null
+      ? (record.discovery as Record<string, unknown>)
+      : undefined;
+  const client =
+    typeof record.client === "object" && record.client !== null
+      ? (record.client as Record<string, unknown>)
+      : undefined;
+  return {
+    discoveryUrl:
+      typeof discovery?.discoveryUrl === "string"
+        ? discovery.discoveryUrl
+        : undefined,
+    issuer: typeof discovery?.issuer === "string" ? discovery.issuer : undefined,
+    clientId: typeof client?.id === "string" ? client.id : undefined,
+    hasClientSecret:
+      typeof record.hasClientSecret === "boolean"
+        ? record.hasClientSecret
+        : undefined,
+  };
+}
+
 function openConfigEditor() {
   resetMessages();
   if (protocol === "oidc") {
@@ -134,14 +210,14 @@ function openConfigEditor() {
     oidcClientId = currentOidcConfig?.clientId ?? "";
     oidcClientSecret = "";
   } else {
-    samlMetadataUrl = "";
+    samlMetadataUrl = samlStoredConfig?.idp?.metadataUrl ?? "";
     samlMetadataXml = samlStoredConfig?.idp?.metadataXml ?? "";
-    samlSignAuthnRequests = samlStoredConfig?.signAuthnRequests ?? false;
-    samlSubjectAttr = samlStoredConfig?.attributeMapping?.subject ?? "";
-    samlEmailAttr = samlStoredConfig?.attributeMapping?.email ?? "";
-    samlNameAttr = samlStoredConfig?.attributeMapping?.name ?? "";
-    samlFirstNameAttr = samlStoredConfig?.attributeMapping?.firstName ?? "";
-    samlLastNameAttr = samlStoredConfig?.attributeMapping?.lastName ?? "";
+    samlSignAuthnRequests = samlStoredConfig?.request?.signAuthnRequests ?? false;
+    samlSubjectAttr = samlStoredConfig?.profile?.mapping?.subject ?? "";
+    samlEmailAttr = samlStoredConfig?.profile?.mapping?.email ?? "";
+    samlNameAttr = samlStoredConfig?.profile?.mapping?.name ?? "";
+    samlFirstNameAttr = samlStoredConfig?.profile?.mapping?.firstName ?? "";
+    samlLastNameAttr = samlStoredConfig?.profile?.mapping?.lastName ?? "";
   }
   isEditingConfig = true;
 }
@@ -252,12 +328,12 @@ async function handleValidate() {
   try {
     validationResult =
       protocol === "oidc"
-        ? ((await client.query(api.auth.group.validateOidc, {
+        ? await client.query(api.auth.group.validateOidc, {
             connectionId: connection._id,
-          })) as ValidationResult)
-        : ((await client.query(api.auth.group.validateSaml, {
+          })
+        : await client.query(api.auth.group.validateSaml, {
             connectionId: connection._id,
-          })) as ValidationResult);
+          });
   } catch (e: unknown) {
     errorMessage =
       e instanceof Error ? e.message : "Failed to validate configuration";
@@ -271,23 +347,33 @@ async function handleSaveConfig() {
     if (protocol === "oidc") {
       await client.mutation(api.auth.group.configureOidc, {
         connectionId: connection._id,
-        discoveryUrl: oidcDiscoveryUrl.trim() || undefined,
-        clientId: oidcClientId.trim(),
-        clientSecret: oidcClientSecret.trim() || undefined,
+        discovery: {
+          discoveryUrl: oidcDiscoveryUrl.trim() || undefined,
+        },
+        client: {
+          id: oidcClientId.trim(),
+          secret: oidcClientSecret.trim() || undefined,
+        },
       });
     } else {
       const existingMetadataXml = samlStoredConfig?.idp?.metadataXml;
       await client.action(api.auth.group.configureSaml, {
         connectionId: connection._id,
-        metadataUrl: samlMetadataUrl.trim() || undefined,
-        metadataXml: samlMetadataXml.trim() || existingMetadataXml || undefined,
-        signAuthnRequests: samlSignAuthnRequests,
-        attributeMapping: {
-          subject: samlSubjectAttr.trim() || undefined,
-          email: samlEmailAttr.trim() || undefined,
-          name: samlNameAttr.trim() || undefined,
-          firstName: samlFirstNameAttr.trim() || undefined,
-          lastName: samlLastNameAttr.trim() || undefined,
+        metadata: {
+          url: samlMetadataUrl.trim() || undefined,
+          xml: samlMetadataXml.trim() || existingMetadataXml || undefined,
+        },
+        request: {
+          signAuthnRequests: samlSignAuthnRequests,
+        },
+        profile: {
+          mapping: {
+            subject: samlSubjectAttr.trim() || undefined,
+            email: samlEmailAttr.trim() || undefined,
+            name: samlNameAttr.trim() || undefined,
+            firstName: samlFirstNameAttr.trim() || undefined,
+            lastName: samlLastNameAttr.trim() || undefined,
+          },
         },
       });
     }
@@ -427,7 +513,7 @@ async function handleSaveConfig() {
             </label>
             <label class="flex flex-col gap-0.5">
               <span class="font-label text-xs font-semibold text-gray-700">Client secret</span>
-              <input bind:value={oidcClientSecret} class="input input--compact" type="password" placeholder={currentOidcConfig?.clientSecretStored ? "Leave blank to keep the stored secret" : "Client secret"} />
+              <input bind:value={oidcClientSecret} class="input input--compact" type="password" placeholder={currentOidcConfig?.hasClientSecret ? "Leave blank to keep the stored secret" : "Client secret"} />
             </label>
           {:else}
             <label class="flex flex-col gap-0.5">
@@ -548,15 +634,16 @@ async function handleSaveConfig() {
         {/if}
 
         {#if verificationChallenge}
+          {@const challenge = verificationChallenge}
           <div class="border border-gray-300 bg-gray-100 p-3 flex flex-col gap-2.5">
             <p class="m-0 font-label text-xs font-semibold text-gray-700">
-              Verify {verificationChallenge.domain}
+              Verify {challenge.domain}
             </p>
             <div class="flex flex-col gap-0.5">
               <span class="font-label text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-gray-500">TXT name</span>
               <div class="flex items-center gap-1.5">
-                <input class="input input--compact flex-1 font-mono text-xs" value={verificationChallenge.recordName} readonly />
-                <button class="button button--secondary button--compact" type="button" onclick={() => copyToClipboard(verificationChallenge.recordName)}>
+                <input class="input input--compact flex-1 font-mono text-xs" value={challenge.recordName} readonly />
+                <button class="button button--secondary button--compact" type="button" onclick={() => copyToClipboard(challenge.recordName)}>
                   Copy
                 </button>
               </div>
@@ -564,13 +651,13 @@ async function handleSaveConfig() {
             <div class="flex flex-col gap-0.5">
               <span class="font-label text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-gray-500">TXT value</span>
               <div class="flex items-center gap-1.5">
-                <input class="input input--compact flex-1 font-mono text-xs" value={verificationChallenge.token} readonly />
-                <button class="button button--secondary button--compact" type="button" onclick={() => copyToClipboard(verificationChallenge.token)}>
+                <input class="input input--compact flex-1 font-mono text-xs" value={challenge.token} readonly />
+                <button class="button button--secondary button--compact" type="button" onclick={() => copyToClipboard(challenge.token)}>
                   Copy
                 </button>
               </div>
             </div>
-            <button class="button button--accent button--compact self-start" disabled={isLoading} onclick={() => handleConfirmVerification(verificationChallenge.domain)}>
+            <button class="button button--accent button--compact self-start" disabled={isLoading} onclick={() => handleConfirmVerification(challenge.domain)}>
               {isLoading ? "Checking..." : "Confirm verification"}
             </button>
           </div>

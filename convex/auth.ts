@@ -39,7 +39,7 @@ const auth = createAuth(components.auth, {
     device({
       verificationUri: process.env.APP_URL
         ? `${process.env.APP_URL}/device`
-        : "http://localhost:3000/device",
+        : "http://localhost:3001/device",
     }),
     email({
       from: process.env.AUTH_EMAIL ?? "My App <onboarding@resend.dev>",

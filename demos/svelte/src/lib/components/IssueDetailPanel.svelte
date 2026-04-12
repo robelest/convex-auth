@@ -149,7 +149,7 @@
         assigneeUserId: newAssigneeUserId || null,
       });
       if ("ok" in result && !result.ok && "message" in result) {
-        errorMessage = (result as any).message ?? "Failed to assign";
+        errorMessage = typeof result.message === "string" ? result.message : "Failed to assign";
       }
     } catch (e: unknown) {
       errorMessage = e instanceof Error ? e.message : "Failed to assign";
@@ -386,5 +386,3 @@
     <p class="error-banner">{errorMessage}</p>
   {/if}
 </div>
-  type IssueStatus = "backlog" | "todo" | "in_progress" | "done" | "cancelled";
-  type IssuePriority = "urgent" | "high" | "medium" | "low" | "none";

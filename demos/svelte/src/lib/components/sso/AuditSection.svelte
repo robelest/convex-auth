@@ -25,11 +25,11 @@
   {:else if audit.data}
     {#if audit.data.length > 0}
       <div class="border border-gray-300 bg-white">
-        {#each audit.data as event, i (event._creationTime)}
+        {#each audit.data as event, i (event._id)}
           <div class="flex items-center gap-4 px-5 py-3 {i > 0 ? 'border-t border-gray-200' : ''} {i % 2 === 1 ? 'bg-gray-50' : ''}">
             <span class="font-label text-[0.8125rem] font-semibold text-gray-900 flex-1 break-all">{event.eventType}</span>
             <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] px-2 py-0.5 border border-slate-400/30 text-slate-600 bg-slate-400/10 shrink-0">{event.actorType}</span>
-            <span class="font-label text-xs text-gray-400 shrink-0 w-16 text-right">{relativeTime(event._creationTime)}</span>
+            <span class="font-label text-xs text-gray-400 shrink-0 w-16 text-right">{relativeTime(event.occurredAt)}</span>
           </div>
         {/each}
       </div>

@@ -76,9 +76,7 @@
 		groups={dashboard.data?.groups ?? []}
 		selectedGroup={{ groupId: ws.groupId, name: ws.name }}
 		projects={ws.projects}
-		teams={ws.teams}
 		permissions={{
-			canManageTeams: ws.permissions.canManageTeams,
 			canCreateProjects: ws.permissions.canCreateProjects,
 		}}
 		bind:activeTab
@@ -99,8 +97,6 @@
 							name: selectedProject.name,
 							identifier: selectedProject.identifier,
 							slug: selectedProject.slug,
-							teamGroupId: selectedProject.teamGroupId,
-							teamName: selectedProject.teamName ?? "",
 							description: selectedProject.description,
 						}}
 						permissions={{
@@ -125,10 +121,14 @@
 			<SettingsPanel
 				user={{ name: user.name, email: user.email }}
 				userRoleLabel={ws.userRoleLabel}
+				selectedProject={selectedProject
+					? {
+						projectId: selectedProject.projectId,
+						identifier: selectedProject.identifier,
+					}
+					: null}
 				members={ws.members}
-				teams={ws.teams}
 				permissions={{
-					canManageTeams: ws.permissions.canManageTeams,
 					canManageMembers: ws.permissions.canManageMembers,
 					canManageSso: ws.permissions.canManageSso,
 				}}

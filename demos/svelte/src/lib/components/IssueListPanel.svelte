@@ -10,8 +10,6 @@
       name: string;
       identifier: string;
       slug: string;
-      teamGroupId: string | null;
-      teamName: string;
       description: string;
     };
     permissions: {
@@ -37,6 +35,16 @@
   );
 
   const issues = $derived(issuesQuery.data?.issues ?? []);
+  const issuesError = $derived.by(() => {
+    const error = issuesQuery.error;
+    if (!error) {
+      return null;
+    }
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return "Failed to load issues.";
+  });
 
   // Status ordering and labels
   const statusOrder = ["in_progress", "todo", "backlog", "done", "cancelled"] as const;
@@ -168,7 +176,9 @@
   {/if}
 
   <!-- Issue list grouped by status -->
-  {#if issues.length === 0}
+  {#if issuesError}
+    <p class="error-banner">{issuesError}</p>
+  {:else if issues.length === 0}
     <p class="muted">No issues yet.</p>
   {:else}
     <div class="flex flex-col border border-gray-300 bg-white">

@@ -18,6 +18,37 @@
     ok: boolean;
     checks: Array<{ name: string; ok: boolean; message?: string }>;
   };
+  type DomainRecord = {
+    domain: string;
+    isPrimary?: boolean;
+    verifiedAt?: number;
+  };
+  type OidcConfigDraft = {
+    discoveryUrl?: string;
+    issuer?: string;
+    clientId?: string;
+    hasClientSecret?: boolean;
+  };
+  type SamlStoredConfig = {
+    idp?: { metadataXml?: string; metadataUrl?: string };
+    request?: { signAuthnRequests?: boolean };
+    profile?: {
+      mapping?: {
+        subject?: string;
+        email?: string;
+        name?: string;
+        firstName?: string;
+        lastName?: string;
+      };
+    };
+    attributeMapping?: {
+      subject?: string;
+      email?: string;
+      name?: string;
+      firstName?: string;
+      lastName?: string;
+    };
+  };
 
   type Tab = "config" | "domains" | "scim";
   let activeTab = $state<Tab>("config");
@@ -31,17 +62,17 @@
   let validationResult = $state<ValidationResult | null>(null);
   let copiedField = $state<string | null>(null);
 
-  let oidcDiscoveryUrl = $state("");
-  let oidcClientId = $state("");
-  let oidcClientSecret = $state("");
-  let samlMetadataUrl = $state("");
-  let samlMetadataXml = $state("");
-  let samlSignAuthnRequests = $state(false);
-  let samlSubjectAttr = $state("");
-  let samlEmailAttr = $state("");
-  let samlNameAttr = $state("");
-  let samlFirstNameAttr = $state("");
-  let samlLastNameAttr = $state("");
+  let oidcDiscoveryUrlDraft = $state<string | undefined>(undefined);
+  let oidcClientIdDraft = $state<string | undefined>(undefined);
+  let oidcClientSecretDraft = $state("");
+  let samlMetadataUrlDraft = $state<string | undefined>(undefined);
+  let samlMetadataXmlDraft = $state<string | undefined>(undefined);
+  let samlSignAuthnRequestsDraft = $state<boolean | undefined>(undefined);
+  let samlSubjectAttrDraft = $state<string | undefined>(undefined);
+  let samlEmailAttrDraft = $state<string | undefined>(undefined);
+  let samlNameAttrDraft = $state<string | undefined>(undefined);
+  let samlFirstNameAttrDraft = $state<string | undefined>(undefined);
+  let samlLastNameAttrDraft = $state<string | undefined>(undefined);
 
   const connectionQuery = useQuery(api.auth.group.getConnection, () => ({ connectionId }));
   const domainsQuery = useQuery(api.auth.group.listDomains, () => ({ connectionId }));
@@ -51,33 +82,43 @@
     () =>
       (connectionQuery.data?.protocol ?? "oidc") === "oidc"
         ? { connectionId }
-        : ("skip" as any),
+        : "skip",
   );
 
-  const connection = $derived(connectionQuery.data as {
-    _id: string;
-    name?: string;
-    status?: string;
-    protocol?: "oidc" | "saml";
-    config?: Record<string, any>;
-  } | null);
+  const connection = $derived(connectionQuery.data);
+  const oidcConfig = $derived(readOidcConfig(oidcConfigQuery.data));
   const protocol = $derived(connection?.protocol ?? "oidc");
-  const domains = $derived((domainsQuery.data as Array<any> | undefined) ?? []);
+  const domains = $derived.by(() => (domainsQuery.data ?? []) as DomainRecord[]);
   const primaryDomain = $derived(domains.find((domain) => domain.isPrimary) ?? domains[0] ?? null);
-  const samlStoredConfig = $derived(
-    ((connection?.config as any)?.protocols?.saml ?? null) as
-      | {
-          idp?: { metadataXml?: string };
-          signAuthnRequests?: boolean;
-          attributeMapping?: {
-            subject?: string;
-            email?: string;
-            name?: string;
-            firstName?: string;
-            lastName?: string;
-          };
-        }
-      | null,
+  const samlStoredConfig = $derived(readSamlStoredConfig(connection?.config));
+  const connectionName = $derived(
+    typeof (connection as unknown as { name?: unknown } | null)?.name === "string"
+      ? (connection as unknown as { name: string }).name
+      : "Untitled connection",
+  );
+  const oidcDiscoveryUrl = $derived(
+    oidcDiscoveryUrlDraft ?? oidcConfig?.discoveryUrl ?? oidcConfig?.issuer ?? "",
+  );
+  const oidcClientId = $derived(oidcClientIdDraft ?? oidcConfig?.clientId ?? "");
+  const samlMetadataUrl = $derived(samlMetadataUrlDraft ?? samlStoredConfig?.idp?.metadataUrl ?? "");
+  const samlMetadataXml = $derived(samlMetadataXmlDraft ?? samlStoredConfig?.idp?.metadataXml ?? "");
+  const samlSignAuthnRequests = $derived(
+    samlSignAuthnRequestsDraft ?? samlStoredConfig?.request?.signAuthnRequests ?? false,
+  );
+  const samlSubjectAttr = $derived(
+    samlSubjectAttrDraft ?? samlStoredConfig?.profile?.mapping?.subject ?? "",
+  );
+  const samlEmailAttr = $derived(
+    samlEmailAttrDraft ?? samlStoredConfig?.profile?.mapping?.email ?? "",
+  );
+  const samlNameAttr = $derived(
+    samlNameAttrDraft ?? samlStoredConfig?.profile?.mapping?.name ?? "",
+  );
+  const samlFirstNameAttr = $derived(
+    samlFirstNameAttrDraft ?? samlStoredConfig?.profile?.mapping?.firstName ?? "",
+  );
+  const samlLastNameAttr = $derived(
+    samlLastNameAttrDraft ?? samlStoredConfig?.profile?.mapping?.lastName ?? "",
   );
   const samlSetup = $derived(
     siteUrl
@@ -96,24 +137,116 @@
     { id: "scim", label: "SCIM" },
   ];
 
-  $effect(() => {
-    if (protocol === "oidc") {
-      oidcDiscoveryUrl = oidcConfigQuery.data?.discoveryUrl ?? oidcConfigQuery.data?.issuer ?? "";
-      oidcClientId = oidcConfigQuery.data?.clientId ?? "";
-    } else {
-      samlMetadataXml = samlStoredConfig?.idp?.metadataXml ?? "";
-      samlSignAuthnRequests = samlStoredConfig?.signAuthnRequests ?? false;
-      samlSubjectAttr = samlStoredConfig?.attributeMapping?.subject ?? "";
-      samlEmailAttr = samlStoredConfig?.attributeMapping?.email ?? "";
-      samlNameAttr = samlStoredConfig?.attributeMapping?.name ?? "";
-      samlFirstNameAttr = samlStoredConfig?.attributeMapping?.firstName ?? "";
-      samlLastNameAttr = samlStoredConfig?.attributeMapping?.lastName ?? "";
-    }
-  });
-
   function setMessage(kind: "success" | "error", message: string | null) {
     if (kind === "success") { successMessage = message; errorMessage = null; }
     else { errorMessage = message; successMessage = null; }
+  }
+
+  function resetConfigDrafts() {
+    oidcDiscoveryUrlDraft = undefined;
+    oidcClientIdDraft = undefined;
+    oidcClientSecretDraft = "";
+    samlMetadataUrlDraft = undefined;
+    samlMetadataXmlDraft = undefined;
+    samlSignAuthnRequestsDraft = undefined;
+    samlSubjectAttrDraft = undefined;
+    samlEmailAttrDraft = undefined;
+    samlNameAttrDraft = undefined;
+    samlFirstNameAttrDraft = undefined;
+    samlLastNameAttrDraft = undefined;
+  }
+
+  function readSamlStoredConfig(config: unknown): SamlStoredConfig | null {
+    if (!config || typeof config !== "object") return null;
+    const protocols = "protocols" in config ? config.protocols : undefined;
+    if (!protocols || typeof protocols !== "object") return null;
+    const saml = "saml" in protocols ? protocols.saml : undefined;
+    if (!saml || typeof saml !== "object") return null;
+    const record = saml as Record<string, unknown>;
+    const idp =
+      typeof record.idp === "object" && record.idp !== null
+        ? (record.idp as Record<string, unknown>)
+        : undefined;
+    const profile =
+      typeof record.profile === "object" && record.profile !== null
+        ? (record.profile as Record<string, unknown>)
+        : undefined;
+    const attributeMapping =
+      typeof profile?.mapping === "object" && profile.mapping !== null
+        ? (profile.mapping as Record<string, unknown>)
+        : undefined;
+    return {
+      idp:
+        idp !== undefined
+          ? {
+              metadataUrl:
+                typeof idp.metadataUrl === "string" ? idp.metadataUrl : undefined,
+              metadataXml:
+                typeof idp.metadataXml === "string" ? idp.metadataXml : undefined,
+            }
+          : undefined,
+      request:
+        typeof record.request === "object" && record.request !== null
+          ? {
+              signAuthnRequests:
+                typeof (record.request as { signAuthnRequests?: unknown }).signAuthnRequests === "boolean"
+                  ? (record.request as { signAuthnRequests: boolean }).signAuthnRequests
+                  : undefined,
+            }
+          : undefined,
+      profile:
+        attributeMapping !== undefined
+          ? {
+              mapping: {
+                subject:
+                  typeof attributeMapping.subject === "string"
+                    ? attributeMapping.subject
+                    : undefined,
+                email:
+                  typeof attributeMapping.email === "string"
+                    ? attributeMapping.email
+                    : undefined,
+                name:
+                  typeof attributeMapping.name === "string"
+                    ? attributeMapping.name
+                    : undefined,
+                firstName:
+                  typeof attributeMapping.firstName === "string"
+                    ? attributeMapping.firstName
+                    : undefined,
+                lastName:
+                  typeof attributeMapping.lastName === "string"
+                    ? attributeMapping.lastName
+                    : undefined,
+              },
+            }
+          : undefined,
+    };
+  }
+
+  function readOidcConfig(config: unknown): OidcConfigDraft | null {
+    if (!config || typeof config !== "object") return null;
+    const record = config as Record<string, unknown>;
+    const discovery =
+      typeof record.discovery === "object" && record.discovery !== null
+        ? (record.discovery as Record<string, unknown>)
+        : undefined;
+    const client =
+      typeof record.client === "object" && record.client !== null
+        ? (record.client as Record<string, unknown>)
+        : undefined;
+    return {
+      discoveryUrl:
+        typeof discovery?.discoveryUrl === "string"
+          ? discovery.discoveryUrl
+          : undefined,
+      issuer: typeof discovery?.issuer === "string" ? discovery.issuer : undefined,
+      clientId: typeof client?.id === "string" ? client.id : undefined,
+      hasClientSecret:
+        typeof record.hasClientSecret === "boolean"
+          ? record.hasClientSecret
+          : undefined,
+    };
   }
 
   function copyValue(value: string, field: string) {
@@ -126,8 +259,8 @@
     try {
       validationResult =
         protocol === "oidc"
-          ? ((await client.query(api.auth.group.validateOidc, { connectionId })) as ValidationResult)
-          : ((await client.query(api.auth.group.validateSaml, { connectionId })) as ValidationResult);
+          ? await client.query(api.auth.group.validateOidc, { connectionId })
+          : await client.query(api.auth.group.validateSaml, { connectionId });
       setMessage("success", null);
     } catch (error) {
       setMessage("error", error instanceof Error ? error.message : "Validation failed.");
@@ -140,26 +273,37 @@
       if (protocol === "oidc") {
         await client.mutation(api.auth.group.configureOidc, {
           connectionId,
-          discoveryUrl: oidcDiscoveryUrl.trim() || undefined,
-          clientId: oidcClientId.trim(),
-          clientSecret: oidcClientSecret.trim() || undefined,
+          discovery: {
+            discoveryUrl: oidcDiscoveryUrl.trim() || undefined,
+          },
+          client: {
+            id: oidcClientId.trim(),
+            secret: oidcClientSecretDraft.trim() || undefined,
+          },
         });
       } else {
         await client.action(api.auth.group.configureSaml, {
           connectionId,
-          metadataUrl: samlMetadataUrl.trim() || undefined,
-          metadataXml: samlMetadataXml.trim() || undefined,
-          signAuthnRequests: samlSignAuthnRequests,
-          attributeMapping: {
-            subject: samlSubjectAttr.trim() || undefined,
-            email: samlEmailAttr.trim() || undefined,
-            name: samlNameAttr.trim() || undefined,
-            firstName: samlFirstNameAttr.trim() || undefined,
-            lastName: samlLastNameAttr.trim() || undefined,
+          metadata: {
+            url: samlMetadataUrl.trim() || undefined,
+            xml: samlMetadataXml.trim() || undefined,
+          },
+          request: {
+            signAuthnRequests: samlSignAuthnRequests,
+          },
+          profile: {
+            mapping: {
+              subject: samlSubjectAttr.trim() || undefined,
+              email: samlEmailAttr.trim() || undefined,
+              name: samlNameAttr.trim() || undefined,
+              firstName: samlFirstNameAttr.trim() || undefined,
+              lastName: samlLastNameAttr.trim() || undefined,
+            },
           },
         });
       }
       setMessage("success", "Configuration saved.");
+      resetConfigDrafts();
       await handleValidate();
     } catch (error) {
       setMessage("error", error instanceof Error ? error.message : "Save failed.");
@@ -226,10 +370,10 @@
         <div class="flex items-center gap-2 font-label text-[0.75rem] text-gray-400">
           <a class="text-accent-500 hover:text-accent-600 no-underline font-semibold" href="/{groupId}/sso">SSO Connections</a>
           <span>/</span>
-          <span class="text-gray-600">{connection.name ?? "Connection"}</span>
+          <span class="text-gray-600">{connectionName}</span>
         </div>
         <div class="flex items-center gap-3 flex-wrap">
-          <h1 class="heading text-2xl m-0">{connection.name ?? "Connection"}</h1>
+          <h1 class="heading text-2xl m-0">{connectionName}</h1>
           <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] px-2.5 py-1 border border-indigo-500/20 text-indigo-600 bg-indigo-50">{protocol}</span>
           <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] px-2.5 py-1 border {isActive ? 'text-green-800 bg-green-50 border-green-300' : 'text-gray-500 bg-gray-100 border-gray-300'}">{connection.status ?? 'draft'}</span>
         </div>
@@ -321,27 +465,27 @@
           {#if protocol === 'oidc'}
             <label class="flex flex-col gap-1.5">
               <span class="font-label text-xs font-semibold text-gray-700">Discovery URL</span>
-              <input bind:value={oidcDiscoveryUrl} class="input" type="url" placeholder="https://idp.example.com/.well-known/openid-configuration" />
+              <input value={oidcDiscoveryUrl} oninput={(e) => { oidcDiscoveryUrlDraft = e.currentTarget.value; }} class="input" type="url" placeholder="https://idp.example.com/.well-known/openid-configuration" />
             </label>
             <div class="grid gap-5 md:grid-cols-2">
               <label class="flex flex-col gap-1.5">
                 <span class="font-label text-xs font-semibold text-gray-700">Client ID</span>
-                <input bind:value={oidcClientId} class="input" type="text" placeholder="Client ID" />
+                <input value={oidcClientId} oninput={(e) => { oidcClientIdDraft = e.currentTarget.value; }} class="input" type="text" placeholder="Client ID" />
               </label>
               <label class="flex flex-col gap-1.5">
                 <span class="font-label text-xs font-semibold text-gray-700">Client Secret</span>
-                <input bind:value={oidcClientSecret} class="input" type="password" placeholder="Leave blank to keep current" />
+                <input bind:value={oidcClientSecretDraft} class="input" type="password" placeholder="Leave blank to keep current" />
               </label>
             </div>
           {:else}
             <div class="grid gap-5 md:grid-cols-2">
               <label class="flex flex-col gap-1.5 md:col-span-2">
                 <span class="font-label text-xs font-semibold text-gray-700">Metadata URL</span>
-                <input bind:value={samlMetadataUrl} class="input" type="url" placeholder="https://idp.example.com/.../metadata" />
+                <input value={samlMetadataUrl} oninput={(e) => { samlMetadataUrlDraft = e.currentTarget.value; }} class="input" type="url" placeholder="https://idp.example.com/.../metadata" />
               </label>
               <label class="flex flex-col gap-1.5 md:col-span-2">
                 <span class="font-label text-xs font-semibold text-gray-700">Metadata XML</span>
-                <textarea bind:value={samlMetadataXml} class="input resize-y min-h-28 font-mono text-[0.72rem] py-2" rows="5"></textarea>
+                <textarea value={samlMetadataXml} oninput={(e) => { samlMetadataXmlDraft = e.currentTarget.value; }} class="input resize-y min-h-28 font-mono text-[0.72rem] py-2" rows="5"></textarea>
               </label>
             </div>
 
@@ -350,29 +494,29 @@
               <div class="grid gap-4 md:grid-cols-2">
                 <label class="flex flex-col gap-1.5">
                   <span class="font-label text-xs font-semibold text-gray-700">Subject</span>
-                  <input bind:value={samlSubjectAttr} class="input" type="text" placeholder="NameID fallback" />
+                  <input value={samlSubjectAttr} oninput={(e) => { samlSubjectAttrDraft = e.currentTarget.value; }} class="input" type="text" placeholder="NameID fallback" />
                 </label>
                 <label class="flex flex-col gap-1.5">
                   <span class="font-label text-xs font-semibold text-gray-700">Email</span>
-                  <input bind:value={samlEmailAttr} class="input" type="text" placeholder="email or claim URI" />
+                  <input value={samlEmailAttr} oninput={(e) => { samlEmailAttrDraft = e.currentTarget.value; }} class="input" type="text" placeholder="email or claim URI" />
                 </label>
                 <label class="flex flex-col gap-1.5">
                   <span class="font-label text-xs font-semibold text-gray-700">Display Name</span>
-                  <input bind:value={samlNameAttr} class="input" type="text" placeholder="displayName" />
+                  <input value={samlNameAttr} oninput={(e) => { samlNameAttrDraft = e.currentTarget.value; }} class="input" type="text" placeholder="displayName" />
                 </label>
                 <label class="flex flex-col gap-1.5">
                   <span class="font-label text-xs font-semibold text-gray-700">First Name</span>
-                  <input bind:value={samlFirstNameAttr} class="input" type="text" placeholder="givenName" />
+                  <input value={samlFirstNameAttr} oninput={(e) => { samlFirstNameAttrDraft = e.currentTarget.value; }} class="input" type="text" placeholder="givenName" />
                 </label>
                 <label class="flex flex-col gap-1.5 md:col-span-2">
                   <span class="font-label text-xs font-semibold text-gray-700">Last Name</span>
-                  <input bind:value={samlLastNameAttr} class="input" type="text" placeholder="surname" />
+                  <input value={samlLastNameAttr} oninput={(e) => { samlLastNameAttrDraft = e.currentTarget.value; }} class="input" type="text" placeholder="surname" />
                 </label>
               </div>
             </div>
 
             <label class="flex items-center gap-2.5 pt-1">
-              <input bind:checked={samlSignAuthnRequests} type="checkbox" class="w-4 h-4 accent-accent-500" />
+              <input checked={samlSignAuthnRequests} onchange={(e) => { samlSignAuthnRequestsDraft = e.currentTarget.checked; }} type="checkbox" class="w-4 h-4 accent-accent-500" />
               <span class="font-label text-[0.8125rem] text-gray-700">Sign AuthnRequests</span>
             </label>
           {/if}
@@ -443,14 +587,15 @@
 
         <!-- Verification challenge -->
         {#if verificationChallenge}
+          {@const challenge = verificationChallenge}
           <div class="border border-indigo-500/20 bg-indigo-50/50 p-5 flex flex-col gap-4">
             <p class="m-0 font-label text-[0.75rem] font-semibold text-indigo-700">
-              Add this TXT record to verify <span class="text-indigo-900">{verificationChallenge.domain}</span>
+              Add this TXT record to verify <span class="text-indigo-900">{challenge.domain}</span>
             </p>
             <div class="flex flex-col gap-3">
               {#each [
-                ['TXT Name', verificationChallenge.recordName],
-                ['TXT Value', verificationChallenge.token],
+                ['TXT Name', challenge.recordName],
+                ['TXT Value', challenge.token],
               ] as [label, value] (label)}
                 <div class="flex items-center gap-3 min-w-0 max-md:flex-col max-md:items-start max-md:gap-1">
                   <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-indigo-500 w-20 shrink-0">{label}</span>
@@ -465,7 +610,7 @@
                 </div>
               {/each}
             </div>
-            <button class="button button--accent button--compact self-start" type="button" onclick={() => handleConfirmVerification(verificationChallenge.domain)}>Confirm verification</button>
+            <button class="button button--accent button--compact self-start" type="button" onclick={() => handleConfirmVerification(challenge.domain)}>Confirm verification</button>
           </div>
         {/if}
 
