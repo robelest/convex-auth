@@ -10,7 +10,8 @@
 import { sha256 } from "@oslojs/crypto/sha2";
 import { encodeBase64urlNoPadding } from "@oslojs/encoding";
 
-import { createOAuthProvider } from "../server/oauthProvider";
+import { envOptionalString, readConfigSync } from "../server/env";
+import { createOAuthProvider } from "../server/oauth/factory";
 import type {
   OAuthProfile,
   OAuthRuntimeClient,
@@ -65,7 +66,8 @@ export interface CustomOAuthConfig {
 
 function defaultRedirectUri(providerId: string) {
   const rootUrl =
-    process.env.CUSTOM_AUTH_SITE_URL ?? process.env.CONVEX_SITE_URL;
+    readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ??
+    readConfigSync(envOptionalString("CONVEX_SITE_URL"));
   if (!rootUrl) {
     throw new Error(
       `Missing CONVEX_SITE_URL while configuring ${providerId} OAuth provider. ` +
@@ -156,7 +158,7 @@ function createRuntimeClient(config: CustomOAuthConfig): OAuthRuntimeClient {
       if (token.authMethod === "basic") {
         if (!config.clientSecret) {
           throw new Error(
-            `OAuth provider "${config.id}" requires clientSecret for token.authMethod=\"basic\".`,
+            `OAuth provider "${config.id}" requires clientSecret for token.authMethod="basic".`,
           );
         }
         const credentials = btoa(`${config.clientId}:${config.clientSecret}`);

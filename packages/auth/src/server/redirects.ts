@@ -1,7 +1,23 @@
-import { Cv } from "@robelest/fx/convex";
+import { ConvexError } from "convex/values";
 
 import { ConvexAuthMaterializedConfig } from "./types";
-import { requireEnv } from "./utils";
+import { requireEnv } from "./env";
+
+const describeUnknown = (value: unknown) => {
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint" ||
+    value === null
+  ) {
+    return String(value);
+  }
+  const json = JSON.stringify(value);
+  return json ?? Object.prototype.toString.call(value);
+};
 
 /** @internal */
 export async function redirectAbsoluteUrl(
@@ -12,9 +28,9 @@ export async function redirectAbsoluteUrl(
     return requireEnv("SITE_URL").replace(/\/$/, "");
   }
   if (typeof params.redirectTo !== "string") {
-    throw Cv.error({
+    throw new ConvexError({
       code: "INVALID_REDIRECT",
-      message: `Expected \`redirectTo\` to be a string, got ${params.redirectTo as any}`,
+      message: `Expected \`redirectTo\` to be a string, got ${describeUnknown(params.redirectTo)}`,
     });
   }
   const redirectCallback =
@@ -22,7 +38,7 @@ export async function redirectAbsoluteUrl(
   try {
     return await redirectCallback({ redirectTo: params.redirectTo });
   } catch {
-    throw Cv.error({
+    throw new ConvexError({
       code: "INTERNAL_ERROR",
       message: "An unexpected error occurred.",
     });

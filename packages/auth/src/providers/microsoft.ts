@@ -17,7 +17,8 @@
 import { MicrosoftEntraId } from "arctic";
 import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
 
-import { createOAuthProvider } from "../server/oauthProvider";
+import { envOptionalString, readConfigSync } from "../server/env";
+import { createArcticOAuthClient, createOAuthProvider } from "../server/oauth/factory";
 
 const DEFAULT_SCOPES = ["openid", "profile", "email"];
 
@@ -63,7 +64,7 @@ export function microsoft(config: MicrosoftConfig) {
 
   return createOAuthProvider({
     id: "microsoft",
-    provider,
+    provider: createArcticOAuthClient(provider, { pkce: "required" }),
     scopes: config.scopes ?? DEFAULT_SCOPES,
     nonce: true,
     accountLinking: config.accountLinking,
@@ -125,7 +126,8 @@ export function microsoft(config: MicrosoftConfig) {
 
 function defaultRedirectUri(providerId: string) {
   const rootUrl =
-    process.env.CUSTOM_AUTH_SITE_URL ?? process.env.CONVEX_SITE_URL;
+    readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ??
+    readConfigSync(envOptionalString("CONVEX_SITE_URL"));
   if (!rootUrl) {
     throw new Error(
       `Missing CONVEX_SITE_URL while configuring ${providerId} OAuth provider. ` +

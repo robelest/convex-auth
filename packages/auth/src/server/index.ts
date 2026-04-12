@@ -29,7 +29,7 @@ export type {
   AuthCookies,
   RefreshResult,
   ServerOptions,
-} from "./ssr";
+} from "./prefetch";
 export {
   authCookieNames,
   parseAuthCookies,
@@ -37,4 +37,4 @@ export {
   server,
   shouldProxyAuthAction,
   structuredAuthCookies,
-} from "./ssr";
+} from "./prefetch";

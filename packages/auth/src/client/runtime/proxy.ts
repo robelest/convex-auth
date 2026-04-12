@@ -1,7 +1,14 @@
-import { Fx } from "@robelest/fx";
 import { ConvexError, type Value } from "convex/values";
+import { Schema } from "effect";
 
 const NETWORK_ERROR_PATTERN = /(network|fetch|load failed|failed to fetch)/i;
+
+const ProxyErrorBodySchema = Schema.Struct({
+  error: Schema.optional(Schema.String),
+  authError: Schema.optional(Schema.Unknown),
+});
+
+type ProxyErrorBody = Schema.Schema.Type<typeof ProxyErrorBodySchema>;
 
 /** @internal */
 export function isTransientNetworkError(error: unknown): boolean {
@@ -28,6 +35,11 @@ export function isRetriableProxyRefreshError(error: unknown): boolean {
 }
 
 /** @internal */
+export function parseProxyErrorBody(value: unknown): ProxyErrorBody {
+  return Schema.decodeUnknownSync(ProxyErrorBodySchema)(value);
+}
+
+/** @internal */
 export function createProxyHelpers(args: { proxy: string | undefined }) {
   const { proxy } = args;
 
@@ -42,29 +54,25 @@ export function createProxyHelpers(args: { proxy: string | undefined }) {
     if (origin !== null) {
       return new URL(proxy!, origin).toString();
     }
-    return Fx.run(
-      Fx.from({
-        ok: () => new URL(proxy!).toString(),
-        err: () => proxy! as string,
-      }).pipe(Fx.recover((fallback) => Fx.succeed(fallback))),
-    );
+    try {
+      return new URL(proxy!).toString();
+    } catch {
+      return proxy! as string;
+    }
   };
 
   const isAbsoluteUrl = (value: string) => {
-    return Fx.run(
-      Fx.from({
-        ok: () => {
-          new URL(value);
-          return true;
-        },
-        err: () => false as const,
-      }).pipe(Fx.recover((v) => Fx.succeed(v))),
-    );
+    try {
+      new URL(value);
+      return true;
+    } catch {
+      return false as const;
+    }
   };
 
   const proxyFetch = async (body: Record<string, unknown>) => {
-    const proxyUrl = await resolveProxyUrl();
-    if (typeof window === "undefined" && !(await isAbsoluteUrl(proxyUrl))) {
+    const proxyUrl = resolveProxyUrl();
+    if (typeof window === "undefined" && !isAbsoluteUrl(proxyUrl)) {
       throw new Error(
         `Cannot call relative proxy URL \`${proxy!}\` without a browser origin. ` +
           "Pass an absolute proxy URL for server runtimes.",
@@ -78,12 +86,12 @@ export function createProxyHelpers(args: { proxy: string | undefined }) {
       body: JSON.stringify(body),
     });
     if (!response.ok) {
-      const errorBody = await Fx.run(
-        Fx.from({
-          ok: () => response.json() as Promise<Record<string, unknown>>,
-          err: () => ({}) as Record<string, unknown>,
-        }).pipe(Fx.recover((fallback) => Fx.succeed(fallback))),
-      );
+      let errorBody: Record<string, unknown> = {};
+      try {
+        errorBody = (await response.json()) as Record<string, unknown>;
+      } catch {
+        errorBody = {};
+      }
       if (
         typeof errorBody === "object" &&
         errorBody !== null &&
@@ -99,12 +107,11 @@ export function createProxyHelpers(args: { proxy: string | undefined }) {
           `Proxy request failed: ${response.status}`,
       );
     }
-    return Fx.run(
-      Fx.from({
-        ok: () => response.json(),
-        err: () => new Error("Proxy response was not valid JSON"),
-      }).pipe(Fx.recover((e) => Fx.fatal(e))),
-    );
+    try {
+      return await response.json();
+    } catch {
+      throw new Error("Proxy response was not valid JSON");
+    }
   };
 
   return { isAbsoluteUrl, proxyFetch, resolveProxyUrl };

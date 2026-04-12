@@ -15,7 +15,8 @@
 
 import { Google as ArcticGoogle } from "arctic";
 
-import { createOAuthProvider } from "../server/oauthProvider";
+import { envOptionalString, readConfigSync } from "../server/env";
+import { createArcticOAuthClient, createOAuthProvider } from "../server/oauth/factory";
 
 const DEFAULT_SCOPES = ["openid", "profile", "email"];
 
@@ -51,10 +52,13 @@ export interface GoogleConfig {
 export function google(config: GoogleConfig) {
   return createOAuthProvider({
     id: "google",
-    provider: new ArcticGoogle(
-      config.clientId,
-      config.clientSecret,
-      config.redirectUri ?? defaultRedirectUri("google"),
+    provider: createArcticOAuthClient(
+      new ArcticGoogle(
+        config.clientId,
+        config.clientSecret,
+        config.redirectUri ?? defaultRedirectUri("google"),
+      ),
+      { pkce: "required" },
     ),
     scopes: config.scopes ?? DEFAULT_SCOPES,
     accountLinking: config.accountLinking,
@@ -63,7 +67,8 @@ export function google(config: GoogleConfig) {
 
 function defaultRedirectUri(providerId: string) {
   const rootUrl =
-    process.env.CUSTOM_AUTH_SITE_URL ?? process.env.CONVEX_SITE_URL;
+    readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ??
+    readConfigSync(envOptionalString("CONVEX_SITE_URL"));
   if (!rootUrl) {
     throw new Error(
       `Missing CONVEX_SITE_URL while configuring ${providerId} OAuth provider. ` +

@@ -1,5 +1,3 @@
-import { Fx } from "@robelest/fx";
-import { Cv } from "@robelest/fx/convex";
 import {
   GenericActionCtx,
   GenericDataModel,
@@ -7,40 +5,18 @@ import {
   actionGeneric,
   internalMutationGeneric,
 } from "convex/server";
+import { ConvexError } from "convex/values";
+import type { Value } from "convex/values";
 import { v } from "convex/values";
 import { serialize as serializeCookie } from "cookie";
+import { Effect, Match } from "effect";
 
-import { configDefaults, listAvailableProviders } from "./config";
 import { redirectToParamCookie, useRedirectToParam } from "./cookies";
 import { createCoreDomains } from "./core";
 import { GetProviderOrThrowFunc } from "./crypto";
-import {
-  getOidcConfig,
-  getPublicOidcConfig,
-  getSamlConfig,
-  upsertProtocolConfig,
-  withOidcSecretState,
-} from "./sso/config";
 import { createGroupConnectionDomain } from "./sso/domain";
 import { addGroupHttpRuntime } from "./sso/http";
-import {
-  normalizeGroupConnectionPolicy,
-  patchGroupConnectionPolicy,
-} from "./sso/policy";
-import {
-  createServiceProviderMetadata,
-  getSamlServiceProviderOptions,
-  parseSamlIdpMetadata,
-} from "./sso/saml";
-import { parseScimPath } from "./sso/scim";
-import {
-  groupOidcProviderId,
-  groupSamlProviderId,
-  getGroupOidcUrls,
-  getGroupSamlUrls,
-  isGroupSamlSourceActive,
-  normalizeDomain,
-} from "./sso/shared";
+import { normalizeGroupConnectionPolicy } from "./sso/policy";
 import {
   addAuthRoutes,
   addOpenIdRoutes,
@@ -61,28 +37,33 @@ import {
   storeArgs,
   storeImpl,
 } from "./mutations/index";
-import { createOAuthAuthorizationURL, handleOAuthCallback } from "./oauth";
+import { createOAuthAuthorizationURL, handleOAuthCallback } from "./oauth/runtime";
+import type { AuthProfile } from "./payloads";
+import { payloadRecordValidator } from "./payloads";
 import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects";
-import { signInImpl } from "./signin";
 import type {
   ConvexAuthConfig,
   FunctionReferenceFromExport,
   OAuthMaterializedConfig,
+  SSOProviderConfig,
   Tokens,
 } from "./types";
 import { MutationCtx } from "./types";
 import {
-  decryptSecret,
-  encryptSecret,
-  generateRandomString,
-  LOG_LEVELS,
   logError,
-  logWithLevel,
-  sha256,
-} from "./utils";
-import { requireEnv } from "./utils";
+  log,
+  LOG_LEVELS,
+} from "./log";
+import { encryptSecret } from "./secret";
+import { generateRandomString, sha256 } from "./random";
+import { requireEnv } from "./env";
+import { siteUrlsFromEnv } from "./url";
+import { createGroupService } from "./services/group";
+import { resolveServerServices } from "./services/resolve";
 
 const GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND = "oidc_client_secret" as const;
+
+const convexError = (data: Record<string, Value>) => new ConvexError(data);
 
 /**
  * The type of the signIn Convex Action returned from the auth() helper.
@@ -101,7 +82,11 @@ export type SignInActionResult =
   | { kind: "signedIn"; tokens: Tokens | null }
   | { kind: "redirect"; redirect: string; verifier: string }
   | { kind: "started" }
-  | { kind: "passkeyOptions"; options: Record<string, any>; verifier: string }
+  | {
+      kind: "passkeyOptions";
+      options: Record<string, unknown>;
+      verifier: string;
+    }
   | { kind: "totpRequired"; verifier: string }
   | {
       kind: "totpSetup";
@@ -150,343 +135,31 @@ export type SignOutAction = FunctionReferenceFromExport<
  *          `convex/auth.ts` file.
  */
 export function Auth(config_: ConvexAuthConfig) {
-  const config = configDefaults(config_);
+  const services = resolveServerServices(config_);
+  const config = services.config;
   const hasOAuth = config.providers.some(
     (provider) => provider.type === "oauth",
   );
   const hasSSO = config.providers.some((provider) => provider.type === "sso");
-  const getProviderOrThrow: GetProviderOrThrowFunc = (
-    id: string,
-    allowExtraProviders: boolean = false,
-  ) => {
-    const provider =
-      config.providers.find(
-        (configuredProvider) => configuredProvider.id === id,
-      ) ??
-      (allowExtraProviders
-        ? config.extraProviders.find(
-            (configuredProvider) => configuredProvider.id === id,
-          )
-        : undefined);
-    if (provider === undefined) {
-      const detail =
-        `Provider \`${id}\` is not configured, ` +
-        `available providers are ${listAvailableProviders(config, allowExtraProviders)}.`;
-      logWithLevel(LOG_LEVELS.ERROR, detail);
-      throw Cv.error({
-        code: "PROVIDER_NOT_CONFIGURED",
-        message: detail,
-        provider: id,
-      });
-    }
-    return provider;
-  };
-  type ComponentCtx = Pick<
-    GenericActionCtx<GenericDataModel>,
-    "runQuery" | "runMutation"
-  >;
-  type ComponentReadCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
-  const getGroupConnectionSecret = async (
-    ctx: ComponentReadCtx | ComponentCtx,
-    connectionId: string,
-    kind: typeof GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
-  ) => {
-    return await ctx.runQuery(config.component.public.groupConnectionSecretGet, {
-      connectionId,
-      kind,
-    });
-  };
-  const getGroupConnectionOidcConfigWithSecret = async (
-    ctx: ComponentReadCtx | ComponentCtx,
-    connection: { _id: string; config?: unknown },
-  ): Promise<Record<string, any>> => {
-    const oidc = getOidcConfig(connection.config);
-    const secret = await getGroupConnectionSecret(
-      ctx,
-      connection._id,
-      GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
-    );
-    return {
-      ...oidc,
-      ...(secret
-        ? { clientSecret: await decryptSecret(secret.ciphertext) }
-        : {}),
-    };
-  };
+  const ssoProvider = config.providers.find(
+    (provider): provider is SSOProviderConfig => provider.type === "sso",
+  );
+  const getProviderOrThrow: GetProviderOrThrowFunc =
+    services.providerRegistry.getProviderOrThrow;
   const INVITE_TOKEN_ALPHABET =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   const INVITE_TOKEN_LENGTH = 48;
 
-  const connectionNotFoundError = "Connection not found.";
-
   const GROUP_CONNECTION_ROUTE_BASE = "/api/auth/connections";
+  const group = createGroupService({ config, sha256 });
 
-  const getPolicyFromGroup = (group: { policy?: unknown }) =>
-    normalizeGroupConnectionPolicy(group.policy);
-
-  const loadGroupPolicyOrThrow = async (
-    ctx: ComponentReadCtx,
-    groupId: string,
-  ) => {
-    const group = await ctx.runQuery(config.component.public.groupGet, {
-      groupId,
-    });
-    if (!group) {
-      throw Cv.error({
-        code: "INVALID_PARAMETERS",
-        message: "Group not found.",
-      });
-    }
-    return getPolicyFromGroup(group);
+  type AuthRuntimeBase = ReturnType<typeof createCoreDomains> & {
+    sso: ReturnType<typeof createGroupConnectionDomain>;
   };
 
-  const loadConnectionOrThrow = async (
-    ctx: ComponentReadCtx,
-    connectionId: string,
-  ) => {
-    const connection = await ctx.runQuery(
-      config.component.public.groupConnectionGet,
-      {
-        connectionId,
-      },
-    );
-    if (!connection) {
-      throw Cv.error({
-        code: "INVALID_PARAMETERS",
-        message: connectionNotFoundError,
-      });
-    }
-    return connection;
-  };
-
-  const loadActiveGroupConnectionOrThrow = async (
-    ctx: ComponentReadCtx,
-    connectionId: string,
-  ) => {
-    const connection = await loadConnectionOrThrow(ctx, connectionId);
-    if (connection.status !== "active") {
-      throw Cv.error({
-        code: "INVALID_PARAMETERS",
-        message: "Group connection is not active.",
-      });
-    }
-    return connection;
-  };
-
-  const loadActiveConnectionSamlOrThrow = async (
-    ctx: ComponentReadCtx,
-    connectionId: string,
-  ) => {
-    const connection = await loadConnectionOrThrow(ctx, connectionId);
-    const loaded = {
-      source: {
-        kind: "connection" as const,
-        id: connectionId,
-      },
-      config: connection.config,
-      status: connection.status,
-      connection,
-    };
-    if (!isGroupSamlSourceActive(loaded)) {
-      throw Cv.error({
-        code: "INVALID_PARAMETERS",
-        message: "Group connection is not active.",
-      });
-    }
-    const saml = getSamlConfig(loaded.config);
-    if (!saml.idp?.metadataXml) {
-      throw Cv.error({
-        code: "PROVIDER_NOT_CONFIGURED",
-        message: "SAML is not configured for this connection.",
-      });
-    }
-    return { loaded, connection, saml };
-  };
-
-  const loadConnectionOidcOrThrow = async (
-    ctx: ComponentReadCtx,
-    connectionId: string,
-  ) => {
-    const connection = await loadActiveGroupConnectionOrThrow(ctx, connectionId);
-    const oidc = await getGroupConnectionOidcConfigWithSecret(ctx, connection);
-    if (oidc.enabled !== true) {
-      throw Cv.error({
-        code: "PROVIDER_NOT_CONFIGURED",
-        message: "OIDC is not configured for this connection.",
-      });
-    }
-    return { connection, oidc };
-  };
-
-  const resolveGroupConnectionSsoProtocolOrThrow = async (
-    ctx: ComponentReadCtx,
-    connectionId: string,
-  ): Promise<"oidc" | "saml"> => {
-    const connection = await loadActiveGroupConnectionOrThrow(ctx, connectionId);
-    if (connection.protocol === "oidc") {
-      return "oidc";
-    }
-    if (connection.protocol === "saml") {
-      return "saml";
-    }
-    throw Cv.error({
-      code: "PROVIDER_NOT_CONFIGURED",
-      message: "Group connection protocol is not configured.",
-    });
-  };
-
-  const validateGroupConnectionPolicy = (
-    policy: ReturnType<typeof normalizeGroupConnectionPolicy>,
-  ) => {
-    const checks: Array<{
-      name: string;
-      ok: boolean;
-      message?: string;
-    }> = [];
-
-    checks.push({ name: "policy_version", ok: policy.version === 1 });
-    checks.push({
-      name: "jit_default_role_ids_present",
-      ok:
-        policy.provisioning.jit.mode !== "createUserAndMembership" ||
-        policy.provisioning.jit.defaultRoleIds.length > 0,
-      message:
-        policy.provisioning.jit.mode === "createUserAndMembership" &&
-        policy.provisioning.jit.defaultRoleIds.length === 0
-          ? "At least one default roleId is required when JIT membership provisioning is enabled."
-          : undefined,
-    });
-    checks.push({
-      name: "jit_default_role_ids_known",
-      ok: policy.provisioning.jit.defaultRoleIds.every(
-        (roleId) => config.authorization.roles[roleId] !== undefined,
-      ),
-      message: policy.provisioning.jit.defaultRoleIds.every(
-        (roleId) => config.authorization.roles[roleId] !== undefined,
-      )
-        ? undefined
-        : "JIT defaultRoleIds contains unknown roleIds.",
-    });
-    checks.push({
-      name: "scim_reuse_supported",
-      ok:
-        policy.provisioning.scimReuse.user === "externalId" ||
-        policy.provisioning.scimReuse.user === "none",
-    });
-
-    return checks;
-  };
-
-  const recordGroupAuditEvent = async (
-    ctx: ComponentCtx,
-    data: {
-      connectionId?: string;
-      groupId: string;
-      eventType: string;
-      actorType: "user" | "system" | "scim" | "api_key" | "webhook";
-      actorId?: string;
-      subjectType: string;
-      subjectId?: string;
-      ok: boolean;
-      requestId?: string;
-      ip?: string;
-      metadata?: Record<string, unknown>;
-    },
-  ) => {
-    const { ok, ...rest } = data;
-    return (await ctx.runMutation(
-      config.component.public.groupAuditEventCreate,
-      {
-        ...rest,
-        status: ok ? "success" : "failure",
-        occurredAt: Date.now(),
-      },
-    )) as string;
-  };
-
-  const emitGroupWebhookDeliveries = async (
-    ctx: ComponentCtx,
-    data: {
-      connectionId: string;
-      eventType: string;
-      payload: Record<string, unknown>;
-      auditEventId?: string;
-    },
-  ) => {
-    const endpoints = await ctx.runQuery(
-      config.component.public.groupWebhookEndpointList,
-      { connectionId: data.connectionId },
-    );
-    for (const endpoint of endpoints) {
-      if (
-        endpoint.status !== "active" ||
-        !endpoint.subscriptions.includes(data.eventType)
-      ) {
-        continue;
-      }
-      await ctx.runMutation(
-        config.component.public.groupWebhookDeliveryEnqueue,
-        {
-          connectionId: data.connectionId,
-          endpointId: endpoint._id,
-          auditEventId: data.auditEventId,
-          eventType: data.eventType,
-          payload: data.payload,
-          nextAttemptAt: Date.now(),
-        },
-      );
-    }
-  };
-
-  const getGroupConnectionScimContext = async (
-    ctx: ComponentReadCtx,
-    request: Request,
-  ) => {
-    const authHeader = request.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      throw Cv.error({
-        code: "MISSING_BEARER_TOKEN",
-        message: "Missing or malformed Authorization: Bearer header.",
-      });
-    }
-    const token = authHeader.slice(7);
-    const scimConfig = await ctx.runQuery(
-      config.component.public.groupConnectionScimConfigGetByTokenHash,
-      { tokenHash: await sha256(token) },
-    );
-    if (!scimConfig || scimConfig.status !== "active") {
-      throw Cv.error({
-        code: "INVALID_API_KEY",
-        message: "Invalid SCIM token.",
-      });
-    }
-    const parsedPath = parseScimPath(new URL(request.url).pathname);
-    if (parsedPath.connectionId !== scimConfig.connectionId) {
-      throw Cv.error({
-        code: "INVALID_API_KEY",
-        message: "SCIM token/tenant mismatch.",
-      });
-    }
-    const connection = await ctx.runQuery(
-      config.component.public.groupConnectionGet,
-      {
-        connectionId: scimConfig.connectionId,
-      },
-    );
-    if (connection === null) {
-      throw Cv.error({
-        code: "INVALID_PARAMETERS",
-        message: "Connection not found.",
-      });
-    }
-    return { scimConfig, connection, parsedPath };
-  };
-
-  let auth: any;
-  auth = {
+  const authBase: AuthRuntimeBase = {
     ...createCoreDomains({
       config,
-      getAuth: () => auth,
       callInvalidateSessions,
       callCreateAccountFromCredentials,
       callRetrieveAccountWithCredentials,
@@ -501,42 +174,28 @@ export function Auth(config_: ConvexAuthConfig) {
      */
     sso: createGroupConnectionDomain({
       config,
-      getAuth: () => auth,
-      normalizeGroupConnectionPolicy,
-      normalizeDomain,
-      getGroupConnectionSecret,
-      loadConnectionOrThrow,
-      validateGroupConnectionPolicy,
-      recordGroupAuditEvent,
-      emitGroupWebhookDeliveries,
-      connectionNotFoundError,
+      getGroupConnectionSecret: group.getGroupConnectionSecret,
+      loadConnectionOrThrow: group.loadConnectionOrThrow,
+      validateGroupConnectionPolicy: group.validateGroupConnectionPolicy,
+      recordGroupAuditEvent: group.recordGroupAuditEvent,
+      emitGroupWebhookDeliveries: group.emitGroupWebhookDeliveries,
+      connectionNotFoundError: "Connection not found.",
       GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
       requireEnv,
       generateRandomString,
       INVITE_TOKEN_ALPHABET,
       sha256,
       encryptSecret,
-      upsertProtocolConfig,
-      parseSamlIdpMetadata,
-      createServiceProviderMetadata,
-      getSamlServiceProviderOptions,
-      getPublicOidcConfig,
-      withOidcSecretState,
-      getOidcConfig,
-      getSamlConfig,
-      getGroupOidcUrls,
-      groupOidcProviderId,
-      getGroupSamlUrls,
-      groupSamlProviderId,
-      getPolicyFromGroup,
-      loadGroupPolicyOrThrow,
-      patchGroupConnectionPolicy,
+      loadGroupPolicyOrThrow: group.loadGroupPolicyOrThrow,
     }),
   };
 
   // HTTP wiring stays local to the factory because it still depends on a
   // dense mix of OAuth, SAML, SCIM, cookie, and response helpers.
-  auth.http = {
+  const getDefaultCorsOrigins = () =>
+    siteUrlsFromEnv().allowedUrls.map((u) => new URL(u).origin);
+
+  const http = {
     /**
      * Register core HTTP routes for JWT verification and OAuth sign-in.
      *
@@ -572,21 +231,22 @@ export function Auth(config_: ConvexAuthConfig) {
       addGroupHttpRuntime({
         http,
         hasSSO,
-        auth,
+        auth: authBase as unknown as Parameters<typeof addGroupHttpRuntime>[0]["auth"],
         config,
         routeBase: GROUP_CONNECTION_ROUTE_BASE,
         requireEnv,
-        loadActiveConnectionSamlOrThrow,
-        loadConnectionOidcOrThrow,
-        getGroupConnectionScimContext,
-        loadGroupPolicyOrThrow,
+        loadActiveConnectionSamlOrThrow: group.loadActiveConnectionSamlOrThrow,
+        loadConnectionOidcOrThrow: group.loadConnectionOidcOrThrow,
+        getGroupConnectionScimContext: group.getGroupConnectionScimContext,
+        loadGroupPolicyOrThrow: group.loadGroupPolicyOrThrow,
         normalizeGroupConnectionPolicy,
-        recordGroupAuditEvent,
-        emitGroupWebhookDeliveries,
+        recordGroupAuditEvent: group.recordGroupAuditEvent,
+        emitGroupWebhookDeliveries: group.emitGroupWebhookDeliveries,
         generateRandomString,
         inviteTokenAlphabet: INVITE_TOKEN_ALPHABET,
         callUserOAuth,
         callVerifierSignature,
+        sharedOidcRedirectURI: ssoProvider?.redirectURI,
       });
 
       if (hasOAuth) {
@@ -596,14 +256,14 @@ export function Auth(config_: ConvexAuthConfig) {
             const pathParts = url.pathname.split("/");
             const providerId = pathParts[pathParts.length - 1]!;
             if (providerId === null) {
-              throw Cv.error({
+              throw convexError({
                 code: "OAUTH_MISSING_PROVIDER",
                 message: "Missing OAuth provider ID.",
               });
             }
             const verifier = url.searchParams.get("code");
             if (verifier === null) {
-              throw Cv.error({
+              throw convexError({
                 code: "OAUTH_MISSING_VERIFIER",
                 message: "Missing sign-in verifier.",
               });
@@ -628,7 +288,7 @@ export function Auth(config_: ConvexAuthConfig) {
             for (const { name, value, options } of cookies) {
               headers.append(
                 "Set-Cookie",
-                serializeCookie(name, value, options as any),
+                serializeCookie(name, value, options),
               );
             }
 
@@ -639,12 +299,12 @@ export function Auth(config_: ConvexAuthConfig) {
             const callbackPathParts = new URL(request.url).pathname.split("/");
             const providerId = callbackPathParts[callbackPathParts.length - 1];
             if (!providerId) {
-              throw Cv.error({
+              throw convexError({
                 code: "OAUTH_MISSING_PROVIDER",
                 message: "Missing OAuth provider ID.",
               });
             }
-            logWithLevel(
+            log(
               LOG_LEVELS.DEBUG,
               "Handling OAuth callback for provider:",
               providerId,
@@ -662,8 +322,9 @@ export function Auth(config_: ConvexAuthConfig) {
             const params = url.searchParams;
 
             if (
-              request.headers.get("Content-Type") ===
-              "application/x-www-form-urlencoded"
+              request.headers
+                .get("Content-Type")
+                ?.includes("application/x-www-form-urlencoded")
             ) {
               const formData = await request.formData();
               formData.forEach((value, key) => {
@@ -673,29 +334,29 @@ export function Auth(config_: ConvexAuthConfig) {
               });
             }
 
-            return Fx.run(
-              Fx.from({
-                ok: async () => {
-                  const oauthConfig = provider as OAuthMaterializedConfig;
-                  const result = await Fx.run(
-                    handleOAuthCallback(
-                      providerId,
-                      oauthConfig,
-                      Object.fromEntries(params.entries()),
-                      cookies,
-                    ),
-                  );
-                  const oauthCookies = result.cookies;
-                  const { id: profileId, ...profileData } = result.profile;
-                  const { signature } = result;
+            return Effect.runPromise(
+              Effect.gen(function* () {
+                const oauthConfig = provider as OAuthMaterializedConfig;
+                const result = yield* handleOAuthCallback(
+                  providerId,
+                  oauthConfig,
+                  Object.fromEntries(params.entries()),
+                  cookies,
+                );
+                const oauthCookies = result.cookies;
+                const { id: profileId, ...profileData } = result.profile;
+                const { signature } = result;
 
-                  const verificationCode = await callUserOAuth(ctx, {
+                const verificationCode = yield* Effect.promise(() =>
+                  callUserOAuth(ctx, {
                     provider: providerId,
                     providerAccountId: profileId,
-                    profile: profileData,
+                    profile: profileData as AuthProfile,
                     signature,
-                  });
+                  }),
+                );
 
+                return Effect.sync(() => {
                   const redirUrl = setURLSearchParam(
                     destinationUrl,
                     "code",
@@ -708,7 +369,7 @@ export function Auth(config_: ConvexAuthConfig) {
                     ...(maybeRedirectTo !== null
                       ? [maybeRedirectTo.updatedCookie]
                       : []),
-                  ] as any) {
+                  ] as Array<{ name: string; value: string; options: Parameters<typeof serializeCookie>[2] }>) {
                     redirHeaders.append(
                       "Set-Cookie",
                       serializeCookie(name, value, options),
@@ -718,29 +379,29 @@ export function Auth(config_: ConvexAuthConfig) {
                     status: 302,
                     headers: redirHeaders,
                   });
-                },
-                err: (error) => error,
+                });
               }).pipe(
-                Fx.recover((error) => {
-                  logError(error);
-                  const respHeaders = new Headers({
-                    Location: destinationUrl,
-                  });
-                  for (const { name, value, options } of maybeRedirectTo !== null
-                    ? [maybeRedirectTo.updatedCookie]
-                    : []) {
-                    respHeaders.append(
-                      "Set-Cookie",
-                      serializeCookie(name, value, options),
-                    );
-                  }
-                  return Fx.succeed(
-                    new Response(null, {
+                Effect.flatten,
+                Effect.catch((error) =>
+                  Effect.sync(() => {
+                    logError(error);
+                    const respHeaders = new Headers({
+                      Location: destinationUrl,
+                    });
+                    for (const { name, value, options } of maybeRedirectTo !== null
+                      ? [maybeRedirectTo.updatedCookie]
+                      : []) {
+                      respHeaders.append(
+                        "Set-Cookie",
+                        serializeCookie(name, value, options),
+                      );
+                    }
+                    return new Response(null, {
                       status: 302,
                       headers: respHeaders,
-                    }),
-                  );
-                }),
+                    });
+                  }),
+                ),
               ),
             );
           },
@@ -771,7 +432,7 @@ export function Auth(config_: ConvexAuthConfig) {
      * });
      * ```
      */
-    context: createHttpContext(auth),
+    context: createHttpContext(authBase as unknown as Parameters<typeof createHttpContext>[0]),
 
     /**
      * Wrap an HTTP action handler with Bearer token authentication.
@@ -795,9 +456,12 @@ export function Auth(config_: ConvexAuthConfig) {
      *
      * @param handler - Receives enriched `ctx` (with `ctx.key`) and the raw `Request`.
      * @param options.scope - Optional scope check; returns 403 if the key lacks permission.
-     * @param options.cors - CORS config; defaults to permissive (`*`).
+     * @param options.cors - CORS config; defaults to site URLs from environment.
      */
-    action: createHttpAction(auth),
+    action: createHttpAction(
+      authBase as unknown as Parameters<typeof createHttpAction>[0],
+      getDefaultCorsOrigins,
+    ),
 
     /**
      * Register a Bearer-authenticated route **and** its OPTIONS preflight
@@ -823,10 +487,18 @@ export function Auth(config_: ConvexAuthConfig) {
      * @param routeConfig.method - HTTP method (GET, POST, PUT, PATCH, DELETE).
      * @param routeConfig.handler - Receives enriched `ctx` (with `ctx.key`) and the raw `Request`.
      * @param routeConfig.scope - Optional scope check; returns 403 if the key lacks permission.
-     * @param routeConfig.cors - CORS config; defaults to permissive (`*`).
+     * @param routeConfig.cors - CORS config; defaults to site URLs from environment.
      */
-    route: createHttpRoute(createHttpAction(auth)),
+    route: createHttpRoute(
+      createHttpAction(
+        authBase as unknown as Parameters<typeof createHttpAction>[0],
+        getDefaultCorsOrigins,
+      ),
+      getDefaultCorsOrigins,
+    ),
   };
+
+  const auth = Object.assign(authBase, { http });
 
   const enrichCtx = <DataModel extends GenericDataModel>(
     ctx: GenericActionCtx<DataModel>,
@@ -855,77 +527,74 @@ export function Auth(config_: ConvexAuthConfig) {
     signIn: actionGeneric({
       args: {
         provider: v.optional(v.string()),
-        params: v.optional(v.any()),
+        params: v.optional(payloadRecordValidator),
         verifier: v.optional(v.string()),
         refreshToken: v.optional(v.string()),
         calledBy: v.optional(v.string()),
       },
       handler: async (ctx, args): Promise<SignInActionResult> => {
         if (args.calledBy !== undefined) {
-          logWithLevel("INFO", `\`auth:signIn\` called by ${args.calledBy}`);
+          log("INFO", `\`auth:signIn\` called by ${args.calledBy}`);
         }
         const provider =
           args.provider !== undefined
             ? getProviderOrThrow(args.provider)
             : null;
-        const result = await signInImpl(enrichCtx(ctx), provider, args, {
-          generateTokens: true,
-          allowExtraProviders: false,
-          resolveSsoProtocol: resolveGroupConnectionSsoProtocolOrThrow,
-        });
-        return Fx.run(
-          Fx.match(result, result.kind, {
-            redirect: (r) =>
-              Fx.succeed({
-                kind: "redirect" as const,
-                redirect: r.redirect,
-                verifier: r.verifier,
-              }),
-            signedIn: (r) =>
-              Fx.succeed({
-                kind: "signedIn" as const,
-                tokens: r.signedIn?.tokens ?? null,
-              }),
-            refreshTokens: (r) =>
-              Fx.succeed({
-                kind: "signedIn" as const,
-                tokens: r.signedIn?.tokens ?? null,
-              }),
-            started: () => Fx.succeed({ kind: "started" as const }),
-            passkeyOptions: (r) =>
-              Fx.succeed({
-                kind: "passkeyOptions" as const,
-                options: r.options,
-                verifier: r.verifier,
-              }),
-            totpRequired: (r) =>
-              Fx.succeed({
-                kind: "totpRequired" as const,
-                verifier: r.verifier,
-              }),
-            totpSetup: (r) =>
-              Fx.succeed({
-                kind: "totpSetup" as const,
-                totpSetup: {
-                  uri: r.uri,
-                  secret: r.secret,
-                  totpId: r.totpId,
-                },
-                verifier: r.verifier,
-              }),
-            deviceCode: (r) =>
-              Fx.succeed({
-                kind: "deviceCode" as const,
-                deviceCode: {
-                  deviceCode: r.deviceCode,
-                  userCode: r.userCode,
-                  verificationUri: r.verificationUri,
-                  verificationUriComplete: r.verificationUriComplete,
-                  expiresIn: r.expiresIn,
-                  interval: r.interval,
-                },
-              }),
-          }),
+        const result = await services.signIn.signIn(
+          enrichCtx(ctx) as unknown as Parameters<typeof services.signIn.signIn>[0],
+          provider,
+          args,
+          {
+            generateTokens: true,
+            allowExtraProviders: false,
+            resolveSsoProtocol: group.resolveGroupConnectionSsoProtocolOrThrow,
+          },
+        );
+        return Match.value(result).pipe(
+          Match.when({ kind: "redirect" }, (r) => ({
+            kind: "redirect" as const,
+            redirect: r.redirect,
+            verifier: r.verifier,
+          })),
+          Match.when({ kind: "signedIn" }, (r) => ({
+            kind: "signedIn" as const,
+            tokens: r.signedIn?.tokens ?? null,
+          })),
+          Match.when({ kind: "refreshTokens" }, (r) => ({
+            kind: "signedIn" as const,
+            tokens: r.signedIn?.tokens ?? null,
+          })),
+          Match.when({ kind: "started" }, () => ({ kind: "started" as const })),
+          Match.when({ kind: "passkeyOptions" }, (r) => ({
+            kind: "passkeyOptions" as const,
+            options: r.options,
+            verifier: r.verifier,
+          })),
+          Match.when({ kind: "totpRequired" }, (r) => ({
+            kind: "totpRequired" as const,
+            verifier: r.verifier,
+          })),
+          Match.when({ kind: "totpSetup" }, (r) => ({
+            kind: "totpSetup" as const,
+            totpSetup: {
+              uri: r.uri,
+              secret: r.secret,
+              totpId: r.totpId,
+            },
+            verifier: r.verifier,
+          })),
+          Match.when({ kind: "deviceCode" }, (r) => ({
+            kind: "deviceCode" as const,
+            deviceCode: {
+              deviceCode: r.deviceCode,
+              userCode: r.userCode,
+              verificationUri: r.verificationUri,
+              verificationUriComplete: r.verificationUriComplete,
+              expiresIn: r.expiresIn,
+              interval: r.interval,
+            },
+          })),
+          Match.exhaustive,
         );
       },
     }),
@@ -946,7 +615,7 @@ export function Auth(config_: ConvexAuthConfig) {
     store: internalMutationGeneric({
       args: storeArgs,
       handler: async (ctx: MutationCtx, args) => {
-        return storeImpl(ctx, args, getProviderOrThrow, config);
+        return storeImpl(ctx, args, services);
       },
     }),
   };

@@ -1,14 +1,15 @@
-import { Fx } from "@robelest/fx";
 import { Infer, v } from "convex/values";
+import { Cause, Effect, Exit, Match } from "effect";
 
-import * as Provider from "../crypto";
+import type { ServerServices } from "../services/resolve";
 import { MutationCtx } from "../types";
-import { LOG_LEVELS, logWithLevel } from "../utils";
+import { LOG_LEVELS } from "../log";
+import { log } from "../log";
 import { modifyAccountArgs, modifyAccountImpl } from "./account";
 import { createVerificationCodeArgs, createVerificationCodeImpl } from "./code";
 import { invalidateSessionsArgs, invalidateSessionsImpl } from "./invalidate";
 import { userOAuthArgs, userOAuthImpl } from "./oauth";
-import { refreshSessionArgs, refreshSessionImpl } from "./refresh";
+import { refreshSessionArgs } from "./refresh";
 import {
   createAccountFromCredentialsArgs,
   createAccountFromCredentialsImpl,
@@ -77,47 +78,56 @@ export const storeArgs = v.object({
 export const storeImpl = async (
   ctx: MutationCtx,
   fnArgs: Infer<typeof storeArgs>,
-  getProviderOrThrow: Provider.GetProviderOrThrowFunc,
-  config: Provider.Config,
+  services: ServerServices,
 ) => {
   const args = fnArgs.args;
-  logWithLevel(LOG_LEVELS.INFO, `\`auth:store\` type: ${args.type}`);
-  return Fx.run(
-    Fx.match(args, args.type, {
-      signIn: (a) => Fx.promise(() => signInImpl(ctx, a, config)),
-      signOut: () => signOutImpl(ctx, config),
-      refreshSession: (a) =>
-        Fx.promise(() =>
-          refreshSessionImpl(ctx, a, getProviderOrThrow, config),
-        ),
-      verifyCodeAndSignIn: (a) =>
-        Fx.promise(() =>
-          verifyCodeAndSignInImpl(ctx, a, getProviderOrThrow, config),
-        ),
-      verifier: () => verifierImpl(ctx, config),
-      verifierSignature: (a) =>
-        verifierSignatureImpl(ctx, a, config).pipe(
-          Fx.recover((e) => Fx.fatal(e)),
-        ),
-      userOAuth: (a) =>
-        userOAuthImpl(ctx, a, getProviderOrThrow, config).pipe(
-          Fx.recover((e) => Fx.fatal(e)),
-        ),
-      createVerificationCode: (a) =>
-        Fx.promise(() =>
-          createVerificationCodeImpl(ctx, a, getProviderOrThrow, config),
-        ),
-      createAccountFromCredentials: (a) =>
-        Fx.promise(() =>
-          createAccountFromCredentialsImpl(ctx, a, getProviderOrThrow, config),
-        ),
-      retrieveAccountWithCredentials: (a) =>
-        retrieveAccountWithCredentialsImpl(ctx, a, getProviderOrThrow, config),
-      modifyAccount: (a) =>
-        modifyAccountImpl(ctx, a, getProviderOrThrow, config).pipe(
-          Fx.recover((e) => Fx.fatal(e)),
-        ),
-      invalidateSessions: (a) => invalidateSessionsImpl(ctx, a, config),
-    }),
+  const config = services.config;
+  const getProviderOrThrow = services.providerRegistry.getProviderOrThrow;
+  log(LOG_LEVELS.INFO, `\`auth:store\` type: ${args.type}`);
+
+  const program = Match.value(args).pipe(
+    Match.when({ type: "signIn" }, (args) =>
+      Effect.promise(() => signInImpl(ctx, args, config)),
+    ),
+    Match.when({ type: "signOut" }, () => signOutImpl(ctx, config)),
+    Match.when({ type: "refreshSession" }, (args) =>
+      services.refresh.refresh(ctx, args, getProviderOrThrow),
+    ),
+    Match.when({ type: "verifyCodeAndSignIn" }, (args) =>
+      verifyCodeAndSignInImpl(ctx, args, getProviderOrThrow, config),
+    ),
+    Match.when({ type: "verifier" }, () => verifierImpl(ctx, config)),
+    Match.when({ type: "verifierSignature" }, (args) =>
+      verifierSignatureImpl(ctx, args, config),
+    ),
+    Match.when({ type: "userOAuth" }, (args) =>
+      userOAuthImpl(ctx, args, getProviderOrThrow, config),
+    ),
+    Match.when({ type: "createVerificationCode" }, (args) =>
+      Effect.promise(() =>
+        createVerificationCodeImpl(ctx, args, getProviderOrThrow, config),
+      ),
+    ),
+    Match.when({ type: "createAccountFromCredentials" }, (args) =>
+      createAccountFromCredentialsImpl(ctx, args, getProviderOrThrow, config),
+    ),
+    Match.when({ type: "retrieveAccountWithCredentials" }, (args) =>
+      retrieveAccountWithCredentialsImpl(ctx, args, getProviderOrThrow, config),
+    ),
+    Match.when({ type: "modifyAccount" }, (args) =>
+      modifyAccountImpl(ctx, args, getProviderOrThrow, config),
+    ),
+    Match.when({ type: "invalidateSessions" }, (args) =>
+      invalidateSessionsImpl(ctx, args, config),
+    ),
+    Match.exhaustive,
   );
+
+  const exit = await Effect.runPromiseExit(program);
+  return Exit.match(exit, {
+    onSuccess: (value) => value,
+    onFailure: (cause) => {
+      throw Cause.squash(cause);
+    },
+  });
 };

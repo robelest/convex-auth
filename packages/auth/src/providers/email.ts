@@ -5,13 +5,15 @@
  */
 
 import { defaultMagicLinkEmail } from "../server/templates";
+import type { GenericActionCtx, GenericDataModel } from "convex/server";
+
 import type { EmailConfig } from "../server/types";
 
 /** Configuration for the {@link email} provider. */
 export interface EmailProviderConfig {
   from: string;
   send: (
-    ctx: any,
+    ctx: GenericActionCtx<GenericDataModel>,
     opts: { from: string; to: string; subject: string; html: string },
   ) => Promise<void>;
   generateVerificationToken?: () => Promise<string>;
@@ -68,6 +70,6 @@ export function email(config: EmailProviderConfig): EmailConfig {
       });
     },
     generateVerificationToken,
-    options: { from } as any,
+    options: { from },
   };
 }

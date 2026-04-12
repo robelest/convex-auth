@@ -2,8 +2,8 @@
 export function createInviteManager(args: {
   param: (name: string) => string | null;
   storageGet: (name: string) => Promise<string | null>;
-  storageSet: (name: string, value: string) => Promise<void>;
-  storageRemove: (name: string) => Promise<void>;
+  storageSet: (name: string, value: string) => Promise<boolean>;
+  storageRemove: (name: string) => Promise<boolean>;
   cleanUrlParams: (params: string[]) => void;
   tokenKey: string;
   emailKey: string;

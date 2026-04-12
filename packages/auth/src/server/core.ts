@@ -1,9 +1,9 @@
-import { Cv } from "@robelest/fx/convex";
 import { Auth, GenericActionCtx, GenericDataModel } from "convex/server";
-import { GenericId } from "convex/values";
+import { ConvexError, GenericId } from "convex/values";
 
-import { materializeProvider } from "./config";
+import { configDefaults, materializeProvider } from "./config";
 import { getSessionUserId } from "./context";
+import type { AuthProfile, SignInParams } from "./payloads";
 import {
   buildScopeChecker,
   checkKeyRateLimit,
@@ -19,7 +19,8 @@ import type {
   UserOrderBy,
   UserWhere,
 } from "./types";
-import { generateRandomString, sha256, TOKEN_SUB_CLAIM_DIVIDER } from "./utils";
+import { generateRandomString, sha256 } from "./random";
+import { TOKEN_SUB_CLAIM_DIVIDER } from "./tokens";
 
 type ComponentCtx = Pick<
   GenericActionCtx<GenericDataModel>,
@@ -27,11 +28,15 @@ type ComponentCtx = Pick<
 >;
 type ComponentReadCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
 type ComponentAuthReadCtx = ComponentReadCtx & { auth: Auth };
+type UntypedRunQuery = <TArgs extends Record<string, unknown>, TResult>(
+  ref: unknown,
+  args: TArgs,
+) => Promise<TResult>;
 type AccountCredentials = { id: string; secret?: string };
 type CreateAccountArgs = {
   provider: string;
   account: AccountCredentials;
-  profile: Record<string, unknown>;
+  profile: AuthProfile;
   shouldLinkViaEmail?: boolean;
   shouldLinkViaPhone?: boolean;
 };
@@ -41,9 +46,36 @@ type UpdateAccountCredentialsArgs = {
   account: { id: string; secret: string };
 };
 
+type CredentialsAccountResult = {
+  account: { _id: string; userId: string; secret?: string | null };
+  user: Record<string, unknown>;
+};
+
+type UserDocLike = Record<string, unknown> | null;
+type GroupDocLike = Record<string, unknown> | null;
+type MemberDocLike =
+  | {
+      _id: string;
+      _creationTime: number;
+      groupId: string;
+      userId: string;
+      role?: string;
+      roleIds?: string[];
+      status?: string;
+      extend?: Record<string, unknown>;
+    }
+  | null;
+type KeyDocLike = {
+  revoked?: boolean;
+  userId: string;
+  name?: string;
+  scopes?: string[];
+  rateLimit?: KeyDoc["rateLimit"];
+  metadata?: KeyDoc["metadata"];
+};
+
 type CoreDeps = {
-  config: any;
-  getAuth: () => any;
+  config: ReturnType<typeof configDefaults>;
   callInvalidateSessions: <DataModel extends GenericDataModel>(
     ctx: GenericActionCtx<DataModel>,
     args: { userId: GenericId<"User">; except?: GenericId<"Session">[] },
@@ -51,18 +83,20 @@ type CoreDeps = {
   callCreateAccountFromCredentials: <DataModel extends GenericDataModel>(
     ctx: GenericActionCtx<DataModel>,
     args: CreateAccountArgs,
-  ) => Promise<any>;
+  ) => Promise<CredentialsAccountResult>;
   callRetrieveAccountWithCredentials: <DataModel extends GenericDataModel>(
     ctx: GenericActionCtx<DataModel>,
     args: RetrieveAccountArgs,
-  ) => Promise<any>;
+  ) => Promise<
+    CredentialsAccountResult | "InvalidAccountId" | "InvalidSecret" | "TooManyFailedAttempts"
+  >;
   callModifyAccount: <DataModel extends GenericDataModel>(
     ctx: GenericActionCtx<DataModel>,
     args: UpdateAccountCredentialsArgs,
   ) => Promise<void>;
   getEnrichCtx: () => <DataModel extends GenericDataModel>(
     ctx: GenericActionCtx<DataModel>,
-  ) => any;
+  ) => GenericActionCtx<DataModel>;
   inviteTokenAlphabet: string;
   inviteTokenLength: number;
 };
@@ -105,7 +139,7 @@ export function createCoreDomains(deps: CoreDeps) {
     const normalized = Array.from(new Set(roleIds ?? []));
     const invalid = normalized.filter((id) => getRoleDefinition(id) === null);
     if (invalid.length > 0) {
-      throw Cv.error({
+      throw new ConvexError({
         code: "INVALID_ROLE_IDS",
         message: "One or more role IDs are invalid.",
         invalidRoleIds: invalid,
@@ -165,18 +199,19 @@ export function createCoreDomains(deps: CoreDeps) {
   // Per-execution cache — attached to ctx so each function invocation has its own.
   // Eliminates redundant cross-component RPCs for the same entity within a handler.
   type CtxCache = {
-    users: Map<string, any>;
-    groups: Map<string, any>;
+    users: Map<string, UserDocLike>;
+    groups: Map<string, GroupDocLike>;
   };
   const AUTH_CACHE = Symbol("__convexAuthCache");
-  function cache(ctx: any): CtxCache {
-    if (!ctx[AUTH_CACHE]) {
-      ctx[AUTH_CACHE] = {
+  function cache(ctx: ComponentCtx | ComponentReadCtx): CtxCache {
+    const cachedCtx = ctx as typeof ctx & { [AUTH_CACHE]?: CtxCache };
+    if (!cachedCtx[AUTH_CACHE]) {
+      cachedCtx[AUTH_CACHE] = {
         users: new Map(),
         groups: new Map(),
       } satisfies CtxCache;
     }
-    return ctx[AUTH_CACHE];
+    return cachedCtx[AUTH_CACHE];
   }
 
   const user = {
@@ -405,7 +440,7 @@ export function createCoreDomains(deps: CoreDeps) {
         passkeys.length +
         totps.length;
       if (!cascade && totalLinked > 0) {
-        throw Cv.error({
+        throw new ConvexError({
           code: "INVALID_PARAMETERS",
           message: "The provided parameters are invalid.",
         });
@@ -686,17 +721,17 @@ export function createCoreDomains(deps: CoreDeps) {
         accountId,
       });
       if (doc === null) {
-        throw Cv.error({
+        throw new ConvexError({
           code: "ACCOUNT_NOT_FOUND",
           message: "Account not found.",
         });
       }
       const allAccounts = (await ctx.runQuery(
         config.component.public.accountListByUser,
-        { userId: (doc as any).userId },
-      )) as Array<{ _id: string }>;
+        { userId: doc.userId },
+      )) as Array<{ _id: string }>; 
       if (allAccounts.length <= 1) {
-        throw Cv.error({
+        throw new ConvexError({
           code: "INVALID_PARAMETERS",
           message: "The provided parameters are invalid.",
         });
@@ -861,16 +896,13 @@ export function createCoreDomains(deps: CoreDeps) {
       providerConfig: AuthProviderConfig,
       args: {
         accountId?: GenericId<"Account">;
-        params?: Record<string, unknown>;
+        params?: SignInParams;
       },
     ) => {
       const result = await signInImpl(
-        getEnrichCtx()(ctx),
+        getEnrichCtx()(ctx) as Parameters<typeof signInImpl>[0],
         materializeProvider(providerConfig),
-        args as {
-          accountId?: GenericId<"Account">;
-          params?: Record<string, any>;
-        },
+        args,
         { generateTokens: false, allowExtraProviders: true },
       );
       return result.kind === "signedIn"
@@ -1086,7 +1118,7 @@ export function createCoreDomains(deps: CoreDeps) {
     ) => {
       const maxDepth = Math.max(0, Math.floor(opts.maxDepth ?? 32));
       const visited = new Set<string>();
-      const ancestors: any[] = [];
+      const ancestors: Array<Exclude<GroupDocLike, null>> = [];
       let cycleDetected = false;
       let maxDepthReached = false;
       let currentGroupId: string | undefined = opts.groupId;
@@ -1336,20 +1368,23 @@ export function createCoreDomains(deps: CoreDeps) {
     ) => {
       const useAncestry = opts.ancestry === true;
 
-      let membership: any = null;
+      let membership: MemberDocLike = null;
 
       if (useAncestry) {
         // Hierarchy walk — single component RPC
         const maxDepth = Math.max(0, Math.floor(opts.maxDepth ?? 32));
-        const result = await ctx.runQuery(
-          config.component.public.memberResolve,
+        const memberResolveRef = (config.component.public as Record<string, unknown>)[
+          "memberResolve"
+        ];
+        const result = await (ctx.runQuery as UntypedRunQuery)(
+          memberResolveRef,
           {
             userId: opts.userId,
             groupId: opts.groupId,
             maxDepth,
             ancestry: true,
           },
-        );
+        ) as { membership: MemberDocLike };
         membership = result.membership;
       } else {
         // Fast path — direct lookup, 1 read
@@ -1399,7 +1434,7 @@ export function createCoreDomains(deps: CoreDeps) {
         maxDepth: opts.maxDepth,
       });
       if (result.membership === null) {
-        throw Cv.error({
+        throw new ConvexError({
           code: "NOT_A_MEMBER",
           message: "User is not a member of this group.",
           groupId: opts.groupId,
@@ -1409,7 +1444,7 @@ export function createCoreDomains(deps: CoreDeps) {
         roleFilter !== null &&
         !result.roleIds.some((roleId: string) => roleFilter.has(roleId))
       ) {
-        throw Cv.error({
+        throw new ConvexError({
           code: "NOT_A_MEMBER",
           message: "User is not a member of this group.",
           groupId: opts.groupId,
@@ -1419,7 +1454,7 @@ export function createCoreDomains(deps: CoreDeps) {
         (grant) => !result.grants.includes(grant),
       );
       if (missingGrants.length > 0) {
-        throw Cv.error({
+        throw new ConvexError({
           code: "MISSING_GRANTS",
           message: "User is missing required grants.",
           groupId: opts.groupId,
@@ -1742,20 +1777,20 @@ export function createCoreDomains(deps: CoreDeps) {
         { hashedKey },
       )) as KeyDoc | null;
       if (!doc) {
-        throw Cv.error({
+        throw new ConvexError({
           code: "INVALID_API_KEY",
           message: "Invalid API key.",
         });
       }
       const k = doc;
       if (k.revoked) {
-        throw Cv.error({
+        throw new ConvexError({
           code: "API_KEY_REVOKED",
           message: "This API key has been revoked.",
         });
       }
       if (k.expiresAt && k.expiresAt < Date.now()) {
-        throw Cv.error({
+        throw new ConvexError({
           code: "API_KEY_EXPIRED",
           message: "This API key has expired.",
         });
@@ -1767,7 +1802,7 @@ export function createCoreDomains(deps: CoreDeps) {
           k.rateLimitState ?? undefined,
         );
         if (limited) {
-          throw Cv.error({
+          throw new ConvexError({
             code: "API_KEY_RATE_LIMITED",
             message: "API key rate limit exceeded. Please try again later.",
           });
@@ -1964,13 +1999,14 @@ export function createCoreDomains(deps: CoreDeps) {
         keyId,
       });
       if (!existing) {
-        throw Cv.error({
+        throw new ConvexError({
           code: "INVALID_PARAMETERS",
           message: "The provided parameters are invalid.",
         });
       }
-      if ((existing as any).revoked === true) {
-        throw Cv.error({
+      const typedExisting = existing as KeyDocLike;
+      if (typedExisting.revoked === true) {
+        throw new ConvexError({
           code: "API_KEY_REVOKED",
           message: "This API key has been revoked.",
         });
@@ -1980,12 +2016,12 @@ export function createCoreDomains(deps: CoreDeps) {
         data: { revoked: true },
       });
       return await key.create(ctx, {
-        userId: (existing as any).userId,
-        name: opts?.name ?? (existing as any).name,
-        scopes: (existing as any).scopes ?? [],
-        rateLimit: (existing as any).rateLimit,
+        userId: typedExisting.userId,
+        name: opts?.name ?? typedExisting.name ?? keyId,
+        scopes: (typedExisting.scopes ?? []) as unknown as KeyScope[],
+        rateLimit: typedExisting.rateLimit,
         expiresAt: opts?.expiresAt,
-        metadata: (existing as any).metadata,
+        metadata: typedExisting.metadata,
       });
     },
   };

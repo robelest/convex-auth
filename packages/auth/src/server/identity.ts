@@ -1,4 +1,4 @@
-import { Cv } from "@robelest/fx/convex";
+import { ConvexError } from "convex/values";
 
 /** @internal */
 export function userIdFromIdentitySubject(subject: string): string {
@@ -9,7 +9,7 @@ export function userIdFromIdentitySubject(subject: string): string {
     rest.length === 0 ||
     rest.some((segment) => segment.length === 0)
   ) {
-    throw Cv.error({
+    throw new ConvexError({
       code: "INTERNAL_ERROR",
       message: "Authenticated identity subject is malformed.",
     });

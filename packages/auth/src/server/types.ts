@@ -78,7 +78,7 @@ export type AuthAuthorizationConfig = {
  */
 export type AuthRoleId<
   TAuthorization extends AuthAuthorizationConfig | undefined,
-> = TAuthorization extends { roles: infer TRoles extends Record<string, any> }
+> = TAuthorization extends { roles: infer TRoles extends Record<string, unknown> }
   ? keyof TRoles & string
   : string;
 
@@ -95,7 +95,7 @@ export type AuthRoleId<
 export type AuthGrant<
   TAuthorization extends AuthAuthorizationConfig | undefined,
 > = TAuthorization extends {
-  roles: infer TRoles extends Record<string, { grants: readonly any[] }>;
+  roles: infer TRoles extends Record<string, { grants: readonly unknown[] }>;
 }
   ? TRoles[keyof TRoles]["grants"][number] & string
   : string;
@@ -111,6 +111,32 @@ export type ConvexAuthConfig = {
    * `@robelest/convex-auth/providers/<provider-name>`
    */
   providers: AuthProviderConfig[];
+  sso?: {
+    hooks?: {
+      profileResolved?: (args: {
+        protocol: "oidc" | "saml" | "scim";
+        connectionId?: string;
+        profile: Record<string, unknown>;
+      }) => Awaitable<Record<string, unknown> | void>;
+      beforeProvision?: (args: {
+        protocol: "oidc" | "saml" | "scim";
+        connectionId?: string;
+        profile: Record<string, unknown>;
+      }) => Awaitable<Record<string, unknown> | void>;
+      afterProvision?: (args: {
+        protocol: "oidc" | "saml" | "scim";
+        connectionId?: string;
+        profile: Record<string, unknown>;
+        userId: string;
+      }) => Awaitable<void>;
+      allowLink?: (args: {
+        protocol: "oidc" | "saml" | "scim";
+        connectionId?: string;
+        profile: Record<string, unknown>;
+        userId: string;
+      }) => Awaitable<boolean | void>;
+    };
+  };
   /**
    * Auth component reference from `components.auth`.
    *
@@ -345,17 +371,17 @@ export type ConvexAuthConfig = {
 export type AuthProviderConfig =
   | OAuthMaterializedConfig
   | ConvexCredentialsConfig
-  | ((...args: any) => ConvexCredentialsConfig)
+  | (() => ConvexCredentialsConfig)
   | EmailConfig
-  | ((...args: any) => EmailConfig)
+  | (() => EmailConfig)
   | PhoneConfig
-  | ((...args: any) => PhoneConfig)
+  | (() => PhoneConfig)
   | PasskeyProviderConfig
-  | ((...args: any) => PasskeyProviderConfig)
+  | (() => PasskeyProviderConfig)
   | TotpProviderConfig
-  | ((...args: any) => TotpProviderConfig)
+  | (() => TotpProviderConfig)
   | DeviceProviderConfig
-  | ((...args: any) => DeviceProviderConfig)
+  | (() => DeviceProviderConfig)
   | SSOProviderConfig;
 
 /**
@@ -365,6 +391,11 @@ export type AuthProviderConfig =
 export interface SSOProviderConfig {
   id: string;
   type: "sso";
+  /**
+   * Optional shared callback URI for all OIDC group connections.
+   * When omitted, each connection gets its own callback path.
+   */
+  redirectURI?: string;
 }
 
 /**
@@ -403,6 +434,11 @@ export type GroupConnectionJitProvisioningMode =
  */
 export type GroupConnectionDeprovisionMode = "soft" | "hard";
 
+export type GroupConnectionProfileUpdateMode = "never" | "missing" | "always";
+export type GroupConnectionProvisioningAuthority = "app" | "sso" | "scim";
+export type GroupConnectionGroupSyncMode = "ignore" | "sync";
+export type GroupConnectionRoleSyncMode = "ignore" | "map";
+
 /**
  * Effective group policy document stored for an SSO/SCIM tenant.
  *
@@ -420,6 +456,12 @@ export interface GroupConnectionPolicy {
     };
   };
   provisioning: {
+    user: {
+      createOnSignIn: boolean;
+      updateProfileOnLogin: GroupConnectionProfileUpdateMode;
+      updateProfileFromScim: GroupConnectionProfileUpdateMode;
+      authority: GroupConnectionProvisioningAuthority;
+    };
     scimReuse: {
       user: GroupConnectionScimReuseUserPolicy;
     };
@@ -429,6 +471,16 @@ export interface GroupConnectionPolicy {
     };
     deprovision: {
       mode: GroupConnectionDeprovisionMode;
+    };
+    groups: {
+      mode: GroupConnectionGroupSyncMode;
+      source: "protocol";
+      mapping?: Record<string, string[]>;
+    };
+    roles: {
+      mode: GroupConnectionRoleSyncMode;
+      source: "protocol";
+      mapping?: Record<string, string[]>;
     };
   };
   extend?: Record<string, unknown>;
@@ -448,6 +500,12 @@ export interface GroupConnectionPolicyPatch {
     };
   };
   provisioning?: {
+    user?: {
+      createOnSignIn?: boolean;
+      updateProfileOnLogin?: GroupConnectionProfileUpdateMode;
+      updateProfileFromScim?: GroupConnectionProfileUpdateMode;
+      authority?: GroupConnectionProvisioningAuthority;
+    };
     scimReuse?: {
       user?: GroupConnectionScimReuseUserPolicy;
     };
@@ -457,6 +515,16 @@ export interface GroupConnectionPolicyPatch {
     };
     deprovision?: {
       mode?: GroupConnectionDeprovisionMode;
+    };
+    groups?: {
+      mode?: GroupConnectionGroupSyncMode;
+      source?: "protocol";
+      mapping?: Record<string, string[]>;
+    };
+    roles?: {
+      mode?: GroupConnectionRoleSyncMode;
+      source?: "protocol";
+      mapping?: Record<string, string[]>;
     };
   };
   extend?: Record<string, unknown>;
@@ -619,7 +687,9 @@ export type PhoneUserConfig<
 /**
  * Credentials provider config used by Convex Auth.
  */
-export type ConvexCredentialsConfig = CredentialsConfig<any> & {
+export type ConvexCredentialsConfig<
+  DataModel extends GenericDataModel = GenericDataModel,
+> = CredentialsConfig<DataModel> & {
   type: "credentials";
   id: string;
 };
@@ -730,7 +800,6 @@ export interface OAuthTokens {
   raw?: unknown;
 }
 
-/** @internal */
 export interface OAuthRuntimeClient {
   readonly pkce: "required" | "optional" | "never";
   createAuthorizationURL(args: {
@@ -738,6 +807,7 @@ export interface OAuthRuntimeClient {
     codeVerifier?: string;
     scopes: string[];
     nonce?: string;
+    loginHint?: string;
   }): URL;
   validateAuthorizationCode(args: {
     code: string;
@@ -866,21 +936,21 @@ export type AuthServerHelpers = {
   /** Account management: create, retrieve, and update provider-linked accounts. */
   account: {
     create: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       args: AuthCreateAccountArgs,
     ) => Promise<{
       account: GenericDoc<GenericDataModel, "Account">;
       user: GenericDoc<GenericDataModel, "User">;
     }>;
     get: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       args: AuthRetrieveAccountArgs,
     ) => Promise<{
       account: GenericDoc<GenericDataModel, "Account">;
       user: GenericDoc<GenericDataModel, "User">;
     }>;
     update: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       args: AuthUpdateAccountArgs,
     ) => Promise<{ accountId: GenericId<"Account"> }>;
   };
@@ -889,7 +959,7 @@ export type AuthServerHelpers = {
       auth: GenericActionCtx<GenericDataModel>["auth"];
     }) => Promise<GenericId<"Session"> | null>;
     invalidate: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       args: AuthInvalidateSessionsArgs,
     ) => Promise<{
       userId: GenericId<"User">;
@@ -898,17 +968,17 @@ export type AuthServerHelpers = {
   };
   member: {
     inspect: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       args: AuthMemberInspectArgs,
     ) => Promise<AuthMemberInspectResult>;
     require: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       args: AuthMemberRequireArgs,
     ) => Promise<AuthMemberInspectResult>;
   };
   provider: {
     signIn: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       provider: AuthProviderConfig,
       args: AuthProviderSignInArgs,
     ) => Promise<AuthProviderSignInResult>;
@@ -938,7 +1008,13 @@ export type ConvexAuthMaterializedConfig = {
   providers: AuthProviderMaterializedConfig[];
 } & Pick<
   ConvexAuthConfig,
-  "component" | "session" | "jwt" | "signIn" | "callbacks" | "authorization"
+  | "component"
+  | "session"
+  | "jwt"
+  | "signIn"
+  | "callbacks"
+  | "authorization"
+  | "sso"
 >;
 
 /**
@@ -958,7 +1034,34 @@ export interface SAMLAttributeMapping {
   firstName?: string;
   /** SAML attribute for the user's last / family name. */
   lastName?: string;
+  /** SAML attribute for the user's avatar or profile image URL. */
+  image?: string;
+  /** SAML attribute containing external group names. */
+  groups?: string;
+  /** SAML attribute containing external role names. */
+  roles?: string;
 }
+
+export interface SSOProfileMapping {
+  subject?: string;
+  email?: string;
+  emailVerified?: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  image?: string;
+  phone?: string;
+  active?: string;
+  externalId?: string;
+  groups?: string;
+  roles?: string;
+}
+
+export interface OIDCClaimMapping
+  extends Pick<
+    SSOProfileMapping,
+    "subject" | "email" | "emailVerified" | "name" | "image" | "groups" | "roles"
+  > {}
 
 /**
  * Materialized OAuth provider config.
@@ -1301,8 +1404,11 @@ export interface HttpKeyContext {
  * CORS configuration for Bearer-authenticated HTTP endpoints.
  */
 export interface CorsConfig {
-  /** Allowed origin(s). Defaults to `"*"`. */
-  origin?: string;
+  /**
+   * Allowed origins. Defaults to the site URLs from environment
+   * (`SITE_URL` and `SECONDARY_URL`). Pass `["*"]` to allow any origin.
+   */
+  origins?: string[];
   /** Allowed HTTP methods. Defaults to `"GET,POST,PUT,PATCH,DELETE,OPTIONS"`. */
   methods?: string;
   /** Allowed request headers. Defaults to `"Content-Type,Authorization"`. */
@@ -1311,9 +1417,6 @@ export interface CorsConfig {
 
 /**
  * Component function references required by core auth runtime.
- *
- * @internal Consumers should not depend on this shape — it may change
- * between minor versions. Pass `components.auth` directly to `createAuth`.
  */
 export type AuthComponentApi = {
   public: {

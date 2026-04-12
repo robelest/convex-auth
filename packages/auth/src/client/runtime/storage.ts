@@ -1,6 +1,5 @@
-import { Fx } from "@robelest/fx";
-
 import type { Storage } from "../core/types";
+import { LOG_LEVELS, logMessage } from "../../shared/log";
 
 /** @internal */
 export function createStorageHelpers(args: {
@@ -13,66 +12,47 @@ export function createStorageHelpers(args: {
     if (!storage) {
       return null;
     }
-    return Fx.run(
-      Fx.from({
-        ok: async () => (await storage.getItem(key(name))) ?? null,
-        err: (e) => e,
-      }).pipe(
-        Fx.inspect((error) =>
-          Fx.sync(() =>
-            console.error(
-              `[convex-auth] Failed to read ${name} from storage:`,
-              error,
-            ),
-          ),
-        ),
-        Fx.recover(() => Fx.succeed(null)),
-      ),
-    );
+    try {
+      return (await storage.getItem(key(name))) ?? null;
+    } catch (error) {
+      logMessage("convex-auth/client", LOG_LEVELS.ERROR, [
+        `[convex-auth] Failed to read ${name} from storage:`,
+        error,
+      ]);
+      return null;
+    }
   };
 
-  const set = async (name: string, value: string): Promise<void> => {
+  const set = async (name: string, value: string): Promise<boolean> => {
     if (!storage) {
-      return;
+      return true;
     }
-    await Fx.run(
-      Fx.from({
-        ok: () => storage.setItem(key(name), value),
-        err: (e) => e,
-      }).pipe(
-        Fx.inspect((error) =>
-          Fx.sync(() =>
-            console.error(
-              `[convex-auth] Failed to write ${name} to storage:`,
-              error,
-            ),
-          ),
-        ),
-        Fx.recover(() => Fx.succeed(undefined)),
-      ),
-    );
+    try {
+      await storage.setItem(key(name), value);
+      return true;
+    } catch (error) {
+      logMessage("convex-auth/client", LOG_LEVELS.ERROR, [
+        `[convex-auth] Failed to write ${name} to storage:`,
+        error,
+      ]);
+      return false;
+    }
   };
 
-  const remove = async (name: string): Promise<void> => {
+  const remove = async (name: string): Promise<boolean> => {
     if (!storage) {
-      return;
+      return true;
     }
-    await Fx.run(
-      Fx.from({
-        ok: () => storage.removeItem(key(name)),
-        err: (e) => e,
-      }).pipe(
-        Fx.inspect((error) =>
-          Fx.sync(() =>
-            console.error(
-              `[convex-auth] Failed to remove ${name} from storage:`,
-              error,
-            ),
-          ),
-        ),
-        Fx.recover(() => Fx.succeed(undefined)),
-      ),
-    );
+    try {
+      await storage.removeItem(key(name));
+      return true;
+    } catch (error) {
+      logMessage("convex-auth/client", LOG_LEVELS.ERROR, [
+        `[convex-auth] Failed to remove ${name} from storage:`,
+        error,
+      ]);
+      return false;
+    }
   };
 
   return { get, set, remove };

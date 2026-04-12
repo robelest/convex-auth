@@ -1,5 +1,5 @@
 #!/usr/bin/env node
 
-import { program } from "./index";
+import { runCliMain } from "./index";
 
-program.parse(process.argv);
+runCliMain();

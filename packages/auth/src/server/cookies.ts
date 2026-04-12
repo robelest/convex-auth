@@ -1,4 +1,5 @@
-import { isLocalHost } from "./utils";
+import { readConfigSync, envOptionalString } from "./env";
+import { isLocalHost } from "./url";
 
 /** @internal */
 export const SHARED_COOKIE_OPTIONS = {
@@ -41,8 +42,9 @@ export function useRedirectToParam(
 }
 
 function redirectToParamCookieName(providerId: string) {
+  const convexSiteUrl = readConfigSync(envOptionalString("CONVEX_SITE_URL"));
   return (
-    (!isLocalHost(process.env.CONVEX_SITE_URL) ? "__Host-" : "") +
+    (!isLocalHost(convexSiteUrl ?? undefined) ? "__Host-" : "") +
     providerId +
     "RedirectTo"
   );

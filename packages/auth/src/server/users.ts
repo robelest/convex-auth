@@ -1,25 +1,30 @@
-import { Fx } from "@robelest/fx";
-import { Cv } from "@robelest/fx/convex";
-import { GenericId } from "convex/values";
+import { ConvexError, GenericId } from "convex/values";
+import { Effect, Match } from "effect";
 
 import { authDb } from "./db";
-import { Doc, MutationCtx } from "./types";
-import { AuthProviderMaterializedConfig, ConvexAuthConfig } from "./types";
-import { LOG_LEVELS, logWithLevel } from "./utils";
+import type { AuthAccountExtend, AuthProfile } from "./payloads";
+import type {
+  AuthProviderMaterializedConfig,
+  ConvexAuthConfig,
+  Doc,
+  GroupConnectionPolicy,
+  MutationCtx,
+} from "./types";
+import { LOG_LEVELS } from "./log";
+import { log } from "./log";
 
 type CreateOrUpdateUserArgs = {
   type: "oauth" | "credentials" | "email" | "phone" | "verification";
   provider: AuthProviderMaterializedConfig;
-  profile: Record<string, unknown> & {
-    email?: string;
-    phone?: string;
-    emailVerified?: boolean;
-    phoneVerified?: boolean;
-  };
-  accountExtend?: Record<string, unknown>;
+  profile: AuthProfile;
+  accountExtend?: AuthAccountExtend;
   shouldLinkViaEmail?: boolean;
   shouldLinkViaPhone?: boolean;
 };
+
+type UserProvisioningPolicy = GroupConnectionPolicy["provisioning"]["user"];
+
+type UserProvisioningSource = "login" | "scim";
 
 function mergeExtend(
   existing: unknown,
@@ -37,6 +42,53 @@ function mergeExtend(
   return existingRecord ? { ...existingRecord, ...incoming } : incoming;
 }
 
+function effectiveUserUpdateMode(
+  source: UserProvisioningSource,
+  policy: UserProvisioningPolicy | undefined,
+) {
+  const authority = policy?.authority ?? "app";
+  let mode =
+    source === "login"
+      ? (policy?.updateProfileOnLogin ?? "missing")
+      : (policy?.updateProfileFromScim ?? "always");
+
+  if (authority === "app") {
+    return mode === "never" ? "never" : "missing";
+  }
+  if (authority === "sso" && source === "scim") {
+    return mode === "never" ? "never" : "missing";
+  }
+  if (authority === "scim" && source === "login") {
+    return mode === "never" ? "never" : "missing";
+  }
+  return mode;
+}
+
+function isUserFieldMissing(value: unknown) {
+  return value === undefined || value === null || value === "";
+}
+
+function buildUserPatchData(args: {
+  currentUser: Record<string, unknown>;
+  nextUser: Record<string, unknown>;
+  mode: "never" | "missing" | "always";
+}) {
+  if (args.mode === "never") {
+    return {};
+  }
+  if (args.mode === "always") {
+    return args.nextUser;
+  }
+  return Object.fromEntries(
+    Object.entries(args.nextUser).filter(([key, value]) => {
+      if (value === undefined) {
+        return false;
+      }
+      return isUserFieldMissing(args.currentUser[key]);
+    }),
+  );
+}
+
 /** @internal */
 export async function upsertUserAndAccount(
   ctx: MutationCtx,
@@ -49,7 +101,11 @@ export async function upsertUserAndAccount(
       },
   args: CreateOrUpdateUserArgs,
   config: ConvexAuthConfig,
-  opts?: { existingUserId?: GenericId<"User"> },
+  opts?: {
+    existingUserId?: GenericId<"User">;
+    provisioningUser?: UserProvisioningPolicy;
+    source?: UserProvisioningSource;
+  },
 ): Promise<{
   userId: GenericId<"User">;
   accountId: GenericId<"Account">;
@@ -61,6 +117,8 @@ export async function upsertUserAndAccount(
     args,
     config,
     opts?.existingUserId ?? null,
+    opts?.provisioningUser,
+    opts?.source ?? "login",
   );
   const accountId = await createOrUpdateAccount(
     ctx,
@@ -79,8 +137,10 @@ async function defaultCreateOrUpdateUser(
   args: CreateOrUpdateUserArgs,
   config: ConvexAuthConfig,
   existingUserIdOverride: GenericId<"User"> | null,
+  provisioningUser: UserProvisioningPolicy | undefined,
+  source: UserProvisioningSource,
 ) {
-  logWithLevel(LOG_LEVELS.DEBUG, "defaultCreateOrUpdateUser args:", {
+  log(LOG_LEVELS.DEBUG, "defaultCreateOrUpdateUser args:", {
     existingAccountId: existingAccount?._id,
     existingSessionId,
     args,
@@ -88,7 +148,7 @@ async function defaultCreateOrUpdateUser(
   const existingUserId = existingAccount?.userId ?? null;
   const db = authDb(ctx, config);
   if (config.callbacks?.createOrUpdateUser !== undefined) {
-    logWithLevel(LOG_LEVELS.DEBUG, "Using custom createOrUpdateUser callback");
+    log(LOG_LEVELS.DEBUG, "Using custom createOrUpdateUser callback");
     return await config.callbacks.createOrUpdateUser(ctx, {
       existingUserId,
       ...args,
@@ -117,14 +177,14 @@ async function defaultCreateOrUpdateUser(
   if (existingUserId === null) {
     const existingUserWithVerifiedEmailId =
       typeof profile.email === "string" && shouldLinkViaEmail
-        ? ((await uniqueUserWithVerifiedEmail(ctx, profile.email, config))
-            ?._id ?? null)
+        ? ((await uniqueUserWithVerifiedEmail(ctx, profile.email, config))?._id ??
+          null)
         : null;
 
     const existingUserWithVerifiedPhoneId =
       typeof profile.phone === "string" && shouldLinkViaPhone
-        ? ((await uniqueUserWithVerifiedPhone(ctx, profile.phone, config))
-            ?._id ?? null)
+        ? ((await uniqueUserWithVerifiedPhone(ctx, profile.phone, config))?._id ??
+          null)
         : null;
     const linkDispatch = {
       tag:
@@ -140,43 +200,75 @@ async function defaultCreateOrUpdateUser(
       existingUserWithVerifiedPhoneId,
     } as const;
 
-    const linkHandlers = {
-      both: () =>
-        Fx.sync(() => {
-          logWithLevel(
-            LOG_LEVELS.DEBUG,
-            `Found existing email and phone verified users, so not linking: email: ${linkDispatch.existingUserWithVerifiedEmailId}, phone: ${linkDispatch.existingUserWithVerifiedPhoneId}`,
-          );
-          return null;
-        }),
-      email: () =>
-        Fx.sync(() => {
-          logWithLevel(
-            LOG_LEVELS.DEBUG,
-            `Found existing email verified user, linking: ${linkDispatch.existingUserWithVerifiedEmailId}`,
-          );
-          return linkDispatch.existingUserWithVerifiedEmailId;
-        }),
-      phone: () =>
-        Fx.sync(() => {
-          logWithLevel(
-            LOG_LEVELS.DEBUG,
-            `Found existing phone verified user, linking: ${linkDispatch.existingUserWithVerifiedPhoneId}`,
-          );
-          return linkDispatch.existingUserWithVerifiedPhoneId;
-        }),
-      none: () =>
-        Fx.sync(() => {
-          logWithLevel(
-            LOG_LEVELS.DEBUG,
-            "No existing verified users found, creating new user",
-          );
-          return null;
-        }),
-    } as const;
+    userId = await Effect.runPromise(
+      Match.value(linkDispatch).pipe(
+        Match.when({ tag: "both" }, ({
+          existingUserWithVerifiedEmailId,
+          existingUserWithVerifiedPhoneId,
+        }) =>
+          Effect.sync(() => {
+            log(
+              LOG_LEVELS.DEBUG,
+              `Found existing email and phone verified users, so not linking: email: ${existingUserWithVerifiedEmailId}, phone: ${existingUserWithVerifiedPhoneId}`,
+            );
+            return null;
+          }),
+        ),
+        Match.when({ tag: "email" }, ({ existingUserWithVerifiedEmailId }) =>
+          Effect.sync(() => {
+            log(
+              LOG_LEVELS.DEBUG,
+              `Found existing email verified user, linking: ${existingUserWithVerifiedEmailId}`,
+            );
+            return existingUserWithVerifiedEmailId;
+          }),
+        ),
+        Match.when({ tag: "phone" }, ({ existingUserWithVerifiedPhoneId }) =>
+          Effect.sync(() => {
+            log(
+              LOG_LEVELS.DEBUG,
+              `Found existing phone verified user, linking: ${existingUserWithVerifiedPhoneId}`,
+            );
+            return existingUserWithVerifiedPhoneId;
+          }),
+        ),
+        Match.when({ tag: "none" }, () =>
+          Effect.sync(() => {
+            log(
+              LOG_LEVELS.DEBUG,
+              "No existing verified users found, creating new user",
+            );
+            return null;
+          }),
+        ),
+        Match.exhaustive,
+      ),
+    );
 
-    userId = await Fx.run(linkHandlers[linkDispatch.tag]());
+    if (
+      userId !== null &&
+      config.sso?.hooks?.allowLink !== undefined &&
+      (args.provider.type === "oauth" || args.provider.type === "sso")
+    ) {
+      const allowed = await config.sso.hooks.allowLink({
+        protocol:
+          args.provider.type === "oauth" &&
+          typeof args.accountExtend?.identity?.protocol === "string"
+            ? (args.accountExtend.identity.protocol as "oidc" | "saml")
+            : "oidc",
+        connectionId:
+          typeof args.accountExtend?.identity?.connectionId === "string"
+            ? args.accountExtend.identity.connectionId
+            : undefined,
+        profile: args.profile,
+        userId,
+      });
+      if (allowed === false) {
+        userId = null;
+      }
+    }
   }
+
   const userData = {
     ...(emailVerified ? { emailVerificationTime: Date.now() } : null),
     ...(phoneVerified ? { phoneVerificationTime: Date.now() } : null),
@@ -184,26 +276,46 @@ async function defaultCreateOrUpdateUser(
   };
   const existingOrLinkedUserId = userId;
   if (userId !== null) {
-    await Fx.run(
-      Fx.from({
-        ok: () => db.users.patch(userId!, userData),
-        err: (error) =>
-          Cv.error({
+    const currentUserId = userId;
+    const currentUser = (await db.users.getById(currentUserId)) as
+      | Record<string, unknown>
+      | null;
+    const mode = effectiveUserUpdateMode(source, provisioningUser);
+    const patchData = buildUserPatchData({
+      currentUser: currentUser ?? {},
+      nextUser: userData,
+      mode,
+    });
+    if (Object.keys(patchData).length === 0) {
+      return userId;
+    }
+    await Effect.runPromise(
+      Effect.tryPromise({
+        try: () => db.users.patch(currentUserId, patchData),
+        catch: (error) =>
+          new ConvexError({
             code: "USER_UPDATE_FAILED",
             message:
-              `Could not update user document with ID \`${userId}\`, ` +
+              `Could not update user document with ID \`${currentUserId}\`, ` +
               `either the user has been deleted but their account has not, ` +
               `or the profile data doesn't match the \`users\` table schema: ` +
-              `${(error as Error).message}`,
+              `${error instanceof Error ? error.message : String(error)}`,
           }),
-      }).pipe(Fx.recover((e) => Fx.fatal(e))),
+      }),
     );
   } else {
+    if (source === "login" && provisioningUser?.createOnSignIn === false) {
+      throw new ConvexError({
+        code: "NOT_AUTHORIZED",
+        message: "This SSO connection does not allow creating users on sign-in.",
+      });
+    }
     userId = (await db.users.insert(userData)) as GenericId<"User">;
   }
+
   const afterUserCreatedOrUpdated = config.callbacks?.afterUserCreatedOrUpdated;
   if (afterUserCreatedOrUpdated !== undefined) {
-    logWithLevel(
+    log(
       LOG_LEVELS.DEBUG,
       "Calling custom afterUserCreatedOrUpdated callback",
     );
@@ -213,7 +325,7 @@ async function defaultCreateOrUpdateUser(
       ...args,
     });
   } else {
-    logWithLevel(
+    log(
       LOG_LEVELS.DEBUG,
       "No custom afterUserCreatedOrUpdated callback, skipping",
     );
@@ -266,12 +378,7 @@ async function createOrUpdateAccount(
           secret: account.secret,
           extend: mergedExtend,
         })) as GenericId<"Account">);
-  // This is never used with the default `createOrUpdateUser` implementation,
-  // but it is used for manual linking via custom `createOrUpdateUser`:
-  if (
-    "existingAccount" in account &&
-    account.existingAccount.userId !== userId
-  ) {
+  if ("existingAccount" in account && account.existingAccount.userId !== userId) {
     await db.accounts.patch(accountId, { userId });
   }
   const accountPatchData: Record<string, unknown> = {};

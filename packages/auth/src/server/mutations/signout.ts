@@ -1,6 +1,6 @@
-import { Fx } from "@robelest/fx";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { GenericId } from "convex/values";
+import { Effect, Option, pipe } from "effect";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
@@ -16,19 +16,33 @@ type ReturnType = {
 export function signOutImpl(
   ctx: MutationCtx,
   config: Provider.Config,
-): Fx<ReturnType, never> {
-  return Fx.gen(function* () {
-    const db = authDb(ctx, config);
-    const sessionId = yield* Fx.promise(() => getAuthSessionId(ctx));
-    if (sessionId === null) {
-      return null;
-    }
-    const session = yield* Fx.promise(() => db.sessions.getById(sessionId));
-    if (session === null) {
-      return null;
-    }
-    yield* Fx.promise(() => deleteSession(ctx, session, config));
-    return { userId: session.userId, sessionId: session._id };
+): Effect.Effect<ReturnType> {
+  const db = authDb(ctx, config);
+  return Effect.gen(function* () {
+    const sessionId = yield* Effect.promise(() => getAuthSessionId(ctx));
+    return yield* pipe(
+      Option.fromNullishOr(sessionId),
+      Option.match({
+        onNone: () => Effect.succeed(null),
+        onSome: (sessionId) =>
+          Effect.flatMap(Effect.promise(() => db.sessions.getById(sessionId)), (session) =>
+            pipe(
+              Option.fromNullishOr(session),
+              Option.match({
+                onNone: () => Effect.succeed(null),
+                onSome: (session) =>
+                  Effect.as(
+                    Effect.promise(() => deleteSession(ctx, session, config)),
+                    {
+                      userId: session.userId,
+                      sessionId: session._id,
+                    } satisfies Exclude<ReturnType, null>,
+                  ),
+              }),
+            ),
+          ),
+      }),
+    );
   });
 }
 
@@ -39,5 +53,5 @@ export const callSignOut = async <DataModel extends GenericDataModel>(
     args: {
       type: "signOut",
     },
-  });
+  }) as Promise<void>;
 };

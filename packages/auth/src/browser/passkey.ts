@@ -1,38 +1,49 @@
-import { Fx } from "@robelest/fx";
-
 import type {
-  AuthSession,
-  ConvexTransport,
+  ClientAdapterDeps,
   PasskeyClient,
   SignInActionResult,
   SignInResult,
-} from "../core/types";
-import { base64urlDecode, base64urlEncode } from "../runtime/browser";
+} from "../client/core/types";
+import {
+  base64urlDecode,
+  base64urlEncode,
+} from "./runtime";
 
-type PasskeyDeps = {
-  proxy: string | undefined;
-  convex: ConvexTransport;
-  requireApiRefs: () => { signIn: any };
-  proxyFetch: (body: Record<string, unknown>) => Promise<any>;
-  setTokenAndMaybeWait: (
-    args:
-      | {
-          shouldStore: true;
-          tokens: AuthSession | null;
-          waitForHandshake: boolean;
-          context: { provider?: string; flow: string };
-        }
-      | {
-          shouldStore: false;
-          tokens: { token: string } | null;
-          waitForHandshake: boolean;
-          context: { provider?: string; flow: string };
-        },
-  ) => Promise<boolean>;
+type ConditionalMediationCredential = typeof PublicKeyCredential & {
+  isConditionalMediationAvailable?: () => Promise<boolean>;
+};
+
+type PasskeyCredentialDescriptor = {
+  type?: string;
+  id: string;
+  transports?: AuthenticatorTransport[];
+};
+
+type PasskeyRegistrationOptions = {
+  rp: PublicKeyCredentialRpEntity;
+  user: {
+    id: string;
+    name: string;
+    displayName: string;
+  };
+  challenge: string;
+  pubKeyCredParams: PublicKeyCredentialParameters[];
+  timeout?: number;
+  attestation?: AttestationConveyancePreference;
+  authenticatorSelection?: AuthenticatorSelectionCriteria;
+  excludeCredentials?: PasskeyCredentialDescriptor[];
+};
+
+type PasskeyAuthenticationOptions = {
+  challenge: string;
+  timeout?: number;
+  rpId?: string;
+  userVerification?: UserVerificationRequirement;
+  allowCredentials?: PasskeyCredentialDescriptor[];
 };
 
 /** @internal */
-export function createPasskeyClient(deps: PasskeyDeps): PasskeyClient {
+export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
   const { proxy, convex, requireApiRefs, proxyFetch, setTokenAndMaybeWait } =
     deps;
 
@@ -40,40 +51,30 @@ export function createPasskeyClient(deps: PasskeyDeps): PasskeyClient {
     result: SignInActionResult,
     flow: string,
   ): Promise<SignInResult> => {
-    return Fx.run(
-      Fx.match(result, result.kind, {
-        signedIn: (signedInResult) =>
-          Fx.promise(async () => {
-            const signingIn = await setTokenAndMaybeWait(
-              proxy
-                ? {
-                    shouldStore: false as const,
-                    tokens:
-                      signedInResult.tokens === null
-                        ? null
-                        : { token: signedInResult.tokens.token },
-                    waitForHandshake: true,
-                    context: { provider: "passkey", flow },
-                  }
-                : {
-                    shouldStore: true as const,
-                    tokens: signedInResult.tokens,
-                    waitForHandshake: true,
-                    context: { provider: "passkey", flow },
-                  },
-            );
-            return signingIn
-              ? ({ kind: "signedIn" as const } as SignInResult)
-              : ({ kind: "started" as const } as SignInResult);
-          }),
-        redirect: () => Fx.succeed({ kind: "started" as const }),
-        started: () => Fx.succeed({ kind: "started" as const }),
-        passkeyOptions: () => Fx.succeed({ kind: "started" as const }),
-        totpRequired: () => Fx.succeed({ kind: "started" as const }),
-        totpSetup: () => Fx.succeed({ kind: "started" as const }),
-        deviceCode: () => Fx.succeed({ kind: "started" as const }),
-      }),
+    if (result.kind !== "signedIn") {
+      return { kind: "started" as const };
+    }
+
+    const signingIn = await setTokenAndMaybeWait(
+      proxy
+        ? {
+            shouldStore: false as const,
+            tokens:
+              result.tokens === null ? null : { token: result.tokens.token },
+            waitForHandshake: true,
+            context: { provider: "passkey", flow },
+          }
+        : {
+            shouldStore: true as const,
+            tokens: result.tokens,
+            waitForHandshake: true,
+            context: { provider: "passkey", flow },
+          },
     );
+
+    return signingIn
+      ? ({ kind: "signedIn" as const } as SignInResult)
+      : ({ kind: "started" as const } as SignInResult);
   };
 
   return {
@@ -87,15 +88,12 @@ export function createPasskeyClient(deps: PasskeyDeps): PasskeyClient {
     isAutofillSupported: async (): Promise<boolean> => {
       if (typeof window === "undefined") return false;
       if (typeof window.PublicKeyCredential === "undefined") return false;
-      if (
-        typeof (window.PublicKeyCredential as any)
-          .isConditionalMediationAvailable !== "function"
-      ) {
+      const credential =
+        window.PublicKeyCredential as ConditionalMediationCredential;
+      if (typeof credential.isConditionalMediationAvailable !== "function") {
         return false;
       }
-      return (
-        window.PublicKeyCredential as any
-      ).isConditionalMediationAvailable();
+      return credential.isConditionalMediationAvailable();
     },
 
     register: async (opts?: {
@@ -128,7 +126,7 @@ export function createPasskeyClient(deps: PasskeyDeps): PasskeyClient {
         throw new Error("Server did not return passkey registration options");
       }
 
-      const options = phase1Result.options;
+      const options = phase1Result.options as PasskeyRegistrationOptions;
       const createOptions: CredentialCreationOptions = {
         publicKey: {
           rp: options.rp,
@@ -143,8 +141,8 @@ export function createPasskeyClient(deps: PasskeyDeps): PasskeyClient {
           attestation: options.attestation,
           authenticatorSelection: options.authenticatorSelection,
           excludeCredentials: (options.excludeCredentials ?? []).map(
-            (cred: any) => ({
-              type: cred.type ?? "public-key",
+            (cred: PasskeyCredentialDescriptor) => ({
+              type: (cred.type ?? "public-key") as "public-key",
               id: base64urlDecode(cred.id).buffer as ArrayBuffer,
               transports: cred.transports,
             }),
@@ -221,7 +219,7 @@ export function createPasskeyClient(deps: PasskeyDeps): PasskeyClient {
         throw new Error("Server did not return passkey authentication options");
       }
 
-      const options = phase1Result.options;
+      const options = phase1Result.options as PasskeyAuthenticationOptions;
       const getOptions: CredentialRequestOptions = {
         publicKey: {
           challenge: base64urlDecode(options.challenge).buffer as ArrayBuffer,
@@ -229,14 +227,16 @@ export function createPasskeyClient(deps: PasskeyDeps): PasskeyClient {
           rpId: options.rpId,
           userVerification: options.userVerification,
           allowCredentials: (options.allowCredentials ?? []).map(
-            (cred: any) => ({
-              type: cred.type ?? "public-key",
+            (cred: PasskeyCredentialDescriptor) => ({
+              type: (cred.type ?? "public-key") as "public-key",
               id: base64urlDecode(cred.id).buffer as ArrayBuffer,
               transports: cred.transports,
             }),
           ),
         },
-        ...(opts?.autofill ? { mediation: "conditional" as any } : {}),
+        ...(opts?.autofill
+          ? ({ mediation: "conditional" as CredentialMediationRequirement } as const)
+          : {}),
       };
 
       const credential = (await navigator.credentials.get(

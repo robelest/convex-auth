@@ -1,6 +1,6 @@
-import { Fx } from "@robelest/fx";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { GenericId } from "convex/values";
+import { Effect } from "effect";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
@@ -13,14 +13,12 @@ type ReturnType = GenericId<"AuthVerifier">;
 export function verifierImpl(
   ctx: MutationCtx,
   config: Provider.Config,
-): Fx<ReturnType, never> {
-  return Fx.gen(function* () {
-    return (yield* Fx.promise(async () =>
-      authDb(ctx, config).verifiers.create(
-        (await getAuthSessionId(ctx)) ?? undefined,
-      ),
-    )) as ReturnType;
-  });
+): Effect.Effect<ReturnType> {
+  return Effect.flatMap(Effect.promise(() => getAuthSessionId(ctx)), (sessionId) =>
+    Effect.promise(
+      () => authDb(ctx, config).verifiers.create(sessionId ?? undefined),
+    ).pipe(Effect.map((verifierId) => verifierId as ReturnType)),
+  );
 }
 
 export const callVerifier = async <DataModel extends GenericDataModel>(
@@ -30,5 +28,5 @@ export const callVerifier = async <DataModel extends GenericDataModel>(
     args: {
       type: "verifier",
     },
-  });
+  }) as Promise<ReturnType>;
 };

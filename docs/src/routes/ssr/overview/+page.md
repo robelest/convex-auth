@@ -80,11 +80,11 @@ const auth = server({
 
 ## Client-side auth
 
-The `client()` function from `@robelest/convex-auth/client` creates the
+The `client()` function from `@robelest/convex-auth/browser` creates the
 client-side auth state manager. It works with any Convex client transport.
 
 ```ts
-import { client as createAuthClient } from "@robelest/convex-auth/client";
+import { client as createAuthClient } from "@robelest/convex-auth/browser";
 
 const auth = createAuthClient({
   convex: convexClient,

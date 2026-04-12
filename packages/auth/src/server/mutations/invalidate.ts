@@ -1,12 +1,13 @@
-import { Fx } from "@robelest/fx";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { GenericId, Infer, v } from "convex/values";
+import { Effect } from "effect";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
 import { deleteSession } from "../sessions";
 import { Doc, MutationCtx } from "../types";
-import { LOG_LEVELS, logWithLevel } from "../utils";
+import { LOG_LEVELS } from "../log";
+import { log } from "../log";
 import { AUTH_STORE_REF } from "./store/refs";
 
 export const invalidateSessionsArgs = v.object({
@@ -25,26 +26,27 @@ export const callInvalidateSessions = async <
       type: "invalidateSessions",
       ...args,
     },
-  });
+  }) as Promise<void>;
 };
 
 export function invalidateSessionsImpl(
   ctx: MutationCtx,
   args: Infer<typeof invalidateSessionsArgs>,
   config: Provider.Config,
-): Fx<void, never> {
-  return Fx.gen(function* () {
-    logWithLevel(LOG_LEVELS.DEBUG, "invalidateSessionsImpl args:", args);
-    const { userId, except } = args;
-    const exceptSet = new Set(except ?? []);
-    const typedUserId = userId as GenericId<"User">;
-    const sessions = (yield* Fx.promise(() =>
+): Effect.Effect<void> {
+  log(LOG_LEVELS.DEBUG, "invalidateSessionsImpl args:", args);
+  const { userId, except } = args;
+  const exceptSet = new Set(except ?? []);
+  const typedUserId = userId as GenericId<"User">;
+  return Effect.gen(function* () {
+    const sessions = (yield* Effect.promise(() =>
       authDb(ctx, config).sessions.listByUser(typedUserId),
     )) as Doc<"Session">[];
-    yield* Fx.each(sessions, (session: Doc<"Session">) =>
+    yield* Effect.forEach(sessions, (session) =>
       exceptSet.has(session._id)
-        ? Fx.unit
-        : Fx.promise(() => deleteSession(ctx, session, config)),
+        ? Effect.void
+        : Effect.promise(() => deleteSession(ctx, session, config)),
+      { discard: true },
     );
   });
 }

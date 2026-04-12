@@ -2,8 +2,10 @@ import { GenericId } from "convex/values";
 import { SignJWT, importPKCS8 } from "jose";
 
 import { ConvexAuthConfig } from "./types";
-import { generateRandomString, TOKEN_SUB_CLAIM_DIVIDER } from "./utils";
-import { requireEnv } from "./utils";
+import { generateRandomString } from "./random";
+import { requireEnv } from "./env";
+
+export const TOKEN_SUB_CLAIM_DIVIDER = "|";
 
 const DEFAULT_JWT_DURATION_MS = 1000 * 60 * 60; // 1 hour
 const TOKEN_JTI_LENGTH = 24;

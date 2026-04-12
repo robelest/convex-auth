@@ -22,19 +22,18 @@
 
 import { scryptAsync } from "@noble/hashes/scrypt.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { Fx } from "@robelest/fx";
 import {
   DocumentByName,
   GenericDataModel,
   WithoutSystemFields,
 } from "convex/server";
 import { Value } from "convex/values";
+import { Effect, Match } from "effect";
 
 import type {
   EmailConfig,
   GenericActionCtxWithAuthConfig,
   GenericDoc,
-  AuthProviderConfig,
   ConvexCredentialsConfig,
 } from "../server/types";
 import { credentials, type CredentialsConfig } from "./credentials";
@@ -87,12 +86,12 @@ export interface PasswordConfig<DataModel extends GenericDataModel> {
    * An email provider used to require verification
    * before password reset.
    */
-  reset?: EmailConfig | ((...args: any) => EmailConfig);
+  reset?: EmailConfig | PasswordEmailProviderFactory;
   /**
    * An email provider used to require verification
    * before sign up / sign in.
    */
-  verify?: EmailConfig | ((...args: any) => EmailConfig);
+  verify?: EmailConfig | PasswordEmailProviderFactory;
 }
 
 type PasswordFlowDispatch =
@@ -112,6 +111,7 @@ const PASSWORD_FLOW_TAG = {
 } as const;
 
 type PasswordFlowInput = keyof typeof PASSWORD_FLOW_TAG;
+type PasswordEmailProviderFactory = () => EmailConfig;
 
 function decodePasswordFlow(flow: unknown): PasswordFlowDispatch {
   if (typeof flow !== "string") {
@@ -148,6 +148,10 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
   config: PasswordConfig<DataModel> = {} as PasswordConfig<DataModel>,
 ): ConvexCredentialsConfig {
   const provider = config.id ?? "password";
+  const resetProvider =
+    typeof config.reset === "function" ? config.reset() : config.reset;
+  const verifyProvider =
+    typeof config.verify === "function" ? config.verify() : config.verify;
 
   return credentials<DataModel>({
     id: provider,
@@ -162,21 +166,20 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
         validateDefaultPasswordRequirements(password);
       };
 
-      await Fx.run(
-        Fx.match(flowDispatch, flowDispatch.tag, {
-          signUp: () =>
-            Fx.sync(() => {
+      await Effect.runPromise(
+        Match.value(flowDispatch).pipe(
+          Match.when({ tag: "signUp" }, () =>
+            Effect.sync(() => {
               validatePasswordRequirements(params.password as string);
             }),
-          resetVerification: () =>
-            Fx.sync(() => {
+          ),
+          Match.when({ tag: "resetVerification" }, () =>
+            Effect.sync(() => {
               validatePasswordRequirements(params.newPassword as string);
             }),
-          signIn: () => Fx.succeed(undefined),
-          reset: () => Fx.succeed(undefined),
-          emailVerification: () => Fx.succeed(undefined),
-          invalid: () => Fx.succeed(undefined),
-        }),
+          ),
+          Match.orElse(() => Effect.void),
+        ),
       );
 
       const profile = config.profile?.(params, ctx) ?? defaultProfile(params);
@@ -195,10 +198,10 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
         account: GenericDoc<DataModel, "Account">,
         user: GenericDoc<DataModel, "User">,
       ) => {
-        if (config.verify && !account.emailVerified) {
+        if (verifyProvider && !account.emailVerified) {
           return await ctx.auth.provider.signIn(
             ctx,
-            config.verify as AuthProviderConfig,
+            verifyProvider,
             {
               accountId: account._id,
               params,
@@ -208,15 +211,22 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
         return { userId: user._id };
       };
 
-      return await Fx.run(
-        Fx.match(flowDispatch, flowDispatch.tag, {
-          signUp: () =>
-            Fx.promise(async () => {
+      const tryPasswordFlow = <A>(try_: () => Promise<A>) =>
+        Effect.tryPromise({
+          try: try_,
+          catch: (error) =>
+            error instanceof Error ? error : new Error(String(error)),
+        });
+
+      return await Effect.runPromise(
+        Match.value(flowDispatch).pipe(
+          Match.when({ tag: "signUp" }, () =>
+            tryPasswordFlow(async () => {
               const secret = requirePasswordParam(params.password, "signUp");
               const created = await ctx.auth.account.create(ctx, {
                 provider,
                 account: { id: email, secret },
-                profile: profile as any,
+                profile,
                 shouldLinkViaEmail: config.verify !== undefined,
                 shouldLinkViaPhone: false,
               });
@@ -225,8 +235,9 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
                 created.user,
               );
             }),
-          signIn: () =>
-            Fx.promise(async () => {
+          ),
+          Match.when({ tag: "signIn" }, () =>
+            tryPasswordFlow(async () => {
               const secret = requirePasswordParam(params.password, "signIn");
               const retrieved = await ctx.auth.account.get(ctx, {
                 provider,
@@ -240,9 +251,10 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
                 retrieved.user,
               );
             }),
-          reset: () =>
-            Fx.promise(async () => {
-              if (!config.reset) {
+          ),
+          Match.when({ tag: "reset" }, () =>
+            tryPasswordFlow(async () => {
+              if (!resetProvider) {
                 throw new Error(
                   `Password reset is not enabled for ${provider}`,
                 );
@@ -253,16 +265,17 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
               });
               return await ctx.auth.provider.signIn(
                 ctx,
-                config.reset as AuthProviderConfig,
+                resetProvider,
                 {
                   accountId: account._id,
                   params,
                 },
               );
             }),
-          resetVerification: () =>
-            Fx.promise(async () => {
-              if (!config.reset) {
+          ),
+          Match.when({ tag: "resetVerification" }, () =>
+            tryPasswordFlow(async () => {
+              if (!resetProvider) {
                 throw new Error(
                   `Password reset is not enabled for ${provider}`,
                 );
@@ -274,7 +287,7 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
               }
               const result = await ctx.auth.provider.signIn(
                 ctx,
-                config.reset as AuthProviderConfig,
+                resetProvider,
                 { params },
               );
               if (result === null) {
@@ -292,9 +305,10 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
               });
               return { userId, sessionId };
             }),
-          emailVerification: () =>
-            Fx.promise(async () => {
-              if (!config.verify) {
+          ),
+          Match.when({ tag: "emailVerification" }, () =>
+            tryPasswordFlow(async () => {
+              if (!verifyProvider) {
                 throw new Error(
                   `Email verification is not enabled for ${provider}`,
                 );
@@ -305,22 +319,25 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
               });
               return await ctx.auth.provider.signIn(
                 ctx,
-                config.verify as AuthProviderConfig,
+                verifyProvider,
                 {
                   accountId: account._id,
                   params,
                 },
               );
             }),
-          invalid: () =>
-            Fx.fatal(
+          ),
+          Match.when({ tag: "invalid" }, () =>
+            Effect.die(
               new Error(
                 "Missing `flow` param, it must be one of " +
                   '"signUp", "signIn", "reset", "reset-verification" or ' +
                   '"email-verification"!',
               ),
             ),
-        }),
+          ),
+          Match.exhaustive,
+        ),
       );
     },
     crypto: config.crypto ?? {
@@ -332,8 +349,8 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
       },
     },
     extraProviders: [
-      config.reset as AuthProviderConfig | undefined,
-      config.verify as AuthProviderConfig | undefined,
+      resetProvider,
+      verifyProvider,
     ],
     ...config,
   });

@@ -69,6 +69,28 @@ export const vGroupConnectionDeprovisionMode = v.union(
   v.literal("hard"),
 );
 
+export const vGroupConnectionProfileUpdateMode = v.union(
+  v.literal("never"),
+  v.literal("missing"),
+  v.literal("always"),
+);
+
+export const vGroupConnectionProvisioningAuthority = v.union(
+  v.literal("app"),
+  v.literal("sso"),
+  v.literal("scim"),
+);
+
+export const vGroupConnectionGroupSyncMode = v.union(
+  v.literal("ignore"),
+  v.literal("sync"),
+);
+
+export const vGroupConnectionRoleSyncMode = v.union(
+  v.literal("ignore"),
+  v.literal("map"),
+);
+
 export const vGroupConnectionStatus = v.union(
   v.literal("draft"),
   v.literal("active"),
@@ -89,6 +111,12 @@ export const vGroupConnectionPolicy = v.object({
     }),
   }),
   provisioning: v.object({
+    user: v.object({
+      createOnSignIn: v.boolean(),
+      updateProfileOnLogin: vGroupConnectionProfileUpdateMode,
+      updateProfileFromScim: vGroupConnectionProfileUpdateMode,
+      authority: vGroupConnectionProvisioningAuthority,
+    }),
     scimReuse: v.object({
       user: vGroupConnectionScimReuseUserPolicy,
     }),
@@ -99,6 +127,16 @@ export const vGroupConnectionPolicy = v.object({
     }),
     deprovision: v.object({
       mode: vGroupConnectionDeprovisionMode,
+    }),
+    groups: v.object({
+      mode: vGroupConnectionGroupSyncMode,
+      source: v.literal("protocol"),
+      mapping: v.optional(v.record(v.string(), v.array(v.string()))),
+    }),
+    roles: v.object({
+      mode: vGroupConnectionRoleSyncMode,
+      source: v.literal("protocol"),
+      mapping: v.optional(v.record(v.string(), v.array(v.string()))),
     }),
   }),
   extend: v.optional(v.any()),

@@ -68,6 +68,7 @@
     "@typescript/native-preview": "latest",
     "@xmldom/xmldom": "latest",
     "convex-test": "latest",
+    "effect": "beta",
     "jose": "latest",
     "node-html-parser": "latest",
     "svelte": "",

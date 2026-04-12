@@ -41,6 +41,11 @@ test("sign in with email", async () => {
     `Bearer ${process.env.RESEND_API_KEY}`,
   );
   expect(capturedInit.body).toBeTypeOf("string");
+  expect(code).toBeTypeOf("string");
+
+  if (typeof code !== "string") {
+    throw new Error("Expected email sign-in code to be captured");
+  }
 
   const tokens = expectSignedInResult(
     await t.action(api.auth.signIn, {

@@ -1,10 +1,28 @@
-import type { AuthSession, ConvexTransport, TotpClient } from "../core/types";
+import type {
+  AuthSession,
+  ConvexTransport,
+  SignInActionResult,
+  SignInApiRef,
+  TotpClient,
+} from "../core/types";
+
+function isSignedInResult(
+  result: SignInActionResult,
+): result is Extract<SignInActionResult, { kind: "signedIn" }> {
+  return result.kind === "signedIn";
+}
+
+function isTotpSetupResult(
+  result: SignInActionResult,
+): result is Extract<SignInActionResult, { kind: "totpSetup" }> {
+  return result.kind === "totpSetup";
+}
 
 type TotpDeps = {
   proxy: string | undefined;
   convex: ConvexTransport;
-  requireApiRefs: () => { signIn: any };
-  proxyFetch: (body: Record<string, unknown>) => Promise<any>;
+  requireApiRefs: () => SignInApiRef;
+  proxyFetch: (body: Record<string, unknown>) => Promise<unknown>;
   setTokenAndMaybeWait: (
     args:
       | {
@@ -37,15 +55,18 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
       verifier: string;
       totpId: string;
     }> => {
-      const params: Record<string, any> = { flow: "setup" };
+      const params: Record<string, unknown> = { flow: "setup" };
       if (opts?.name) params.name = opts.name;
       if (opts?.accountName) params.accountName = opts.accountName;
 
       if (proxy) {
-        const result = await proxyFetch({
+        const result = (await proxyFetch({
           action: "auth:signIn",
           args: { provider: "totp", params },
-        });
+        })) as SignInActionResult;
+        if (!isTotpSetupResult(result)) {
+          throw new Error("Server did not return TOTP setup data.");
+        }
         return {
           uri: result.totpSetup.uri,
           secret: result.totpSetup.secret,
@@ -54,10 +75,13 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
         };
       }
 
-      const result = await convex.action(requireApiRefs().signIn, {
+      const result = (await convex.action(requireApiRefs().signIn, {
         provider: "totp",
         params,
-      });
+      })) as unknown as SignInActionResult;
+      if (!isTotpSetupResult(result)) {
+        throw new Error("Server did not return TOTP setup data.");
+      }
       return {
         uri: result.totpSetup.uri,
         secret: result.totpSetup.secret,
@@ -71,18 +95,18 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
       verifier: string;
       totpId: string;
     }): Promise<void> => {
-      const params: Record<string, any> = {
+      const params: Record<string, unknown> = {
         flow: "confirm",
         code: opts.code,
         totpId: opts.totpId,
       };
 
       if (proxy) {
-        const result = await proxyFetch({
+        const result = (await proxyFetch({
           action: "auth:signIn",
           args: { provider: "totp", params, verifier: opts.verifier },
-        });
-        if (result.tokens) {
+        })) as SignInActionResult;
+        if (isSignedInResult(result) && result.tokens) {
           await setTokenAndMaybeWait({
             shouldStore: false,
             tokens:
@@ -94,12 +118,12 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
         return;
       }
 
-      const result = await convex.action(requireApiRefs().signIn, {
+      const result = (await convex.action(requireApiRefs().signIn, {
         provider: "totp",
         params,
         verifier: opts.verifier,
-      });
-      if (result.tokens) {
+      })) as unknown as SignInActionResult;
+      if (isSignedInResult(result) && result.tokens) {
         await setTokenAndMaybeWait({
           shouldStore: true,
           tokens: (result.tokens as AuthSession | null) ?? null,
@@ -110,17 +134,17 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
     },
 
     verify: async (opts: { code: string; verifier: string }): Promise<void> => {
-      const params: Record<string, any> = {
+      const params: Record<string, unknown> = {
         flow: "verify",
         code: opts.code,
       };
 
       if (proxy) {
-        const result = await proxyFetch({
+        const result = (await proxyFetch({
           action: "auth:signIn",
           args: { provider: "totp", params, verifier: opts.verifier },
-        });
-        if (result.tokens) {
+        })) as SignInActionResult;
+        if (isSignedInResult(result) && result.tokens) {
           await setTokenAndMaybeWait({
             shouldStore: false,
             tokens:
@@ -132,12 +156,12 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
         return;
       }
 
-      const result = await convex.action(requireApiRefs().signIn, {
+      const result = (await convex.action(requireApiRefs().signIn, {
         provider: "totp",
         params,
         verifier: opts.verifier,
-      });
-      if (result.tokens) {
+      })) as unknown as SignInActionResult;
+      if (isSignedInResult(result) && result.tokens) {
         await setTokenAndMaybeWait({
           shouldStore: true,
           tokens: (result.tokens as AuthSession | null) ?? null,

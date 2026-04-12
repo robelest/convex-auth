@@ -1,3 +1,4 @@
+import { client as browserClient } from "@robelest/convex-auth/browser";
 import { defineRoles } from "@robelest/convex-auth/authorization";
 import { client } from "@robelest/convex-auth/client";
 import {
@@ -13,6 +14,7 @@ import { google } from "@robelest/convex-auth/providers/google";
 import type { AuthContext } from "@robelest/convex-auth/server";
 
 type _ClientFactory = typeof client;
+type _BrowserClientFactory = typeof browserClient;
 type _DefineRolesFactory = typeof defineRoles;
 type _AuthCtxFactory = AuthApi["ctx"];
 type _AuthContextResolver = AuthApi["context"];
@@ -70,6 +72,7 @@ const _typecheck: {
   authContextResolver: _AuthContextResolver;
   authHttpContextResolver: _AuthHttpContextResolver;
   client: _ClientFactory;
+  browserClient: _BrowserClientFactory;
   defineRoles: _DefineRolesFactory;
   createAuth: _CreateAuthFactory;
   config: _ConvexConfig;
@@ -83,6 +86,7 @@ const _typecheck: {
   authContextResolver: null as unknown as _AuthContextResolver,
   authHttpContextResolver: null as unknown as _AuthHttpContextResolver,
   client,
+  browserClient,
   defineRoles,
   createAuth,
   config: auth,

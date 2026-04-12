@@ -7,7 +7,8 @@ import {
   maybeGenerateTokensForSession,
 } from "../sessions";
 import { MutationCtx, SessionInfo } from "../types";
-import { LOG_LEVELS, logWithLevel } from "../utils";
+import { LOG_LEVELS } from "../log";
+import { log } from "../log";
 import { AUTH_STORE_REF } from "./store/refs";
 
 export const signInArgs = v.object({
@@ -23,7 +24,7 @@ export async function signInImpl(
   args: Infer<typeof signInArgs>,
   config: Provider.Config,
 ): Promise<ReturnType> {
-  logWithLevel(LOG_LEVELS.DEBUG, "signInImpl args:", args);
+  log(LOG_LEVELS.DEBUG, "signInImpl args:", args);
   const { userId, sessionId: existingSessionId, generateTokens } = args;
   const typedUserId = userId as GenericId<"User">;
   const typedExistingSessionId = existingSessionId as
@@ -50,5 +51,5 @@ export const callSignIn = async <DataModel extends GenericDataModel>(
       type: "signIn",
       ...args,
     },
-  });
+  }) as Promise<ReturnType>;
 };

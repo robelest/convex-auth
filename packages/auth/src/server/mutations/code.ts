@@ -1,6 +1,5 @@
-import { Cv } from "@robelest/fx/convex";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
-import { GenericId, Infer, v } from "convex/values";
+import { ConvexError, GenericId, Infer, v } from "convex/values";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
@@ -8,7 +7,8 @@ import { getAuthSessionId } from "../sessions";
 import { MutationCtx } from "../types";
 import { EmailConfig, PhoneConfig } from "../types";
 import { upsertUserAndAccount } from "../users";
-import { LOG_LEVELS, logWithLevel, sha256 } from "../utils";
+import { sha256 } from "../random";
+import { LOG_LEVELS, log } from "../log";
 import { AUTH_STORE_REF } from "./store/refs";
 
 export const createVerificationCodeArgs = v.object({
@@ -29,7 +29,7 @@ export async function createVerificationCodeImpl(
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
 ): Promise<ReturnType> {
-  logWithLevel(LOG_LEVELS.DEBUG, "createVerificationCodeImpl args:", args);
+  log(LOG_LEVELS.DEBUG, "createVerificationCodeImpl args:", args);
   const {
     email,
     phone,
@@ -47,7 +47,7 @@ export async function createVerificationCodeImpl(
     typedExistingAccountId !== undefined
       ? ((await db.accounts.getById(typedExistingAccountId)) ??
         (() => {
-          throw Cv.error({
+          throw new ConvexError({
             code: "ACCOUNT_NOT_FOUND",
             message: `Expected an account to exist for ID "${typedExistingAccountId}"`,
           });
@@ -91,7 +91,7 @@ export const callCreateVerificationCode = async <
       type: "createVerificationCode",
       ...args,
     },
-  });
+  }) as Promise<ReturnType>;
 };
 
 async function generateUniqueVerificationCode(

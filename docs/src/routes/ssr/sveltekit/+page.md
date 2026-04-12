@@ -85,7 +85,7 @@ In your root layout, create the auth client with `proxyPath` and `location`:
   import { page } from "$app/state";
   import { setupConvex, useConvexClient } from "convex-svelte";
   import { setContext } from "svelte";
-  import { client as createAuthClient } from "@robelest/convex-auth/client";
+  import { client as createAuthClient } from "@robelest/convex-auth/browser";
 
   let { data, children } = $props();
 

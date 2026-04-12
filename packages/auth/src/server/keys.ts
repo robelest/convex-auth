@@ -9,7 +9,7 @@
  */
 
 import type { KeyScope, ScopeChecker } from "./types";
-import { sha256, generateRandomString } from "./utils";
+import { sha256, generateRandomString } from "./random";
 
 // ============================================================================
 // Constants

@@ -63,10 +63,10 @@ export interface CredentialsConfig<
  */
 export function credentials<
   DataModel extends GenericDataModel = GenericDataModel,
->(config: CredentialsConfig<DataModel>): ConvexCredentialsConfig {
+>(config: CredentialsConfig<DataModel>): ConvexCredentialsConfig<DataModel> {
   return {
     ...config,
     id: config.id ?? "credentials",
     type: "credentials",
-  } as ConvexCredentialsConfig;
+  } as ConvexCredentialsConfig<DataModel>;
 }

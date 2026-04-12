@@ -4,5 +4,5 @@
     "outDir": "./dist",
     "rootDir": "./src"
   },
-  "include": ["src/client/**/*", "src/server/errors.ts"]
+  "include": ["src/client/**/*", "src/browser/**/*", "src/server/errors.ts"]
 }

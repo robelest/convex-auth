@@ -17,7 +17,8 @@
 
 import { Apple as ArcticApple } from "arctic";
 
-import { createOAuthProvider } from "../server/oauthProvider";
+import { envOptionalString, readConfigSync } from "../server/env";
+import { createArcticOAuthClient, createOAuthProvider } from "../server/oauth/factory";
 
 const DEFAULT_SCOPES = ["name", "email"];
 
@@ -54,14 +55,17 @@ export interface AppleConfig {
 export function apple(config: AppleConfig) {
   return createOAuthProvider({
     id: "apple",
-    provider: new ArcticApple(
-      config.clientId,
-      config.teamId,
-      config.keyId,
-      typeof config.privateKey === "string"
-        ? new TextEncoder().encode(config.privateKey)
-        : config.privateKey,
-      config.redirectUri ?? defaultRedirectUri("apple"),
+    provider: createArcticOAuthClient(
+      new ArcticApple(
+        config.clientId,
+        config.teamId,
+        config.keyId,
+        typeof config.privateKey === "string"
+          ? new TextEncoder().encode(config.privateKey)
+          : config.privateKey,
+        config.redirectUri ?? defaultRedirectUri("apple"),
+      ),
+      { pkce: "never" },
     ),
     scopes: config.scopes ?? DEFAULT_SCOPES,
     accountLinking: config.accountLinking,
@@ -70,7 +74,8 @@ export function apple(config: AppleConfig) {
 
 function defaultRedirectUri(providerId: string) {
   const rootUrl =
-    process.env.CUSTOM_AUTH_SITE_URL ?? process.env.CONVEX_SITE_URL;
+    readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ??
+    readConfigSync(envOptionalString("CONVEX_SITE_URL"));
   if (!rootUrl) {
     throw new Error(
       `Missing CONVEX_SITE_URL while configuring ${providerId} OAuth provider. ` +

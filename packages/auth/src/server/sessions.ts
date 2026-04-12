@@ -1,18 +1,15 @@
 import { Auth } from "convex/server";
 import { GenericId } from "convex/values";
 
+import { envOptionalNumber, readConfigSync } from "./env";
 import { authDb } from "./db";
 import { createRefreshToken } from "./refresh";
+import { REFRESH_TOKEN_DIVIDER } from "./refresh";
 import { generateToken } from "./tokens";
+import { TOKEN_SUB_CLAIM_DIVIDER } from "./tokens";
 import { Doc, MutationCtx, SessionInfo } from "./types";
 import { ConvexAuthConfig } from "./types";
-import {
-  LOG_LEVELS,
-  TOKEN_SUB_CLAIM_DIVIDER,
-  REFRESH_TOKEN_DIVIDER,
-  logWithLevel,
-  maybeRedact,
-} from "./utils";
+import { LOG_LEVELS, log, maybeRedact } from "./log";
 
 const DEFAULT_SESSION_TOTAL_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
@@ -79,7 +76,7 @@ export async function generateTokensForSession(
     token: await generateToken(ids, config),
     refreshToken: `${refreshTokenId}${REFRESH_TOKEN_DIVIDER}${args.sessionId}`,
   };
-  logWithLevel(
+  log(
     LOG_LEVELS.DEBUG,
     `Generated token ${maybeRedact(result.token)} and refresh token ${maybeRedact(refreshTokenId)} for session ${maybeRedact(args.sessionId)}`,
   );
@@ -95,9 +92,7 @@ async function createSession(
   const expirationTime =
     Date.now() +
     (config.session?.totalDurationMs ??
-      (process.env.AUTH_SESSION_TOTAL_DURATION_MS !== undefined
-        ? Number(process.env.AUTH_SESSION_TOTAL_DURATION_MS)
-        : undefined) ??
+      readConfigSync(envOptionalNumber("AUTH_SESSION_TOTAL_DURATION_MS")) ??
       DEFAULT_SESSION_TOTAL_DURATION_MS);
   return (await db.sessions.create(
     userId,

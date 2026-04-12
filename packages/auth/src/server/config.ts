@@ -11,10 +11,7 @@ import {
 
 /**
  * Resolve raw provider configs into materialized form and apply defaults.
- *
- * @internal
  */
-/** @internal */
 export function configDefaults(config_: ConvexAuthConfig) {
   const config = materializeAndDefaultProviders(config_);
   // Collect extra providers from credentials providers
@@ -32,22 +29,19 @@ export function configDefaults(config_: ConvexAuthConfig) {
 
 /**
  * Materialize a single provider config into its runtime form.
- *
- * @internal
  */
-/** @internal */
 export function materializeProvider(provider: AuthProviderConfig) {
-  const config = { providers: [provider], component: {} as any };
+  const config = {
+    providers: [provider],
+    component: {},
+  } as unknown as ConvexAuthConfig;
   materializeAndDefaultProviders(config);
   return config.providers[0] as AuthProviderMaterializedConfig;
 }
 
 /**
  * List available provider IDs for error messages.
- *
- * @internal
  */
-/** @internal */
 export function listAvailableProviders(
   config: ReturnType<typeof configDefaults>,
   allowExtraProviders: boolean,
@@ -65,7 +59,7 @@ export function listAvailableProviders(
 // ============================================================================
 
 function materializeProviders(providers: AuthProviderConfig[]) {
-  const config = { providers, component: {} as any };
+  const config = { providers, component: {} } as unknown as ConvexAuthConfig;
   materializeAndDefaultProviders(config);
   return config.providers as AuthProviderMaterializedConfig[];
 }
@@ -73,10 +67,13 @@ function materializeProviders(providers: AuthProviderConfig[]) {
 function materializeProviderConfig(
   raw: AuthProviderConfig,
 ): AuthProviderMaterializedConfig {
-  const resolved = typeof raw === "function" ? raw() : (raw as any);
-  const merged = resolved.options
-    ? { ...resolved, ...resolved.options }
-    : resolved;
+  const resolved = typeof raw === "function" ? raw() : raw;
+  const merged =
+    "options" in resolved &&
+    typeof resolved.options === "object" &&
+    resolved.options !== null
+      ? { ...resolved, ...resolved.options }
+      : resolved;
   return merged as AuthProviderMaterializedConfig;
 }
 

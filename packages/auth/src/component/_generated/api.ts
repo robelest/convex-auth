@@ -11,6 +11,7 @@
 import type * as functions from "../functions.js";
 import type * as index from "../index.js";
 import type * as model from "../model.js";
+import type * as modules from "../modules.js";
 import type * as public_ from "../public.js";
 import type * as public_factors_devices from "../public/factors/devices.js";
 import type * as public_factors_passkeys from "../public/factors/passkeys.js";
@@ -44,6 +45,7 @@ const fullApi: ApiFromModules<{
   functions: typeof functions;
   index: typeof index;
   model: typeof model;
+  modules: typeof modules;
   public: typeof public_;
   "public/factors/devices": typeof public_factors_devices;
   "public/factors/passkeys": typeof public_factors_passkeys;

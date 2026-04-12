@@ -1,13 +1,13 @@
-import { Fx } from "@robelest/fx";
-import { Cv } from "@robelest/fx/convex";
 import {
   GenericActionCtx,
   GenericDataModel,
   HttpRouter,
+  UserIdentity,
   httpActionGeneric,
 } from "convex/server";
 import { ConvexError } from "convex/values";
 import { parse as parseCookies } from "cookie";
+import { Cause, Effect, Exit } from "effect";
 
 import type {
   AuthContext,
@@ -20,19 +20,24 @@ import {
   getSessionUserId,
 } from "./context";
 import type { CorsConfig, HttpKeyContext } from "./types";
-import { logError } from "./utils";
+import { logError } from "./log";
+
+type HttpQueryCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
+type HttpIdentityCtx = {
+  auth: {
+    getUserIdentity: () => Promise<UserIdentity | null>;
+  };
+};
+type HttpContextCtx = HttpIdentityCtx & HttpQueryCtx;
 
 type HttpContextAuthLike = {
   user: {
-    get: (ctx: any, userId: string) => Promise<UserDoc>;
-    getActiveGroup: (
-      ctx: any,
-      args: { userId: string },
-    ) => Promise<string | null>;
+    get: (ctx: HttpQueryCtx, userId: string) => Promise<UserDoc>;
+    getActiveGroup: (ctx: HttpQueryCtx, args: { userId: string }) => Promise<string | null>;
   };
   member: {
     inspect: (
-      ctx: any,
+      ctx: HttpQueryCtx,
       args: { userId: string; groupId: string },
     ) => Promise<{
       membership: unknown;
@@ -41,7 +46,7 @@ type HttpContextAuthLike = {
     }>;
   };
   key: {
-    verify: (ctx: GenericActionCtx<any>, rawKey: string) => Promise<{
+    verify: (ctx: GenericActionCtx<GenericDataModel>, rawKey: string) => Promise<{
       userId: string;
       keyId: string;
       scopes: HttpKeyContext["key"]["scopes"];
@@ -119,6 +124,7 @@ export type OptionalHttpAuthContext =
  */
 export type HttpAuthContextConfig<
   TResolve extends Record<string, unknown> = Record<string, never>,
+  TCtx extends HttpContextCtx = HttpContextCtx,
 > = {
   /**
    * Allow unauthenticated callers and return a null-shaped auth object instead
@@ -131,7 +137,7 @@ export type HttpAuthContextConfig<
    * This callback runs only when authentication succeeds.
    */
   resolve?: (
-    ctx: GenericActionCtx<any>,
+    ctx: TCtx,
     user: UserDoc,
     auth: HttpAuthContext,
   ) => Promise<TResolve> | TResolve;
@@ -143,7 +149,7 @@ export type HttpAuthContextConfig<
    * {@link HttpAuthContext}.
    */
   authResolve?: (
-    ctx: GenericActionCtx<any>,
+    ctx: TCtx,
     fallback: () => Promise<HttpAuthContext | null>,
   ) =>
     | Promise<HttpAuthContext | null | undefined>
@@ -153,15 +159,54 @@ export type HttpAuthContextConfig<
 };
 
 function createNotSignedInError() {
-  return Cv.error({
+  return new ConvexError({
     code: "NOT_SIGNED_IN",
     message: "Authentication required.",
   });
 }
 
+/**
+ * Build CORS headers by matching the request's Origin against allowed origins.
+ * Defaults to `defaultOrigins` (site URLs) when no per-route config is given.
+ */
+function buildCorsHeaders(
+  request: Request,
+  corsConfig: CorsConfig | undefined,
+  defaultOrigins: string[] | (() => string[]),
+): Record<string, string> {
+  const origins =
+    corsConfig?.origins ??
+    (typeof defaultOrigins === "function" ? defaultOrigins() : defaultOrigins);
+  const requestOrigin = request.headers.get("Origin");
+  const matchedOrigin = origins.includes("*")
+    ? "*"
+    : requestOrigin && origins.includes(requestOrigin)
+      ? requestOrigin
+      : null;
+
+  return {
+    ...(matchedOrigin
+      ? { "Access-Control-Allow-Origin": matchedOrigin }
+      : {}),
+    "Access-Control-Allow-Methods":
+      corsConfig?.methods ?? "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    "Access-Control-Allow-Headers":
+      corsConfig?.headers ?? "Content-Type,Authorization",
+  };
+}
+
+function runBoundary<A, E>(effect: Effect.Effect<A, E, never>): Promise<A> {
+  return Effect.runPromiseExit(effect).then(
+    Exit.match({
+      onSuccess: (value) => value,
+      onFailure: (cause) => Promise.reject(Cause.squash(cause)),
+    }),
+  );
+}
+
 async function getHttpKeyContext(
   auth: HttpContextAuthLike,
-  ctx: GenericActionCtx<any>,
+  ctx: HttpContextCtx,
   request: Request,
 ): Promise<HttpAuthContext | null> {
   const authHeader = request.headers.get("Authorization");
@@ -170,7 +215,10 @@ async function getHttpKeyContext(
   }
 
   try {
-    const verified = await auth.key.verify(ctx, authHeader.slice(7));
+    const verified = await auth.key.verify(
+      ctx as GenericActionCtx<GenericDataModel>,
+      authHeader.slice(7),
+    );
     const authContext = await getAuthContextForUser(auth, ctx, verified.userId);
     return {
       ...authContext,
@@ -188,9 +236,17 @@ async function getHttpKeyContext(
 
 async function resolveHttpAuthContext(
   auth: HttpContextAuthLike,
-  ctx: GenericActionCtx<any>,
+  ctx: HttpContextCtx,
   request: Request,
 ): Promise<HttpAuthContext | null> {
+  const authHeader = request.headers.get("Authorization");
+  if (authHeader?.startsWith("Bearer sk_")) {
+    const keyContext = await getHttpKeyContext(auth, ctx, request);
+    if (keyContext !== null) {
+      return keyContext;
+    }
+  }
+
   const sessionUserId = await getSessionUserId(ctx);
   if (sessionUserId !== null) {
     const authContext = await getAuthContextForUser(auth, ctx, sessionUserId);
@@ -209,21 +265,27 @@ async function resolveHttpAuthContext(
  * Create the implementation behind `auth.http.context(...)`.
  */
 export function createHttpContext(auth: HttpContextAuthLike): {
-  <TResolve extends Record<string, unknown> = Record<string, never>>(
-    ctx: GenericActionCtx<any>,
+  <
+    TResolve extends Record<string, unknown> = Record<string, never>,
+    TCtx extends HttpContextCtx = HttpContextCtx,
+  >(
+    ctx: TCtx,
     request: Request,
-    config: HttpAuthContextConfig<TResolve> & { optional: true },
+    config: HttpAuthContextConfig<TResolve, TCtx> & { optional: true },
   ): Promise<OptionalHttpAuthContext & TResolve>;
-  <TResolve extends Record<string, unknown> = Record<string, never>>(
-    ctx: GenericActionCtx<any>,
+  <
+    TResolve extends Record<string, unknown> = Record<string, never>,
+    TCtx extends HttpContextCtx = HttpContextCtx,
+  >(
+    ctx: TCtx,
     request: Request,
-    config?: HttpAuthContextConfig<TResolve>,
+    config?: HttpAuthContextConfig<TResolve, TCtx>,
   ): Promise<HttpAuthContext & TResolve>;
 } {
   return (async (
-    ctx: GenericActionCtx<any>,
+    ctx: HttpContextCtx,
     request: Request,
-    config?: HttpAuthContextConfig<any>,
+    config?: HttpAuthContextConfig<Record<string, unknown>>,
   ) => {
     const fallback = () => resolveHttpAuthContext(auth, ctx, request);
     const authOverride = config?.authResolve
@@ -252,22 +314,42 @@ export function createHttpContext(auth: HttpContextAuthLike): {
       ...extra,
     };
   }) as {
-    <TResolve extends Record<string, unknown> = Record<string, never>>(
-      ctx: GenericActionCtx<any>,
+    <
+      TResolve extends Record<string, unknown> = Record<string, never>,
+      TCtx extends HttpContextCtx = HttpContextCtx,
+    >(
+      ctx: TCtx,
       request: Request,
-      config: HttpAuthContextConfig<TResolve> & { optional: true },
+      config: HttpAuthContextConfig<TResolve, TCtx> & {
+        optional: true;
+      },
     ): Promise<OptionalHttpAuthContext & TResolve>;
-    <TResolve extends Record<string, unknown> = Record<string, never>>(
-      ctx: GenericActionCtx<any>,
+    <
+      TResolve extends Record<string, unknown> = Record<string, never>,
+      TCtx extends HttpContextCtx = HttpContextCtx,
+    >(
+      ctx: TCtx,
       request: Request,
-      config?: HttpAuthContextConfig<TResolve>,
+      config?: HttpAuthContextConfig<TResolve, TCtx>,
     ): Promise<HttpAuthContext & TResolve>;
   };
 }
 
-export function createHttpAction(auth: {
-  key: { verify: (ctx: GenericActionCtx<any>, rawKey: string) => Promise<any> };
-}) {
+export function createHttpAction(
+  auth: {
+    key: {
+      verify: (
+        ctx: GenericActionCtx<GenericDataModel>,
+        rawKey: string,
+      ) => Promise<{
+        userId: string;
+        keyId: string;
+        scopes: HttpKeyContext["key"]["scopes"];
+      }>;
+    };
+  },
+  defaultOrigins: string[] | (() => string[]),
+) {
   return (
     handler: (
       ctx: GenericActionCtx<GenericDataModel> & HttpKeyContext,
@@ -278,19 +360,16 @@ export function createHttpAction(auth: {
       cors?: CorsConfig;
     },
   ) => {
-    const corsConfig = options?.cors ?? {};
-    const corsHeaders: Record<string, string> = {
-      "Access-Control-Allow-Origin": corsConfig.origin ?? "*",
-      "Access-Control-Allow-Methods":
-        corsConfig.methods ?? "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-      "Access-Control-Allow-Headers":
-        corsConfig.headers ?? "Content-Type,Authorization",
-    };
-
     return httpActionGeneric(async (genericCtx, request) => {
-      return Fx.run(
-        Fx.from({
-          ok: async () => {
+      const corsHeaders = buildCorsHeaders(
+        request,
+        options?.cors,
+        defaultOrigins,
+      );
+
+      return runBoundary(
+        Effect.tryPromise({
+          try: async () => {
             const authHeader = request.headers.get("Authorization");
             if (!authHeader?.startsWith("Bearer ")) {
               return new Response(
@@ -307,13 +386,17 @@ export function createHttpAction(auth: {
                 },
               );
             }
-            const rawKey = authHeader.slice(7);
 
-            const keyResult = await Fx.run(
-              Fx.attempt(
-                () => auth.key.verify(genericCtx, rawKey),
-                (result) => ({ ok: true, value: result }) as const,
-                (error) => ({ ok: false, error }) as const,
+            const rawKey = authHeader.slice(7);
+            const keyResult = await Effect.runPromise(
+              Effect.tryPromise({
+                try: () => auth.key.verify(genericCtx, rawKey),
+                catch: (error) => error,
+              }).pipe(
+                Effect.match({
+                  onFailure: (error) => ({ ok: false as const, error }),
+                  onSuccess: (value) => ({ ok: true as const, value }),
+                }),
               ),
             );
 
@@ -371,32 +454,32 @@ export function createHttpAction(auth: {
             });
             const result = await handler(enrichedCtx, request);
 
-            if (result instanceof Response) {
-              const headers = new Headers(result.headers);
-              for (const [k, val] of Object.entries(corsHeaders)) {
-                if (!headers.has(k)) headers.set(k, val);
-              }
-              return new Response(result.body, {
-                status: result.status,
-                statusText: result.statusText,
-                headers,
-              });
-            }
-
-            return new Response(JSON.stringify(result), {
-              status: 200,
-              headers: {
-                ...corsHeaders,
-                "Content-Type": "application/json",
-              },
-            });
+            return result instanceof Response
+              ? (() => {
+                  const headers = new Headers(result.headers);
+                  for (const [k, val] of Object.entries(corsHeaders)) {
+                    if (!headers.has(k)) headers.set(k, val);
+                  }
+                  return new Response(result.body, {
+                    status: result.status,
+                    statusText: result.statusText,
+                    headers,
+                  });
+                })()
+              : new Response(JSON.stringify(result), {
+                  status: 200,
+                  headers: {
+                    ...corsHeaders,
+                    "Content-Type": "application/json",
+                  },
+                });
           },
-          err: (error) => error,
+          catch: (error) => error,
         }).pipe(
-          Fx.recover((error) => {
-            logError(error);
-            return Fx.succeed(
-              new Response(
+          Effect.catch((error) =>
+            Effect.sync(() => {
+              logError(error);
+              return new Response(
                 JSON.stringify({
                   error: "An unexpected error occurred.",
                   code: "INTERNAL_ERROR",
@@ -408,9 +491,9 @@ export function createHttpAction(auth: {
                     "Content-Type": "application/json",
                   },
                 },
-              ),
-            );
-          }),
+              );
+            }),
+          ),
         ),
       );
     });
@@ -419,9 +502,10 @@ export function createHttpAction(auth: {
 
 export function createHttpRoute(
   wrapAction: ReturnType<typeof createHttpAction>,
+  defaultOrigins: string[] | (() => string[]),
 ) {
   return (
-    http: { route: (config: any) => void },
+    http: { route: (config: unknown) => void },
     routeConfig: {
       path: string;
       method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -433,19 +517,15 @@ export function createHttpRoute(
       cors?: CorsConfig;
     },
   ) => {
-    const corsConfig = routeConfig.cors ?? {};
-    const corsHeaders: Record<string, string> = {
-      "Access-Control-Allow-Origin": corsConfig.origin ?? "*",
-      "Access-Control-Allow-Methods":
-        corsConfig.methods ?? "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-      "Access-Control-Allow-Headers":
-        corsConfig.headers ?? "Content-Type,Authorization",
-    };
-
     http.route({
       path: routeConfig.path,
       method: "OPTIONS",
-      handler: httpActionGeneric(async () => {
+      handler: httpActionGeneric(async (_ctx, request) => {
+        const corsHeaders = buildCorsHeaders(
+          request,
+          routeConfig.cors,
+          defaultOrigins,
+        );
         return new Response(null, { status: 204, headers: corsHeaders });
       }),
     });
@@ -463,24 +543,27 @@ export function createHttpRoute(
 
 export function convertErrorsToResponse(
   errorStatusCode: number,
-  action: (ctx: GenericActionCtx<any>, request: Request) => Promise<Response>,
+  action: (
+    ctx: GenericActionCtx<GenericDataModel>,
+    request: Request,
+  ) => Promise<Response>,
 ) {
-  return async (ctx: GenericActionCtx<any>, request: Request) => {
-    return Fx.run(
-      Fx.from({
-        ok: () => action(ctx, request),
-        err: (error) => error,
+  return async (ctx: GenericActionCtx<GenericDataModel>, request: Request) => {
+    return runBoundary(
+      Effect.tryPromise({
+        try: () => action(ctx, request),
+        catch: (error) => error,
       }).pipe(
-        Fx.recover((error) => {
-          if (
-            error instanceof ConvexError &&
-            typeof error.data === "object" &&
-            error.data !== null &&
-            "code" in error.data &&
-            "message" in error.data
-          ) {
-            return Fx.succeed(
-              new Response(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            if (
+              error instanceof ConvexError &&
+              typeof error.data === "object" &&
+              error.data !== null &&
+              "code" in error.data &&
+              "message" in error.data
+            ) {
+              return new Response(
                 JSON.stringify({
                   code: error.data.code,
                   message: error.data.message,
@@ -489,26 +572,22 @@ export function convertErrorsToResponse(
                   status: errorStatusCode,
                   headers: { "Content-Type": "application/json" },
                 },
-              ),
-            );
-          } else if (error instanceof ConvexError) {
-            return Fx.succeed(
-              new Response(null, {
+              );
+            }
+            if (error instanceof ConvexError) {
+              return new Response(null, {
                 status: errorStatusCode,
                 statusText:
                   typeof error.data === "string" ? error.data : "Error",
-              }),
-            );
-          } else {
+              });
+            }
             logError(error);
-            return Fx.succeed(
-              new Response(null, {
-                status: 500,
-                statusText: "Internal Server Error",
-              }),
-            );
-          }
-        }),
+            return new Response(null, {
+              status: 500,
+              statusText: "Internal Server Error",
+            });
+          }),
+        ),
       ),
     );
   };
@@ -601,11 +680,11 @@ export function addAuthRoutes(
   http: HttpRouter,
   deps: {
     handleSignIn: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
     ) => Promise<Response>;
     handleCallback: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
     ) => Promise<Response>;
   },
@@ -635,45 +714,82 @@ export function addSSORoutes(
   http: HttpRouter,
   deps: {
     routeBase: string;
+    sharedOidcCallbackPath?: string;
     convertErrorsToResponse: typeof convertErrorsToResponse;
     handleSamlMetadata: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
       route: SSORuntimeRoute,
     ) => Promise<Response>;
     handleSamlSignIn: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
       route: SSORuntimeRoute,
     ) => Promise<Response>;
     handleOidcSignIn: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
       route: SSORuntimeRoute,
     ) => Promise<Response>;
     handleOidcCallback: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
       route: SSORuntimeRoute,
     ) => Promise<Response>;
+    handleOidcSharedCallback: (
+      ctx: GenericActionCtx<GenericDataModel>,
+      request: Request,
+    ) => Promise<Response>;
     handleSamlAcs: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
       route: SSORuntimeRoute,
     ) => Promise<Response>;
     handleSamlSlo: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
       route: SSORuntimeRoute,
     ) => Promise<Response>;
     handleScimRequest: (
-      ctx: GenericActionCtx<any>,
+      ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
     ) => Promise<Response>;
     scimError: (status: number, scimType: string, detail: string) => Response;
   },
 ) {
   const routePrefix = `${deps.routeBase}/`;
+  const sharedOidcCallbackPath = deps.sharedOidcCallbackPath
+    ? (() => {
+        if (/^https?:\/\//.test(deps.sharedOidcCallbackPath)) {
+          return new URL(deps.sharedOidcCallbackPath).pathname;
+        }
+        return deps.sharedOidcCallbackPath.startsWith("/")
+          ? deps.sharedOidcCallbackPath
+          : `/${deps.sharedOidcCallbackPath}`;
+      })()
+    : undefined;
+
+  if (sharedOidcCallbackPath) {
+    http.route({
+      path: sharedOidcCallbackPath,
+      method: "GET",
+      handler: httpActionGeneric(
+        deps.convertErrorsToResponse(400, async (ctx, request) =>
+          deps.handleOidcSharedCallback(ctx, request),
+        ),
+      ),
+    });
+
+    http.route({
+      path: sharedOidcCallbackPath,
+      method: "POST",
+      handler: httpActionGeneric(
+        deps.convertErrorsToResponse(400, async (ctx, request) =>
+          deps.handleOidcSharedCallback(ctx, request),
+        ),
+      ),
+    });
+  }
 
   http.route({
     pathPrefix: routePrefix,
@@ -685,7 +801,7 @@ export function addSSORoutes(
           deps.routeBase,
         );
         if (!route) {
-          throw Cv.error({
+          throw new ConvexError({
             code: "INVALID_PARAMETERS",
             message: "Invalid connection runtime path.",
           });
@@ -715,7 +831,7 @@ export function addSSORoutes(
         if (route.protocol === "scim" && route.rest[0] === "v2") {
           return await deps.handleScimRequest(ctx, request);
         }
-        throw Cv.error({
+        throw new ConvexError({
           code: "INVALID_PARAMETERS",
           message: "Invalid connection runtime path.",
         });
@@ -743,7 +859,7 @@ export function addSSORoutes(
         if (route?.protocol === "scim" && route.rest[0] === "v2") {
           return await deps.handleScimRequest(ctx, request);
         }
-        throw Cv.error({
+        throw new ConvexError({
           code: "INVALID_PARAMETERS",
           message: "Invalid connection runtime path.",
         });
@@ -763,7 +879,7 @@ export function addSSORoutes(
         if (route?.protocol === "scim" && route.rest[0] === "v2") {
           return await deps.handleScimRequest(ctx, request);
         }
-        throw Cv.error({
+        throw new ConvexError({
           code: "INVALID_PARAMETERS",
           message: "Invalid connection runtime path.",
         });

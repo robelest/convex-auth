@@ -2,18 +2,18 @@ import {
   authCookieNames,
   parseAuthCookies,
   server,
-} from "@robelest/convex-auth/server/index";
+} from "@robelest/convex-auth/server";
 import {
   createOAuthAuthorizationURL,
   handleOAuthCallback,
-} from "@robelest/convex-auth/server/oauth";
+} from "../packages/auth/src/server/oauth/runtime";
 import {
   isLocalHost,
   siteUrlsFromEnv,
-} from "@robelest/convex-auth/server/utils";
-import { Fx } from "@robelest/fx";
+} from "../packages/auth/src/server/url";
 import { ConvexHttpClient } from "convex/browser";
 import { ConvexError } from "convex/values";
+import { Effect } from "effect";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
 const TEST_COOKIE_NAMESPACE = "server_security_tests";
@@ -182,7 +182,7 @@ test("OAuth callback rejects PKCE provider when verifier cookie is missing", asy
   expect(stateCookie).toBeDefined();
 
   await expect(
-    Fx.run(
+    Effect.runPromise(
       handleOAuthCallback(
         "google",
         { provider },
@@ -651,6 +651,73 @@ test("proxy signIn errors keep existing cookies for non-refresh requests", async
   expect(setCookie).toContain(`${cookieNames.token}=jwt-token`);
   expect(setCookie).toContain(`${cookieNames.refreshToken}=refresh-token`);
   expect(setCookie).toContain(`${cookieNames.verifier}=`);
+});
+
+test("proxy signIn hydrates auth from refresh cookie for device verification", async () => {
+  const actionSpy = vi.spyOn(ConvexHttpClient.prototype, "action").mockImplementation(
+    async function (this: ConvexHttpClient, ...[_reference, args]: any[]) {
+      if (typeof args === "object" && args !== null && "refreshToken" in args) {
+        return {
+          kind: "signedIn",
+          tokens: {
+            token: "fresh-jwt-token",
+            refreshToken: "fresh-refresh-token",
+          },
+        };
+      }
+
+      expect((this as unknown as { auth?: string }).auth).toBe("fresh-jwt-token");
+      expect(args).toMatchObject({
+        provider: "device",
+        params: { flow: "verify", userCode: "ABCD-EFGH" },
+      });
+      return { kind: "signedIn", tokens: null };
+    },
+  );
+
+  const auth = server({
+    url: "https://example.convex.cloud",
+    apiRoute: "/api/auth",
+    cookieNamespace: TEST_COOKIE_NAMESPACE,
+  });
+  const host = "app.example.com";
+  const cookieNames = authCookieNames(host, TEST_COOKIE_NAMESPACE);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const expiredToken = unsignedToken({
+    iss: "https://example.convex.cloud",
+    iat: nowSeconds - 60 * 60,
+    exp: nowSeconds - 60,
+  });
+
+  const request = new Request("https://app.example.com/api/auth", {
+    method: "POST",
+    headers: {
+      host,
+      "content-type": "application/json",
+      cookie: `${cookieNames.token}=${expiredToken}; ${cookieNames.refreshToken}=refresh-token`,
+    },
+    body: JSON.stringify({
+      action: "auth:signIn",
+      args: {
+        provider: "device",
+        params: { flow: "verify", userCode: "ABCD-EFGH" },
+      },
+    }),
+  });
+
+  const response = await auth.proxy(request);
+  expect(response.status).toBe(200);
+  const result = await response.json();
+  expect(result).toMatchObject({ kind: "signedIn", tokens: null });
+  expect(actionSpy).toHaveBeenCalledTimes(2);
+
+  const setCookie =
+    typeof (response.headers as any).getSetCookie === "function"
+      ? ((response.headers as any).getSetCookie() as string[]).join("\n")
+      : (response.headers.get("set-cookie") ?? "");
+
+  expect(setCookie).toContain(`${cookieNames.token}=fresh-jwt-token`);
+  expect(setCookie).toContain(`${cookieNames.refreshToken}=fresh-refresh-token`);
 });
 
 test("proxy signOut retries revocation via refresh token", async () => {

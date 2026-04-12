@@ -1,13 +1,8 @@
 import type { TestConvex } from "convex-test";
 import type { GenericSchema, SchemaDefinition } from "convex/server";
 
+import modules from "./component/modules";
 import schema from "./component/schema";
-
-type ImportMetaWithGlob = ImportMeta & {
-  glob: (pattern: string) => Record<string, () => Promise<unknown>>;
-};
-
-const modules = (import.meta as ImportMetaWithGlob).glob("./component/**/*.ts");
 
 /**
  * Register the Convex Auth component in a `convex-test` environment.
@@ -35,14 +30,20 @@ export function register(
   t.registerComponent(name, schema, modules);
 }
 
+const testHelpers: {
+  register: typeof register;
+  schema: SchemaDefinition<GenericSchema, boolean>;
+  modules: Record<string, () => Promise<unknown>>;
+} = {
+  register,
+  schema,
+  modules,
+};
+
 /**
  * Test helpers bundled for `convex-test` setups.
  *
  * Exposes the auth component `schema`, lazily discovered `modules`, and the
  * `register()` helper as a convenience default export.
  */
-export default {
-  register,
-  schema,
-  modules,
-};
+export default testHelpers;

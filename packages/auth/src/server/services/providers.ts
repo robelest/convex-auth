@@ -1,0 +1,42 @@
+import { ConvexError } from "convex/values";
+import { Layer, ServiceMap } from "effect";
+
+import type { GetProviderOrThrowFunc } from "../crypto";
+import { listAvailableProviders, configDefaults } from "../config";
+import { LOG_LEVELS, type LogLevel } from "../../shared/log";
+
+export class ProviderRegistryService extends ServiceMap.Service<
+  ProviderRegistryService,
+  { readonly getProviderOrThrow: GetProviderOrThrowFunc }
+>()("ProviderRegistryService") {}
+
+export const ProviderRegistryLive = (
+  config: ReturnType<typeof configDefaults>,
+  logger: { log: (level: LogLevel, ...args: unknown[]) => void },
+) =>
+  Layer.succeed(ProviderRegistryService)({
+    getProviderOrThrow: (
+      id: string,
+      allowExtraProviders: boolean = false,
+    ) => {
+      const provider =
+        config.providers.find((configuredProvider) => configuredProvider.id === id) ??
+        (allowExtraProviders
+          ? config.extraProviders.find(
+              (configuredProvider) => configuredProvider.id === id,
+            )
+          : undefined);
+      if (provider === undefined) {
+        const detail =
+          `Provider \`${id}\` is not configured, ` +
+          `available providers are ${listAvailableProviders(config, allowExtraProviders)}.`;
+        logger.log(LOG_LEVELS.ERROR, detail);
+        throw new ConvexError({
+          code: "PROVIDER_NOT_CONFIGURED",
+          message: detail,
+          provider: id,
+        });
+      }
+      return provider;
+    },
+  });

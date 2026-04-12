@@ -1,18 +1,26 @@
-import { Fx } from "@robelest/fx";
-import { ConvexError } from "convex/values";
+import { ConvexError, Value } from "convex/values";
+import { Effect } from "effect";
 
 import type {
   AuthSession,
   ConvexTransport,
   DeviceClient,
   DeviceCodeResult,
+  SignInActionResult,
+  SignInApiRef,
 } from "../core/types";
+
+function isSignedInResult(
+  result: SignInActionResult,
+): result is Extract<SignInActionResult, { kind: "signedIn" }> {
+  return result.kind === "signedIn";
+}
 
 type DeviceDeps = {
   proxy: string | undefined;
   convex: ConvexTransport;
-  requireApiRefs: () => { signIn: any };
-  proxyFetch: (body: Record<string, unknown>) => Promise<any>;
+  requireApiRefs: () => SignInApiRef;
+  proxyFetch: (body: Record<string, unknown>) => Promise<unknown>;
   setTokenAndMaybeWait: (
     args:
       | {
@@ -35,6 +43,21 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
   const { proxy, convex, requireApiRefs, proxyFetch, setTokenAndMaybeWait } =
     deps;
 
+  const requestDeviceSignIn = (params: Record<string, unknown>) =>
+    Effect.tryPromise({
+      try: async () =>
+        (proxy
+          ? await proxyFetch({
+              action: "auth:signIn",
+              args: { provider: "device", params },
+            })
+          : await convex.action(requireApiRefs().signIn, {
+              provider: "device",
+              params,
+            })) as SignInActionResult,
+      catch: (error) => error,
+    });
+
   return {
     poll: async (opts: { code: DeviceCodeResult }): Promise<void> => {
       const { code } = opts;
@@ -44,63 +67,38 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
       while (Date.now() < expiresAt) {
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
 
-        const pollResult = await Fx.run(
-          Fx.from({
-            ok: async () => {
-              let result: any;
-              const params: Record<string, any> = {
-                flow: "poll",
-                deviceCode: code.deviceCode,
-              };
+        const params: Record<string, unknown> = {
+          flow: "poll",
+          deviceCode: code.deviceCode,
+        };
 
-              if (proxy) {
-                result = await proxyFetch({
-                  action: "auth:signIn",
-                  args: { provider: "device", params },
-                });
-              } else {
-                result = await convex.action(requireApiRefs().signIn, {
-                  provider: "device",
-                  params,
-                });
-              }
-
-              return result;
-            },
-            err: (e) => e,
-          }).pipe(
-            Fx.recover((e: unknown) => {
-              const dispatch =
-                e instanceof ConvexError
-                  ? {
-                      tag:
-                        (e.data as Record<string, unknown> | undefined)
-                          ?.code === "DEVICE_AUTHORIZATION_PENDING"
-                          ? "continue"
-                          : (e.data as Record<string, unknown> | undefined)
-                                ?.code === "DEVICE_SLOW_DOWN"
-                            ? "slowDown"
-                            : "fatal",
-                    }
-                  : ({ tag: "fatal" } as const);
-
-              return Fx.match(dispatch, dispatch.tag, {
-                continue: () => Fx.succeed({ _poll: "continue" as const }),
-                slowDown: () => Fx.succeed({ _poll: "slow_down" as const }),
-                fatal: () => Fx.fatal(e),
-              });
-            }),
+        const pollResult = await Effect.runPromise(
+          requestDeviceSignIn(params).pipe(
+            Effect.catchIf(
+              (error): error is ConvexError<Value> =>
+                error instanceof ConvexError,
+              (error) => {
+                const code =
+                  (error.data as Record<string, unknown> | undefined)?.code;
+                if (code === "DEVICE_AUTHORIZATION_PENDING") {
+                  return Effect.succeed<SignInActionResult | null>(null);
+                }
+                if (code === "DEVICE_SLOW_DOWN") {
+                  return Effect.promise(async () => {
+                    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+                    return null;
+                  });
+                }
+                return Effect.fail(error);
+              },
+            ),
           ),
         );
-
-        if ("_poll" in pollResult) {
-          if (pollResult._poll === "slow_down") {
-            await new Promise((resolve) => setTimeout(resolve, intervalMs));
-          }
+        if (pollResult === null) {
           continue;
         }
 
-        if (pollResult.tokens) {
+        if (isSignedInResult(pollResult) && pollResult.tokens) {
           if (proxy) {
             await setTokenAndMaybeWait({
               shouldStore: false,
@@ -130,29 +128,24 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
     },
 
     verify: async (opts: { code: string }): Promise<void> => {
-      const params: Record<string, any> = {
+      const params: Record<string, unknown> = {
         flow: "verify",
         userCode: opts.code,
       };
 
-      try {
-        if (proxy) {
-          await proxyFetch({
-            action: "auth:signIn",
-            args: { provider: "device", params },
-          });
-        } else {
-          await convex.action(requireApiRefs().signIn, {
-            provider: "device",
-            params,
-          });
-        }
-      } catch (e: unknown) {
-        throw new ConvexError({
-          code: "DEVICE_AUTHORIZATION_FAILED",
-          message: e instanceof Error ? e.message : "Invalid or expired code.",
-        });
-      }
+      await Effect.runPromise(
+        requestDeviceSignIn(params).pipe(
+          Effect.asVoid,
+          Effect.mapError(
+            (error) =>
+              new ConvexError({
+                code: "DEVICE_AUTHORIZATION_FAILED",
+                message:
+                  error instanceof Error ? error.message : "Invalid or expired code.",
+              }),
+          ),
+        ),
+      );
     },
   };
 }

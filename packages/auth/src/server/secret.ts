@@ -1,0 +1,63 @@
+import { sha256 as rawSha256 } from "@oslojs/crypto/sha2";
+import {
+  decodeBase64urlIgnorePadding,
+  encodeBase64urlNoPadding,
+} from "@oslojs/encoding";
+import { ConvexError } from "convex/values";
+
+import { requireEnv } from "./env";
+
+const SECRET_KEY_ENV = "AUTH_SECRET_ENCRYPTION_KEY";
+const SECRET_IV_LENGTH = 12;
+
+function toArrayBuffer(bytes: Uint8Array) {
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+}
+
+async function getSecretCryptoKey() {
+  const material = requireEnv(SECRET_KEY_ENV);
+  const rawKey = rawSha256(new TextEncoder().encode(material));
+  return await crypto.subtle.importKey(
+    "raw",
+    toArrayBuffer(rawKey),
+    { name: "AES-GCM" },
+    false,
+    ["encrypt", "decrypt"],
+  );
+}
+
+/** @internal */
+export async function encryptSecret(value: string) {
+  const key = await getSecretCryptoKey();
+  const iv = crypto.getRandomValues(new Uint8Array(SECRET_IV_LENGTH));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: toArrayBuffer(iv) },
+    key,
+    toArrayBuffer(new TextEncoder().encode(value)),
+  );
+  return `${encodeBase64urlNoPadding(iv)}.${encodeBase64urlNoPadding(new Uint8Array(encrypted))}`;
+}
+
+/** @internal */
+export async function decryptSecret(ciphertext: string) {
+  const [ivEncoded, payloadEncoded] = ciphertext.split(".");
+  if (!ivEncoded || !payloadEncoded) {
+    throw new ConvexError({
+      code: "INVALID_PARAMETERS",
+      message: "Stored group connection secret is malformed.",
+    });
+  }
+  const key = await getSecretCryptoKey();
+  const decrypted = await crypto.subtle.decrypt(
+    {
+      name: "AES-GCM",
+      iv: toArrayBuffer(decodeBase64urlIgnorePadding(ivEncoded)),
+    },
+    key,
+    toArrayBuffer(decodeBase64urlIgnorePadding(payloadEncoded)),
+  );
+  return new TextDecoder().decode(decrypted);
+}

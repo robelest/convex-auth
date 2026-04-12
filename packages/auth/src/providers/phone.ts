@@ -4,7 +4,7 @@
  * @module
  */
 
-import { Fx } from "@robelest/fx";
+import { Effect, Match } from "effect";
 
 import type { PhoneConfig } from "../server/types";
 
@@ -45,26 +45,29 @@ export function phone(config: PhoneProviderConfig): PhoneConfig {
             ? ({ tag: "mismatch" } as const)
             : ({ tag: "ok" } as const);
 
-      return await Fx.run(
-        Fx.match(dispatch, dispatch.tag, {
-          missingPhone: () =>
-            Fx.fatal(
+      return await Effect.runPromise(
+        Match.value(dispatch).pipe(
+          Match.when({ tag: "missingPhone" }, () =>
+            Effect.die(
               new Error(
                 "Token verification requires a `phone` in params of `signIn`.",
               ),
             ),
-          mismatch: () =>
-            Fx.fatal(
+          ),
+          Match.when({ tag: "mismatch" }, () =>
+            Effect.die(
               new Error(
                 "Short verification code requires a matching `phone` " +
                   "in params of `signIn`.",
               ),
             ),
-          ok: () => Fx.succeed(undefined),
-        }),
+          ),
+          Match.when({ tag: "ok" }, () => Effect.succeed(undefined)),
+          Match.exhaustive,
+        ),
       );
     },
     sendVerificationRequest: config.send,
-    options: {} as any,
+    options: {},
   };
 }

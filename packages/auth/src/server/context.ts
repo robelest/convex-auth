@@ -1,4 +1,4 @@
-import type { UserIdentity } from "convex/server";
+import type { GenericActionCtx, GenericDataModel, UserIdentity } from "convex/server";
 
 import { userIdFromIdentitySubject } from "./identity";
 import type { AuthContext, AuthLike, OptionalAuthContext, UserDoc } from "./auth";
@@ -9,17 +9,16 @@ type AuthIdentityCtx = {
   };
 };
 
+type AuthQueryCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
+
 type AuthContextResolverLike = {
   user: {
-    get: (ctx: any, userId: string) => Promise<UserDoc>;
-    getActiveGroup: (
-      ctx: any,
-      args: { userId: string },
-    ) => Promise<string | null>;
+    get: (ctx: AuthQueryCtx, userId: string) => Promise<UserDoc>;
+    getActiveGroup: (ctx: AuthQueryCtx, args: { userId: string }) => Promise<string | null>;
   };
   member: {
     inspect: (
-      ctx: any,
+      ctx: AuthQueryCtx,
       args: { userId: string; groupId: string },
     ) => Promise<{
       membership: unknown;
@@ -43,7 +42,7 @@ export async function getSessionUserId(
 /** @internal */
 export async function getAuthContextForUser(
   auth: AuthContextResolverLike,
-  ctx: any,
+  ctx: AuthQueryCtx,
   userId: string,
 ): Promise<AuthContext> {
   const user = await auth.user.get(ctx, userId);
@@ -69,13 +68,17 @@ export async function getAuthContextForUser(
 /** @internal */
 export async function getAuthContext(
   auth: AuthLike,
-  ctx: AuthIdentityCtx & Record<string, unknown>,
+  ctx: AuthIdentityCtx & AuthQueryCtx,
 ): Promise<AuthContext | null> {
   const userId = await getSessionUserId(ctx);
   if (userId === null) {
     return null;
   }
-  return await getAuthContextForUser(auth, ctx, userId);
+  return await getAuthContextForUser(
+    auth as unknown as AuthContextResolverLike,
+    ctx as AuthQueryCtx,
+    userId,
+  );
 }
 
 /** @internal */

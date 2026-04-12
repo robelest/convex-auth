@@ -34,6 +34,14 @@ export interface AnonymousConfig<DataModel extends GenericDataModel> {
   };
 }
 
+function defaultAnonymousProfile<DataModel extends GenericDataModel>() {
+  return {
+    isAnonymous: true,
+  } as WithoutSystemFields<DocumentByName<DataModel, "User">> & {
+    isAnonymous: true;
+  };
+}
+
 /**
  * Create an anonymous sign-in provider.
  *
@@ -58,11 +66,11 @@ export function anonymous<
   return credentials<DataModel>({
     id: provider,
     authorize: async (params, ctx) => {
-      const profile = config.profile?.(params, ctx) ?? { isAnonymous: true };
+      const profile = config.profile?.(params, ctx) ?? defaultAnonymousProfile<DataModel>();
       const { user } = await ctx.auth.account.create(ctx, {
         provider,
         account: { id: crypto.randomUUID() },
-        profile: profile as any,
+        profile,
       });
       return { userId: user._id };
     },

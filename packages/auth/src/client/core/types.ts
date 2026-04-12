@@ -1,5 +1,6 @@
 import type { FunctionReference } from "convex/server";
 import type { ConvexError, Value } from "convex/values";
+import type * as Deferred from "effect/Deferred";
 
 /**
  * Structural interface for any Convex client.
@@ -11,7 +12,7 @@ import type { ConvexError, Value } from "convex/values";
  * during sign-out for a clean deauthentication.
  */
 export interface ConvexTransport {
-  action(action: any, args: any): Promise<any>;
+  action(action: unknown, args: unknown): Promise<unknown>;
   setAuth(
     fetchToken: (args: {
       forceRefreshToken: boolean;
@@ -21,13 +22,93 @@ export interface ConvexTransport {
   clearAuth?(): void;
 }
 
-/** Pluggable key-value storage (defaults to `localStorage`). */
+/** Minimal action-only transport used for unauthenticated auth flows. */
+export interface ActionTransport {
+  action(action: unknown, args: unknown): Promise<unknown>;
+}
+
+export type SignInApiRef = { signIn: AuthApiRefs["signIn"] };
+
+/** Pluggable key-value storage supplied by the host runtime. */
 export interface Storage {
   getItem(
     key: string,
   ): string | null | undefined | Promise<string | null | undefined>;
   setItem(key: string, value: string): void | Promise<void>;
   removeItem(key: string): void | Promise<void>;
+}
+
+/** Platform-neutral location/navigation hooks. */
+export interface LocationRuntime {
+  get(): URL | null;
+  replace(relativeUrl: string): void | Promise<void>;
+  redirect(url: URL): void | Promise<void>;
+}
+
+/** Cross-context synchronization hooks, such as browser storage events. */
+export interface SyncRuntime {
+  subscribe(
+    key: string,
+    callback: (value: string | null) => void | Promise<void>,
+  ): (() => void) | null;
+}
+
+/** Cross-context mutex/locking primitive. */
+export interface MutexRuntime {
+  withKey<T>(key: string, callback: () => Promise<T>): Promise<T>;
+}
+
+/** Proxy request execution supplied by the host runtime. */
+export interface ProxyRuntime {
+  fetch(body: Record<string, unknown>, proxyPath: string): Promise<Response>;
+}
+
+/**
+ * Platform-neutral client runtime dependencies.
+ *
+ * The core `client` package should depend only on these interfaces, while the
+ * browser package can provide concrete implementations backed by DOM APIs.
+ */
+export interface ClientRuntime {
+  environment?: "client" | "server";
+  storage?: Storage | null;
+  location?: LocationRuntime;
+  sync?: SyncRuntime;
+  mutex?: MutexRuntime;
+  proxy?: ProxyRuntime;
+}
+
+/** Platform-specific factor adapters injected by entrypoints like `browser`. */
+export interface ClientAdapters {
+  passkey?: PasskeyClient;
+  totp?: TotpClient;
+  device?: DeviceClient;
+}
+
+export interface ClientAdapterDeps {
+  proxy: string | undefined;
+  convex: ConvexTransport;
+  requireApiRefs: () => SignInApiRef;
+  proxyFetch: (body: Record<string, unknown>) => Promise<unknown>;
+  setTokenAndMaybeWait: (
+    args:
+      | {
+          shouldStore: true;
+          tokens: AuthSession | null;
+          waitForHandshake: boolean;
+          context: { provider?: string; flow: string };
+        }
+      | {
+          shouldStore: false;
+          tokens: { token: string } | null;
+          waitForHandshake: boolean;
+          context: { provider?: string; flow: string };
+        },
+  ) => Promise<boolean>;
+}
+
+export interface ClientAdapterFactories {
+  passkey?: (deps: ClientAdapterDeps) => PasskeyClient;
 }
 
 export type AuthSession = {
@@ -39,7 +120,11 @@ export type SignInActionResult =
   | { kind: "signedIn"; tokens: AuthSession | null }
   | { kind: "redirect"; redirect: string; verifier: string }
   | { kind: "started" }
-  | { kind: "passkeyOptions"; options: Record<string, any>; verifier: string }
+  | {
+      kind: "passkeyOptions";
+      options: Record<string, unknown>;
+      verifier: string;
+    }
   | { kind: "totpRequired"; verifier: string }
   | {
       kind: "totpSetup";
@@ -126,9 +211,24 @@ export type AuthApiRefs<
   HasTotp extends boolean = boolean,
   HasDevice extends boolean = boolean,
 > = {
-  signIn: FunctionReference<"action", "public", any, any>;
-  signOut: FunctionReference<"action", "public", any, any>;
-  store: FunctionReference<"mutation", "public", any, any>;
+  signIn: FunctionReference<
+    "action",
+    "public",
+    Record<string, Value>,
+    unknown
+  >;
+  signOut: FunctionReference<
+    "action",
+    "public",
+    Record<string, Value>,
+    unknown
+  >;
+  store: FunctionReference<
+    "mutation",
+    "public",
+    Record<string, Value>,
+    unknown
+  >;
   /** @internal Set automatically by `createAuth` — do not set manually. */
   _capabilities?: {
     passkey: HasPasskey;
@@ -189,7 +289,7 @@ export interface PasskeyClient {
    * const result = await auth.passkey.register({ name: "My laptop" });
    * ```
    */
-  register(opts?: Record<string, any>): Promise<SignInResult>;
+  register(opts?: Record<string, unknown>): Promise<SignInResult>;
 
   /**
    * Authenticate with an existing passkey and complete the WebAuthn ceremony.
@@ -204,7 +304,7 @@ export interface PasskeyClient {
    * const result = await auth.passkey.authenticate();
    * ```
    */
-  authenticate(opts?: Record<string, any>): Promise<SignInResult>;
+  authenticate(opts?: Record<string, unknown>): Promise<SignInResult>;
 }
 
 /**
@@ -232,7 +332,7 @@ export interface TotpClient {
    * await auth.totp.confirm({ code: userCode, verifier, totpId });
    * ```
    */
-  setup(opts?: Record<string, any>): Promise<Record<string, any>>;
+  setup(opts?: Record<string, unknown>): Promise<Record<string, unknown>>;
 
   /**
    * Confirm a newly created TOTP factor with the first authenticator code.
@@ -249,7 +349,7 @@ export interface TotpClient {
    * await auth.totp.confirm({ code: "123456", verifier, totpId });
    * ```
    */
-  confirm(opts: Record<string, any>): Promise<void>;
+  confirm(opts: Record<string, unknown>): Promise<void>;
 
   /**
    * Complete a sign-in that is waiting on TOTP verification.
@@ -268,7 +368,7 @@ export interface TotpClient {
    * }
    * ```
    */
-  verify(opts: Record<string, any>): Promise<void>;
+  verify(opts: Record<string, unknown>): Promise<void>;
 }
 
 /**
@@ -366,7 +466,7 @@ export interface AuthClientBase {
   /** Start a sign-in flow for a provider. */
   signIn: (
     provider: string,
-    params?: Record<string, any>,
+    params?: Record<string, unknown>,
   ) => Promise<SignInResult>;
   /** Sign out and clear local auth state. */
   signOut: () => Promise<void>;
@@ -385,9 +485,13 @@ export interface AuthClientBase {
 export type AuthClient<
   Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs,
 > = AuthClientBase &
-  (InferCaps<Api>["passkey"] extends true ? { passkey: PasskeyClient } : {}) &
   (InferCaps<Api>["totp"] extends true ? { totp: TotpClient } : {}) &
   (InferCaps<Api>["device"] extends true ? { device: DeviceClient } : {});
+
+export type BrowserAuthClient<
+  Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs,
+> = AuthClient<Api> &
+  (InferCaps<Api>["passkey"] extends true ? { passkey: PasskeyClient } : {});
 
 /**
  * Options for {@link client}.
@@ -399,20 +503,28 @@ export type ClientOptions<
 > = {
   /** Any Convex client implementation used to run auth actions. */
   convex: ConvexTransport;
+  /** Platform runtime implementation used by the client core. */
+  runtime?: ClientRuntime;
+  /** Platform-specific factor adapters supplied by higher-level entrypoints. */
+  adapters?: ClientAdapters;
+  /** Platform-specific adapter factories supplied by higher-level entrypoints. */
+  adapterFactories?: ClientAdapterFactories;
   /** Typed auth function refs from your generated `api` object. */
   api?: Api;
   /** Explicit Convex deployment URL when it cannot be inferred from the client. */
   url?: string;
-  /**
-   * Storage backend for persisted tokens; defaults to `localStorage` in SPA mode.
-   *
-   * @defaultValue localStorage
-   */
-  storage?: Storage | null;
+   /** Optional action-only transport for direct code exchange outside proxy mode. */
+   httpClient?: ActionTransport | null;
+   /**
+    * Storage backend for persisted tokens.
+    *
+    * Defaults to `runtime.storage` when provided, otherwise `null`.
+    */
+   storage?: Storage | null;
   /** Override how OAuth code cleanup updates the current URL. */
   replaceUrl?: (relativeUrl: string) => void | Promise<void>;
-  /** SSR proxy endpoint used instead of direct Convex auth calls. */
-  proxyPath?: string;
+   /** Proxy endpoint used instead of direct Convex auth calls. Requires `runtime.proxy`. */
+   proxyPath?: string;
   /** Server-provided JWT seed used for flash-free SSR hydration. */
   tokenSeed?: string | null;
   /** SSR-safe URL source for reading query parameters. */
@@ -431,7 +543,6 @@ export type AuthFlowContext = {
 export type HandshakeWaiter = {
   epoch: number;
   context: AuthFlowContext;
-  resolve: () => void;
-  reject: (error: ConvexError<Value>) => void;
+  deferred: Deferred.Deferred<void, ConvexError<Value>>;
   timeoutId: ReturnType<typeof setTimeout>;
 };

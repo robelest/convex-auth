@@ -15,7 +15,8 @@
 
 import { GitHub as ArcticGitHub } from "arctic";
 
-import { createOAuthProvider } from "../server/oauthProvider";
+import { envOptionalString, readConfigSync } from "../server/env";
+import { createArcticOAuthClient, createOAuthProvider } from "../server/oauth/factory";
 
 const DEFAULT_SCOPES = ["user:email"];
 
@@ -64,10 +65,13 @@ export interface GitHubConfig {
 export function github(config: GitHubConfig) {
   return createOAuthProvider({
     id: "github",
-    provider: new ArcticGitHub(
-      config.clientId,
-      config.clientSecret,
-      config.redirectUri ?? defaultRedirectUri("github"),
+    provider: createArcticOAuthClient(
+      new ArcticGitHub(
+        config.clientId,
+        config.clientSecret,
+        config.redirectUri ?? defaultRedirectUri("github"),
+      ),
+      { pkce: "never" },
     ),
     scopes: config.scopes ?? DEFAULT_SCOPES,
     accountLinking: config.accountLinking,
@@ -120,7 +124,8 @@ export function github(config: GitHubConfig) {
 
 function defaultRedirectUri(providerId: string) {
   const rootUrl =
-    process.env.CUSTOM_AUTH_SITE_URL ?? process.env.CONVEX_SITE_URL;
+    readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ??
+    readConfigSync(envOptionalString("CONVEX_SITE_URL"));
   if (!rootUrl) {
     throw new Error(
       `Missing CONVEX_SITE_URL while configuring ${providerId} OAuth provider. ` +

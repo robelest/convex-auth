@@ -1,79 +1,65 @@
-import { Fx } from "@robelest/fx";
-import { ConvexError } from "convex/values";
+import { Effect } from "effect";
 
 import { authDb } from "./db";
-import { Doc, MutationCtx } from "./types";
-import { ConvexAuthConfig } from "./types";
+import type { ConvexAuthConfig, Doc, MutationCtx } from "./types";
 
 const DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR = 10;
 
 /**
  * Check whether the given identifier is currently rate-limited.
+ * @internal
  */
-/** @internal */
 export const isSignInRateLimited = (
   ctx: MutationCtx,
   identifier: string,
   config: ConvexAuthConfig,
-): Fx<boolean, ConvexError<any>> =>
-  getRateLimitState(ctx, identifier, config).pipe(
-    Fx.map((state) => state !== null && state.attemptsLeft < 1),
-  );
+): Effect.Effect<boolean> =>
+  Effect.map(getRateLimitState(ctx, identifier, config), (state) => {
+    return state !== null && state.attemptsLeft < 1;
+  });
 
 /**
  * Record a failed sign-in attempt for the given identifier.
- *
- * If a record exists, decrement; otherwise create.
+ * @internal
  */
-/** @internal */
 export const recordFailedSignIn = (
   ctx: MutationCtx,
   identifier: string,
   config: ConvexAuthConfig,
-): Fx<void, ConvexError<any>> =>
-  Fx.gen(function* () {
-    const state = yield* getRateLimitState(ctx, identifier, config);
-    if (state !== null) {
-      yield* Fx.promise(() =>
-        authDb(ctx, config).rateLimits.patch(state.limit._id, {
-          attemptsLeft: state.attemptsLeft - 1,
-          lastAttemptTime: Date.now(),
-        }),
-      );
-    } else {
-      yield* Fx.promise(() =>
-        authDb(ctx, config).rateLimits.create({
-          identifier,
-          attemptsLeft:
-            (config.signIn?.maxFailedAttemptsPerHour ??
-              DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR) - 1,
-          lastAttemptTime: Date.now(),
-        }),
-      );
-    }
-  });
+): Effect.Effect<void> =>
+  Effect.flatMap(getRateLimitState(ctx, identifier, config), (state) =>
+    state !== null
+      ? Effect.promise(() =>
+          authDb(ctx, config).rateLimits.patch(state.limit._id, {
+            attemptsLeft: state.attemptsLeft - 1,
+            lastAttemptTime: Date.now(),
+          }),
+        )
+      : Effect.promise(() =>
+          authDb(ctx, config).rateLimits.create({
+            identifier,
+            attemptsLeft:
+              (config.signIn?.maxFailedAttemptsPerHour ??
+                DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR) - 1,
+            lastAttemptTime: Date.now(),
+          }),
+        ).pipe(Effect.asVoid),
+  );
 
 /**
- * Reset the rate limit for the given identifier (e.g. after successful sign-in).
+ * Reset the rate limit for the given identifier.
+ * @internal
  */
-/** @internal */
 export const resetSignInRateLimit = (
   ctx: MutationCtx,
   identifier: string,
   config: ConvexAuthConfig,
-): Fx<void, ConvexError<any>> =>
-  Fx.gen(function* () {
-    const state = yield* getRateLimitState(ctx, identifier, config);
-    if (state !== null) {
-      yield* Fx.promise(() =>
-        authDb(ctx, config).rateLimits.delete(state.limit._id),
-      );
-    }
-  });
-
-// ---------------------------------------------------------------------------
-// Internal
-// ---------------------------------------------------------------------------
+): Effect.Effect<void> =>
+  Effect.flatMap(getRateLimitState(ctx, identifier, config), (state) =>
+    state !== null
+      ? Effect.promise(() => authDb(ctx, config).rateLimits.delete(state.limit._id))
+      : Effect.void,
+  );
 
 type RateLimitState = {
   limit: Doc<"RateLimit"> & { attemptsLeft: number; lastAttemptTime: number };
@@ -84,24 +70,26 @@ const getRateLimitState = (
   ctx: MutationCtx,
   identifier: string,
   config: ConvexAuthConfig,
-): Fx<RateLimitState, ConvexError<any>> =>
-  Fx.gen(function* () {
-    const now = Date.now();
-    const maxAttemptsPerHour =
-      config.signIn?.maxFailedAttemptsPerHour ??
-      DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR;
-
-    const limit = (yield* Fx.promise(() =>
-      authDb(ctx, config).rateLimits.get(identifier),
-    )) as
-      | (Doc<"RateLimit"> & { attemptsLeft: number; lastAttemptTime: number })
-      | null;
-    if (limit === null) return null;
-    const elapsed = now - limit.lastAttemptTime;
-    const maxAttemptsPerMs = maxAttemptsPerHour / (60 * 60 * 1000);
-    const attemptsLeft = Math.min(
-      maxAttemptsPerHour,
-      limit.attemptsLeft + elapsed * maxAttemptsPerMs,
-    );
-    return { limit, attemptsLeft };
-  });
+): Effect.Effect<RateLimitState> =>
+  Effect.map(
+    Effect.promise(() => authDb(ctx, config).rateLimits.get(identifier)),
+    (limit) => {
+      const typedLimit = limit as
+        | (Doc<"RateLimit"> & { attemptsLeft: number; lastAttemptTime: number })
+        | null;
+      if (typedLimit === null) {
+        return null;
+      }
+      const now = Date.now();
+      const maxAttemptsPerHour =
+        config.signIn?.maxFailedAttemptsPerHour ??
+        DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR;
+      const elapsed = now - typedLimit.lastAttemptTime;
+      const maxAttemptsPerMs = maxAttemptsPerHour / (60 * 60 * 1000);
+      const attemptsLeft = Math.min(
+        maxAttemptsPerHour,
+        typedLimit.attemptsLeft + elapsed * maxAttemptsPerMs,
+      );
+      return { limit: typedLimit, attemptsLeft };
+    },
+  );

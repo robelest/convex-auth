@@ -1,28 +1,18 @@
-import { Fx } from "@robelest/fx";
-import { Cv } from "@robelest/fx/convex";
 import { ConvexError, GenericId } from "convex/values";
+import { Effect } from "effect";
 
+import { envOptionalNumber, readConfigSync } from "./env";
 import { authDb } from "./db";
-import { Doc, MutationCtx } from "./types";
-import { ConvexAuthConfig } from "./types";
-import {
-  LOG_LEVELS,
-  REFRESH_TOKEN_DIVIDER,
-  logWithLevel,
-  maybeRedact,
-} from "./utils";
+import type { AuthErrorData } from "./errors";
+import type { ConvexAuthConfig, Doc, MutationCtx } from "./types";
+import { LOG_LEVELS, log, maybeRedact } from "./log";
 
-const DEFAULT_SESSION_INACTIVE_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
+export const REFRESH_TOKEN_DIVIDER = "|";
+
+const DEFAULT_SESSION_INACTIVE_DURATION_MS = 1000 * 60 * 60 * 24 * 30;
 /** @internal */
-export const REFRESH_TOKEN_REUSE_WINDOW_MS = 10 * 1000; // 10 seconds
+export const REFRESH_TOKEN_REUSE_WINDOW_MS = 10 * 1000;
 
-// ---------------------------------------------------------------------------
-// Refresh token CRUD
-// ---------------------------------------------------------------------------
-
-/**
- * Create a new refresh token for the given session.
- */
 /** @internal */
 export async function createRefreshToken(
   ctx: MutationCtx,
@@ -33,9 +23,7 @@ export async function createRefreshToken(
   const expirationTime =
     Date.now() +
     (config.session?.inactiveDurationMs ??
-      (process.env.AUTH_SESSION_INACTIVE_DURATION_MS !== undefined
-        ? Number(process.env.AUTH_SESSION_INACTIVE_DURATION_MS)
-        : undefined) ??
+      readConfigSync(envOptionalNumber("AUTH_SESSION_INACTIVE_DURATION_MS")) ??
       DEFAULT_SESSION_INACTIVE_DURATION_MS);
 
   return authDb(ctx, config).refreshTokens.create({
@@ -45,174 +33,150 @@ export async function createRefreshToken(
   }) as Promise<GenericId<"RefreshToken">>;
 }
 
-/**
- * Parse a compound refresh token string into its constituent IDs.
- */
 /** @internal */
 export const parseRefreshToken = (
   refreshToken: string,
-): Fx<
+): Effect.Effect<
   {
     refreshTokenId: GenericId<"RefreshToken">;
     sessionId: GenericId<"Session">;
   },
-  ConvexError<any>
+  ConvexError<AuthErrorData>
 > => {
   const [refreshTokenId, sessionId] = refreshToken.split(REFRESH_TOKEN_DIVIDER);
-  const msg = `Can't parse refresh token: ${maybeRedact(refreshToken)}`;
-  const refreshTokenIdFx: Fx<string, ConvexError<any>> = refreshTokenId != null
-    ? Fx.succeed(refreshTokenId)
-    : Cv.fail({ code: "INVALID_REFRESH_TOKEN", message: msg });
-
-  return refreshTokenIdFx.pipe(
-    Fx.chain((rtId) => {
-      const sessionIdFx: Fx<string, ConvexError<any>> = sessionId != null
-        ? Fx.succeed(sessionId)
-        : Cv.fail({ code: "INVALID_REFRESH_TOKEN", message: msg });
-      return sessionIdFx.pipe(
-        Fx.map((sId) => ({
-          refreshTokenId: rtId as GenericId<"RefreshToken">,
-          sessionId: sId as GenericId<"Session">,
-        })),
-      );
-    }),
-  );
+  const message = `Can't parse refresh token: ${maybeRedact(refreshToken)}`;
+  if (refreshTokenId == null || sessionId == null) {
+    return Effect.fail(
+      new ConvexError({ code: "INVALID_REFRESH_TOKEN", message }),
+    );
+  }
+  return Effect.succeed({
+    refreshTokenId: refreshTokenId as GenericId<"RefreshToken">,
+    sessionId: sessionId as GenericId<"Session">,
+  });
 };
 
-/**
- * Mark all refresh tokens descending from the given refresh token as invalid
- * immediately. Used when we detect token reuse — revoke the entire tree.
- */
 /** @internal */
-export async function invalidateRefreshTokensInSubtree(
+export function invalidateRefreshTokensInSubtree(
   ctx: MutationCtx,
   refreshToken: Doc<"RefreshToken">,
   config: ConvexAuthConfig,
-) {
+): Effect.Effect<Doc<"RefreshToken">[]> {
   const db = authDb(ctx, config);
-  const tokensToInvalidate = [refreshToken];
-  const visited = new Set<GenericId<"RefreshToken">>([refreshToken._id]);
-  let frontier: GenericId<"RefreshToken">[] = [refreshToken._id];
-  while (frontier.length > 0) {
-    const nextFrontier: GenericId<"RefreshToken">[] = [];
-    for (const currentTokenId of frontier) {
-      const children = (await db.refreshTokens.getChildren(
-        refreshToken.sessionId,
-        currentTokenId,
-      )) as Doc<"RefreshToken">[];
-      for (const child of children) {
-        if (visited.has(child._id)) continue;
-        visited.add(child._id);
-        tokensToInvalidate.push(child);
-        nextFrontier.push(child._id);
+  return Effect.gen(function* () {
+    const tokensToInvalidate = [refreshToken];
+    const visited = new Set<GenericId<"RefreshToken">>([refreshToken._id]);
+    let frontier: GenericId<"RefreshToken">[] = [refreshToken._id];
+    while (frontier.length > 0) {
+      const nextFrontier: GenericId<"RefreshToken">[] = [];
+      for (const currentTokenId of frontier) {
+        const children = (yield* Effect.promise(() =>
+          db.refreshTokens.getChildren(refreshToken.sessionId, currentTokenId),
+        )) as Doc<"RefreshToken">[];
+        for (const child of children) {
+          if (visited.has(child._id)) continue;
+          visited.add(child._id);
+          tokensToInvalidate.push(child);
+          nextFrontier.push(child._id);
+        }
       }
+      frontier = nextFrontier;
     }
-    frontier = nextFrontier;
-  }
-  await Fx.run(
-    Fx.each(tokensToInvalidate, (token) =>
-      token.firstUsedTime === undefined ||
-      token.firstUsedTime > Date.now() - REFRESH_TOKEN_REUSE_WINDOW_MS
-        ? Fx.promise(() =>
-            db.refreshTokens.patch(token._id, {
-              firstUsedTime: Date.now() - REFRESH_TOKEN_REUSE_WINDOW_MS,
-            }),
-          )
-        : Fx.unit,
-    ),
-  );
-  return tokensToInvalidate;
+    yield* Effect.forEach(
+      tokensToInvalidate,
+      (token) =>
+        token.firstUsedTime === undefined ||
+        token.firstUsedTime > Date.now() - REFRESH_TOKEN_REUSE_WINDOW_MS
+          ? Effect.promise(() =>
+              db.refreshTokens.patch(token._id, {
+                firstUsedTime: Date.now() - REFRESH_TOKEN_REUSE_WINDOW_MS,
+              }),
+            )
+          : Effect.void,
+      { discard: true },
+    );
+    return tokensToInvalidate;
+  });
 }
 
-// ---------------------------------------------------------------------------
-// Validation pipeline — the core of refresh token handling
-// ---------------------------------------------------------------------------
-
-/**
- * Validate a refresh token and its associated session.
- *
- * Returns `null` on any validation failure (matching original semantics).
- * Each validation step is a small composable function chained with `Fx.chain`.
- * On failure, the error message is logged and the pipeline folds to `null`.
- */
 /** @internal */
 export const refreshTokenIfValid = (
   ctx: MutationCtx,
   refreshTokenId: string,
   tokenSessionId: string,
   config: ConvexAuthConfig,
-): Fx<
-  { session: Doc<"Session">; refreshTokenDoc: Doc<"RefreshToken"> } | null,
-  never
+): Effect.Effect<
+  { session: Doc<"Session">; refreshTokenDoc: Doc<"RefreshToken"> } | null
 > => {
   const db = authDb(ctx, config);
 
   const fetchDoc = <T>(
     promise: () => Promise<T | null>,
     failMsg: string,
-  ): Fx<T | null, never> =>
-    Fx.from({ ok: promise, err: () => failMsg }).pipe(
-      Fx.recover((msg) => {
-        logWithLevel(LOG_LEVELS.ERROR, msg);
-        return Fx.succeed(null as T | null);
-      }),
+  ): Effect.Effect<T | null> =>
+    Effect.tryPromise({
+      try: promise,
+      catch: () => failMsg,
+    }).pipe(
+      Effect.catch((message) =>
+        Effect.sync(() => {
+          log(LOG_LEVELS.ERROR, message);
+          return null as T | null;
+        }),
+      ),
     );
 
-  // The entire validation is a single pipeline:
-  // fetch token → not null → not expired → session matches → fetch session → not null → not expired → combine
-  return fetchDoc(
+  const validateRefreshToken = fetchDoc(
     () =>
       db.refreshTokens.getById(
         refreshTokenId as GenericId<"RefreshToken">,
       ) as Promise<Doc<"RefreshToken"> | null>,
     "Invalid refresh token format",
-  )
-    .pipe(
-      Fx.chain((doc) =>
-        doc !== null ? Fx.succeed(doc) : Fx.fail("Invalid refresh token"),
-      ),
-      Fx.chain((doc) =>
-        doc.expirationTime >= Date.now()
-          ? Fx.succeed(doc)
-          : Fx.fail("Expired refresh token"),
-      ),
-      Fx.chain((doc) =>
-        doc.sessionId === tokenSessionId
-          ? Fx.succeed(doc)
-          : Fx.fail("Invalid refresh token session ID"),
-      ),
-    )
-    .pipe(
-      Fx.chain((doc: Doc<"RefreshToken">) =>
-        fetchDoc(
-          () =>
-            db.sessions.getById(
-              doc.sessionId,
-            ) as Promise<Doc<"Session"> | null>,
-          "Invalid refresh token session format",
-        ).pipe(
-          Fx.chain((session) =>
-            session !== null
-              ? Fx.succeed(session)
-              : Fx.fail("Invalid refresh token session"),
-          ),
-          Fx.chain((session) =>
-            session.expirationTime >= Date.now()
-              ? Fx.succeed(session)
-              : Fx.fail("Expired refresh token session"),
-          ),
-          Fx.map((session) => ({
-            session,
-            refreshTokenDoc: doc,
-          })),
+  ).pipe(
+    Effect.flatMap((doc) =>
+      doc !== null
+        ? Effect.succeed(doc)
+        : Effect.fail("Invalid refresh token"),
+    ),
+    Effect.flatMap((doc) =>
+      doc.expirationTime >= Date.now()
+        ? Effect.succeed(doc)
+        : Effect.fail("Expired refresh token"),
+    ),
+    Effect.flatMap((doc) =>
+      doc.sessionId === tokenSessionId
+        ? Effect.succeed(doc)
+        : Effect.fail("Invalid refresh token session ID"),
+    ),
+  );
+
+  return validateRefreshToken.pipe(
+    Effect.flatMap((refreshTokenDoc) =>
+      fetchDoc(
+        () =>
+          db.sessions.getById(
+            refreshTokenDoc.sessionId,
+          ) as Promise<Doc<"Session"> | null>,
+        "Invalid refresh token session format",
+      ).pipe(
+        Effect.flatMap((session) =>
+          session !== null
+            ? Effect.succeed(session)
+            : Effect.fail("Invalid refresh token session"),
         ),
+        Effect.flatMap((session) =>
+          session.expirationTime >= Date.now()
+            ? Effect.succeed(session)
+            : Effect.fail("Expired refresh token session"),
+        ),
+        Effect.map((session) => ({ session, refreshTokenDoc })),
       ),
-      Fx.fold({
-        ok: (result) => result,
-        err: (msg) => {
-          logWithLevel(LOG_LEVELS.ERROR, msg);
-          return null;
-        },
+    ),
+    Effect.catch((message) =>
+      Effect.sync(() => {
+        log(LOG_LEVELS.ERROR, message);
+        return null;
       }),
-    );
+    ),
+  );
 };

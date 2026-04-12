@@ -2,7 +2,7 @@ import { api, components } from "@convex/_generated/api";
 import type { DataModel } from "@convex/_generated/dataModel";
 import { auth as backendAuth } from "@convex/auth";
 import schema from "@convex/schema";
-import { client } from "@robelest/convex-auth/client/index";
+import { client } from "@robelest/convex-auth/client";
 import { decodeJwt } from "jose";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
@@ -89,11 +89,6 @@ test("token invite acceptance still rejects mismatched email", async () => {
 });
 
 test("proxy sign up can immediately accept invite", async () => {
-  vi.stubGlobal("window", {
-    location: { origin: "https://example.com", href: "https://example.com" },
-  });
-  vi.stubGlobal("location", { origin: "https://example.com" });
-
   const t = convexTest(schema);
   const inviteEmail = "proxy-flow@example.com";
   const inviteToken = "proxy-flow-token";
@@ -103,43 +98,43 @@ test("proxy sign up can immediately accept invite", async () => {
   });
 
   const convex = createConvexTransportMock();
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (_input, init) => {
-      const body = JSON.parse(String(init?.body ?? "{}")) as {
-        action?: string;
-        args?: Record<string, unknown>;
-      };
-
-      if (body.action !== "auth:signIn") {
-        return new Response(JSON.stringify({ error: "Unsupported action" }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-
-      if (body.args?.refreshToken === true) {
-        return new Response(
-          JSON.stringify({ kind: "signedIn", tokens: null }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
-      }
-
-      const result = await t.action(api.auth.signIn, body.args ?? {});
-      return new Response(JSON.stringify(result), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    }),
-  );
-
   const auth = client({
     convex,
     proxyPath: "/api/auth",
     url: "https://example.convex.cloud",
+    runtime: {
+      proxy: {
+        fetch: vi.fn(async (body: Record<string, unknown>) => {
+          const payload = body as {
+            action?: string;
+            args?: Record<string, unknown>;
+          };
+
+          if (payload.action !== "auth:signIn") {
+            return new Response(JSON.stringify({ error: "Unsupported action" }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+
+          if (payload.args?.refreshToken === true) {
+            return new Response(
+              JSON.stringify({ kind: "signedIn", tokens: null }),
+              {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+              },
+            );
+          }
+
+          const result = await t.action(api.auth.signIn, payload.args ?? {});
+          return new Response(JSON.stringify(result), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }),
+      },
+    },
   });
 
   const signInPromise = auth.signIn("password", {

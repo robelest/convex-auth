@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 
+import { Effect } from "effect";
 import { exportJWK, exportPKCS8, generateKeyPair } from "jose";
 
 export async function generateKeys() {
@@ -14,9 +15,10 @@ export async function generateKeys() {
       AUTH_SECRET_ENCRYPTION_KEY: randomBytes(32).toString("base64url"),
     };
   } catch (error) {
-    console.error(
-      "Could not generate private and public key, are you running this command using Node.js?\n",
-      error,
+    Effect.runSync(
+      Effect.logError(
+        `Could not generate private and public key, are you running this command using Node.js?\n ${error instanceof Error ? error.message : String(error)}`,
+      ),
     );
     process.exit(1);
   }

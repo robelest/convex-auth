@@ -1,20 +1,22 @@
-import { execFileSync } from "child_process";
+import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
   readFileSync,
-  writeFileSync,
   unlinkSync,
-} from "fs";
-import { tmpdir } from "os";
-import path from "path";
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { createInterface } from "node:readline/promises";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
 
-import * as p from "@clack/prompts";
-import { Command } from "@commander-js/extra-typings";
 import { config as loadEnvFile } from "dotenv";
-import * as v from "valibot";
+import { Command, Flag } from "effect/unstable/cli";
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { Effect, Option, Schema } from "effect";
 
-import { actionDescription } from "./command";
 import { generateKeys } from "./keys";
 
 // ---------------------------------------------------------------------------
@@ -22,10 +24,11 @@ import { generateKeys } from "./keys";
 // ---------------------------------------------------------------------------
 
 function getPackageVersion(): string {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
   // When bundled to dist/bin.js the package.json is one level up
   for (const relative of ["..", "../.."]) {
     try {
-      const pkgPath = path.resolve(__dirname, relative, "package.json");
+      const pkgPath = path.resolve(currentDir, relative, "package.json");
       return JSON.parse(readFileSync(pkgPath, "utf-8")).version;
     } catch {
       // try next
@@ -87,94 +90,185 @@ function convexCmd(...subArgs: string[]): { file: string; args: string[] } {
 }
 
 // ---------------------------------------------------------------------------
-// Commander program
+// Effect CLI program
 // ---------------------------------------------------------------------------
 
-export const program = new Command()
-  .name("@robelest/convex-auth")
-  .version(version)
-  .description(
-    "Add code and set environment variables for @robelest/convex-auth.\n\n" +
-      "Full docs: https://deepwiki.com/robelest/convex-auth",
-  );
+type CliOptions = {
+  siteUrl?: string;
+  secondaryUrl?: string;
+  variables?: string;
+  skipGitCheck: boolean;
+  allowDirtyGitState: boolean;
+  url?: string;
+  adminKey?: string;
+  prod: boolean;
+  previewName?: string;
+  deploymentName?: string;
+};
 
-// ---- Default setup command ----
-program
-  .option(
-    "--site-url <url>",
+const siteUrlOption = Flag.string("site-url").pipe(
+  Flag.optional,
+  Flag.withDescription(
     "Your frontend app URL (e.g. 'http://localhost:5173' for dev, 'https://myapp.com' for prod)",
-  )
-  .option(
-    "--secondary-url <urls>",
+  ),
+);
+
+const secondaryUrlOption = Flag.string("secondary-url").pipe(
+  Flag.optional,
+  Flag.withDescription(
     "Comma-separated additional frontend URLs allowed to share the same auth instance",
-  )
-  .option(
-    "--variables <json>",
+  ),
+);
+
+const variablesOption = Flag.string("variables").pipe(
+  Flag.optional,
+  Flag.withDescription(
     "Configure additional variables for interactive configuration.",
-  )
-  .option("--skip-git-check", "Don't warn when running outside a Git checkout.")
-  .option("--allow-dirty-git-state", "Don't warn when Git state is not clean.")
-  .addDeploymentSelectionOptions(
-    actionDescription("Set environment variables on"),
-  )
-  .action(async (options) => {
-    p.intro("@robelest/convex-auth");
+  ),
+);
 
-    await checkSourceControl(options);
+const skipGitCheckOption = Flag.boolean("skip-git-check").pipe(
+  Flag.withDescription("Don't warn when running outside a Git checkout."),
+);
 
-    const packageJson = readPackageJson();
-    const convexJson = readConvexJson();
-    const deployment = readConvexDeployment(options);
-    const convexFolderPath = convexJson.functions ?? "convex";
+const allowDirtyGitStateOption = Flag.boolean("allow-dirty-git-state").pipe(
+  Flag.withDescription("Don't warn when Git state is not clean."),
+);
 
-    const isNextjs = !!packageJson.dependencies?.next;
-    const usesTypeScript = !!(
-      packageJson.dependencies?.typescript ||
-      packageJson.devDependencies?.typescript
+const urlOption = Flag.string("url").pipe(Flag.optional);
+const adminKeyOption = Flag.string("admin-key").pipe(Flag.optional);
+const prodOption = Flag.boolean("prod").pipe(
+  Flag.withDescription("Set environment variables on this project's production deployment."),
+);
+const previewNameOption = Flag.string("preview-name").pipe(
+  Flag.optional,
+  Flag.withDescription(
+    "Set environment variables on the preview deployment with the given name.",
+  ),
+);
+const deploymentNameOption = Flag.string("deployment-name").pipe(
+  Flag.optional,
+  Flag.withDescription(
+    "Set environment variables on the specified deployment.",
+  ),
+);
+
+function normalizeCliOptions(options: {
+  siteUrl: Option.Option<string>;
+  secondaryUrl: Option.Option<string>;
+  variables: Option.Option<string>;
+  skipGitCheck: boolean;
+  allowDirtyGitState: boolean;
+  url: Option.Option<string>;
+  adminKey: Option.Option<string>;
+  prod: boolean;
+  previewName: Option.Option<string>;
+  deploymentName: Option.Option<string>;
+}): CliOptions {
+  return {
+    siteUrl: Option.getOrUndefined(options.siteUrl),
+    secondaryUrl: Option.getOrUndefined(options.secondaryUrl),
+    variables: Option.getOrUndefined(options.variables),
+    skipGitCheck: options.skipGitCheck,
+    allowDirtyGitState: options.allowDirtyGitState,
+    url: Option.getOrUndefined(options.url),
+    adminKey: Option.getOrUndefined(options.adminKey),
+    prod: options.prod,
+    previewName: Option.getOrUndefined(options.previewName),
+    deploymentName: Option.getOrUndefined(options.deploymentName),
+  };
+}
+
+function validateDeploymentSelectionOptions(options: CliOptions) {
+  const selectionCount = [
+    options.url !== undefined,
+    options.prod,
+    options.previewName !== undefined,
+    options.deploymentName !== undefined,
+  ].filter(Boolean).length;
+  if (selectionCount > 1) {
+    logErrorAndExit(
+      "Choose only one of --url, --prod, --preview-name, or --deployment-name.",
     );
-    const isVite = !!(
-      packageJson.dependencies?.vite || packageJson.devDependencies?.vite
-    );
-    const isExpo = !!(
-      packageJson.dependencies?.expo || packageJson.devDependencies?.expo
-    );
-    const config: ProjectConfig = {
-      isNextjs,
-      isVite,
-      isExpo,
-      usesTypeScript,
-      convexFolderPath,
-      deployment,
-      step: 1,
-    };
+  }
+}
 
-    // Step 1: Configure SITE_URL
-    await configureSiteUrl(config, options.siteUrl, options.secondaryUrl);
+async function runSetup(options: CliOptions) {
+  validateDeploymentSelectionOptions(options);
+  p.intro("@robelest/convex-auth");
 
-    // Step 2: Configure private and public key
-    await configureKeys(config);
+  await checkSourceControl(options);
 
-    // Step 3: Change moduleResolution to "bundler" and turn on skipLibCheck
-    await modifyTsConfig(config);
+  const packageJson = readPackageJson();
+  const convexJson = readConvexJson();
+  const deployment = readConvexDeployment(options);
+  const convexFolderPath = convexJson.functions ?? "convex";
 
-    // Step 4: Configure convex.config.ts
-    await configureConvexConfig(config);
+  const isNextjs = !!packageJson.dependencies?.next;
+  const usesTypeScript = !!(
+    packageJson.dependencies?.typescript || packageJson.devDependencies?.typescript
+  );
+  const isVite = !!(
+    packageJson.dependencies?.vite || packageJson.devDependencies?.vite
+  );
+  const isExpo = !!(
+    packageJson.dependencies?.expo || packageJson.devDependencies?.expo
+  );
+  const config: ProjectConfig = {
+    isNextjs,
+    isVite,
+    isExpo,
+    usesTypeScript,
+    convexFolderPath,
+    deployment,
+    step: 1,
+  };
 
-    // Step 5: Initialize auth.ts
-    await initializeAuth(config);
+  await configureSiteUrl(config, options.siteUrl, options.secondaryUrl);
+  await configureKeys(config);
+  await modifyTsConfig(config);
+  await configureConvexConfig(config);
+  await initializeAuth(config);
+  await configureHttp(config);
 
-    // Step 6: Configure http.ts
-    await configureHttp(config);
+  if (options.variables !== undefined) {
+    await configureOtherVariables(config, options.variables);
+  } else {
+    printFinalSuccessMessage(config);
+  }
 
-    // Extra: Configure providers interactively.
-    if (options.variables !== undefined) {
-      await configureOtherVariables(config, options.variables);
-    } else {
-      printFinalSuccessMessage(config);
-    }
+  p.outro("Done!");
+}
 
-    p.outro("Done!");
-  });
+const setupCommand = Command.make(
+  "convex-auth",
+  {
+    siteUrl: siteUrlOption,
+    secondaryUrl: secondaryUrlOption,
+    variables: variablesOption,
+    skipGitCheck: skipGitCheckOption,
+    allowDirtyGitState: allowDirtyGitStateOption,
+    url: urlOption,
+    adminKey: adminKeyOption,
+    prod: prodOption,
+    previewName: previewNameOption,
+    deploymentName: deploymentNameOption,
+  },
+  (options) => Effect.promise(() => runSetup(normalizeCliOptions(options))),
+).pipe(
+  Command.withDescription(
+    "Add code and set environment variables for @robelest/convex-auth.\n\nFull docs: https://deepwiki.com/robelest/convex-auth",
+  ),
+);
+
+export const runCli = Command.run(setupCommand, {
+  version,
+});
+
+export function runCliMain(argv = process.argv) {
+  process.argv = argv;
+  return runCli.pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain);
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -690,21 +784,21 @@ export default http;
 // Extra: --variables
 // ---------------------------------------------------------------------------
 
-const VariablesSchema = v.object({
-  help: v.optional(v.string()),
-  providers: v.array(
-    v.object({
-      name: v.string(),
-      help: v.optional(v.string()),
-      variables: v.array(
-        v.object({
-          name: v.string(),
-          description: v.string(),
+const VariablesSchema = Schema.Struct({
+  help: Schema.optional(Schema.String),
+  providers: Schema.Array(
+    Schema.Struct({
+      name: Schema.String,
+      help: Schema.optional(Schema.String),
+      variables: Schema.Array(
+        Schema.Struct({
+          name: Schema.String,
+          description: Schema.String,
         }),
       ),
     }),
   ),
-  success: v.optional(v.string()),
+  success: Schema.optional(Schema.String),
 });
 
 async function configureOtherVariables(config: ProjectConfig, json: string) {
@@ -718,7 +812,15 @@ async function configureOtherVariables(config: ProjectConfig, json: string) {
     );
   }
 
-  const variables = v.parse(VariablesSchema, parsed);
+  let variables: Schema.Schema.Type<typeof VariablesSchema>;
+  try {
+    variables = Schema.decodeUnknownSync(VariablesSchema)(parsed);
+  } catch (err) {
+    logErrorAndExit(
+      "The --variables flag has an invalid shape.",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
   logStep(config, "Configure extra environment variables");
   if (variables.help !== undefined) {
     p.log.message(variables.help);
@@ -836,23 +938,28 @@ async function checkSourceControl(options: {
 // Project file readers
 // ---------------------------------------------------------------------------
 
-type PackageJSON = { __isPackageJSON: true; [key: string]: any };
+type PackageJSON = {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+} & Record<string, unknown>;
 
 function readPackageJson(): PackageJSON {
   try {
     const data = readFileSync("package.json", "utf8");
     return JSON.parse(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     logErrorAndExit(
       "`@robelest/convex-auth` must be run from a project directory which " +
         'includes a valid "package.json" file. You can create one by running ' +
         "`npm init`.",
-      error.message,
+      error instanceof Error ? error.message : String(error),
     );
   }
 }
 
-type ConvexJSON = { __isConvexJSON: true; [key: string]: any };
+type ConvexJSON = {
+  functions?: string;
+} & Record<string, unknown>;
 
 function readConvexJson(): ConvexJSON {
   if (!existsSync("convex.json")) {
@@ -861,12 +968,17 @@ function readConvexJson(): ConvexJSON {
   try {
     const data = readFileSync("convex.json", "utf8");
     return JSON.parse(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     logErrorAndExit(
       "Could not parse your convex.json. Is it valid JSON?",
-      error.message,
+      error instanceof Error ? error.message : String(error),
     );
   }
+}
+
+function loadEnvFiles() {
+  loadEnvFile({ path: ".env.local", override: false });
+  loadEnvFile({ path: ".env", override: false });
 }
 
 // ---------------------------------------------------------------------------
@@ -911,8 +1023,7 @@ export function readConvexDeployment(options: {
     return { ...explicitSelection, options };
   }
 
-  loadEnvFile({ path: ".env.local" });
-  loadEnvFile();
+  loadEnvFiles();
   if (process.env.CONVEX_DEPLOYMENT) {
     const type = getDeploymentTypeFromConfiguredDeployment(
       process.env.CONVEX_DEPLOYMENT,
@@ -996,8 +1107,71 @@ export function isPreviewDeployKey(adminKey: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Prompts (using @clack/prompts, with TTY detection on stdin)
+// Terminal UI helpers
 // ---------------------------------------------------------------------------
+
+const ANSI = {
+  reset: "\u001b[0m",
+  blue: "\u001b[34m",
+  cyan: "\u001b[36m",
+  green: "\u001b[32m",
+  red: "\u001b[31m",
+  yellow: "\u001b[33m",
+} as const;
+
+function formatLabel(label: string, color: string) {
+  return `${color}${label}${ANSI.reset}`;
+}
+
+const p = {
+  intro(message: string) {
+    Effect.runSync(Effect.logInfo(message));
+  },
+  outro(message: string) {
+    Effect.runSync(Effect.logInfo(message));
+  },
+  cancel(message: string) {
+    Effect.runSync(Effect.logError(message));
+  },
+  log: {
+    info(message: string) {
+      Effect.runSync(
+        Effect.logInfo(`${formatLabel("info", ANSI.blue)} ${message}`),
+      );
+    },
+    success(message: string) {
+      Effect.runSync(
+        Effect.logInfo(`${formatLabel("success", ANSI.green)} ${message}`),
+      );
+    },
+    warn(message: string) {
+      Effect.runSync(
+        Effect.logWarning(`${formatLabel("warn", ANSI.yellow)} ${message}`),
+      );
+    },
+    error(message: string) {
+      Effect.runSync(
+        Effect.logError(`${formatLabel("error", ANSI.red)} ${message}`),
+      );
+    },
+    step(message: string) {
+      Effect.runSync(
+        Effect.logInfo(`${formatLabel("step", ANSI.cyan)} ${message}`),
+      );
+    },
+    message(message: string) {
+      Effect.runSync(Effect.logInfo(message));
+    },
+  },
+};
+
+function prompt(question: string) {
+  const readline = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  return readline.question(question).finally(() => readline.close());
+}
 
 async function promptForConfirmationOrExit(
   message: string,
@@ -1014,15 +1188,21 @@ async function promptForConfirmation(
   options: { default?: boolean } = {},
 ): Promise<boolean> {
   if (process.stdin.isTTY) {
-    const result = await p.confirm({
-      message,
-      initialValue: options.default ?? true,
-    });
-    if (p.isCancel(result)) {
-      p.cancel("Setup cancelled.");
-      process.exit(1);
+    const defaultValue = options.default ?? true;
+    const suffix = defaultValue ? " [Y/n] " : " [y/N] ";
+    while (true) {
+      const result = (await prompt(`${message}${suffix}`)).trim().toLowerCase();
+      if (result === "") {
+        return defaultValue;
+      }
+      if (result === "y" || result === "yes") {
+        return true;
+      }
+      if (result === "n" || result === "no") {
+        return false;
+      }
+      p.log.error("Please enter yes or no.");
     }
-    return result;
   } else {
     return options.default ?? true;
   }
@@ -1036,24 +1216,19 @@ async function promptForInput(
   },
 ): Promise<string> {
   if (process.stdin.isTTY) {
-    const result = await p.text({
-      message,
-      defaultValue: options.default,
-      placeholder: options.default,
-      validate: options.validate
-        ? (val: string | undefined) => {
-            if (val === undefined) return "Input is required";
-            const check = options.validate!(val);
-            if (check === true) return undefined;
-            return check;
-          }
-        : undefined,
-    });
-    if (p.isCancel(result)) {
-      p.cancel("Setup cancelled.");
-      process.exit(1);
+    const suffix = options.default !== undefined ? ` (${options.default}) ` : " ";
+    while (true) {
+      const result = await prompt(`${message}${suffix}`);
+      const value = result === "" && options.default !== undefined ? options.default : result;
+      if (options.validate) {
+        const check = options.validate(value);
+        if (check !== true) {
+          p.log.error(check);
+          continue;
+        }
+      }
+      return value;
     }
-    return result;
   } else {
     if (options.default !== undefined) {
       return options.default;

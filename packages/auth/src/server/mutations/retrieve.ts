@@ -1,6 +1,6 @@
-import { Fx } from "@robelest/fx";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { Infer, v } from "convex/values";
+import { Effect, Match } from "effect";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
@@ -10,7 +10,7 @@ import {
   resetSignInRateLimit,
 } from "../limits";
 import { Doc, MutationCtx } from "../types";
-import { LOG_LEVELS, logWithLevel, maybeRedact } from "../utils";
+import { LOG_LEVELS, log, maybeRedact } from "../log";
 import { AUTH_STORE_REF } from "./store/refs";
 
 export const retrieveAccountWithCredentialsArgs = v.object({
@@ -29,68 +29,71 @@ export function retrieveAccountWithCredentialsImpl(
   args: Infer<typeof retrieveAccountWithCredentialsArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
-): Fx<ReturnType> {
+): Effect.Effect<ReturnType> {
   const { provider: providerId, account } = args;
   const db = authDb(ctx, config);
 
-  logWithLevel(LOG_LEVELS.DEBUG, "retrieveAccountWithCredentialsImpl args:", {
+  log(LOG_LEVELS.DEBUG, "retrieveAccountWithCredentialsImpl args:", {
     provider: providerId,
     account: { id: account.id, secret: maybeRedact(account.secret ?? "") },
   });
 
-  return Fx.gen(function* () {
-    const existingAccount = yield* Fx.promise(
-      () =>
-        db.accounts.get(
-          providerId,
-          account.id,
-        ) as Promise<Doc<"Account"> | null>,
-    );
-    if (existingAccount === null) {
-      return "InvalidAccountId" as const;
-    }
-
-    if (account.secret !== undefined) {
-      const limited = yield* isSignInRateLimited(
-        ctx,
-        existingAccount._id,
-        config,
+  return Effect.catch(
+    Effect.gen(function* () {
+      const existingAccount = yield* Effect.promise(
+        () =>
+          db.accounts.get(
+            providerId,
+            account.id,
+          ) as Promise<Doc<"Account"> | null>,
       );
-      if (limited) {
-        return "TooManyFailedAttempts" as const;
+      if (existingAccount === null) {
+        return "InvalidAccountId" as const;
       }
 
-      const valid = yield* Provider.verify(
-        getProviderOrThrow(providerId),
-        account.secret,
-        existingAccount.secret ?? "",
-      );
-      if (!valid) {
-        yield* recordFailedSignIn(ctx, existingAccount._id, config);
-        return "InvalidSecret" as const;
+      if (account.secret !== undefined) {
+        const accountSecret = account.secret;
+        const limited = yield* isSignInRateLimited(
+          ctx,
+          existingAccount._id,
+          config,
+        );
+        if (limited) {
+          return "TooManyFailedAttempts" as const;
+        }
+
+        const valid = yield* Provider.verify(
+          getProviderOrThrow(providerId),
+          accountSecret,
+          existingAccount.secret ?? "",
+        );
+        if (!valid) {
+          yield* recordFailedSignIn(ctx, existingAccount._id, config);
+          return "InvalidSecret" as const;
+        }
+
+        yield* resetSignInRateLimit(ctx, existingAccount._id, config);
       }
 
-      yield* resetSignInRateLimit(ctx, existingAccount._id, config);
-    }
-
-    const user = yield* Fx.promise(
-      () =>
-        db.users.getById(existingAccount.userId) as Promise<Doc<"User"> | null>,
-    );
-    if (user === null) {
-      logWithLevel(
-        LOG_LEVELS.ERROR,
-        `Account ${existingAccount._id} is linked to missing user ${existingAccount.userId}`,
+      const user = yield* Effect.promise(
+        () =>
+          db.users.getById(existingAccount.userId) as Promise<Doc<"User"> | null>,
       );
-      return "InvalidAccountId" as const;
-    }
 
-    return { account: existingAccount, user } as ReturnType;
-  }).pipe(
-    Fx.fold({
-      ok: (v) => v as ReturnType,
-      err: () => "InvalidAccountId" as ReturnType,
+      return yield* Match.value(user).pipe(
+        Match.when(null, () => {
+          log(
+            LOG_LEVELS.ERROR,
+            `Account ${existingAccount._id} is linked to missing user ${existingAccount.userId}`,
+          );
+          return Effect.succeed("InvalidAccountId" as const);
+        }),
+        Match.orElse((user) =>
+          Effect.succeed({ account: existingAccount, user } as ReturnType),
+        ),
+      );
     }),
+    () => Effect.succeed("InvalidAccountId" as ReturnType),
   );
 }
 
@@ -105,5 +108,5 @@ export const callRetrieveAccountWithCredentials = async <
       type: "retrieveAccountWithCredentials",
       ...args,
     },
-  });
+  }) as Promise<ReturnType>;
 };

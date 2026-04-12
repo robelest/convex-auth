@@ -1,49 +1,68 @@
-import { Fx } from "@robelest/fx";
-import { Cv } from "@robelest/fx/convex";
 import { ConvexError } from "convex/values";
+import { Effect, Match, Option, pipe } from "effect";
 
-import { AuthProviderMaterializedConfig } from "./types";
-import { ConvexAuthMaterializedConfig } from "./types";
-import { errorMessage } from "./utils";
+import type {
+  AuthProviderMaterializedConfig,
+  ConvexAuthMaterializedConfig,
+} from "./types";
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+type AuthError = ConvexError<{ code: string; message: string }>;
+
+const credentialsError = (code: string, message: string): AuthError =>
+  new ConvexError({ code, message });
+
+type CredentialsProviderLike = Extract<
+  AuthProviderMaterializedConfig,
+  { type: "credentials" }
+>;
+
+const asCredentialsProvider = (
+  provider: AuthProviderMaterializedConfig,
+): Effect.Effect<CredentialsProviderLike, AuthError> =>
+  Match.value(provider).pipe(
+    Match.when({ type: "credentials" }, (provider) => Effect.succeed(provider)),
+    Match.orElse((provider) =>
+      Effect.fail(
+        credentialsError(
+          "INVALID_CREDENTIALS_PROVIDER",
+          `Provider ${provider.id} is not a credentials provider`,
+        ),
+      ),
+    ),
+  );
 
 /**
  * Hash a secret using the provider's `crypto.hashSecret` function.
- *
- * Validates that the provider is a credentials provider and has the
- * required crypto function, returning typed errors through the Fx channel.
  */
 /** @internal */
 export const hash = (
-  provider: any,
+  provider: AuthProviderMaterializedConfig,
   secret: string,
-): Fx<string, ConvexError<any>> =>
-  Fx.gen(function* () {
-    if (provider.type !== "credentials") {
-      return yield* Cv.fail({
-        code: "INVALID_CREDENTIALS_PROVIDER",
-        message: `Provider ${provider.id} is not a credentials provider`,
-      });
-    }
-
-    const hashSecretFn = provider.crypto?.hashSecret as
-      | ((s: string) => Promise<string>)
-      | undefined;
-    if (!hashSecretFn) {
-      return yield* Cv.fail({
-        code: "MISSING_CRYPTO_FUNCTION",
-        message: `Provider ${provider.id} does not have a \`crypto.hashSecret\` function`,
-      });
-    }
-
-    return yield* Fx.from({
-      ok: () => hashSecretFn(secret),
-      err: (e) =>
-        Cv.error({
-          code: "INTERNAL_ERROR",
-          message: `Hash failed: ${errorMessage(e)}`,
-        }),
-    });
-  });
+): Effect.Effect<string, AuthError> =>
+  Effect.flatMap(asCredentialsProvider(provider), (provider) =>
+    pipe(
+      Option.fromNullishOr(provider.crypto?.hashSecret),
+      Option.match({
+        onNone: () =>
+          Effect.fail(
+            credentialsError(
+              "MISSING_CRYPTO_FUNCTION",
+              `Provider ${provider.id} does not have a \`crypto.hashSecret\` function`,
+            ),
+          ),
+        onSome: (hashSecret) =>
+          Effect.tryPromise({
+            try: () => hashSecret(secret),
+            catch: (error) =>
+              credentialsError("INTERNAL_ERROR", `Hash failed: ${errorMessage(error)}`),
+          }),
+      }),
+    ),
+  );
 
 /**
  * Verify a secret against a hash using the provider's `crypto.verifySecret` function.
@@ -53,34 +72,30 @@ export const verify = (
   provider: AuthProviderMaterializedConfig,
   secret: string,
   hashValue: string,
-): Fx<boolean, ConvexError<any>> =>
-  Fx.gen(function* () {
-    if (provider.type !== "credentials") {
-      return yield* Cv.fail({
-        code: "INVALID_CREDENTIALS_PROVIDER",
-        message: `Provider ${provider.id} is not a credentials provider`,
-      });
-    }
-
-    const verifySecretFn = (provider as any).crypto?.verifySecret as
-      | ((s: string, h: string) => Promise<boolean>)
-      | undefined;
-    if (!verifySecretFn) {
-      return yield* Cv.fail({
-        code: "MISSING_CRYPTO_FUNCTION",
-        message: `Provider ${provider.id} does not have a \`crypto.verifySecret\` function`,
-      });
-    }
-
-    return yield* Fx.from({
-      ok: () => verifySecretFn(secret, hashValue),
-      err: (e) =>
-        Cv.error({
-          code: "INTERNAL_ERROR",
-          message: `Verify failed: ${errorMessage(e)}`,
-        }),
-    });
-  });
+): Effect.Effect<boolean, AuthError> =>
+  Effect.flatMap(asCredentialsProvider(provider), (provider) =>
+    pipe(
+      Option.fromNullishOr(provider.crypto?.verifySecret),
+      Option.match({
+        onNone: () =>
+          Effect.fail(
+            credentialsError(
+              "MISSING_CRYPTO_FUNCTION",
+              `Provider ${provider.id} does not have a \`crypto.verifySecret\` function`,
+            ),
+          ),
+        onSome: (verifySecret) =>
+          Effect.tryPromise({
+            try: () => verifySecret(secret, hashValue),
+            catch: (error) =>
+              credentialsError(
+                "INTERNAL_ERROR",
+                `Verify failed: ${errorMessage(error)}`,
+              ),
+          }),
+      }),
+    ),
+  );
 
 export type GetProviderOrThrowFunc = (
   provider: string,

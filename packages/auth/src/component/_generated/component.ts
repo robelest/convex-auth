@@ -908,12 +908,28 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             };
             provisioning: {
               deprovision: { mode: "soft" | "hard" };
+              groups: {
+                mapping?: Record<string, Array<string>>;
+                mode: "ignore" | "sync";
+                source: "protocol";
+              };
               jit: {
                 defaultRole?: string;
                 defaultRoleIds?: Array<string>;
                 mode: "off" | "createUser" | "createUserAndMembership";
               };
+              roles: {
+                mapping?: Record<string, Array<string>>;
+                mode: "ignore" | "map";
+                source: "protocol";
+              };
               scimReuse: { user: "externalId" | "none" };
+              user: {
+                authority: "app" | "sso" | "scim";
+                createOnSignIn: boolean;
+                updateProfileFromScim: "never" | "missing" | "always";
+                updateProfileOnLogin: "never" | "missing" | "always";
+              };
             };
             version: 1;
           };
@@ -960,12 +976,28 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               };
               provisioning: {
                 deprovision: { mode: "soft" | "hard" };
+                groups: {
+                  mapping?: Record<string, Array<string>>;
+                  mode: "ignore" | "sync";
+                  source: "protocol";
+                };
                 jit: {
                   defaultRole?: string;
                   defaultRoleIds?: Array<string>;
                   mode: "off" | "createUser" | "createUserAndMembership";
                 };
+                roles: {
+                  mapping?: Record<string, Array<string>>;
+                  mode: "ignore" | "map";
+                  source: "protocol";
+                };
                 scimReuse: { user: "externalId" | "none" };
+                user: {
+                  authority: "app" | "sso" | "scim";
+                  createOnSignIn: boolean;
+                  updateProfileFromScim: "never" | "missing" | "always";
+                  updateProfileOnLogin: "never" | "missing" | "always";
+                };
               };
               version: 1;
             };
@@ -1022,12 +1054,28 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 };
                 provisioning: {
                   deprovision: { mode: "soft" | "hard" };
+                  groups: {
+                    mapping?: Record<string, Array<string>>;
+                    mode: "ignore" | "sync";
+                    source: "protocol";
+                  };
                   jit: {
                     defaultRole?: string;
                     defaultRoleIds?: Array<string>;
                     mode: "off" | "createUser" | "createUserAndMembership";
                   };
+                  roles: {
+                    mapping?: Record<string, Array<string>>;
+                    mode: "ignore" | "map";
+                    source: "protocol";
+                  };
                   scimReuse: { user: "externalId" | "none" };
+                  user: {
+                    authority: "app" | "sso" | "scim";
+                    createOnSignIn: boolean;
+                    updateProfileFromScim: "never" | "missing" | "always";
+                    updateProfileOnLogin: "never" | "missing" | "always";
+                  };
                 };
                 version: 1;
               };
@@ -1074,12 +1122,28 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   };
                   provisioning: {
                     deprovision: { mode: "soft" | "hard" };
+                    groups: {
+                      mapping?: Record<string, Array<string>>;
+                      mode: "ignore" | "sync";
+                      source: "protocol";
+                    };
                     jit: {
                       defaultRole?: string;
                       defaultRoleIds?: Array<string>;
                       mode: "off" | "createUser" | "createUserAndMembership";
                     };
+                    roles: {
+                      mapping?: Record<string, Array<string>>;
+                      mode: "ignore" | "map";
+                      source: "protocol";
+                    };
                     scimReuse: { user: "externalId" | "none" };
+                    user: {
+                      authority: "app" | "sso" | "scim";
+                      createOnSignIn: boolean;
+                      updateProfileFromScim: "never" | "missing" | "always";
+                      updateProfileOnLogin: "never" | "missing" | "always";
+                    };
                   };
                   version: 1;
                 };

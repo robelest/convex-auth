@@ -1,4 +1,5 @@
-import { client } from "@robelest/convex-auth/client/index";
+import { client as browserClient } from "@robelest/convex-auth/browser";
+import { client } from "@robelest/convex-auth/client";
 import { ConvexError } from "convex/values";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
@@ -46,11 +47,12 @@ function createConvexMock() {
   };
 }
 
-function stubBrowserOrigin() {
-  vi.stubGlobal("window", {
-    location: { origin: "https://example.com", href: "https://example.com" },
-  });
-  vi.stubGlobal("location", { origin: "https://example.com" });
+function createProxyRuntime(
+  fetchImpl: (body: Record<string, unknown>, proxyPath: string) => Promise<Response>,
+) {
+  return {
+    fetch: fetchImpl,
+  };
 }
 
 afterEach(() => {
@@ -59,15 +61,9 @@ afterEach(() => {
 });
 
 test("proxy mode re-syncs convex auth after sign in", async () => {
-  stubBrowserOrigin();
   const convex = createConvexMock();
-  const auth = client({
-    convex,
-    proxyPath: "/api/auth",
-    tokenSeed: "server-token",
-  });
-
-  const fetchMock = vi.fn(async () => {
+  const fetchMock = vi.fn(async (_body: Record<string, unknown>, proxyPath: string) => {
+    expect(proxyPath).toBe("/api/auth");
     return new Response(
       JSON.stringify({
         kind: "signedIn",
@@ -82,7 +78,12 @@ test("proxy mode re-syncs convex auth after sign in", async () => {
       },
     );
   });
-  vi.stubGlobal("fetch", fetchMock);
+  const auth = client({
+    convex,
+    proxyPath: "/api/auth",
+    tokenSeed: "server-token",
+    runtime: { proxy: createProxyRuntime(fetchMock) },
+  });
 
   const resultPromise = auth.signIn("password", {
     email: "sarah@gmail.com",
@@ -106,23 +107,26 @@ test("proxy mode re-syncs convex auth after sign in", async () => {
   );
 
   expect(fetchMock).toHaveBeenCalledWith(
-    "https://example.com/api/auth",
     expect.objectContaining({
-      method: "POST",
-      credentials: "include",
+      action: "auth:signIn",
     }),
+    "/api/auth",
   );
 
   auth.destroy();
 });
 
 test("server token starts authenticated without loading handshake", () => {
-  stubBrowserOrigin();
   const convex = createConvexMock();
   const auth = client({
     convex,
     proxyPath: "/api/auth",
     tokenSeed: "server-token",
+    runtime: {
+      proxy: createProxyRuntime(async () => {
+        throw new Error("should not fetch with seeded token");
+      }),
+    },
   });
 
   expect(auth.state.phase).toBe("authenticated");
@@ -134,18 +138,13 @@ test("server token starts authenticated without loading handshake", () => {
 });
 
 test("proxy signIn waits for Convex auth confirmation", async () => {
-  stubBrowserOrigin();
   const convex = createConvexMock();
   const auth = client({
     convex,
     proxyPath: "/api/auth",
     tokenSeed: "existing-token",
-  });
-
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () =>
+    runtime: {
+      proxy: createProxyRuntime(async () =>
         new Response(
           JSON.stringify({
             kind: "signedIn",
@@ -159,8 +158,9 @@ test("proxy signIn waits for Convex auth confirmation", async () => {
             headers: { "Content-Type": "application/json" },
           },
         ),
-    ),
-  );
+      ),
+    },
+  });
 
   let resolved = false;
   const signInPromise = auth
@@ -185,18 +185,13 @@ test("proxy signIn waits for Convex auth confirmation", async () => {
 });
 
 test("proxy signIn tolerates transient auth false before confirmation", async () => {
-  stubBrowserOrigin();
   const convex = createConvexMock();
   const auth = client({
     convex,
     proxyPath: "/api/auth",
     tokenSeed: "existing-token",
-  });
-
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () =>
+    runtime: {
+      proxy: createProxyRuntime(async () =>
         new Response(
           JSON.stringify({
             kind: "signedIn",
@@ -210,8 +205,9 @@ test("proxy signIn tolerates transient auth false before confirmation", async ()
             headers: { "Content-Type": "application/json" },
           },
         ),
-    ),
-  );
+      ),
+    },
+  });
 
   const signInPromise = auth.signIn("password", {
     email: "sarah@gmail.com",
@@ -239,18 +235,13 @@ test("proxy signIn tolerates transient auth false before confirmation", async ()
 
 test("proxy signIn times out after rejection signal with no later confirmation", async () => {
   vi.useFakeTimers();
-  stubBrowserOrigin();
   const convex = createConvexMock();
   const auth = client({
     convex,
     proxyPath: "/api/auth",
     tokenSeed: "existing-token",
-  });
-
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () =>
+    runtime: {
+      proxy: createProxyRuntime(async () =>
         new Response(
           JSON.stringify({
             kind: "signedIn",
@@ -264,8 +255,9 @@ test("proxy signIn times out after rejection signal with no later confirmation",
             headers: { "Content-Type": "application/json" },
           },
         ),
-    ),
-  );
+      ),
+    },
+  });
 
   const signInPromise = auth.signIn("password", {
     email: "sarah@gmail.com",
@@ -295,18 +287,13 @@ test("proxy signIn times out after rejection signal with no later confirmation",
 
 test("proxy signIn times out when auth confirmation never arrives", async () => {
   vi.useFakeTimers();
-  stubBrowserOrigin();
   const convex = createConvexMock();
   const auth = client({
     convex,
     proxyPath: "/api/auth",
     tokenSeed: "existing-token",
-  });
-
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () =>
+    runtime: {
+      proxy: createProxyRuntime(async () =>
         new Response(
           JSON.stringify({
             kind: "signedIn",
@@ -320,8 +307,9 @@ test("proxy signIn times out when auth confirmation never arrives", async () => 
             headers: { "Content-Type": "application/json" },
           },
         ),
-    ),
-  );
+      ),
+    },
+  });
 
   const signInPromise = auth.signIn("password", {
     email: "sarah@gmail.com",
@@ -346,18 +334,13 @@ test("proxy signIn times out when auth confirmation never arrives", async () => 
 });
 
 test("proxy refresh does not re-register Convex auth", async () => {
-  stubBrowserOrigin();
   const convex = createConvexMock();
   const auth = client({
     convex,
     proxyPath: "/api/auth",
     tokenSeed: "existing-token",
-  });
-
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () =>
+    runtime: {
+      proxy: createProxyRuntime(async () =>
         new Response(
           JSON.stringify({
             kind: "signedIn",
@@ -371,8 +354,9 @@ test("proxy refresh does not re-register Convex auth", async () => {
             headers: { "Content-Type": "application/json" },
           },
         ),
-    ),
-  );
+      ),
+    },
+  });
 
   const fetchAccessToken = convex.setAuth.mock.calls[0]?.[0] as
     | ((args: { forceRefreshToken: boolean }) => Promise<string | null>)
@@ -387,14 +371,7 @@ test("proxy refresh does not re-register Convex auth", async () => {
 });
 
 test("proxy refresh retries transient failures before succeeding", async () => {
-  stubBrowserOrigin();
   const convex = createConvexMock();
-  const auth = client({
-    convex,
-    proxyPath: "/api/auth",
-    tokenSeed: "existing-token",
-  });
-
   let attempts = 0;
   const fetchMock = vi.fn(async () => {
     attempts += 1;
@@ -415,7 +392,12 @@ test("proxy refresh retries transient failures before succeeding", async () => {
       },
     );
   });
-  vi.stubGlobal("fetch", fetchMock);
+  const auth = client({
+    convex,
+    proxyPath: "/api/auth",
+    tokenSeed: "existing-token",
+    runtime: { proxy: createProxyRuntime(fetchMock) },
+  });
 
   const fetchAccessToken = convex.setAuth.mock.calls[0]?.[0] as
     | ((args: { forceRefreshToken: boolean }) => Promise<string | null>)
@@ -430,18 +412,13 @@ test("proxy refresh retries transient failures before succeeding", async () => {
 });
 
 test("proxy client can call protected mutation immediately after signIn", async () => {
-  stubBrowserOrigin();
   const convex = createConvexMock();
   const auth = client({
     convex,
     proxyPath: "/api/auth",
     tokenSeed: "existing-token",
-  });
-
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () =>
+    runtime: {
+      proxy: createProxyRuntime(async () =>
         new Response(
           JSON.stringify({
             kind: "signedIn",
@@ -455,8 +432,9 @@ test("proxy client can call protected mutation immediately after signIn", async 
             headers: { "Content-Type": "application/json" },
           },
         ),
-    ),
-  );
+      ),
+    },
+  });
 
   const signInPromise = auth.signIn("password", {
     email: "sarah@gmail.com",
@@ -476,51 +454,89 @@ test("proxy client can call protected mutation immediately after signIn", async 
   auth.destroy();
 });
 
-test("proxy refresh skips relative URL in server runtime", async () => {
-  vi.stubGlobal("window", undefined as any);
-  vi.stubGlobal("location", undefined as any);
-  const fetchMock = vi.fn();
-  vi.stubGlobal("fetch", fetchMock);
-
+test("proxy mode requires an injected proxy runtime", () => {
   const convex = createConvexMock();
-  const auth = client({
-    convex,
-    proxyPath: "/api/auth",
+
+  expect(() =>
+    client({
+      convex,
+      proxyPath: "/api/auth",
+    }),
+  ).toThrow(/runtime\.proxy/);
+});
+
+test("browser client preserves proxy defaults when runtime is partially overridden", async () => {
+  vi.stubGlobal("window", {
+    location: { origin: "https://example.com", href: "https://example.com" },
   });
 
-  const fetchAccessToken = convex.setAuth.mock.calls[0]?.[0] as
-    | ((args: { forceRefreshToken: boolean }) => Promise<string | null>)
-    | undefined;
-  expect(fetchAccessToken).toBeDefined();
+  const convex = createConvexMock();
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+    expect(url).toBe("https://example.com/api/auth");
+    return new Response(
+      JSON.stringify({
+        kind: "signedIn",
+        tokens: {
+          token: "fresh-token",
+          refreshToken: "dummy",
+        },
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
 
-  const refreshedToken = await fetchAccessToken!({ forceRefreshToken: true });
+  const auth = browserClient({
+    convex,
+    proxyPath: "/api/auth",
+    tokenSeed: "server-token",
+    runtime: {
+      location: {
+        get: () => null,
+        replace: () => {},
+        redirect: () => {},
+      },
+    },
+  });
 
-  expect(refreshedToken).toBeNull();
-  expect(fetchMock).not.toHaveBeenCalled();
-  expect(auth.state.phase).toBe("unauthenticated");
-  expect(auth.state.isLoading).toBe(false);
+  const signInPromise = auth.signIn("password", {
+    email: "sarah@gmail.com",
+    password: "44448888",
+    flow: "signIn",
+  });
+
+  await waitForSetAuthCalls(convex, 2);
+  convex.triggerAuthChange(true);
+
+  await expect(signInPromise).resolves.toMatchObject({ kind: "signedIn" });
+  expect(fetchMock).toHaveBeenCalledTimes(1);
 
   auth.destroy();
 });
 
 test("empty SSR token is treated as signed out", () => {
-  stubBrowserOrigin();
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () =>
-        new Response(JSON.stringify({ kind: "signedIn", tokens: null }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-    ),
-  );
-
   const convex = createConvexMock();
   const auth = client({
     convex,
     proxyPath: "/api/auth",
     tokenSeed: "",
+    runtime: {
+      proxy: createProxyRuntime(async () =>
+        new Response(JSON.stringify({ kind: "signedIn", tokens: null }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    },
   });
 
   expect(auth.state.token).toBeNull();
