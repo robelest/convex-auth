@@ -1,0 +1,25 @@
+{
+  "name": "cli",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vp exec tsdown src/main.ts --format esm --out-dir dist",
+    "auth": "vp exec tsx src/main.ts auth",
+    "groups": "vp exec tsx src/main.ts groups",
+    "issues": "vp exec tsx src/main.ts issues"
+  },
+  "dependencies": {
+    "@effect/platform-node": "beta",
+    "@robelest/convex-auth": "workspace:*",
+    "convex": "catalog:",
+    "dotenv": "^17.2.4",
+    "effect": "beta"
+  },
+  "devDependencies": {
+    "tsdown": "catalog:",
+    "tsx": "^4.20.6",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
