@@ -404,14 +404,38 @@ export async function groupOidcConfigureRpc(
   userToken: string,
   args: {
     connectionId: string;
-    issuer?: string;
-    discoveryUrl?: string;
-    clientId: string;
-    clientSecret?: string;
-    scopes?: string[];
-    authorizationParams?: Record<string, string>;
-    clockToleranceSeconds?: number;
-    strictIssuer?: boolean;
+    discovery: {
+      issuer?: string;
+      discoveryUrl?: string;
+      audience?: string | string[];
+      jwksUri?: string;
+    };
+    client: {
+      id: string;
+      secret?: string;
+      authMethod?: "client_secret_post" | "client_secret_basic";
+    };
+    request?: {
+      scopes?: string[];
+      authorizationParams?: Record<string, string>;
+      loginHint?: string;
+    };
+    security?: {
+      clockToleranceSeconds?: number;
+      strictIssuer?: boolean;
+    };
+    profile?: {
+      mapping?: {
+        subject?: string;
+        email?: string;
+        emailVerified?: string;
+        name?: string;
+        image?: string;
+        groups?: string;
+        roles?: string;
+      };
+      extraFields?: Record<string, string>;
+    };
   },
 ): Promise<Record<string, unknown>> {
   return await groupRpc(
@@ -429,16 +453,48 @@ export async function groupSamlConfigureRpc(
   userToken: string,
   args: {
     connectionId: string;
-    metadataXml?: string;
-    metadataUrl?: string;
+    metadata: {
+      xml?: string;
+      url?: string;
+    };
     domains?: string[];
-    signAuthnRequests?: boolean;
-    attributeMapping?: {
-      subject?: string;
-      email?: string;
-      name?: string;
-      firstName?: string;
-      lastName?: string;
+    request?: {
+      signAuthnRequests?: boolean;
+      nameIdFormat?: string;
+      forceAuthn?: boolean;
+      authnContextClassRefs?: string[];
+    };
+    security?: {
+      requireSignedAssertions?: boolean;
+      requireTimestamps?: boolean;
+      clockSkewSeconds?: number;
+      weakAlgorithmHandling?: "warn" | "reject";
+      maxMetadataSize?: number;
+      maxResponseSize?: number;
+    };
+    profile?: {
+      mapping?: {
+        subject?: string;
+        email?: string;
+        name?: string;
+        firstName?: string;
+        lastName?: string;
+        image?: string;
+        groups?: string;
+        roles?: string;
+      };
+      extraFields?: Record<string, string>;
+    };
+    serviceProvider?: {
+      entityId?: string;
+      acsUrl?: string;
+      sloUrl?: string;
+      signingCert?: string | string[];
+      encryptCert?: string | string[];
+      privateKey?: string;
+      privateKeyPass?: string;
+      encPrivateKey?: string;
+      encPrivateKeyPass?: string;
     };
   },
 ): Promise<Record<string, unknown>> {
@@ -457,10 +513,27 @@ export async function groupConnectionScimConfigureRpc(
   userToken: string,
   args: {
     connectionId: string;
-    basePath?: string;
     status?: "draft" | "active" | "disabled";
+    security?: {
+      maxRequestSize?: number;
+    };
+    profile?: {
+      mapping?: {
+        subject?: string;
+        externalId?: string;
+        email?: string;
+        firstName?: string;
+        lastName?: string;
+        name?: string;
+        phone?: string;
+        active?: string;
+        groups?: string;
+        roles?: string;
+      };
+      extraFields?: Record<string, string>;
+    };
   },
-): Promise<{ token?: string; configId?: string }> {
+): Promise<{ token?: string; configId?: string; basePath?: string }> {
   return await groupRpc(
     convexClient,
     userToken,

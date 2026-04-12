@@ -30,6 +30,12 @@ Use `api.auth.group.*` when your app needs client-callable functions for:
 - validating group SSO setup from the browser
 - resolving group SSO sign-in flows from app code
 
+The mounted RPC layer mirrors the server helper model:
+
+- protocol namespaces (`oidc`, `saml`, `scim`) configure how external identity is read
+- `policy` decides how users and memberships are provisioned
+- connection and domain helpers manage trust and onboarding state
+
 If you only need normal sign-in/sign-out, you do **not** need this surface. The
 frontend auth client still only depends on:
 
@@ -46,6 +52,7 @@ Create one app-owned file and export only what your app needs:
 import { group } from "@robelest/convex-auth/server";
 
 import { auth, authorized } from "../auth";
+import { roles } from "../authorization";
 
 export const {
   createConnection,
@@ -54,20 +61,26 @@ export const {
   updateConnection,
   deleteConnection,
   listDomains,
+  getDomainStatus,
   validateDomains,
   setDomains,
   requestDomainVerification,
   confirmDomainVerification,
   configureOidc,
   getOidc,
+  getOidcStatus,
   validateOidc,
   configureSaml,
+  getSaml,
+  getSamlStatus,
   validateSaml,
+  refreshSaml,
   getPolicy,
   updatePolicy,
   validatePolicy,
   configureScim,
   getScim,
+  getScimStatus,
   validateScim,
   signIn,
   metadata,
@@ -78,6 +91,16 @@ export const {
   },
 });
 ```
+
+The mounted API keeps the same mental model as the server helpers:
+
+- `configure*` reads external identity from a protocol
+- `get*` and `get*Status` expose the current normalized state
+- `updatePolicy` controls how that identity is applied
+- domain helpers manage trust and onboarding
+
+Top-level `sso.hooks` remain server-only configuration on `createAuth(...)`; they
+are not part of the mounted `api.auth.group.*` RPC surface.
 
 ## Client usage
 
@@ -158,6 +181,7 @@ The flat group SSO RPC builder exposes verb-first functions:
 ### Domains
 
 - `listDomains`
+- `getDomainStatus`
 - `validateDomains`
 - `setDomains`
 - `requestDomainVerification`
@@ -167,12 +191,16 @@ The flat group SSO RPC builder exposes verb-first functions:
 
 - `configureOidc`
 - `getOidc`
+- `getOidcStatus`
 - `validateOidc`
 
 ### SAML
 
 - `configureSaml`
+- `getSaml`
+- `getSamlStatus`
 - `validateSaml`
+- `refreshSaml`
 - `metadata`
 
 ### Policy
@@ -192,11 +220,36 @@ The flat group SSO RPC builder exposes verb-first functions:
 
 - `configureScim`
 - `getScim`
+- `getScimStatus`
 - `validateScim`
 
 ### Client sign-in helpers
 
 - `signIn`
+
+## Example payloads
+
+```ts
+await configureOidc({
+  connectionId,
+  discovery: { issuer: "https://login.example.com" },
+  client: { id: "client-id", secret: "client-secret" },
+  request: { scopes: ["openid", "profile", "email"] },
+  profile: { mapping: { email: "email", groups: "groups", roles: "roles" } },
+});
+
+await configureSaml({
+  connectionId,
+  metadata: { url: "https://idp.example.com/metadata.xml" },
+  request: { signAuthnRequests: true },
+  profile: { mapping: { subject: "UserID", email: "Email", roles: "Roles" } },
+});
+
+await configureScim({
+  connectionId,
+  profile: { mapping: { externalId: "externalId", email: "emails.primary" } },
+});
+```
 
 ## Relationship to server helpers
 
@@ -215,3 +268,14 @@ helpers:
 
 If you need a custom public shape, skip `group(...)` and expose your own
 Convex functions directly from those server helpers.
+
+## Payload shapes
+
+The mounted RPC helpers use the same nested protocol config shapes as the server
+helpers:
+
+- OIDC: `discovery`, `client`, `request`, `security`, `profile`
+- SAML: `metadata`, `request`, `security`, `serviceProvider`, `profile`
+- SCIM: `status`, `security`, `profile`
+
+This keeps your admin UI and your server-side usage on the same mental model.

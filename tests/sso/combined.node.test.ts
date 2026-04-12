@@ -159,6 +159,7 @@ async function startGroupConnectionContext(
     convexClient,
     convexUserToken,
     connectionId: connectionCreated.connectionId,
+    groupId: connectionCreated.groupId,
     runId,
   };
 }
@@ -224,7 +225,14 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
   const { zitadelBaseUrl, zitadelRuntimeBaseUrl, managementToken, loginToken } =
     getInteropRuntime();
 
-  const { convexSiteUrl, convexClient, convexUserToken, connectionId, runId } =
+  const {
+    convexSiteUrl,
+    convexClient,
+    convexUserToken,
+    connectionId,
+    groupId,
+    runId,
+  } =
     await startGroupConnectionContext("combined-oidc", "oidc");
 
   const email = `${runId}@example.com`;
@@ -331,11 +339,40 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
 
   await groupOidcConfigureRpc(convexClient, convexUserToken, {
     connectionId,
-    issuer: normalizeRuntimeIssuer(zitadelBaseUrl),
-    discoveryUrl: `${zitadelRuntimeBaseUrl}/.well-known/openid-configuration`,
-    clientId: oidcClientId!,
-    clientSecret: oidcClientSecret,
-    scopes: ["openid", "profile", "email"],
+    discovery: {
+      issuer: normalizeRuntimeIssuer(zitadelBaseUrl),
+      discoveryUrl: `${zitadelRuntimeBaseUrl}/.well-known/openid-configuration`,
+    },
+    client: {
+      id: oidcClientId!,
+      secret: oidcClientSecret,
+    },
+    request: {
+      scopes: ["openid", "profile", "email"],
+    },
+    profile: {
+      mapping: {
+        email: "email",
+        groups: "groups",
+        roles: "urn:zitadel:iam:org:project:roles",
+      },
+    },
+  });
+
+  await convexClient.mutation(api.auth.group.updatePolicy, {
+    groupId,
+    patch: {
+      provisioning: {
+        groups: {
+          mode: "sync",
+          mapping: { engineering: ["member"] },
+        },
+        roles: {
+          mode: "map",
+          mapping: { admin: ["orgAdmin"] },
+        },
+      },
+    },
   });
 
   const { redirect: signInUrl, verifier } = await startSsoSignIn(
@@ -416,6 +453,7 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
     rewriteUrlForHostAccess(callbackUrl, zitadelRuntimeBaseUrl, zitadelBaseUrl),
     { headers: { Cookie: cookieHeader(convexCookies) ?? "" } },
   );
+  expect(callbackResponse.status).toBe(302);
   const completionLocation = callbackResponse.headers.get("location");
   if (!completionLocation) {
     throw new Error("Group Connection callback did not return completion redirect.");
@@ -451,7 +489,14 @@ test("SCIM + SAML reuses provisioned userId", async () => {
   const { zitadelBaseUrl, zitadelRuntimeBaseUrl, managementToken, loginToken } =
     getInteropRuntime();
 
-  const { convexSiteUrl, convexClient, convexUserToken, connectionId, runId } =
+  const {
+    convexSiteUrl,
+    convexClient,
+    convexUserToken,
+    connectionId,
+    groupId,
+    runId,
+  } =
     await startGroupConnectionContext("combined-saml", "saml");
 
   const email = `${runId}@example.com`;
@@ -510,14 +555,31 @@ test("SCIM + SAML reuses provisioned userId", async () => {
 
   await groupSamlConfigureRpc(convexClient, convexUserToken, {
     connectionId,
-    metadataXml: idpMetadataXml,
-    signAuthnRequests: false,
-    attributeMapping: {
-      subject: "UserID",
-      email: "Email",
-      name: "FullName",
-      firstName: "FirstName",
-      lastName: "SurName",
+    metadata: { xml: idpMetadataXml },
+    request: {
+      signAuthnRequests: false,
+    },
+    profile: {
+      mapping: {
+        subject: "UserID",
+        email: "Email",
+        name: "FullName",
+        firstName: "FirstName",
+        lastName: "SurName",
+        roles: "urn:zitadel:iam:org:project:roles",
+      },
+    },
+  });
+
+  await convexClient.mutation(api.auth.group.updatePolicy, {
+    groupId,
+    patch: {
+      provisioning: {
+        roles: {
+          mode: "map",
+          mapping: { admin: ["orgAdmin"] },
+        },
+      },
     },
   });
 

@@ -20,7 +20,11 @@ import { sso } from "@robelest/convex-auth/providers";
 import { components } from "./_generated/api";
 
 const auth = createAuth(components.auth, {
-  providers: [sso()],
+  providers: [
+    sso({
+      redirectURI: "/api/auth/sso/callback",
+    }),
+  ],
 });
 ```
 
@@ -53,12 +57,16 @@ import { useAction } from "convex/react";
 import { api } from "../convex/_generated/api";
 
 export const { createConnection, configureOidc, configureScim } = group(auth, {
-  authorized,
+  admin: { authorized },
 });
 
 const createConnection = useAction(api.auth.group.createConnection);
 const configureOidc = useAction(api.auth.group.configureOidc);
 const configureScim = useAction(api.auth.group.configureScim);
+const signIn = useQuery(api.auth.group.signIn, {
+  domain: "acme.com",
+  redirectTo: "/dashboard",
+});
 ```
 
 These are app-owned wrappers over the server helper namespaces. You can also
@@ -87,6 +95,22 @@ export const createConnection = action({
 | SAML 2.0 | Security Assertion Markup Language login | [`auth.group.sso.saml`](/sso/saml/) |
 | SCIM 2.0 | Cross-domain user/group provisioning     | [`auth.group.sso.scim`](/sso/scim/) |
 
+## Unified model
+
+All three protocols now follow the same mental model:
+
+1. Protocol config extracts external identity
+2. [`auth.group.sso.policy`](/sso/policy/) decides how that identity is applied
+3. Verified domains establish trust for discovery and safe linking
+4. Optional `sso.hooks` run on normalized profiles during provisioning
+
+That means:
+
+- OIDC / SAML / SCIM configure how to read external identity
+- `policy` decides how users, memberships, and deprovisioning behave
+- domains decide whether a connection is trusted for domain-based discovery
+- hooks let your app customize the normalized provisioning pipeline
+
 ## Per-tenant runtime configuration
 
 All group SSO configuration is **per-tenant runtime state** stored in your
@@ -106,22 +130,52 @@ This means you can:
 - Support multiple IdPs across different tenants simultaneously.
 - Let tenant admins configure their own SSO via your UI.
 
-## Current scope
+## Current policy scope
 
-The current group policy model is intentionally narrow. Today
-`auth.group.sso.policy` covers:
+Today `auth.group.sso.policy` covers:
 
 - OIDC and SAML account linking
+- user creation and profile authority
 - SCIM user reuse
 - JIT user and membership creation
+- groups and roles mapping into membership `roleIds`
 - SCIM deprovision behavior
 
-Settings like allowed auth methods, role or group mapping, domain restrictions,
-and session or token policy are still better treated as app-level policy until
-they become first-class library fields.
+Protocol-specific transport and validation settings stay in:
+
+- [`auth.group.sso.oidc`](/sso/oidc/)
+- [`auth.group.sso.saml`](/sso/saml/)
+- [`auth.group.sso.scim`](/sso/scim/)
+
+`groups` and `roles` currently map external values into membership `roleIds`.
+They do not create or mirror nested app groups automatically.
 
 If you expose app-level SSO management functions, require tenant-admin
 authorization in addition to checking that the caller is signed in.
+
+## Hooks
+
+You can optionally attach normalized SSO hooks at auth creation time:
+
+```ts
+const auth = createAuth(components.auth, {
+  providers: [sso()],
+  sso: {
+    hooks: {
+      profileResolved: async ({ protocol, profile }) => profile,
+      beforeProvision: async ({ protocol, profile }) => profile,
+      afterProvision: async ({ protocol, userId }) => {},
+      allowLink: async ({ protocol, userId, profile }) => true,
+    },
+  },
+});
+```
+
+These hooks run on normalized profile objects rather than raw OIDC claims, SAML
+attributes, or SCIM request bodies.
+
+Use hooks when your app needs small provisioning customizations without pushing
+tenant-specific logic down into protocol config.
 
 ## Related namespaces
 

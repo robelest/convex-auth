@@ -1,6 +1,16 @@
 import type { ScimListRequest } from "./shared";
 import { SCIM_GROUP_SCHEMA_ID, SCIM_USER_SCHEMA_ID } from "./shared";
 
+type ScimUserRecord = {
+  name?: string;
+  email?: string;
+  phone?: string;
+} & Record<string, unknown>;
+
+type ScimGroupRecord = {
+  name?: string;
+} & Record<string, unknown>;
+
 /** @internal */
 export function parseScimPath(pathname: string) {
   const parts = pathname.split("/").filter(Boolean);
@@ -43,11 +53,24 @@ export function parseScimListRequest(url: URL): ScimListRequest {
   const filterParam = url.searchParams.get("filter");
   const filter = filterParam
     ? (() => {
-        const match = filterParam.match(/^([A-Za-z0-9_.]+)\s+eq\s+"([^"]+)"$/);
+        const presentMatch = filterParam.match(/^([A-Za-z0-9_.]+)\s+pr$/);
+        if (presentMatch) {
+          return {
+            attribute: presentMatch[1]!,
+            operator: "pr" as const,
+          };
+        }
+        const match = filterParam.match(
+          /^([A-Za-z0-9_.]+(?:\[value eq "[^"]+"\])?)\s+(eq|co|sw|ew)\s+"([^"]+)"$/,
+        );
         if (!match) {
           throw new Error("Unsupported SCIM filter.");
         }
-        return { attribute: match[1]!, value: match[2]! };
+        return {
+          attribute: match[1]!,
+          operator: match[2]! as "eq" | "co" | "sw" | "ew",
+          value: match[3]!,
+        };
       })()
     : undefined;
   return { startIndex, count, filter };
@@ -85,7 +108,7 @@ export function scimError(status: number, scimType: string, detail: string) {
 /** @internal */
 export function serializeScimUser(args: {
   id: string;
-  user: Record<string, any>;
+  user: ScimUserRecord;
   externalId?: string;
   active?: boolean;
   location?: string;
@@ -117,7 +140,7 @@ export function serializeScimUser(args: {
 /** @internal */
 export function serializeScimGroup(args: {
   id: string;
-  group: Record<string, any>;
+  group: ScimGroupRecord;
   externalId?: string;
   members?: Array<{ value: string; display?: string }>;
   location?: string;

@@ -40,6 +40,7 @@ type ScimUser = {
   id?: string;
   externalId?: string;
   userName?: string;
+  displayName?: string;
   active?: boolean;
   name?: { givenName?: string; familyName?: string; formatted?: string };
   emails?: { value: string; primary?: boolean }[];
@@ -305,12 +306,24 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
   const scimConfigured = await groupConnectionScimConfigureRpc(
     convexClient,
     convexUserToken,
-    { connectionId },
+    {
+      connectionId,
+      profile: {
+        mapping: {
+          email: "userName",
+          name: "displayName",
+        },
+        extraFields: {
+          department: "department",
+        },
+      },
+    },
   );
   const scimToken = scimConfigured.token!;
   expect(scimToken).toBeTruthy();
 
   const base = `${convexSiteUrl}/api/auth/connections/${connectionId}/scim/v2`;
+  expect(scimConfigured.basePath).toBe(base);
 
   // 1. ServiceProviderConfig
   const spcRes = await scimRequest<{
@@ -356,6 +369,8 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
       schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"],
       externalId,
       userName: userEmail,
+      displayName: "SCIM Test User",
+      department: "Engineering",
       name: { givenName: "SCIM", familyName: "Test" },
       emails: [{ value: userEmail, primary: true }],
       active: true,
@@ -369,9 +384,24 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
   );
   expect(createRes.body.externalId).toBe(externalId);
   expect(createRes.body.active).toBe(true);
+  expect(createRes.body.displayName).toBe("SCIM Test User");
   expect(createRes.body.meta?.resourceType).toBe("User");
   expect(createRes.body.meta?.location).toBe(`${base}/Users/${userId}`);
   expect(createRes.headers.get("location")).toBe(`${base}/Users/${userId}`);
+
+  const createRetryRes = await scimRequest<ScimUser>(base, "/Users", scimToken, {
+    method: "POST",
+    body: {
+      schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"],
+      externalId,
+      userName: userEmail,
+      name: { givenName: "Retry", familyName: "User" },
+      emails: [{ value: userEmail, primary: true }],
+      active: true,
+    },
+  });
+  expect(createRetryRes.status).toBe(200);
+  expect(createRetryRes.body.id).toBe(userId);
 
   // 5. GET /Users/{id}
   const getRes = await scimRequest<ScimUser>(
@@ -398,6 +428,26 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
   );
   expect((filterRes.body.totalResults ?? 0) >= 1).toBe(true);
   expect((filterRes.body.Resources ?? []).some((u) => u.id === userId)).toBe(
+    true,
+  );
+
+  const startsWithRes = await scimRequest<ScimListResponse<ScimUser>>(
+    base,
+    `/Users?filter=${encodeURIComponent(`userName sw "${runId}"`)}`,
+    scimToken,
+  );
+  expect(startsWithRes.status).toBe(200);
+  expect((startsWithRes.body.Resources ?? []).some((u) => u.id === userId)).toBe(
+    true,
+  );
+
+  const presenceRes = await scimRequest<ScimListResponse<ScimUser>>(
+    base,
+    `/Users?filter=${encodeURIComponent("emails.value pr")}`,
+    scimToken,
+  );
+  expect(presenceRes.status).toBe(200);
+  expect((presenceRes.body.Resources ?? []).some((u) => u.id === userId)).toBe(
     true,
   );
 
@@ -521,6 +571,21 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
     userId,
   ]);
 
+  const groupRetryRes = await scimRequest<ScimGroup>(base, "/Groups", scimToken, {
+    method: "POST",
+    body: {
+      schemas: ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+      externalId: groupExternalId,
+      displayName: `Group ${runId} Retry`,
+      members: [{ value: secondUserId }],
+    },
+  });
+  expect(groupRetryRes.status).toBe(200);
+  expect(groupRetryRes.body.id).toBe(groupId);
+  expect(groupRetryRes.body.members?.map((member) => member.value)).toEqual([
+    userId,
+  ]);
+
   // 11. GET /Groups/{id}
   const groupGetRes = await scimRequest<ScimGroup>(
     base,
@@ -608,6 +673,16 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
   );
   expect(
     (groupListRes.body.Resources ?? []).some((group) => group.id === groupId),
+  ).toBe(true);
+
+  const memberFilterRes = await scimRequest<ScimListResponse<ScimGroup>>(
+    base,
+    `/Groups?filter=${encodeURIComponent(`members.value eq "${userId}"`)}`,
+    scimToken,
+  );
+  expect(memberFilterRes.status).toBe(200);
+  expect(
+    (memberFilterRes.body.Resources ?? []).some((group) => group.id === groupId),
   ).toBe(true);
 
   // 16. Auth failure — wrong token

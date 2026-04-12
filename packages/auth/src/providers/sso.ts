@@ -24,6 +24,6 @@ import type { SSOProviderConfig } from "../server/types";
  * sso()
  * ```
  */
-export function sso(): SSOProviderConfig {
-  return { id: "sso", type: "sso" };
+export function sso(options?: { redirectURI?: string }): SSOProviderConfig {
+  return { id: "sso", type: "sso", redirectURI: options?.redirectURI };
 }

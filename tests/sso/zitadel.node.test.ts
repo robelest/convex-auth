@@ -232,11 +232,17 @@ test("group oidc login interoperates with zitadel through api-driven flow", asyn
 
   await groupOidcConfigureRpc(convexClient, convexUserToken!, {
     connectionId,
-    issuer: normalizeRuntimeIssuer(zitadelBaseUrl),
-    discoveryUrl: `${zitadelRuntimeBaseUrl}/.well-known/openid-configuration`,
-    clientId: oidcClientId!,
-    clientSecret: oidcClientSecret,
-    scopes: ["openid", "profile", "email"],
+    discovery: {
+      issuer: normalizeRuntimeIssuer(zitadelBaseUrl),
+      discoveryUrl: `${zitadelRuntimeBaseUrl}/.well-known/openid-configuration`,
+    },
+    client: {
+      id: oidcClientId!,
+      secret: oidcClientSecret,
+    },
+    request: {
+      scopes: ["openid", "profile", "email"],
+    },
   });
 
   const ssoResult = (await convexClient.action(api.auth.signIn, {
@@ -483,14 +489,18 @@ test("group saml login interoperates with zitadel through api-driven flow", asyn
   // Step 8: Register ZITADEL SAML in Convex
   await groupSamlConfigureRpc(convexClient, convexUserToken!, {
     connectionId,
-    metadataXml: idpMetadataXml,
-    signAuthnRequests: false,
-    attributeMapping: {
-      subject: "UserID",
-      email: "Email",
-      name: "FullName",
-      firstName: "FirstName",
-      lastName: "SurName",
+    metadata: { xml: idpMetadataXml },
+    request: {
+      signAuthnRequests: false,
+    },
+    profile: {
+      mapping: {
+        subject: "UserID",
+        email: "Email",
+        name: "FullName",
+        firstName: "FirstName",
+        lastName: "SurName",
+      },
     },
   });
 

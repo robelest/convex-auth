@@ -10,7 +10,9 @@ import {
 } from "@robelest/samlify";
 
 import type { SAMLAttributeMapping } from "../types";
+import { log } from "../log";
 import { getSamlConfig } from "./config";
+import { finalizeNormalizedProfile, normalizeStringArray } from "./profile";
 import type {
   GroupSamlHttpRequest,
   GroupSamlRelayState,
@@ -18,6 +20,69 @@ import type {
   ParsedSamlMetadata,
 } from "./shared";
 import { asRecord, getGroupSamlUrls } from "./shared";
+
+type SamlIdpConfig = {
+  metadataXml?: string;
+  entityId?: string;
+  issuer?: string;
+  metadataUrl?: string;
+  sso?: {
+    redirect?: unknown;
+  };
+};
+
+type SamlSpConfig = {
+  entityId?: string;
+  acsUrl?: string;
+  sloUrl?: string;
+  signingCert?: string | string[];
+  encryptCert?: string | string[];
+  privateKey?: string;
+  privateKeyPass?: string;
+  encPrivateKey?: string;
+  encPrivateKeyPass?: string;
+};
+
+type SamlIdentityProvider = ReturnType<typeof IdentityProvider>;
+type SamlServiceProvider = ReturnType<typeof createSamlServiceProvider> & {
+  createLoginRequest(
+    idp: SamlIdentityProvider,
+    binding: "redirect" | "post",
+  ): SamlLoginRequest | PostBindingContext | SimpleSignBindingContext;
+  parseLoginResponse(
+    idp: SamlIdentityProvider,
+    binding: GroupSamlHttpRequest["binding"],
+    request: ESamlHttpRequest,
+  ): Promise<SamlParsedFlow>;
+  parseLogoutRequest(
+    idp: SamlIdentityProvider,
+    binding: GroupSamlHttpRequest["binding"],
+    request: ESamlHttpRequest,
+  ): Promise<SamlParsedFlow>;
+  createLogoutResponse(
+    idp: SamlIdentityProvider,
+    extract: SamlParsedFlow["extract"],
+    binding: GroupSamlHttpRequest["binding"],
+    relayState: string,
+  ): { context: string; entityEndpoint: string };
+};
+
+type SamlConfigShape = {
+  enabled?: boolean;
+  request?: {
+    signAuthnRequests?: boolean;
+    nameIdFormat?: string;
+    forceAuthn?: boolean;
+    authnContextClassRefs?: string[];
+  };
+  security?: SamlSecurityConfig;
+  profile?: {
+    mapping?: SAMLAttributeMapping;
+    extraFields?: Record<string, string>;
+  };
+  idp?: SamlIdpConfig;
+  serviceProvider?: SamlSpConfig;
+};
 
 // Samlify requires a schema validator to be registered before parsing any SAML
 // response. We use a permissive validator that always resolves because Convex's
@@ -163,6 +228,11 @@ export async function readGroupConnectionSamlHttpRequest(
   };
 }
 
+function getSamlSecurityConfig(config: unknown): SamlSecurityConfig {
+  const saml = getSamlConfig(config) as SamlConfigShape;
+  return (asRecord(saml.security) ?? {}) as SamlSecurityConfig;
+}
+
 /** @internal */
 export function parseSamlIdpMetadata(metadata: string): ParsedSamlMetadata {
   const source = typeof metadata === "string" ? metadata : String(metadata);
@@ -250,6 +320,45 @@ export function parseSamlIdpMetadata(metadata: string): ParsedSamlMetadata {
 }
 
 /** @internal */
+export function enforceSamlMetadataSize(opts: {
+  metadataXml: string;
+  config: unknown;
+}) {
+  const maxMetadataSize = getSamlSecurityConfig(opts.config).maxMetadataSize;
+  if (
+    typeof maxMetadataSize === "number" &&
+    maxMetadataSize > 0 &&
+    opts.metadataXml.length > maxMetadataSize
+  ) {
+    throw new Error("SAML metadata exceeds the configured size limit.");
+  }
+}
+
+/** @internal */
+export function parseSamlIdpMetadataChecked(opts: {
+  metadataXml: string;
+  config: unknown;
+}) {
+  enforceSamlMetadataSize(opts);
+  return parseSamlIdpMetadata(opts.metadataXml);
+}
+
+/** @internal */
+export function enforceSamlResponseSize(opts: {
+  request: GroupSamlHttpRequest;
+  config: unknown;
+}) {
+  const maxResponseSize = getSamlSecurityConfig(opts.config).maxResponseSize;
+  if (typeof maxResponseSize !== "number" || maxResponseSize <= 0) {
+    return;
+  }
+  const encoded = opts.request.body.SAMLResponse ?? opts.request.query.SAMLResponse;
+  if (typeof encoded === "string" && encoded.length > maxResponseSize) {
+    throw new Error("SAML response exceeds the configured size limit.");
+  }
+}
+
+/** @internal */
 export function createServiceProviderMetadata(opts: {
   entityId: string;
   acsUrl: string;
@@ -321,8 +430,8 @@ export function getSamlServiceProviderOptions(opts: {
   };
   relayState?: string;
 }) {
-  const saml = getSamlConfig(opts.config);
-  const sp = asRecord(saml.sp) ?? {};
+  const saml = getSamlConfig(opts.config) as SamlConfigShape;
+  const sp = (asRecord(saml.serviceProvider) ?? {}) as SamlSpConfig;
   const urls = getGroupSamlUrls({
     rootUrl: opts.rootUrl,
     source: opts.source,
@@ -332,7 +441,7 @@ export function getSamlServiceProviderOptions(opts: {
     acsUrl: opts.overrides?.acsUrl ?? sp.acsUrl ?? urls.acsUrl,
     sloUrl: opts.overrides?.sloUrl ?? sp.sloUrl ?? urls.sloUrl,
     relayState: opts.relayState,
-    authnRequestsSigned: saml.signAuthnRequests,
+    authnRequestsSigned: saml.request?.signAuthnRequests,
     signingCert: sp.signingCert,
     encryptCert: sp.encryptCert,
     privateKey: sp.privateKey,
@@ -394,7 +503,7 @@ export function createGroupConnectionSamlRuntime(opts: {
     sloUrl?: string;
   };
 }) {
-  const saml = getSamlConfig(opts.config);
+  const saml = getSamlConfig(opts.config) as SamlConfigShape;
   const spOptions = getSamlServiceProviderOptions({
     rootUrl: opts.rootUrl,
     source: opts.source,
@@ -407,9 +516,132 @@ export function createGroupConnectionSamlRuntime(opts: {
   }
   return {
     saml,
-    sp: createSamlServiceProvider(spOptions),
-    idp: IdentityProvider({ metadata: saml.idp.metadataXml }),
+    sp: createSamlServiceProvider(spOptions) as SamlServiceProvider,
+    idp: IdentityProvider({ metadata: saml.idp.metadataXml }) as SamlIdentityProvider,
     urls: getGroupSamlUrls({ rootUrl: opts.rootUrl, source: opts.source }),
+  };
+}
+
+type SamlLoginRequest = BindingContext & {
+  entityEndpoint?: string;
+};
+
+type BindingContext = {
+  context: string;
+  id: string;
+};
+
+type PostBindingContext = BindingContext & {
+  relayState?: string;
+  entityEndpoint: string;
+  type: string;
+};
+
+type SimpleSignBindingContext = PostBindingContext & {
+  sigAlg?: string;
+  signature?: string;
+  keyInfo?: string;
+};
+
+type ESamlHttpRequest = {
+  query: Record<string, string>;
+  body: Record<string, string>;
+};
+
+type FlowResult = {
+  samlContent: string;
+  extract: SamlParsedExtract;
+  sigAlg?: string | null;
+};
+
+type SamlParsedExtract = {
+  signature?: {
+    signatureAlgorithm?: string;
+    digestAlgorithm?: string;
+  };
+  conditions?: {
+    notBefore?: string;
+    notOnOrAfter?: string;
+  };
+  response?: {
+    signatureAlgorithm?: string;
+    inResponseTo?: string;
+  };
+  attributes?: Record<string, unknown>;
+  nameID?: string;
+  sessionIndex?: { SessionIndex?: string };
+};
+
+type SamlParsedFlow = FlowResult & {
+  extract?: SamlParsedExtract;
+};
+
+type SamlSecurityConfig = {
+  requireSignedAssertions?: boolean;
+  requireTimestamps?: boolean;
+  clockSkewSeconds?: number;
+  weakAlgorithmHandling?: "warn" | "reject";
+  maxMetadataSize?: number;
+  maxResponseSize?: number;
+};
+
+function verifySamlTimeWindow(
+  notBefore: string | undefined,
+  notOnOrAfter: string | undefined,
+  clockSkewSeconds: number,
+) {
+  const now = Date.now();
+  const drift = clockSkewSeconds * 1000;
+  if (notBefore) {
+    const notBeforeTime = new Date(notBefore).getTime();
+    if (Number.isFinite(notBeforeTime) && now < notBeforeTime - drift) {
+      throw new Error("SAML assertion is not yet valid.");
+    }
+  }
+  if (notOnOrAfter) {
+    const notOnOrAfterTime = new Date(notOnOrAfter).getTime();
+    if (Number.isFinite(notOnOrAfterTime) && now >= notOnOrAfterTime + drift) {
+      throw new Error("SAML assertion has expired.");
+    }
+  }
+}
+
+/** @internal */
+export function enforceGroupConnectionSamlSecurity(opts: {
+  extract: SamlParsedExtract | undefined;
+  config: unknown;
+}) {
+  enforceSamlAlgorithmPolicy(opts);
+  const saml = getSamlConfig(opts.config) as SamlConfigShape;
+  const security = (asRecord(saml.security) ?? {}) as SamlSecurityConfig;
+  const conditions = opts.extract?.conditions;
+
+  if (
+    security.requireSignedAssertions === true &&
+    typeof opts.extract?.signature?.signatureAlgorithm !== "string"
+  ) {
+    throw new Error("SAML assertion must be signed.");
+  }
+
+  if (security.requireTimestamps === true) {
+    if (!conditions?.notBefore && !conditions?.notOnOrAfter) {
+      throw new Error("SAML assertion missing required timestamp conditions.");
+    }
+  }
+
+  if (conditions?.notBefore || conditions?.notOnOrAfter) {
+    verifySamlTimeWindow(
+      conditions.notBefore,
+      conditions.notOnOrAfter,
+      security.clockSkewSeconds ?? 300,
+    );
+  }
+}
+
+function toSamlHttpRequest(request: GroupSamlHttpRequest): ESamlHttpRequest {
+  return {
+    query: request.query,
+    body: request.body,
   };
 }
 
@@ -427,11 +659,11 @@ export function createGroupConnectionSamlSignInRequest(opts: {
     source: opts.source,
     config: opts.config,
   });
-  const binding = runtime.saml.idp.sso?.redirect ? "redirect" : "post";
+  const binding = runtime.saml.idp?.sso?.redirect ? "redirect" : "post";
   const loginRequest = runtime.sp.createLoginRequest(
     runtime.idp,
-    binding as any,
-  ) as any;
+    binding,
+  ) as SamlLoginRequest | PostBindingContext | SimpleSignBindingContext;
   const relayState = encodeGroupSamlRelayState({
     source: opts.source,
     signature: opts.signature,
@@ -470,19 +702,17 @@ export async function parseGroupConnectionSamlLoginResponse(opts: {
 }) {
   ensureSamlifyValidator();
   const httpRequest = await readGroupConnectionSamlHttpRequest(opts.request);
+  enforceSamlResponseSize({ request: httpRequest, config: opts.config });
   const runtime = createGroupConnectionSamlRuntime({
     rootUrl: opts.rootUrl,
     source: opts.source,
     config: opts.config,
   });
   const parsed = (await runtime.sp.parseLoginResponse(
-    runtime.idp as any,
-    httpRequest.binding as any,
-    {
-      query: httpRequest.query,
-      body: httpRequest.body,
-    },
-  )) as any;
+    runtime.idp,
+    httpRequest.binding,
+    toSamlHttpRequest(httpRequest),
+  )) as SamlParsedFlow;
   // Check for weak SAML algorithms and warn.
   warnWeakSamlAlgorithms(parsed);
 
@@ -512,7 +742,7 @@ const WEAK_SAML_ALGORITHMS = new Set([
  * Warn when the SAML response uses weak cryptographic algorithms
  * such as SHA-1, RSA 1.5, or 3DES.
  */
-function warnWeakSamlAlgorithms(parsed: any) {
+function warnWeakSamlAlgorithms(parsed: SamlParsedFlow) {
   try {
     const sigAlg =
       parsed?.extract?.signature?.signatureAlgorithm ??
@@ -520,19 +750,42 @@ function warnWeakSamlAlgorithms(parsed: any) {
     const digestAlg = parsed?.extract?.signature?.digestAlgorithm;
 
     if (sigAlg && WEAK_SAML_ALGORITHMS.has(sigAlg)) {
-      console.warn(
+      log(
+        "WARN",
         `[convex-auth] SAML response uses weak signature algorithm: ${sigAlg}. ` +
           `Consider upgrading your IdP to use RSA-SHA256 or stronger.`,
       );
     }
     if (digestAlg && WEAK_SAML_ALGORITHMS.has(digestAlg)) {
-      console.warn(
+      log(
+        "WARN",
         `[convex-auth] SAML response uses weak digest algorithm: ${digestAlg}. ` +
           `Consider upgrading your IdP to use SHA-256 or stronger.`,
       );
     }
   } catch {
     // Non-critical — don't break auth flow for algorithm check failures
+  }
+}
+
+/** @internal */
+export function enforceSamlAlgorithmPolicy(opts: {
+  extract: SamlParsedExtract | undefined;
+  config: unknown;
+}) {
+  const handling = getSamlSecurityConfig(opts.config).weakAlgorithmHandling;
+  if (handling !== "reject") {
+    return;
+  }
+  const sigAlg =
+    opts.extract?.signature?.signatureAlgorithm ??
+    opts.extract?.response?.signatureAlgorithm;
+  const digestAlg = opts.extract?.signature?.digestAlgorithm;
+  if (
+    (sigAlg && WEAK_SAML_ALGORITHMS.has(sigAlg)) ||
+    (digestAlg && WEAK_SAML_ALGORITHMS.has(digestAlg))
+  ) {
+    throw new Error("SAML response uses a rejected weak cryptographic algorithm.");
   }
 }
 
@@ -568,13 +821,10 @@ export async function parseGroupConnectionSamlLogoutMessage(opts: {
   });
   const parsedRequest = httpRequest.hasSamlRequest
     ? ((await runtime.sp.parseLogoutRequest(
-        runtime.idp as any,
-        httpRequest.binding as any,
-        {
-          query: httpRequest.query,
-          body: httpRequest.body,
-        },
-      )) as any)
+        runtime.idp,
+        httpRequest.binding,
+        toSamlHttpRequest(httpRequest),
+      )) as SamlParsedFlow)
     : undefined;
   return {
     ...httpRequest,
@@ -585,7 +835,7 @@ export async function parseGroupConnectionSamlLogoutMessage(opts: {
 
 /** @internal */
 export function profileFromSamlExtract(
-  extract: any,
+  extract: SamlParsedExtract | undefined,
   mapping?: SAMLAttributeMapping,
 ) {
   const attributes =
@@ -607,12 +857,14 @@ export function profileFromSamlExtract(
   };
   const fieldResolvers = {
     email: () => resolveFirst(mapping?.email),
+    groups: () => normalizeStringArray(resolveFirst(mapping?.groups)),
     name: () =>
       resolveFirst(mapping?.name) ??
       ([resolveFirst(mapping?.firstName), resolveFirst(mapping?.lastName)]
         .filter(Boolean)
         .join(" ") ||
         undefined),
+    roles: () => normalizeStringArray(resolveFirst(mapping?.roles)),
     subject: () =>
       resolveFirst(mapping?.subject) ?? (extract?.nameID as string | undefined),
   } as const;
@@ -623,13 +875,17 @@ export function profileFromSamlExtract(
     );
   }
   const email = fieldResolvers.email() as string | undefined;
+  const groups = fieldResolvers.groups() as string[] | undefined;
   const name = fieldResolvers.name() as string | undefined;
-  return {
+  const roles = fieldResolvers.roles() as string[] | undefined;
+  return finalizeNormalizedProfile({
     id: subject,
     email,
     emailVerified: typeof email === "string" ? true : undefined,
+    groups,
     name,
+    roles,
     samlAttributes: attributes,
     samlSessionIndex: extract?.sessionIndex?.SessionIndex as string | undefined,
-  };
+  });
 }

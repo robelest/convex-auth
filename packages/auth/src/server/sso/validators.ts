@@ -25,6 +25,20 @@ export const groupPolicyPatchValidator = v.object({
   ),
   provisioning: v.optional(
     v.object({
+      user: v.optional(
+        v.object({
+          createOnSignIn: v.optional(v.boolean()),
+          updateProfileOnLogin: v.optional(
+            v.union(v.literal("never"), v.literal("missing"), v.literal("always")),
+          ),
+          updateProfileFromScim: v.optional(
+            v.union(v.literal("never"), v.literal("missing"), v.literal("always")),
+          ),
+          authority: v.optional(
+            v.union(v.literal("app"), v.literal("sso"), v.literal("scim")),
+          ),
+        }),
+      ),
       scimReuse: v.optional(
         v.object({
           user: v.optional(v.union(v.literal("externalId"), v.literal("none"))),
@@ -45,6 +59,20 @@ export const groupPolicyPatchValidator = v.object({
       deprovision: v.optional(
         v.object({
           mode: v.optional(v.union(v.literal("soft"), v.literal("hard"))),
+        }),
+      ),
+      groups: v.optional(
+        v.object({
+          mode: v.optional(v.union(v.literal("ignore"), v.literal("sync"))),
+          source: v.optional(v.literal("protocol")),
+          mapping: v.optional(v.record(v.string(), v.array(v.string()))),
+        }),
+      ),
+      roles: v.optional(
+        v.object({
+          mode: v.optional(v.union(v.literal("ignore"), v.literal("map"))),
+          source: v.optional(v.literal("protocol")),
+          mapping: v.optional(v.record(v.string(), v.array(v.string()))),
         }),
       ),
     }),
@@ -77,6 +105,9 @@ export const ssoSamlAttributeMappingValidator = v.object({
   name: v.optional(v.string()),
   firstName: v.optional(v.string()),
   lastName: v.optional(v.string()),
+  image: v.optional(v.string()),
+  groups: v.optional(v.string()),
+  roles: v.optional(v.string()),
 });
 
 /** @internal SAML service-provider override validator for mounted admin APIs. */
@@ -90,4 +121,16 @@ export const ssoSamlSpValidator = v.object({
   privateKeyPass: v.optional(v.string()),
   encPrivateKey: v.optional(v.string()),
   encPrivateKeyPass: v.optional(v.string()),
+});
+
+/** @internal SAML security validator for mounted admin APIs. */
+export const ssoSamlSecurityValidator = v.object({
+  requireSignedAssertions: v.optional(v.boolean()),
+  requireTimestamps: v.optional(v.boolean()),
+  clockSkewSeconds: v.optional(v.number()),
+  weakAlgorithmHandling: v.optional(
+    v.union(v.literal("warn"), v.literal("reject")),
+  ),
+  maxMetadataSize: v.optional(v.number()),
+  maxResponseSize: v.optional(v.number()),
 });

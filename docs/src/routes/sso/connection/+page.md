@@ -42,6 +42,7 @@ domains owned by the connection.
 | Method                 | Signature                         | Returns                     | Description                                                                 |
 | ---------------------- | --------------------------------- | --------------------------- | --------------------------------------------------------------------------- |
 | `list`                 | `(ctx, connectionId)`             | Domain list                 | Lists domains attached to the connection.                                   |
+| `status`               | `(ctx, connectionId)`             | Onboarding status           | Returns trust status, pending challenges, warnings, and recommended next steps. |
 | `validate`             | `(ctx, connectionId)`             | Status info                 | Returns onboarding diagnostics for domains.                                 |
 | `set`                  | `(ctx, connectionId, domains)`    | `{ connectionId, domains }` | Replaces the connection's full domain set and returns the canonical result. |
 | `verification.request` | `(ctx, { connectionId, domain })` | Verification challenge      | Issues a DNS TXT verification challenge for an attached domain.             |
@@ -81,6 +82,11 @@ const confirmation =
 
 const domains = await auth.group.sso.connection.domain.list(ctx, connectionId);
 
+const domainStatus = await auth.group.sso.connection.domain.status(
+  ctx,
+  connectionId,
+);
+
 // Inspect domain onboarding readiness
 const diagnostics = await auth.group.sso.connection.domain.validate(
   ctx,
@@ -90,3 +96,19 @@ const diagnostics = await auth.group.sso.connection.domain.validate(
 // Check connection health
 const status = await auth.group.sso.connection.status(ctx, connectionId);
 ```
+
+## Trust semantics
+
+Verified domains establish trusted ownership for a connection.
+
+- domain-based SSO discovery should rely on verified domains
+- primary-domain verification is the clearest signal that a connection is ready
+- automatic account linking is only safe when your linking policy allows it and
+  the connection has verified domain ownership
+
+Use `domain.status(...)` when building onboarding UIs. It returns the current
+primary domain, verified domains, pending DNS challenges, warnings, and the
+next recommended admin steps.
+
+`verification.request(...)` also acts as the renewal path for expired TXT
+challenges.

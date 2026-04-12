@@ -8,20 +8,34 @@ const getProtocolConfig = (config: unknown, protocol: "oidc" | "saml") => {
 };
 
 /** @internal */
-export function getOidcConfig(config: unknown): Record<string, any> {
+export function getOidcConfig(config: unknown): Record<string, unknown> {
   return getProtocolConfig(config, "oidc");
 }
 
 /** @internal */
-export function getPublicOidcConfig(config: unknown): Record<string, any> {
+export function getPublicOidcConfig(config: unknown): Record<string, unknown> {
   const oidc = getOidcConfig(config);
-  const { clientSecret: _clientSecret, ...publicOidc } = oidc;
+  const client =
+    typeof oidc.client === "object" && oidc.client !== null
+      ? (oidc.client as Record<string, unknown>)
+      : undefined;
+  const publicOidc = {
+    ...oidc,
+    ...(client
+      ? {
+          client: {
+            ...client,
+            secret: undefined,
+          },
+        }
+      : {}),
+  };
   return publicOidc;
 }
 
 /** @internal */
 export function withOidcSecretState(
-  config: Record<string, any>,
+  config: Record<string, unknown>,
   hasClientSecret: boolean,
 ) {
   return {
@@ -31,7 +45,7 @@ export function withOidcSecretState(
 }
 
 /** @internal */
-export function getSamlConfig(config: unknown): Record<string, any> {
+export function getSamlConfig(config: unknown): Record<string, unknown> {
   return getProtocolConfig(config, "saml");
 }
 

@@ -1,5 +1,10 @@
-import { Cv } from "@robelest/fx/convex";
-import { actionGeneric, mutationGeneric, queryGeneric } from "convex/server";
+import {
+  actionGeneric,
+  mutationGeneric,
+  queryGeneric,
+  type GenericActionCtx,
+  type GenericDataModel,
+} from "convex/server";
 import { ConvexError, v } from "convex/values";
 
 import type { AuthApi } from "./auth";
@@ -9,10 +14,21 @@ import {
   groupConnectionDomainVerificationInputValidator,
   groupPolicyPatchValidator,
   ssoSamlAttributeMappingValidator,
+  ssoSamlSecurityValidator,
   ssoSamlSpValidator,
   groupConnectionStatusValidator,
 } from "./sso/validators";
 import type { AuthAuthorizationConfig, AuthRoleId } from "./types";
+
+type MountConnection = { _id: string; groupId: string };
+type DeliveryApi = {
+  delivery: {
+    list: (
+      ctx: GenericActionCtx<GenericDataModel>,
+      args: { connectionId: string; limit?: number },
+    ) => Promise<unknown>;
+  };
+};
 
 /**
  * Permission identifiers used by mounted group SSO admin APIs.
@@ -155,10 +171,10 @@ async function resolveMountedGroupTarget(
   }
 
   if (target.connectionId !== undefined) {
-    const connection = await auth.group.sso.connection.get(
+    const connection = (await auth.group.sso.connection.get(
       ctx as never,
       target.connectionId,
-    );
+    )) as MountConnection | null;
     if (connection === null) {
       throw new ConvexError({
         code: "INVALID_PARAMETERS",
@@ -177,7 +193,7 @@ async function resolveMountedGroupTarget(
       ctx as never,
       target.domain,
     );
-    if (resolved?.connection === undefined) {
+    if (resolved?.connection == null) {
       throw new ConvexError({
         code: "INVALID_PARAMETERS",
         message: "Connection not found.",
@@ -210,13 +226,13 @@ function createMountedAdminAuthorizer(
   ) => {
     const userId = await requireUserId(ctx);
     if (userId === null) {
-      throw Cv.error({
+      throw new ConvexError({
         code: "NOT_SIGNED_IN",
         message: "You must be signed in to perform this action.",
       });
     }
     if (!options?.admin?.authorized) {
-      throw Cv.error({
+      throw new ConvexError({
         code: "FORBIDDEN",
         message: "Access denied.",
       });
@@ -433,6 +449,18 @@ export function sso<
               );
             },
           }),
+          status: queryGeneric({
+            args: { connectionId: v.string() },
+            handler: async (ctx, args) => {
+              await authorize(ctx, "sso.domain.manage", {
+                connectionId: args.connectionId,
+              });
+              return await auth.group.sso.connection.domain.status(
+                ctx as never,
+                args.connectionId,
+              );
+            },
+          }),
           validate: queryGeneric({
             args: { connectionId: v.string() },
             handler: async (ctx, args) => {
@@ -493,15 +521,51 @@ export function sso<
         configure: mutationGeneric({
           args: {
             connectionId: v.string(),
-            issuer: v.optional(v.string()),
-            discoveryUrl: v.optional(v.string()),
-            clientId: v.string(),
-            clientSecret: v.optional(v.string()),
-            scopes: v.optional(v.array(v.string())),
-            authorizationParams: v.optional(v.record(v.string(), v.string())),
-            clockToleranceSeconds: v.optional(v.number()),
-            strictIssuer: v.optional(v.boolean()),
-            extraFields: v.optional(v.record(v.string(), v.string())),
+            discovery: v.object({
+              issuer: v.optional(v.string()),
+              discoveryUrl: v.optional(v.string()),
+              jwksUri: v.optional(v.string()),
+              audience: v.optional(v.union(v.string(), v.array(v.string()))),
+            }),
+            client: v.object({
+              id: v.string(),
+              secret: v.optional(v.string()),
+              authMethod: v.optional(
+                v.union(
+                  v.literal("client_secret_post"),
+                  v.literal("client_secret_basic"),
+                ),
+              ),
+            }),
+            request: v.optional(
+              v.object({
+                scopes: v.optional(v.array(v.string())),
+                loginHint: v.optional(v.string()),
+                authorizationParams: v.optional(v.record(v.string(), v.string())),
+              }),
+            ),
+            security: v.optional(
+              v.object({
+                clockToleranceSeconds: v.optional(v.number()),
+                strictIssuer: v.optional(v.boolean()),
+              }),
+            ),
+            profile: v.optional(
+              v.object({
+                mapping: v.optional(
+                  v.object({
+                    subject: v.optional(v.string()),
+                    email: v.optional(v.string()),
+                    emailVerified: v.optional(v.string()),
+                    name: v.optional(v.string()),
+                    image: v.optional(v.string()),
+                    groups: v.optional(v.string()),
+                    roles: v.optional(v.string()),
+                  }),
+                ),
+                extraFields: v.optional(v.record(v.string(), v.string())),
+              }),
+            ),
           },
           handler: async (ctx, args) => {
             await authorize(ctx, "sso.protocol.manage", {
@@ -537,19 +601,44 @@ export function sso<
             );
           },
         }),
+        status: queryGeneric({
+          args: { connectionId: v.string() },
+          handler: async (ctx, args) => {
+            await authorize(ctx, "sso.connection.read", {
+              connectionId: args.connectionId,
+            });
+            return await auth.group.sso.oidc.status(
+              ctx as never,
+              args.connectionId,
+            );
+          },
+        }),
       },
       saml: {
         configure: actionGeneric({
           args: {
             connectionId: v.string(),
-            metadataXml: v.optional(v.string()),
-            metadataUrl: v.optional(v.string()),
+            metadata: v.object({
+              xml: v.optional(v.string()),
+              url: v.optional(v.string()),
+            }),
             domains: v.optional(v.array(v.string())),
-            signAuthnRequests: v.optional(v.boolean()),
-            attributeMapping: v.optional(
-              ssoSamlAttributeMappingValidator,
+            request: v.optional(
+              v.object({
+                signAuthnRequests: v.optional(v.boolean()),
+                nameIdFormat: v.optional(v.string()),
+                forceAuthn: v.optional(v.boolean()),
+                authnContextClassRefs: v.optional(v.array(v.string())),
+              }),
             ),
-            sp: v.optional(ssoSamlSpValidator),
+            profile: v.optional(
+              v.object({
+                mapping: v.optional(ssoSamlAttributeMappingValidator),
+                extraFields: v.optional(v.record(v.string(), v.string())),
+              }),
+            ),
+            security: v.optional(ssoSamlSecurityValidator),
+            serviceProvider: v.optional(ssoSamlSpValidator),
           },
           handler: async (ctx, args) => {
             await authorize(ctx, "sso.protocol.manage", {
@@ -570,6 +659,42 @@ export function sso<
             return await auth.group.sso.saml.validate(
               ctx as never,
               args.connectionId,
+            );
+          },
+        }),
+        get: queryGeneric({
+          args: { connectionId: v.string() },
+          handler: async (ctx, args) => {
+            await authorize(ctx, "sso.connection.read", {
+              connectionId: args.connectionId,
+            });
+            return await auth.group.sso.saml.get(
+              ctx as never,
+              args.connectionId,
+            );
+          },
+        }),
+        status: queryGeneric({
+          args: { connectionId: v.string() },
+          handler: async (ctx, args) => {
+            await authorize(ctx, "sso.connection.read", {
+              connectionId: args.connectionId,
+            });
+            return await auth.group.sso.saml.status(
+              ctx as never,
+              args.connectionId,
+            );
+          },
+        }),
+        refresh: actionGeneric({
+          args: { connectionId: v.string() },
+          handler: async (ctx, args) => {
+            await authorize(ctx, "sso.protocol.manage", {
+              connectionId: args.connectionId,
+            });
+            return await auth.group.sso.saml.refresh(
+              ctx as never,
+              args,
             );
           },
         }),
@@ -643,7 +768,10 @@ export function sso<
               await authorize(ctx, "sso.webhook.manage", {
                 connectionId: args.connectionId,
               });
-              return await (auth.group.sso.webhook as any).delivery.list(
+              const deliveryApi = auth.group.sso.webhook as unknown as {
+                delivery: DeliveryApi["delivery"];
+              };
+              return await deliveryApi.delivery.list(
                 ctx as never,
                 args,
               );
@@ -706,7 +834,7 @@ export function sso<
                 args.endpointId,
               );
               if (!endpoint) {
-                throw Cv.error({
+                throw new ConvexError({
                   code: "INVALID_PARAMETERS",
                   message: "Webhook endpoint not found.",
                 });
@@ -731,6 +859,7 @@ export function sso<
           email: v.optional(v.string()),
           domain: v.optional(v.string()),
           redirectTo: v.optional(v.string()),
+          loginHint: v.optional(v.string()),
         },
         handler: async (ctx, args) => {
           return await auth.group.sso.signIn(ctx as never, {
@@ -799,8 +928,31 @@ export function scim<
       configure: mutationGeneric({
         args: {
           connectionId: v.string(),
-          basePath: v.optional(v.string()),
           status: v.optional(groupConnectionStatusValidator),
+          security: v.optional(
+            v.object({
+              maxRequestSize: v.optional(v.number()),
+            }),
+          ),
+          profile: v.optional(
+            v.object({
+              mapping: v.optional(
+                v.object({
+                  subject: v.optional(v.string()),
+                  externalId: v.optional(v.string()),
+                  email: v.optional(v.string()),
+                  firstName: v.optional(v.string()),
+                  lastName: v.optional(v.string()),
+                  name: v.optional(v.string()),
+                  phone: v.optional(v.string()),
+                  active: v.optional(v.string()),
+                  groups: v.optional(v.string()),
+                  roles: v.optional(v.string()),
+                }),
+              ),
+              extraFields: v.optional(v.record(v.string(), v.string())),
+            }),
+          ),
         },
         handler: async (ctx, args) => {
           await authorize(ctx, "scim.manage", {
@@ -819,6 +971,18 @@ export function scim<
             connectionId: args.connectionId,
           });
           return await auth.group.sso.scim.get(ctx as never, args.connectionId);
+        },
+      }),
+      status: queryGeneric({
+        args: { connectionId: v.string() },
+        handler: async (ctx, args) => {
+          await authorize(ctx, "scim.manage", {
+            connectionId: args.connectionId,
+          });
+          return await auth.group.sso.scim.status(
+            ctx as never,
+            args.connectionId,
+          );
         },
       }),
       validate: queryGeneric({
@@ -894,6 +1058,7 @@ export function group<
     deleteConnection: mountedSso.admin.connection.delete,
     getConnectionStatus: mountedSso.admin.connection.status,
     listDomains: mountedSso.admin.connection.domain.list,
+    getDomainStatus: mountedSso.admin.connection.domain.status,
     validateDomains: mountedSso.admin.connection.domain.validate,
     setDomains: mountedSso.admin.connection.domain.set,
     requestDomainVerification:
@@ -902,9 +1067,13 @@ export function group<
       mountedSso.admin.connection.domain.verification.confirm,
     configureOidc: mountedSso.admin.oidc.configure,
     getOidc: mountedSso.admin.oidc.get,
+    getOidcStatus: mountedSso.admin.oidc.status,
     validateOidc: mountedSso.admin.oidc.validate,
     configureSaml: mountedSso.admin.saml.configure,
+    getSaml: mountedSso.admin.saml.get,
+    getSamlStatus: mountedSso.admin.saml.status,
     validateSaml: mountedSso.admin.saml.validate,
+    refreshSaml: mountedSso.admin.saml.refresh,
     getPolicy: mountedSso.admin.policy.get,
     updatePolicy: mountedSso.admin.policy.update,
     validatePolicy: mountedSso.admin.policy.validate,
@@ -915,6 +1084,7 @@ export function group<
     disableWebhookEndpoint: mountedSso.admin.webhook.endpoint.disable,
     configureScim: mountedScim.admin.configure,
     getScim: mountedScim.admin.get,
+    getScimStatus: mountedScim.admin.status,
     validateScim: mountedScim.admin.validate,
     signIn: mountedSso.client.signIn,
     metadata: mountedSso.client.metadata,

@@ -1,8 +1,121 @@
-import { Fx } from "@robelest/fx";
-import { Cv } from "@robelest/fx/convex";
 import { GenericActionCtx, GenericDataModel } from "convex/server";
+import { ConvexError } from "convex/values";
+import { Effect, Schedule } from "effect";
 
-import type { GroupConnectionPolicyPatch } from "../types";
+import {
+  addConnectionDomain,
+  createGroupConnection,
+  deleteConnectionDomain,
+  deleteConnectionDomainVerification,
+  deleteGroupConnection,
+  getConnectionDomainVerification,
+  getGroupConnection,
+  getGroupConnectionByDomain,
+  getScimConfigByConnection,
+  listGroupConnections,
+  listAuditEvents,
+  listConnectionDomains,
+  updateGroupConnection,
+  upsertConnectionDomainVerification,
+  upsertGroupConnectionSecret,
+  verifyConnectionDomain,
+} from "../contract";
+import type {
+  ConvexAuthMaterializedConfig,
+  OIDCClaimMapping,
+  GroupConnectionPolicy,
+} from "../types";
+import { log } from "../log";
+import {
+  getOidcConfig,
+  getPublicOidcConfig,
+  getSamlConfig,
+  upsertProtocolConfig,
+  withOidcSecretState,
+} from "./config";
+import { createGroupPolicyDomain } from "./policies";
+import {
+  createServiceProviderMetadata,
+  parseSamlIdpMetadataChecked,
+  getSamlServiceProviderOptions,
+} from "./saml";
+import {
+  getGroupOidcUrls,
+  getGroupSamlUrls,
+  groupOidcProviderId,
+  groupSamlProviderId,
+  normalizeDomain,
+} from "./shared";
+import { createGroupScimDomain } from "./provision";
+import { createGroupWebhookDomain } from "./webhook";
+
+type DomainOidcConfig = {
+  enabled?: boolean;
+  discovery?: {
+    issuer?: string;
+    discoveryUrl?: string;
+    jwksUri?: string;
+    audience?: string | string[];
+  };
+  client?: {
+    id?: string;
+    authMethod?: "client_secret_post" | "client_secret_basic";
+  };
+  request?: {
+    scopes?: string[];
+    loginHint?: string;
+    authorizationParams?: Record<string, string>;
+  };
+  security?: {
+    clockToleranceSeconds?: number;
+    strictIssuer?: boolean;
+  };
+  profile?: {
+    mapping?: OIDCClaimMapping;
+    extraFields?: Record<string, string>;
+  };
+};
+
+type DomainSamlConfig = {
+  enabled?: boolean;
+  request?: {
+    signAuthnRequests?: boolean;
+    nameIdFormat?: string;
+    forceAuthn?: boolean;
+    authnContextClassRefs?: string[];
+  };
+  security?: {
+    requireSignedAssertions?: boolean;
+    requireTimestamps?: boolean;
+    clockSkewSeconds?: number;
+    weakAlgorithmHandling?: "warn" | "reject";
+    maxMetadataSize?: number;
+    maxResponseSize?: number;
+  };
+  profile?: {
+    mapping?: {
+      subject?: string;
+      email?: string;
+      name?: string;
+      firstName?: string;
+      lastName?: string;
+      image?: string;
+      groups?: string;
+      roles?: string;
+    };
+    extraFields?: Record<string, string>;
+  };
+  serviceProvider?: {
+    privateKey?: string;
+  };
+  idp?: {
+    entityId?: string;
+    issuer?: string;
+    metadataUrl?: string;
+    metadataXml?: string;
+    signingCert?: string | string[] | null;
+  };
+};
 
 type ComponentCtx = Pick<
   GenericActionCtx<GenericDataModel>,
@@ -10,14 +123,104 @@ type ComponentCtx = Pick<
 >;
 type ComponentReadCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
 
+type DomainDeps = {
+  config: ConvexAuthMaterializedConfig & { extraProviders?: unknown[] };
+  connectionNotFoundError: string;
+  GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND: "oidc_client_secret";
+  requireEnv: (name: string) => string;
+  generateRandomString: (length: number, alphabet: string) => string;
+  INVITE_TOKEN_ALPHABET: string;
+  sha256: (input: string) => Promise<string>;
+  encryptSecret: (value: string) => Promise<string>;
+  sharedOidcRedirectURI?: string;
+  getGroupConnectionSecret: (
+    ctx: ComponentReadCtx,
+    connectionId: string,
+    kind: "oidc_client_secret",
+  ) => Promise<Record<string, unknown> | null>;
+  loadConnectionOrThrow: (
+    ctx: ComponentReadCtx,
+    connectionId: string,
+  ) => Promise<{
+    _id: string;
+    groupId: string;
+    protocol: "oidc" | "saml";
+    status: "draft" | "active" | "disabled";
+    config?: unknown;
+  }>;
+  validateGroupConnectionPolicy: (
+    policy: GroupConnectionPolicy,
+  ) => Array<{ name: string; ok: boolean; message?: string }>;
+  recordGroupAuditEvent: (
+    ctx: ComponentCtx,
+    data: {
+      connectionId?: string;
+      groupId: string;
+      eventType: string;
+      actorType: "user" | "system" | "scim" | "api_key" | "webhook";
+      actorId?: string;
+      subjectType: string;
+      subjectId?: string;
+      ok: boolean;
+      requestId?: string;
+      ip?: string;
+      metadata?: Record<string, unknown>;
+    },
+  ) => Promise<string>;
+  emitGroupWebhookDeliveries: (
+    ctx: ComponentCtx,
+    data: {
+      connectionId: string;
+      eventType: string;
+      payload: Record<string, unknown>;
+      auditEventId?: string;
+    },
+  ) => Promise<void>;
+  loadGroupPolicyOrThrow: (
+    ctx: ComponentReadCtx,
+    groupId: string,
+  ) => Promise<GroupConnectionPolicy>;
+};
+
+type SsoErrorData = { code: string; message: string };
+
+const NETWORK_RETRY_SCHEDULE = Schedule.both(
+  Schedule.jittered(Schedule.exponential("200 millis")),
+  Schedule.recurs(2),
+);
+
+const convexError = (data: SsoErrorData) => new ConvexError(data);
+
+const toSsoError = (error: unknown): unknown =>
+  error instanceof ConvexError
+    ? error
+    : typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        "message" in error
+      ? convexError(error as SsoErrorData)
+      : error;
+
+const tryPromise = <A>(options: {
+  try: () => Promise<A> | A;
+  catch: (error: unknown) => SsoErrorData | ConvexError<SsoErrorData>;
+}) =>
+  Effect.tryPromise({
+    try: async () => options.try(),
+    catch: (error) => toSsoError(options.catch(error)),
+  });
+
+const runSsoBoundary = <A, E>(effect: Effect.Effect<A, E, never>) =>
+  Effect.runPromise(effect);
+
 /**
  * Build the connection and SSO management domain.
  */
-export function createGroupConnectionDomain(deps: any) {
+export function createGroupConnectionDomain<
+  TDeps extends DomainDeps,
+>(deps: TDeps) {
   const {
     config,
-    normalizeGroupConnectionPolicy,
-    normalizeDomain,
     getGroupConnectionSecret,
     loadConnectionOrThrow,
     validateGroupConnectionPolicy,
@@ -30,21 +233,32 @@ export function createGroupConnectionDomain(deps: any) {
     INVITE_TOKEN_ALPHABET,
     sha256,
     encryptSecret,
-    upsertProtocolConfig,
-    parseSamlIdpMetadata,
-    createServiceProviderMetadata,
-    getSamlServiceProviderOptions,
-    getPublicOidcConfig,
-    withOidcSecretState,
-    getOidcConfig,
-    getSamlConfig,
-    getGroupOidcUrls,
-    getGroupSamlUrls,
-    groupOidcProviderId,
-    groupSamlProviderId,
     loadGroupPolicyOrThrow,
-    patchGroupConnectionPolicy,
   } = deps;
+
+  const webhook = createGroupWebhookDomain({
+    config,
+    sha256,
+    loadConnectionOrThrow,
+    recordGroupAuditEvent,
+    emitGroupWebhookDeliveries,
+  });
+  const scim = createGroupScimDomain({
+    config,
+    requireEnv,
+    generateRandomString,
+    INVITE_TOKEN_ALPHABET,
+    sha256,
+    loadGroupPolicyOrThrow,
+    recordGroupAuditEvent,
+    emitGroupWebhookDeliveries,
+  });
+  const policy = createGroupPolicyDomain({
+    config,
+    loadGroupPolicyOrThrow,
+    validateGroupConnectionPolicy,
+    recordGroupAuditEvent,
+  });
 
   const resolveGroupConnectionProtocol = (connection: {
     _id: string;
@@ -57,7 +271,7 @@ export function createGroupConnectionDomain(deps: any) {
     if (connection.protocol === "saml") {
       return "saml";
     }
-    throw Cv.error({
+    throw convexError({
       code: "PROVIDER_NOT_CONFIGURED",
       message: "Group connection protocol is not configured.",
     });
@@ -127,26 +341,24 @@ export function createGroupConnectionDomain(deps: any) {
           extend?: Record<string, unknown>;
         },
       ): Promise<{ connectionId: string; groupId: string }> => {
-        const connectionId = (await ctx.runMutation(
-          config.component.public.groupConnectionCreate,
+        const connectionId = await createGroupConnection(
+          ctx,
+          config.component.public,
           data,
-        )) as string;
+        );
         return {
           connectionId,
           groupId: data.groupId,
         };
       },
       get: async (ctx: ComponentReadCtx, connectionId: string) => {
-        return await ctx.runQuery(config.component.public.groupConnectionGet, {
-          connectionId,
-        });
+        return await getGroupConnection(ctx, config.component.public, connectionId);
       },
       getByDomain: async (ctx: ComponentReadCtx, domain: string) => {
-        return await ctx.runQuery(
-          config.component.public.groupConnectionGetByDomain,
-          {
-            domain: normalizeDomain(domain),
-          },
+        return await getGroupConnectionByDomain(
+          ctx,
+          config.component.public,
+          normalizeDomain(domain),
         );
       },
       list: async (
@@ -163,7 +375,7 @@ export function createGroupConnectionDomain(deps: any) {
           order?: "asc" | "desc";
         },
       ) => {
-        return await ctx.runQuery(config.component.public.groupConnectionList, {
+        return await listGroupConnections(ctx, config.component.public, {
           where: opts?.where,
           limit: opts?.limit,
           cursor: opts?.cursor,
@@ -176,16 +388,14 @@ export function createGroupConnectionDomain(deps: any) {
         connectionId: string,
         data: Record<string, unknown>,
       ) => {
-        await ctx.runMutation(config.component.public.groupConnectionUpdate, {
+        await updateGroupConnection(ctx, config.component.public, {
           connectionId,
           data,
         });
         return { connectionId };
       },
       delete: async (ctx: ComponentCtx, connectionId: string) => {
-        await ctx.runMutation(config.component.public.groupConnectionDelete, {
-          connectionId,
-        });
+        await deleteGroupConnection(ctx, config.component.public, connectionId);
         return { connectionId };
       },
       /**
@@ -197,47 +407,47 @@ export function createGroupConnectionDomain(deps: any) {
        * diagnostics without running full network validation.
        */
       status: async (ctx: ComponentReadCtx, connectionId: string) => {
-        const connection = await ctx.runQuery(
-          config.component.public.groupConnectionGet,
-          { connectionId },
+        const connection = await getGroupConnection(
+          ctx,
+          config.component.public,
+          connectionId,
         );
         if (!connection) {
-          throw Cv.error({
+          throw convexError({
             code: "INVALID_PARAMETERS",
             message: connectionNotFoundError,
           });
         }
         const policy = await loadGroupPolicyOrThrow(ctx, connection.groupId);
-        const oidcConfig = getOidcConfig(connection.config);
+        const oidcConfig = getOidcConfig(connection.config) as DomainOidcConfig;
         const oidcSecret = await getGroupConnectionSecret(
           ctx,
           connection._id,
           GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
         );
-        const samlConfig = getSamlConfig(connection.config);
-        const scimConfig = await ctx.runQuery(
-          config.component.public.groupConnectionScimConfigGetByGroupConnection,
-          { connectionId },
+        const samlConfig = getSamlConfig(connection.config) as DomainSamlConfig;
+        const scimConfig = await getScimConfigByConnection(
+          ctx,
+          config.component.public,
+          connectionId,
         );
-        const domains = await ctx.runQuery(
-          config.component.public.groupConnectionDomainList,
-          { connectionId },
+        const domains = await listConnectionDomains(
+          ctx,
+          config.component.public,
+          connectionId,
         );
 
         const oidcReady =
           oidcConfig?.enabled === true &&
-          typeof oidcConfig?.clientId === "string" &&
-          oidcConfig.clientId.length > 0 &&
+          typeof oidcConfig?.client?.id === "string" &&
+          oidcConfig.client.id.length > 0 &&
           oidcSecret !== null &&
-          (typeof oidcConfig?.issuer === "string" ||
-            typeof oidcConfig?.discoveryUrl === "string");
+          (typeof oidcConfig?.discovery?.issuer === "string" ||
+            typeof oidcConfig?.discovery?.discoveryUrl === "string");
         const samlReady =
           samlConfig?.enabled === true &&
           typeof samlConfig?.idp?.entityId === "string";
-        const scimReady =
-          scimConfig !== null &&
-          scimConfig !== undefined &&
-          (scimConfig as any).status === "active";
+        const scimReady = scimConfig?.status === "active";
 
         const ready =
           connection.status === "active" &&
@@ -252,8 +462,11 @@ export function createGroupConnectionDomain(deps: any) {
             oidc: {
               configured: connection.protocol === "oidc" ? oidcReady : false,
               ready: connection.protocol === "oidc" ? oidcReady : false,
-              clientId: oidcConfig?.clientId ?? null,
-              issuer: oidcConfig?.issuer ?? oidcConfig?.discoveryUrl ?? null,
+              clientId: oidcConfig?.client?.id ?? null,
+              issuer:
+                oidcConfig?.discovery?.issuer ??
+                oidcConfig?.discovery?.discoveryUrl ??
+                null,
             },
             saml: {
               configured: connection.protocol === "saml" ? samlReady : false,
@@ -281,37 +494,35 @@ export function createGroupConnectionDomain(deps: any) {
           isPrimary?: boolean;
         },
       ): Promise<string> => {
-        return (await ctx.runMutation(
-          config.component.public.groupConnectionDomainAdd,
-          {
-            ...data,
-            domain: normalizeDomain(data.domain),
-          },
-        )) as string;
+        return await addConnectionDomain(ctx, config.component.public, {
+          ...data,
+          domain: normalizeDomain(data.domain),
+        });
       },
       list: async (ctx: ComponentReadCtx, connectionId: string) => {
-        return await ctx.runQuery(
-          config.component.public.groupConnectionDomainList,
-          {
-            connectionId,
-          },
+        return await listConnectionDomains(
+          ctx,
+          config.component.public,
+          connectionId,
         );
       },
       validate: async (ctx: ComponentReadCtx, connectionId: string) => {
-        const connection = await ctx.runQuery(
-          config.component.public.groupConnectionGet,
-          { connectionId },
+        const connection = await getGroupConnection(
+          ctx,
+          config.component.public,
+          connectionId,
         );
         if (connection === null) {
-          throw Cv.error({
+          throw convexError({
             code: "INVALID_PARAMETERS",
             message: connectionNotFoundError,
           });
         }
 
-        const domains = await ctx.runQuery(
-          config.component.public.groupConnectionDomainList,
-          { connectionId },
+        const domains = await listConnectionDomains(
+          ctx,
+          config.component.public,
+          connectionId,
         );
         const primaryDomains = domains.filter(
           (domain: (typeof domains)[number]) => domain.isPrimary,
@@ -352,10 +563,124 @@ export function createGroupConnectionDomain(deps: any) {
           warnings,
         };
       },
+      status: async (ctx: ComponentReadCtx, connectionId: string) => {
+        const connection = await getGroupConnection(
+          ctx,
+          config.component.public,
+          connectionId,
+        );
+        if (connection === null) {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message: connectionNotFoundError,
+          });
+        }
+
+        const domains = await listConnectionDomains(
+          ctx,
+          config.component.public,
+          connectionId,
+        );
+        const primaryDomain =
+          domains.find((domain: (typeof domains)[number]) => domain.isPrimary) ??
+          null;
+        const verifiedDomains = domains.filter(
+          (domain: (typeof domains)[number]) => domain.verifiedAt !== undefined,
+        );
+        const pendingChallenges = (
+          await Promise.all(
+            domains.map(async (domain: (typeof domains)[number]) => {
+              const verification = await getConnectionDomainVerification(
+                ctx,
+                config.component.public,
+                domain._id,
+              );
+              if (!verification || verification.expiresAt < Date.now()) {
+                return null;
+              }
+              return {
+                domain: domain.domain,
+                recordName: verification.recordName,
+                expiresAt: verification.expiresAt,
+              };
+            }),
+          )
+        ).filter((challenge): challenge is NonNullable<typeof challenge> =>
+          challenge !== null,
+        );
+
+        const warnings: string[] = [];
+        const nextSteps: string[] = [];
+        if (domains.length === 0) {
+          warnings.push("No domains configured.");
+          nextSteps.push("Attach at least one domain to this connection.");
+        }
+        if (primaryDomain === null && domains.length > 0) {
+          warnings.push("No primary domain configured.");
+          nextSteps.push("Mark one attached domain as the primary domain.");
+        }
+        if (verifiedDomains.length === 0 && domains.length > 0) {
+          warnings.push("No verified domains yet.");
+          nextSteps.push(
+            "Request a TXT challenge and confirm verification for at least one domain.",
+          );
+        }
+        if (
+          primaryDomain !== null &&
+          primaryDomain.verifiedAt === undefined &&
+          domains.length > 0
+        ) {
+          nextSteps.push(
+            `Verify the primary domain ${primaryDomain.domain} to establish trusted ownership.`,
+          );
+        }
+        if (pendingChallenges.length > 0) {
+          nextSteps.push(
+            "If DNS is already updated, confirm the pending TXT challenge to complete verification.",
+          );
+        }
+
+        const primaryDomainVerified = primaryDomain?.verifiedAt !== undefined;
+
+        return {
+          connectionId,
+          ready:
+            connection.status === "active" &&
+            domains.length > 0 &&
+            primaryDomain !== null &&
+            verifiedDomains.length > 0,
+          primaryDomain:
+            primaryDomain === null
+              ? null
+              : {
+                  domainId: primaryDomain._id,
+                  domain: primaryDomain.domain,
+                  isPrimary: true,
+                  verified: primaryDomain.verifiedAt !== undefined,
+                  verifiedAt: primaryDomain.verifiedAt ?? null,
+                },
+          trustedDomains: verifiedDomains.map((domain) => ({
+            domainId: domain._id,
+            domain: domain.domain,
+            isPrimary: Boolean(domain.isPrimary),
+            verified: true,
+            verifiedAt: domain.verifiedAt ?? null,
+          })),
+          pendingChallenges,
+          trust: {
+            domainDiscoveryReady: verifiedDomains.length > 0,
+            primaryDomainVerified,
+            automaticLinkingEligible:
+              primaryDomainVerified &&
+              connection.status === "active" &&
+              verifiedDomains.length > 0,
+          },
+          warnings,
+          nextSteps,
+        };
+      },
       remove: async (ctx: ComponentCtx, domainId: string) => {
-        await ctx.runMutation(config.component.public.groupConnectionDomainDelete, {
-          domainId,
-        });
+        await deleteConnectionDomain(ctx, config.component.public, domainId);
       },
       verification: {
         request: async (
@@ -367,16 +692,17 @@ export function createGroupConnectionDomain(deps: any) {
             args.connectionId,
           );
           const normalizedDomain = normalizeDomain(args.domain);
-          const domains = await ctx.runQuery(
-            config.component.public.groupConnectionDomainList,
-            { connectionId: connection._id },
+          const domains = await listConnectionDomains(
+            ctx,
+            config.component.public,
+            connection._id,
           );
           const domain = domains.find(
             (entry: (typeof domains)[number]) =>
               entry.domain === normalizedDomain,
           );
           if (!domain) {
-            throw Cv.error({
+            throw convexError({
               code: "INVALID_PARAMETERS",
               message: "Domain is not attached to this connection.",
             });
@@ -389,8 +715,9 @@ export function createGroupConnectionDomain(deps: any) {
           const tokenHash = await sha256(token);
           const recordName = getDomainVerificationRecordName(normalizedDomain);
 
-          await ctx.runMutation(
-            config.component.public.groupConnectionDomainVerificationUpsert,
+          await upsertConnectionDomainVerification(
+            ctx,
+            config.component.public,
             {
               connectionId: connection._id,
               groupId: connection.groupId,
@@ -436,16 +763,17 @@ export function createGroupConnectionDomain(deps: any) {
             args.connectionId,
           );
           const normalizedDomain = normalizeDomain(args.domain);
-          const domains = await ctx.runQuery(
-            config.component.public.groupConnectionDomainList,
-            { connectionId: connection._id },
+          const domains = await listConnectionDomains(
+            ctx,
+            config.component.public,
+            connection._id,
           );
           const domain = domains.find(
             (entry: (typeof domains)[number]) =>
               entry.domain === normalizedDomain,
           );
           if (!domain) {
-            throw Cv.error({
+            throw convexError({
               code: "INVALID_PARAMETERS",
               message: "Domain is not attached to this connection.",
             });
@@ -453,7 +781,6 @@ export function createGroupConnectionDomain(deps: any) {
 
           if (domain.verifiedAt !== undefined) {
             return {
-              ok: true,
               connectionId: connection._id,
               domain: normalizedDomain,
               verifiedAt: domain.verifiedAt,
@@ -467,9 +794,10 @@ export function createGroupConnectionDomain(deps: any) {
             };
           }
 
-          const verification = await ctx.runQuery(
-            config.component.public.groupConnectionDomainVerificationGet,
-            { domainId: domain._id },
+          const verification = await getConnectionDomainVerification(
+            ctx,
+            config.component.public,
+            domain._id,
           );
           const checks: Array<{ name: string; ok: boolean; message?: string }> =
             [];
@@ -480,7 +808,6 @@ export function createGroupConnectionDomain(deps: any) {
               message: "No active domain verification challenge exists.",
             });
             return {
-              ok: false,
               connectionId: connection._id,
               domain: normalizedDomain,
               checks,
@@ -490,9 +817,10 @@ export function createGroupConnectionDomain(deps: any) {
           checks.push({ name: "verification_requested", ok: true });
 
           if (verification.expiresAt < Date.now()) {
-            await ctx.runMutation(
-              config.component.public.groupConnectionDomainVerificationDelete,
-              { domainId: domain._id },
+            await deleteConnectionDomainVerification(
+              ctx,
+              config.component.public,
+              domain._id,
             );
             checks.push({
               name: "challenge_active",
@@ -500,7 +828,6 @@ export function createGroupConnectionDomain(deps: any) {
               message: "The verification challenge expired. Request a new one.",
             });
             return {
-              ok: false,
               connectionId: connection._id,
               domain: normalizedDomain,
               checks,
@@ -513,7 +840,7 @@ export function createGroupConnectionDomain(deps: any) {
           try {
             txtValues = await resolveTxtValues(verification.recordName);
           } catch (error) {
-            throw Cv.error({
+            throw convexError({
               code: "INTERNAL_ERROR",
               message:
                 error instanceof Error
@@ -542,7 +869,6 @@ export function createGroupConnectionDomain(deps: any) {
 
           if (!checks.every((check) => check.ok)) {
             return {
-              ok: false,
               connectionId: connection._id,
               domain: normalizedDomain,
               checks,
@@ -550,13 +876,10 @@ export function createGroupConnectionDomain(deps: any) {
           }
 
           const verifiedAt = Date.now();
-          await ctx.runMutation(
-            config.component.public.groupConnectionDomainVerify,
-            {
-              domainId: domain._id,
-              verifiedAt,
-            },
-          );
+          await verifyConnectionDomain(ctx, config.component.public, {
+            domainId: domain._id,
+            verifiedAt,
+          });
 
           await recordGroupAuditEvent(ctx, {
             connectionId: connection._id,
@@ -570,7 +893,6 @@ export function createGroupConnectionDomain(deps: any) {
           });
 
           return {
-            ok: true,
             connectionId: connection._id,
             domain: normalizedDomain,
             verifiedAt,
@@ -580,22 +902,30 @@ export function createGroupConnectionDomain(deps: any) {
       },
     },
     saml: {
-      configure: async <DataModel extends GenericDataModel>(
+      configure: <DataModel extends GenericDataModel>(
         ctx: GenericActionCtx<DataModel>,
         data: {
           connectionId: string;
-          metadataXml?: string;
-          metadataUrl?: string;
-          domains?: string[];
-          signAuthnRequests?: boolean;
-          attributeMapping?: {
-            subject?: string;
-            email?: string;
-            name?: string;
-            firstName?: string;
-            lastName?: string;
+          metadata: {
+            xml?: string;
+            url?: string;
           };
-          sp?: {
+          domains?: string[];
+          request?: {
+            signAuthnRequests?: boolean;
+            nameIdFormat?: string;
+            forceAuthn?: boolean;
+            authnContextClassRefs?: string[];
+          };
+          security?: {
+            requireSignedAssertions?: boolean;
+            requireTimestamps?: boolean;
+            clockSkewSeconds?: number;
+            weakAlgorithmHandling?: "warn" | "reject";
+            maxMetadataSize?: number;
+            maxResponseSize?: number;
+          };
+          serviceProvider?: {
             entityId?: string;
             acsUrl?: string;
             sloUrl?: string;
@@ -606,100 +936,104 @@ export function createGroupConnectionDomain(deps: any) {
             encPrivateKey?: string;
             encPrivateKeyPass?: string;
           };
+          profile?: {
+            mapping?: {
+              subject?: string;
+              email?: string;
+              name?: string;
+              firstName?: string;
+              lastName?: string;
+              image?: string;
+              groups?: string;
+              roles?: string;
+            };
+            extraFields?: Record<string, string>;
+          };
         },
       ) => {
-        return await Fx.run(
-          Fx.gen(function* () {
-            const connection = yield* Fx.from({
-              ok: () =>
-                ctx.runQuery(config.component.public.groupConnectionGet, {
-                  connectionId: data.connectionId,
-                }),
-              err: () =>
-                Cv.error({
-                  code: "INTERNAL_ERROR",
-                  message: "Failed to load connection.",
-                }),
+        return runSsoBoundary(
+          Effect.gen(function* () {
+            const connection = yield* tryPromise({
+              try: () =>
+                getGroupConnection(
+                  ctx,
+                  config.component.public,
+                  data.connectionId,
+                ),
+              catch: () => ({
+                code: "INTERNAL_ERROR",
+                message: "Failed to load connection.",
+              }),
             }).pipe(
-              Fx.chain((ent) =>
-                ent === null
-                  ? Cv.fail({
-                      code: "INVALID_PARAMETERS",
-                      message: connectionNotFoundError,
-                    })
-                  : Fx.succeed(ent),
+              Effect.flatMap((connection) =>
+                connection === null
+                  ? Effect.fail(
+                      convexError({
+                        code: "INVALID_PARAMETERS",
+                        message: connectionNotFoundError,
+                      }),
+                    )
+                  : Effect.succeed(connection),
               ),
             );
-            yield* Fx.guard(
-              connection.protocol !== "saml",
-              Cv.fail({
-                code: "INVALID_PARAMETERS",
-                message: "This connection is not a SAML connection.",
-              }),
-            );
+            if (connection.protocol !== "saml") {
+              return yield* Effect.fail(
+                convexError({
+                  code: "INVALID_PARAMETERS",
+                  message: "This connection is not a SAML connection.",
+                }),
+              );
+            }
             const metadataUrl =
-              typeof data.metadataUrl === "string" && data.metadataUrl.length > 0
-                ? data.metadataUrl
+              typeof data.metadata.url === "string" && data.metadata.url.length > 0
+                ? data.metadata.url
                 : undefined;
-            const metadataXml = yield* (metadataUrl
-              ? Fx.defer(() =>
-                  Fx.from({
-                    ok: async () => {
-                      const response = await fetch(metadataUrl);
-                      if (!response.ok) {
-                        throw new Error(
-                          `Failed to fetch SAML metadata: ${response.status}`,
-                        );
-                      }
-                      return await response.text();
-                    },
-                    err: (error) =>
-                      Cv.error({
-                        code: "INVALID_PARAMETERS",
-                        message:
-                          error instanceof Error
-                            ? error.message
-                            : "Failed to fetch SAML metadata",
-                      }),
-                  }),
-                ).pipe(
-                  Fx.timeout(10_000),
-                  Fx.retry(
-                    Fx.retry.compose(
-                      Fx.retry.jittered(Fx.retry.exponential(200)),
-                      Fx.retry.recurs(2),
-                    ),
-                  ),
-                  Fx.recover((error) =>
-                    Cv.fail({
-                      code: "INVALID_PARAMETERS",
-                      message:
-                        error instanceof Error
-                          ? error.message
-                          : "Failed to fetch SAML metadata",
-                    }),
-                  ),
-                )
-              : data.metadataXml
-                ? Fx.succeed(data.metadataXml)
-                : Cv.fail({
+            const metadataXml = metadataUrl
+              ? yield* tryPromise({
+                  try: async () => {
+                    const response = await fetch(metadataUrl, {
+                      signal: AbortSignal.timeout(10_000),
+                    });
+                    if (!response.ok) {
+                      throw new Error(
+                        `Failed to fetch SAML metadata: ${response.status}`,
+                      );
+                    }
+                    return await response.text();
+                  },
+                  catch: (error) => ({
                     code: "INVALID_PARAMETERS",
                     message:
-                      "SAML registration requires metadataXml or metadataUrl.",
-                  }));
+                      error instanceof Error
+                        ? error.message
+                        : "Failed to fetch SAML metadata",
+                  }),
+                }).pipe(Effect.retry({ schedule: NETWORK_RETRY_SCHEDULE }))
+              : data.metadata.xml
+                ? data.metadata.xml
+                : yield* Effect.fail(
+                    convexError({
+                      code: "INVALID_PARAMETERS",
+                      message:
+                        "SAML registration requires metadataXml or metadataUrl.",
+                    }),
+                  );
 
-            const parsed = yield* Fx.from({
-              ok: () => parseSamlIdpMetadata(metadataXml),
-              err: (error) =>
-                Cv.error({
-                  code: "INVALID_PARAMETERS",
-                  message:
-                    error instanceof Error
-                      ? `Failed to parse SAML metadata: ${error.message}`
-                      : "Failed to parse SAML metadata.",
+            const parsed = yield* tryPromise({
+              try: () =>
+                parseSamlIdpMetadataChecked({
+                  metadataXml,
+                  config: { protocols: { saml: { security: data.security } } },
                 }),
+              catch: (error) => ({
+                code: "INVALID_PARAMETERS",
+                message:
+                  error instanceof Error
+                    ? `Failed to parse SAML metadata: ${error.message}`
+                    : "Failed to parse SAML metadata.",
+              }),
             });
-            console.log("[group-sso] saml:configure:parsed", {
+            log("DEBUG", "[group-sso] saml:configure:parsed", {
               connectionId: data.connectionId,
               metadataUrl,
               entityId: parsed.entityId,
@@ -713,65 +1047,69 @@ export function createGroupConnectionDomain(deps: any) {
                 metadataXml,
                 ...parsed,
               },
-              sp: data.sp,
-              signAuthnRequests:
-                data.signAuthnRequests ?? parsed.wantsSignedAuthnRequests,
-              attributeMapping: data.attributeMapping,
+              serviceProvider: data.serviceProvider,
+              request: {
+                signAuthnRequests:
+                  data.request?.signAuthnRequests ?? parsed.wantsSignedAuthnRequests,
+                nameIdFormat: data.request?.nameIdFormat,
+                forceAuthn: data.request?.forceAuthn,
+                authnContextClassRefs: data.request?.authnContextClassRefs,
+              },
+              profile: {
+                mapping: data.profile?.mapping,
+                extraFields: data.profile?.extraFields,
+              },
+              security: data.security,
             });
             const normalizedDomains = data.domains?.map(normalizeDomain);
             const nextConfig = normalizedDomains
               ? { ...baseConfig, domains: normalizedDomains }
               : baseConfig;
-            console.log("[group-sso] saml:configure:nextConfig", {
+            const nextSamlConfig =
+              (nextConfig.protocols?.saml as DomainSamlConfig | undefined) ?? undefined;
+            log("DEBUG", "[group-sso] saml:configure:nextConfig", {
               connectionId: data.connectionId,
-              entityId: nextConfig?.protocols?.saml?.idp?.entityId ?? null,
-              issuer: nextConfig?.protocols?.saml?.idp?.issuer ?? null,
-              metadataUrl: nextConfig?.protocols?.saml?.idp?.metadataUrl ?? null,
-              hasMetadataXml:
-                typeof nextConfig?.protocols?.saml?.idp?.metadataXml ===
-                "string",
+              entityId: nextSamlConfig?.idp?.entityId ?? null,
+              issuer: nextSamlConfig?.idp?.issuer ?? null,
+              metadataUrl: nextSamlConfig?.idp?.metadataUrl ?? null,
+              hasMetadataXml: typeof nextSamlConfig?.idp?.metadataXml === "string",
             });
 
-            yield* Fx.from({
-              ok: () =>
-                ctx.runMutation(config.component.public.groupConnectionUpdate, {
+            yield* tryPromise({
+              try: () =>
+                updateGroupConnection(ctx, config.component.public, {
                   connectionId: connection._id,
                   data: {
                     status: "active",
                     config: nextConfig,
                   },
                 }),
-              err: () =>
-                Cv.error({
-                  code: "INTERNAL_ERROR",
-                  message: "Failed to persist SAML registration.",
-                }),
+              catch: () => ({
+                code: "INTERNAL_ERROR",
+                message: "Failed to persist SAML registration.",
+              }),
             });
 
             if (normalizedDomains) {
               for (const [index, domain] of normalizedDomains.entries()) {
-                yield* Fx.from({
-                  ok: () =>
-                    ctx.runMutation(
-                      config.component.public.groupConnectionDomainAdd,
-                      {
-                        connectionId: connection._id,
-                        groupId: connection.groupId,
-                        domain,
-                        isPrimary: index === 0,
-                      },
-                    ),
-                  err: () =>
-                    Cv.error({
-                      code: "INTERNAL_ERROR",
-                      message: "Failed to persist connection domain.",
+                yield* tryPromise({
+                  try: () =>
+                    addConnectionDomain(ctx, config.component.public, {
+                      connectionId: connection._id,
+                      groupId: connection.groupId,
+                      domain,
+                      isPrimary: index === 0,
                     }),
+                  catch: () => ({
+                    code: "INTERNAL_ERROR",
+                    message: "Failed to persist connection domain.",
+                  }),
                 });
               }
             }
 
-            yield* Fx.from({
-              ok: () =>
+            yield* tryPromise({
+              try: () =>
                 recordGroupAuditEvent(ctx, {
                   connectionId: connection._id,
                   groupId: connection.groupId,
@@ -781,22 +1119,208 @@ export function createGroupConnectionDomain(deps: any) {
                   subjectId: connection._id,
                   ok: true,
                   metadata: {
-                    metadataUrl: data.metadataUrl,
+                    metadataUrl: metadataUrl,
                     domains: normalizedDomains,
                   },
                 }),
-              err: () =>
-                Cv.error({
-                  code: "INTERNAL_ERROR",
-                  message: "Failed to record SAML registration audit event.",
-                }),
+              catch: () => ({
+                code: "INTERNAL_ERROR",
+                message: "Failed to record SAML registration audit event.",
+              }),
             });
 
             return {
               connectionId: connection._id,
               groupId: connection.groupId,
             };
-          }).pipe(Fx.recover((e) => Fx.fatal(e))),
+          }),
+        );
+      },
+      refresh: (ctx: ComponentCtx, data: { connectionId: string }) => {
+        return runSsoBoundary(
+          Effect.gen(function* () {
+            const connection = yield* tryPromise({
+              try: () =>
+                getGroupConnection(
+                  ctx,
+                  config.component.public,
+                  data.connectionId,
+                ),
+              catch: () => ({
+                code: "INTERNAL_ERROR",
+                message: "Failed to load connection.",
+              }),
+            }).pipe(
+              Effect.flatMap((connection) =>
+                connection === null
+                  ? Effect.fail(
+                      convexError({
+                        code: "INVALID_PARAMETERS",
+                        message: connectionNotFoundError,
+                      }),
+                    )
+                  : Effect.succeed(connection),
+              ),
+            );
+            const samlConfig =
+              (connection.config as { protocols?: { saml?: DomainSamlConfig } })
+                ?.protocols?.saml;
+            if (connection.protocol !== "saml") {
+              return yield* Effect.fail(
+                convexError({
+                  code: "INVALID_PARAMETERS",
+                  message: "This connection is not a SAML connection.",
+                }),
+              );
+            }
+            if (typeof samlConfig?.idp?.metadataUrl !== "string") {
+              return yield* Effect.fail(
+                convexError({
+                  code: "INVALID_PARAMETERS",
+                  message: "SAML metadataUrl is not configured.",
+                }),
+              );
+            }
+            const metadataUrl = samlConfig.idp.metadataUrl;
+            const response = yield* tryPromise({
+              try: async () => {
+                const response = await fetch(metadataUrl, {
+                  signal: AbortSignal.timeout(10_000),
+                });
+                if (!response.ok) {
+                  throw new Error(
+                    `Failed to fetch SAML metadata: ${response.status}`,
+                  );
+                }
+                return await response.text();
+              },
+              catch: (error) => ({
+                code: "INVALID_PARAMETERS",
+                message:
+                  error instanceof Error
+                    ? error.message
+                    : "Failed to fetch SAML metadata",
+                }),
+              }).pipe(Effect.retry({ schedule: NETWORK_RETRY_SCHEDULE }));
+            const parsed = yield* tryPromise({
+              try: () =>
+                parseSamlIdpMetadataChecked({
+                  metadataXml: response,
+                  config: connection.config,
+                }),
+              catch: (error) => ({
+                code: "INVALID_PARAMETERS",
+                message:
+                  error instanceof Error
+                    ? `Failed to parse SAML metadata: ${error.message}`
+                    : "Failed to parse SAML metadata.",
+              }),
+            });
+            const nextConfig = upsertProtocolConfig(connection.config, "saml", {
+              enabled: true,
+              idp: {
+                metadataUrl,
+                metadataXml: response,
+                ...parsed,
+              },
+              serviceProvider: (samlConfig as { serviceProvider?: Record<string, unknown> }).serviceProvider,
+              request: samlConfig.request,
+              profile: samlConfig.profile,
+              security: samlConfig.security,
+            });
+            yield* tryPromise({
+              try: () =>
+                updateGroupConnection(ctx, config.component.public, {
+                  connectionId: connection._id,
+                  data: {
+                    status: connection.status,
+                    config: nextConfig,
+                  },
+                }),
+              catch: () => ({
+                code: "INTERNAL_ERROR",
+                message: "Failed to persist refreshed SAML metadata.",
+              }),
+            });
+            yield* tryPromise({
+              try: () =>
+                recordGroupAuditEvent(ctx, {
+                  connectionId: connection._id,
+                  groupId: connection.groupId,
+                  eventType: "group.sso.saml.refreshed",
+                  actorType: "system",
+                  subjectType: "group_connection_saml",
+                  subjectId: connection._id,
+                  ok: true,
+                  metadata: {
+                    metadataUrl,
+                  },
+                }),
+              catch: () => ({
+                code: "INTERNAL_ERROR",
+                message: "Failed to record SAML refresh audit event.",
+              }),
+            });
+            return {
+              connectionId: connection._id,
+              groupId: connection.groupId,
+            };
+          }),
+        );
+      },
+      get: (ctx: ComponentReadCtx, connectionId: string) => {
+        return runSsoBoundary(
+          Effect.gen(function* () {
+            const connection = yield* tryPromise({
+              try: () =>
+                getGroupConnection(ctx, config.component.public, connectionId),
+              catch: () => ({
+                code: "INTERNAL_ERROR",
+                message: "Failed to load connection.",
+              }),
+            }).pipe(
+              Effect.flatMap((connection) =>
+                connection === null
+                  ? Effect.fail(
+                      convexError({
+                        code: "INVALID_PARAMETERS",
+                        message: connectionNotFoundError,
+                      }),
+                    )
+                  : Effect.succeed(connection),
+              ),
+            );
+            return getSamlConfig(connection.config);
+          }),
+        );
+      },
+      status: (ctx: ComponentReadCtx, connectionId: string) => {
+        return getGroupConnection(ctx, config.component.public, connectionId).then(
+          (connection) => {
+            if (!connection) {
+              throw convexError({
+                code: "INVALID_PARAMETERS",
+                message: connectionNotFoundError,
+              });
+            }
+            const currentConfig = getSamlConfig(connection.config);
+            const configured = currentConfig.enabled === true;
+            const ready =
+              configured && typeof (currentConfig.idp as Record<string, unknown> | undefined)?.entityId === "string";
+            return {
+              connectionId,
+              configured,
+              ready,
+              config: currentConfig,
+              checks: [
+                {
+                  name: "saml_configured",
+                  ok: configured,
+                  message: configured ? undefined : "SAML is not configured.",
+                },
+              ],
+            };
+          },
         );
       },
       metadata: async <DataModel extends GenericDataModel>(
@@ -808,14 +1332,13 @@ export function createGroupConnectionDomain(deps: any) {
           sloUrl?: string;
         },
       ) => {
-        const connection = await ctx.runQuery(
-          config.component.public.groupConnectionGet,
-          {
-            connectionId: opts.connectionId,
-          },
+        const connection = await getGroupConnection(
+          ctx,
+          config.component.public,
+          opts.connectionId,
         );
         if (!connection) {
-          throw Cv.error({
+          throw convexError({
             code: "INVALID_PARAMETERS",
             message: "Connection not found.",
           });
@@ -851,9 +1374,10 @@ export function createGroupConnectionDomain(deps: any) {
           message?: string;
         }> = [];
 
-        const connection = await ctx.runQuery(
-          config.component.public.groupConnectionGet,
-          { connectionId },
+        const connection = await getGroupConnection(
+          ctx,
+          config.component.public,
+          connectionId,
         );
 
         if (!connection) {
@@ -870,7 +1394,8 @@ export function createGroupConnectionDomain(deps: any) {
           };
         }
 
-        const samlConfig = connection.config?.protocols?.saml;
+        const samlConfig = (connection.config as { protocols?: { saml?: DomainSamlConfig } })
+          ?.protocols?.saml;
         const samlConfigured =
           samlConfig?.enabled === true &&
           typeof samlConfig?.idp?.metadataXml === "string";
@@ -894,13 +1419,16 @@ export function createGroupConnectionDomain(deps: any) {
           hasIdpMetadata && typeof samlConfig?.idp?.metadataXml === "string"
             ? (() => {
                 try {
-                  return parseSamlIdpMetadata(samlConfig.idp.metadataXml);
+                  return parseSamlIdpMetadataChecked({
+                    metadataXml: samlConfig.idp.metadataXml,
+                    config: connection.config,
+                  });
                 } catch {
                   return null;
                 }
               })()
             : null;
-        console.log("[group-sso] saml:validate:idp", {
+        log("DEBUG", "[group-sso] saml:validate:idp", {
           connectionId,
           entityId: samlConfig?.idp?.entityId ?? null,
           issuer: samlConfig?.idp?.issuer ?? null,
@@ -951,6 +1479,40 @@ export function createGroupConnectionDomain(deps: any) {
           message: spMetadataMessage,
         });
 
+        const requiresSignedAssertions =
+          samlConfig?.security?.requireSignedAssertions === true;
+        const hasSigningCert = reparsedIdp?.signingCert !== null;
+        checks.push({
+          name: "signed_assertions_compatible",
+          ok: !requiresSignedAssertions || hasSigningCert,
+          message:
+            !requiresSignedAssertions || hasSigningCert
+              ? undefined
+              : "Signed assertions are required but the IdP metadata has no signing certificate.",
+        });
+
+        const signAuthnRequests = samlConfig?.request?.signAuthnRequests === true;
+        const hasSpPrivateKey =
+          typeof (samlConfig as { serviceProvider?: { privateKey?: string } } | undefined)
+            ?.serviceProvider?.privateKey === "string";
+        checks.push({
+          name: "authn_request_signing_compatible",
+          ok: !signAuthnRequests || hasSpPrivateKey,
+          message:
+            !signAuthnRequests || hasSpPrivateKey
+              ? undefined
+              : "signAuthnRequests is enabled but no SP privateKey is configured.",
+        });
+
+        checks.push({
+          name: "timestamp_validation_configured",
+          ok: true,
+          message:
+            samlConfig?.security?.requireTimestamps === true
+              ? `Timestamp validation enabled with clock skew ${samlConfig.security.clockSkewSeconds ?? 300} seconds.`
+              : "Timestamp validation uses compatibility defaults.",
+        });
+
         return {
           ok: checks.every((c) => c.ok),
           connectionId: connection._id,
@@ -958,68 +1520,7 @@ export function createGroupConnectionDomain(deps: any) {
         };
       },
     },
-      policy: {
-        get: async (ctx: ComponentReadCtx, groupId: string) => {
-          return await loadGroupPolicyOrThrow(ctx, groupId);
-        },
-      update: async (
-        ctx: ComponentCtx,
-        groupId: string,
-        patch: GroupConnectionPolicyPatch,
-      ) => {
-        const group = await ctx.runQuery(config.component.public.groupGet, {
-          groupId,
-        });
-        if (!group) {
-          throw Cv.error({
-            code: "INVALID_PARAMETERS",
-            message: "Group not found.",
-          });
-        }
-        const policy = patchGroupConnectionPolicy(group.policy, patch);
-        await ctx.runMutation(config.component.public.groupUpdate, {
-          groupId,
-          data: { policy },
-        });
-        await recordGroupAuditEvent(ctx, {
-          groupId,
-          eventType: "group.sso.policy.updated",
-          actorType: "system",
-          subjectType: "group_policy",
-          subjectId: groupId,
-          ok: true,
-          metadata: { version: policy.version },
-        });
-        return policy;
-      },
-      validate: async (ctx: ComponentReadCtx, groupId: string) => {
-        const group = await ctx.runQuery(
-          config.component.public.groupGet,
-          { groupId },
-        );
-        if (!group) {
-          return {
-            ok: false,
-            groupId,
-            checks: [
-              {
-                name: "group_exists",
-                ok: false,
-                message: "Group not found.",
-              },
-            ],
-          };
-        }
-        const policy = await loadGroupPolicyOrThrow(ctx, groupId);
-        const checks = validateGroupConnectionPolicy(policy);
-        return {
-          ok: checks.every((check: { ok: boolean }) => check.ok),
-          groupId,
-          policy,
-          checks,
-        };
-      },
-    },
+    policy,
     oidc: {
       /**
        * Register or update connection OIDC connection settings.
@@ -1027,119 +1528,146 @@ export function createGroupConnectionDomain(deps: any) {
        * Persists protocol config under `connection.config.protocols.oidc` and
         * records a `group.sso.oidc.registered` audit event.
        */
-      configure: async (
+      configure: (
         ctx: ComponentCtx,
         data: {
           connectionId: string;
-          issuer?: string;
-          discoveryUrl?: string;
-          clientId: string;
-          clientSecret?: string;
-          scopes?: string[];
-          authorizationParams?: Record<string, string>;
-          clockToleranceSeconds?: number;
-          strictIssuer?: boolean;
-          /**
-           * Map OIDC claim names to `user.extend` field names.
-           * Example: `{ department: "department", role: "job_title" }` means
-           * the OIDC `department` claim is stored as `user.extend.department`.
-           */
-          extraFields?: Record<string, string>;
+          discovery: {
+            issuer?: string;
+            discoveryUrl?: string;
+            jwksUri?: string;
+            audience?: string | string[];
+          };
+          client: {
+            id: string;
+            secret?: string;
+            authMethod?: "client_secret_post" | "client_secret_basic";
+          };
+          request?: {
+            scopes?: string[];
+            loginHint?: string;
+            authorizationParams?: Record<string, string>;
+          };
+          security?: {
+            clockToleranceSeconds?: number;
+            strictIssuer?: boolean;
+          };
+          profile?: {
+            mapping?: OIDCClaimMapping;
+            extraFields?: Record<string, string>;
+          };
         },
       ) => {
-        return await Fx.run(
-          Fx.gen(function* () {
-            yield* Fx.guard(
-              data.issuer === undefined && data.discoveryUrl === undefined,
-              Cv.fail({
-                code: "INVALID_PARAMETERS",
-                message: "OIDC registration requires issuer or discoveryUrl.",
-              }),
-            );
+        return runSsoBoundary(
+          Effect.gen(function* () {
+            if (
+              data.discovery.issuer === undefined &&
+              data.discovery.discoveryUrl === undefined
+            ) {
+              return yield* Effect.fail(
+                convexError({
+                  code: "INVALID_PARAMETERS",
+                  message: "OIDC registration requires issuer or discoveryUrl.",
+                }),
+              );
+            }
 
-            const connection = yield* Fx.from({
-              ok: () =>
-                ctx.runQuery(config.component.public.groupConnectionGet, {
-                  connectionId: data.connectionId,
-                }),
-              err: () =>
-                Cv.error({
-                  code: "INTERNAL_ERROR",
-                  message: "Failed to load connection.",
-                }),
+            const connection = yield* tryPromise({
+              try: () =>
+                getGroupConnection(
+                  ctx,
+                  config.component.public,
+                  data.connectionId,
+                ),
+              catch: () => ({
+                code: "INTERNAL_ERROR",
+                message: "Failed to load connection.",
+              }),
             }).pipe(
-              Fx.chain((ent) =>
-                ent === null
-                  ? Cv.fail({
-                      code: "INVALID_PARAMETERS",
-                      message: connectionNotFoundError,
-                    })
-                  : Fx.succeed(ent),
+              Effect.flatMap((connection) =>
+                connection === null
+                  ? Effect.fail(
+                      convexError({
+                        code: "INVALID_PARAMETERS",
+                        message: connectionNotFoundError,
+                      }),
+                    )
+                  : Effect.succeed(connection),
               ),
             );
-            yield* Fx.guard(
-              connection.protocol !== "oidc",
-              Cv.fail({
-                code: "INVALID_PARAMETERS",
-                message: "This connection is not an OIDC connection.",
-              }),
-            );
+            if (connection.protocol !== "oidc") {
+              return yield* Effect.fail(
+                convexError({
+                  code: "INVALID_PARAMETERS",
+                  message: "This connection is not an OIDC connection.",
+                }),
+              );
+            }
             const nextConfig = upsertProtocolConfig(connection.config, "oidc", {
               enabled: true,
-              issuer: data.issuer,
-              discoveryUrl: data.discoveryUrl,
-              clientId: data.clientId,
-              scopes: data.scopes ?? ["openid", "profile", "email"],
-              authorizationParams: data.authorizationParams,
-              clockToleranceSeconds: data.clockToleranceSeconds,
-              strictIssuer: data.strictIssuer,
-              extraFields: data.extraFields,
+              discovery: {
+                issuer: data.discovery.issuer,
+                discoveryUrl: data.discovery.discoveryUrl,
+                jwksUri: data.discovery.jwksUri,
+                audience: data.discovery.audience,
+              },
+              client: {
+                id: data.client.id,
+                authMethod: data.client.authMethod,
+              },
+              request: {
+                scopes: data.request?.scopes ?? ["openid", "profile", "email"],
+                loginHint: data.request?.loginHint,
+                authorizationParams: data.request?.authorizationParams,
+              },
+              security: {
+                clockToleranceSeconds: data.security?.clockToleranceSeconds,
+                strictIssuer: data.security?.strictIssuer,
+              },
+              profile: {
+                mapping: data.profile?.mapping,
+                extraFields: data.profile?.extraFields,
+              },
             });
 
-            yield* Fx.from({
-              ok: () =>
-                ctx.runMutation(config.component.public.groupConnectionUpdate, {
+            yield* tryPromise({
+              try: () =>
+                updateGroupConnection(ctx, config.component.public, {
                   connectionId: data.connectionId,
                   data: { config: nextConfig },
                 }),
-              err: () =>
-                Cv.error({
-                  code: "INTERNAL_ERROR",
-                  message: "Failed to persist OIDC registration.",
-                }),
+              catch: () => ({
+                code: "INTERNAL_ERROR",
+                message: "Failed to persist OIDC registration.",
+              }),
             });
 
-            if (data.clientSecret !== undefined) {
-              const ciphertext = yield* Fx.from({
-                ok: () => encryptSecret(data.clientSecret!),
-                err: () =>
-                  Cv.error({
-                    code: "INTERNAL_ERROR",
-                    message: "Failed to encrypt OIDC client secret.",
-                  }),
+            if (data.client.secret !== undefined) {
+              const ciphertext = yield* tryPromise({
+                try: () => encryptSecret(data.client.secret!),
+                catch: () => ({
+                  code: "INTERNAL_ERROR",
+                  message: "Failed to encrypt OIDC client secret.",
+                }),
               });
-              yield* Fx.from({
-                ok: () =>
-                  ctx.runMutation(
-                    config.component.public.groupConnectionSecretUpsert,
-                    {
-                      connectionId: data.connectionId,
-                      groupId: connection.groupId,
-                      kind: GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
-                      ciphertext,
-                      updatedAt: Date.now(),
-                    },
-                  ),
-                err: () =>
-                  Cv.error({
-                    code: "INTERNAL_ERROR",
-                    message: "Failed to persist OIDC client secret.",
+              yield* tryPromise({
+                try: () =>
+                  upsertGroupConnectionSecret(ctx, config.component.public, {
+                    connectionId: data.connectionId,
+                    groupId: connection.groupId,
+                    kind: GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
+                    ciphertext,
+                    updatedAt: Date.now(),
                   }),
+                catch: () => ({
+                  code: "INTERNAL_ERROR",
+                  message: "Failed to persist OIDC client secret.",
+                }),
               });
             }
 
-            yield* Fx.from({
-              ok: () =>
+            yield* tryPromise({
+              try: () =>
                 recordGroupAuditEvent(ctx, {
                   connectionId: data.connectionId,
                   groupId: connection.groupId,
@@ -1149,201 +1677,263 @@ export function createGroupConnectionDomain(deps: any) {
                   subjectId: data.connectionId,
                   ok: true,
                   metadata: {
-                    issuer: data.issuer,
-                    discoveryUrl: data.discoveryUrl,
+                    issuer: data.discovery.issuer,
+                    discoveryUrl: data.discovery.discoveryUrl,
+                    jwksUri: data.discovery.jwksUri,
+                    audience: data.discovery.audience,
+                    tokenEndpointAuthMethod: data.client.authMethod,
                   },
                 }),
-              err: () =>
-                Cv.error({
-                  code: "INTERNAL_ERROR",
-                  message: "Failed to record OIDC registration audit event.",
-                }),
+              catch: () => ({
+                code: "INTERNAL_ERROR",
+                message: "Failed to record OIDC registration audit event.",
+              }),
             });
 
-            const secret = yield* Fx.from({
-              ok: () =>
+            const secret = yield* tryPromise({
+              try: () =>
                 getGroupConnectionSecret(
                   ctx,
                   data.connectionId,
                   GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
                 ),
-              err: () =>
-                Cv.error({
-                  code: "INTERNAL_ERROR",
-                  message: "Failed to load OIDC secret metadata.",
-                }),
+              catch: () => ({
+                code: "INTERNAL_ERROR",
+                message: "Failed to load OIDC secret metadata.",
+              }),
             });
 
             return withOidcSecretState(
               getPublicOidcConfig(nextConfig),
               secret !== null,
             );
-          }).pipe(Fx.recover((e) => Fx.fatal(e))),
+          }),
         );
       },
       /**
        * Fetch the stored OIDC config for an connection.
        */
-      get: async (ctx: ComponentReadCtx, connectionId: string) => {
-        return await Fx.run(
-          Fx.from({
-            ok: () =>
-              ctx.runQuery(config.component.public.groupConnectionGet, {
-                connectionId,
-              }),
-            err: () =>
-              Cv.error({
+      get: (ctx: ComponentReadCtx, connectionId: string) => {
+        return runSsoBoundary(
+          Effect.gen(function* () {
+            const connection = yield* tryPromise({
+              try: () =>
+                getGroupConnection(ctx, config.component.public, connectionId),
+              catch: () => ({
                 code: "INTERNAL_ERROR",
                 message: "Failed to load connection.",
               }),
-          }).pipe(
-            Fx.chain((ent) =>
-              ent === null
-                ? Cv.fail({
-                    code: "INVALID_PARAMETERS",
-                    message: connectionNotFoundError,
-                  })
-                : Fx.succeed(ent),
-            ),
-            Fx.chain((connection) =>
-              Fx.from({
-                ok: async () => {
-                  const secret = await getGroupConnectionSecret(
-                    ctx,
-                    connection._id,
-                    GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
-                  );
-                  return withOidcSecretState(
-                    getPublicOidcConfig(connection.config),
-                    secret !== null,
-                  );
-                },
-                err: () =>
-                  Cv.error({
-                    code: "INTERNAL_ERROR",
-                    message: "Failed to load OIDC secret metadata.",
-                  }),
+            }).pipe(
+              Effect.flatMap((connection) =>
+                connection === null
+                  ? Effect.fail(
+                      convexError({
+                        code: "INVALID_PARAMETERS",
+                        message: connectionNotFoundError,
+                      }),
+                    )
+                  : Effect.succeed(connection),
+              ),
+            );
+
+            const secret = yield* tryPromise({
+              try: () =>
+                getGroupConnectionSecret(
+                  ctx,
+                  connection._id,
+                  GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
+                ),
+              catch: () => ({
+                code: "INTERNAL_ERROR",
+                message: "Failed to load OIDC secret metadata.",
               }),
-            ),
-            Fx.recover((e) => Fx.fatal(e)),
-          ),
+            });
+
+            return withOidcSecretState(
+              getPublicOidcConfig(connection.config),
+              secret !== null,
+            );
+          }),
         );
+      },
+      status: (ctx: ComponentReadCtx, connectionId: string) => {
+        return Promise.all([
+          getGroupConnection(ctx, config.component.public, connectionId),
+          getGroupConnectionSecret(
+            ctx,
+            connectionId,
+            GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
+          ),
+        ]).then(([connection, secret]) => {
+          if (!connection) {
+            throw convexError({
+              code: "INVALID_PARAMETERS",
+              message: connectionNotFoundError,
+            });
+          }
+          const currentConfig = getPublicOidcConfig(connection.config);
+          const oidcConfig = getOidcConfig(connection.config) as DomainOidcConfig;
+          const configured =
+            currentConfig.enabled === true &&
+            typeof oidcConfig.client?.id === "string" &&
+            (typeof oidcConfig.discovery?.issuer === "string" ||
+              typeof oidcConfig.discovery?.discoveryUrl === "string");
+          const ready = configured && secret !== null;
+          return {
+            connectionId,
+            configured,
+            ready,
+            config: withOidcSecretState(currentConfig, secret !== null),
+            checks: [
+              {
+                name: "oidc_configured",
+                ok: configured,
+                message: configured ? undefined : "OIDC is not configured.",
+              },
+              {
+                name: "client_secret_stored",
+                ok: secret !== null,
+                message: secret !== null ? undefined : "OIDC client secret is missing.",
+              },
+            ],
+          };
+        });
       },
       /**
        * Resolve group SSO sign-in route from connection id, domain, or
        * user email domain.
        */
-      signIn: async (
+      signIn: (
         ctx: ComponentReadCtx,
         data: {
           connectionId?: string;
           email?: string;
           domain?: string;
           redirectTo?: string;
+          loginHint?: string;
         },
       ) => {
-        console.log("[group-sso] resolver:start", {
+        log("DEBUG", "[group-sso] resolver:start", {
           connectionId: data.connectionId,
           email: data.email,
           domain: data.domain,
           redirectTo: data.redirectTo,
         });
-        return await Fx.run(
-          Fx.gen(function* () {
+        return runSsoBoundary(
+          Effect.gen(function* () {
             const connection =
               data.connectionId !== undefined
-                ? yield* Fx.from({
-                    ok: () =>
-                      ctx.runQuery(config.component.public.groupConnectionGet, {
-                        connectionId: data.connectionId,
-                      }),
-                    err: () =>
-                      Cv.error({
+                ? yield* tryPromise({
+                    try: () =>
+                        getGroupConnection(
+                          ctx,
+                          config.component.public,
+                          data.connectionId!,
+                        ),
+                    catch: () => ({
                         code: "INTERNAL_ERROR",
                         message: "Failed to load connection.",
                       }),
                   }).pipe(
-                    Fx.chain((ent) =>
-                      ent === null
-                        ? Cv.fail({
-                            code: "INVALID_PARAMETERS",
-                            message: connectionNotFoundError,
-                          })
-                        : Fx.succeed(ent),
+                    Effect.flatMap((connection) =>
+                      connection === null
+                        ? Effect.fail(
+                            convexError({
+                              code: "INVALID_PARAMETERS",
+                              message: connectionNotFoundError,
+                            }),
+                          )
+                        : Effect.succeed(connection),
                     ),
                   )
                 : data.domain !== undefined || data.email !== undefined
-                  ? yield* Fx.from({
-                      ok: () =>
-                        ctx.runQuery(
-                          config.component.public.groupConnectionGetByDomain,
-                          {
-                            domain: normalizeDomain(
-                              data.domain ??
-                                String(data.email).split("@").pop() ??
-                                "",
-                            ),
-                          },
+                  ? yield* tryPromise({
+                      try: () =>
+                        getGroupConnectionByDomain(
+                          ctx,
+                          config.component.public,
+                          normalizeDomain(
+                            data.domain ??
+                              String(data.email).split("@").pop() ??
+                              "",
+                          ),
                         ),
-                      err: () =>
-                        Cv.error({
+                      catch: () => ({
                           code: "INTERNAL_ERROR",
                           message: "Failed to resolve connection by domain.",
                         }),
                     }).pipe(
-                      Fx.tap((result) =>
-                        Fx.sync(() => {
-                          console.log("[group-sso] resolver:domainLookup", result);
+                      Effect.tap((result) =>
+                        Effect.sync(() => {
+                          log(
+                            "DEBUG",
+                            "[group-sso] resolver:domainLookup",
+                            result,
+                          );
                         }),
                       ),
-                      Fx.chain((result) =>
+                      Effect.flatMap((result) =>
                         result?.connection &&
                         result.domain?.verifiedAt !== undefined
-                          ? Fx.succeed(result.connection)
-                          : Cv.fail({
-                              code: "INVALID_PARAMETERS",
-                              message:
-                                "No group connection matched the provided input.",
-                            }),
+                          ? Effect.succeed(result.connection)
+                          : Effect.fail(
+                              convexError({
+                                code: "INVALID_PARAMETERS",
+                                message:
+                                  "No group connection matched the provided input.",
+                              }),
+                            ),
                       ),
                     )
-                  : yield* Cv.fail({
-                      code: "INVALID_PARAMETERS",
-                      message:
-                        "No group connection matched the provided input.",
-                    });
+                  : yield* Effect.fail(
+                      convexError({
+                        code: "INVALID_PARAMETERS",
+                        message:
+                          "No group connection matched the provided input.",
+                      }),
+                    );
 
-            yield* Fx.guard(
-              connection.status !== "active",
-              Cv.fail({
-                code: "INVALID_PARAMETERS",
-                message: "Group connection is not active.",
-              }),
-            );
+            if (connection.status !== "active") {
+              return yield* Effect.fail(
+                convexError({
+                  code: "INVALID_PARAMETERS",
+                  message: "Group connection is not active.",
+                }),
+              );
+            }
 
             const protocol = resolveGroupConnectionProtocol(connection);
-            console.log("[group-sso] resolver:connection", {
+            log("DEBUG", "[group-sso] resolver:connection", {
               connectionId: connection._id,
               status: connection.status,
               protocol,
             });
-            const urls =
+            const { signInPath, callbackPath, providerId } =
               protocol === "oidc"
-                ? getGroupOidcUrls({
-                    rootUrl: requireEnv("CONVEX_SITE_URL"),
-                    connectionId: connection._id,
-                  })
-                : getGroupSamlUrls({
-                    rootUrl: requireEnv("CONVEX_SITE_URL"),
-                    source: { kind: "connection", id: connection._id },
-                  });
-            const signInPath =
-              protocol === "oidc"
-                ? urls.signInUrl
-                : `${requireEnv("CONVEX_SITE_URL")}/api/auth/connections/${connection._id}/saml/signin`;
-            const callbackPath =
-              protocol === "oidc" ? urls.callbackUrl : urls.acsUrl;
-            console.log("[group-sso] resolver:paths", {
+                ? (() => {
+                    const urls = getGroupOidcUrls({
+                      rootUrl: requireEnv("CONVEX_SITE_URL"),
+                      connectionId: connection._id,
+                      sharedRedirectURI: deps.sharedOidcRedirectURI,
+                    });
+                    return {
+                      signInPath: urls.signInUrl,
+                      callbackPath: urls.callbackUrl,
+                      providerId: groupOidcProviderId(connection._id),
+                    };
+                  })()
+                : (() => {
+                    const urls = getGroupSamlUrls({
+                      rootUrl: requireEnv("CONVEX_SITE_URL"),
+                      source: { kind: "connection", id: connection._id },
+                    });
+                    return {
+                      signInPath: `${requireEnv("CONVEX_SITE_URL")}/api/auth/connections/${connection._id}/saml/signin`,
+                      callbackPath: urls.acsUrl,
+                      providerId: groupSamlProviderId(connection._id),
+                    };
+                  })();
+            log("DEBUG", "[group-sso] resolver:paths", {
               connectionId: connection._id,
               signInPath,
               callbackPath,
@@ -1351,15 +1941,19 @@ export function createGroupConnectionDomain(deps: any) {
             return {
               connectionId: connection._id,
               protocol,
-              providerId:
-                protocol === "oidc"
-                  ? groupOidcProviderId(connection._id)
-                  : groupSamlProviderId(connection._id),
-              signInPath,
+              providerId,
+              signInPath:
+                protocol === "oidc" && typeof data.loginHint === "string"
+                  ? (() => {
+                      const signInUrl = new URL(signInPath);
+                      signInUrl.searchParams.set("loginHint", data.loginHint);
+                      return signInUrl.toString();
+                    })()
+                  : signInPath,
               callbackPath,
               redirectTo: data.redirectTo,
             };
-          }).pipe(Fx.recover((e) => Fx.fatal(e))),
+          }),
         );
       },
       /**
@@ -1376,9 +1970,10 @@ export function createGroupConnectionDomain(deps: any) {
           message?: string;
         }> = [];
 
-        const connection = await ctx.runQuery(
-          config.component.public.groupConnectionGet,
-          { connectionId },
+        const connection = await getGroupConnection(
+          ctx,
+          config.component.public,
+          connectionId,
         );
 
         if (!connection) {
@@ -1395,7 +1990,7 @@ export function createGroupConnectionDomain(deps: any) {
           };
         }
 
-        const oidc = getOidcConfig(connection.config);
+        const oidc = getOidcConfig(connection.config) as DomainOidcConfig;
         const secret = await getGroupConnectionSecret(
           ctx,
           connection._id,
@@ -1403,8 +1998,8 @@ export function createGroupConnectionDomain(deps: any) {
         );
         const oidcConfigured =
           oidc.enabled === true &&
-          typeof oidc.clientId === "string" &&
-          oidc.clientId.length > 0;
+          typeof oidc.client?.id === "string" &&
+          oidc.client.id.length > 0;
 
         checks.push({
           name: "oidc_configured",
@@ -1413,7 +2008,7 @@ export function createGroupConnectionDomain(deps: any) {
         });
 
         const hasClientId =
-          typeof oidc.clientId === "string" && oidc.clientId.length > 0;
+          typeof oidc.client?.id === "string" && oidc.client.id.length > 0;
         checks.push({
           name: "client_id_present",
           ok: hasClientId,
@@ -1427,7 +2022,17 @@ export function createGroupConnectionDomain(deps: any) {
             secret !== null ? undefined : "OIDC client secret is missing.",
         });
 
-        const discoveryTarget = oidc.discoveryUrl ?? oidc.issuer;
+        const discoveryConfig =
+          typeof oidc.discovery === "object" && oidc.discovery !== null
+            ? (oidc.discovery as Record<string, unknown>)
+            : {};
+        const clientConfig =
+          typeof oidc.client === "object" && oidc.client !== null
+            ? (oidc.client as Record<string, unknown>)
+            : {};
+        const discoveryTarget =
+          (discoveryConfig.discoveryUrl as string | undefined) ??
+          (discoveryConfig.issuer as string | undefined);
         const hasDiscovery =
           typeof discoveryTarget === "string" && discoveryTarget.length > 0;
         checks.push({
@@ -1441,9 +2046,11 @@ export function createGroupConnectionDomain(deps: any) {
         let discoveryOk = false;
         let discoveryMessage: string | undefined;
         if (hasDiscovery) {
-          const discoveryUrl = oidc.discoveryUrl?.length
-            ? oidc.discoveryUrl
-            : `${oidc.issuer}/.well-known/openid-configuration`;
+          const discoveryUrl =
+            typeof discoveryConfig.discoveryUrl === "string" &&
+            discoveryConfig.discoveryUrl.length > 0
+              ? discoveryConfig.discoveryUrl
+              : `${String(discoveryConfig.issuer)}/.well-known/openid-configuration`;
           try {
             const res = await fetch(discoveryUrl, {
               headers: { Accept: "application/json" },
@@ -1459,6 +2066,15 @@ export function createGroupConnectionDomain(deps: any) {
               } else if (typeof json.authorization_endpoint !== "string") {
                 discoveryMessage =
                   "Discovery document is missing authorization_endpoint.";
+              } else if (typeof json.token_endpoint !== "string") {
+                discoveryMessage =
+                  "Discovery document is missing token_endpoint.";
+              } else if (
+                discoveryConfig.jwksUri === undefined &&
+                typeof json.jwks_uri !== "string"
+              ) {
+                discoveryMessage =
+                  "Discovery document is missing jwks_uri and no jwksUri override is configured.";
               } else {
                 discoveryOk = true;
               }
@@ -1478,203 +2094,46 @@ export function createGroupConnectionDomain(deps: any) {
           message: discoveryMessage,
         });
 
-        return {
-          ok: checks.every((c) => c.ok),
-          connectionId: connection._id,
-          checks,
-        };
-      },
-    },
-    scim: {
-      configure: async (
-        ctx: ComponentCtx,
-        data: {
-          connectionId: string;
-          basePath?: string;
-          status?: "draft" | "active" | "disabled";
-        },
-      ) => {
-        const connection = await ctx.runQuery(
-          config.component.public.groupConnectionGet,
-          {
-            connectionId: data.connectionId,
-          },
-        );
-        if (connection === null) {
-          throw Cv.error({
-            code: "INVALID_PARAMETERS",
-            message: "Connection not found.",
-          });
-        }
-        const rawToken = generateRandomString(48, INVITE_TOKEN_ALPHABET);
-        const tokenHash = await sha256(rawToken);
-        const configId = (await ctx.runMutation(
-          config.component.public.groupConnectionScimConfigUpsert,
-          {
-            connectionId: connection._id,
-            groupId: connection.groupId,
-            status: data.status ?? "active",
-            basePath:
-              data.basePath ??
-              `${requireEnv("CONVEX_SITE_URL")}/api/auth/connections/${connection._id}/scim/v2`,
-            tokenHash,
-            lastRotatedAt: Date.now(),
-          },
-        )) as string;
-        const auditEventId = await recordGroupAuditEvent(ctx, {
-          connectionId: connection._id,
-          groupId: connection.groupId,
-          eventType: "group.sso.scim.configured",
-          actorType: "system",
-          subjectType: "group_connection_scim",
-          subjectId: configId,
-          ok: true,
-        });
-        await emitGroupWebhookDeliveries(ctx, {
-          connectionId: connection._id,
-          eventType: "group.sso.scim.configured",
-          auditEventId,
-          payload: { connectionId: connection._id, scimConfigId: configId },
-        });
-        return {
-          connectionId: connection._id,
-          configId,
-          basePath:
-            data.basePath ??
-            `${requireEnv("CONVEX_SITE_URL")}/api/auth/connections/${connection._id}/scim/v2`,
-          token: rawToken,
-        };
-      },
-      get: async (ctx: ComponentReadCtx, connectionId: string) => {
-        return await ctx.runQuery(
-          config.component.public.groupConnectionScimConfigGetByGroupConnection,
-          { connectionId },
-        );
-      },
-      getConfigByToken: async (ctx: ComponentReadCtx, token: string) => {
-        return await ctx.runQuery(
-          config.component.public.groupConnectionScimConfigGetByTokenHash,
-          { tokenHash: await sha256(token) },
-        );
-      },
-      /**
-       * Validate the stored SCIM config for an group connection.
-       *
-       * Checks that a SCIM config record exists, is active, has a token
-       * hash set, and has a non-empty basePath. Returns a structured result
-       * with per-check details.
-       */
-      validate: async (ctx: ComponentReadCtx, connectionId: string) => {
-        const checks: Array<{
-          name: string;
-          ok: boolean;
-          message?: string;
-        }> = [];
-
-        const connection = await ctx.runQuery(
-          config.component.public.groupConnectionGet,
-          { connectionId },
-        );
-
-        if (!connection) {
-          return {
-            ok: false,
-            connectionId,
-            checks: [
-              {
-                name: "group_connection_exists",
-                ok: false,
-                message: "Connection not found.",
-              },
-            ],
-          };
-        }
-
-        const policy = await loadGroupPolicyOrThrow(ctx, connection.groupId);
-
-        const scimConfig = await ctx.runQuery(
-          config.component.public.groupConnectionScimConfigGetByGroupConnection,
-          { connectionId },
-        );
-
-        const hasConfig = scimConfig !== null && scimConfig !== undefined;
+        const hasValidTokenAuthMethod =
+          clientConfig.authMethod === undefined ||
+          clientConfig.authMethod === "client_secret_post" ||
+          clientConfig.authMethod === "client_secret_basic";
         checks.push({
-          name: "scim_config_exists",
-          ok: hasConfig,
-          message: hasConfig ? undefined : "SCIM has not been configured.",
-        });
-
-        const isActive = hasConfig && (scimConfig as any).status === "active";
-        checks.push({
-          name: "scim_config_active",
-          ok: isActive,
-          message: isActive
+          name: "token_endpoint_auth_method_supported",
+          ok: hasValidTokenAuthMethod,
+          message: hasValidTokenAuthMethod
             ? undefined
-            : `SCIM config status is ${hasConfig ? (scimConfig as any).status : "unknown"}.`,
+            : "tokenEndpointAuthMethod must be client_secret_post or client_secret_basic.",
         });
 
-        const hasToken =
-          hasConfig &&
-          typeof (scimConfig as any).tokenHash === "string" &&
-          (scimConfig as any).tokenHash.length > 0;
+        const hasJwksUri =
+          discoveryConfig.jwksUri === undefined ||
+          (typeof discoveryConfig.jwksUri === "string" && discoveryConfig.jwksUri.length > 0);
         checks.push({
-          name: "token_hash_set",
-          ok: hasToken,
-          message: hasToken ? undefined : "SCIM bearer token has not been set.",
+          name: "jwks_uri_present",
+          ok: hasJwksUri,
+          message: hasJwksUri ? undefined : "jwksUri is empty.",
         });
 
-        const hasBasePath =
-          hasConfig &&
-          typeof (scimConfig as any).basePath === "string" &&
-          (scimConfig as any).basePath.length > 0;
+        const hasAudience =
+          discoveryConfig.audience === undefined ||
+          typeof discoveryConfig.audience === "string" ||
+          (Array.isArray(discoveryConfig.audience) &&
+            discoveryConfig.audience.every((value) => typeof value === "string"));
         checks.push({
-          name: "base_path_set",
-          ok: hasBasePath,
-          message: hasBasePath ? undefined : "SCIM basePath is missing.",
+          name: "audience_valid",
+          ok: hasAudience,
+          message: hasAudience ? undefined : "audience must be a string or string array.",
         });
 
         return {
           ok: checks.every((c) => c.ok),
           connectionId: connection._id,
-          basePath: hasBasePath ? (scimConfig as any).basePath : null,
-          deprovisionMode: policy.provisioning.deprovision.mode,
           checks,
         };
       },
-      identity: {
-        get: async (
-          ctx: ComponentReadCtx,
-          data: {
-            connectionId: string;
-            resourceType: "user" | "group";
-            externalId: string;
-          },
-        ) => {
-          return await ctx.runQuery(
-            config.component.public.groupConnectionScimIdentityGet,
-            data,
-          );
-        },
-        upsert: async (
-          ctx: ComponentCtx,
-          data: {
-            connectionId: string;
-            groupId: string;
-            resourceType: "user" | "group";
-            externalId: string;
-            userId?: string;
-            mappedGroupId?: string;
-            active?: boolean;
-            raw?: Record<string, unknown>;
-          },
-        ) => {
-          return (await ctx.runMutation(
-            config.component.public.groupConnectionScimIdentityUpsert,
-            { ...data, lastProvisionedAt: Date.now() },
-          )) as string;
-        },
-      },
     },
+    scim,
     audit: {
       record: async (
         ctx: ComponentCtx,
@@ -1698,151 +2157,9 @@ export function createGroupConnectionDomain(deps: any) {
         ctx: ComponentReadCtx,
         data: { connectionId?: string; groupId?: string; limit?: number },
       ) => {
-        return await ctx.runQuery(
-          config.component.public.groupAuditEventList,
-          data,
-        );
+        return await listAuditEvents(ctx, config.component.public, data);
       },
     },
-    webhook: {
-      endpoint: {
-        get: async (ctx: ComponentReadCtx, endpointId: string) => {
-          return await ctx.runQuery(
-            config.component.public.groupWebhookEndpointGet,
-            { endpointId },
-          );
-        },
-        create: async (
-          ctx: ComponentCtx,
-          data: {
-            connectionId: string;
-            url: string;
-            secret: string;
-            subscriptions: string[];
-            createdByUserId?: string;
-          },
-        ) => {
-          const connection = await ctx.runQuery(
-            config.component.public.groupConnectionGet,
-            {
-              connectionId: data.connectionId,
-            },
-          );
-          if (connection === null) {
-            throw Cv.error({
-              code: "INVALID_PARAMETERS",
-              message: "Connection not found.",
-            });
-          }
-          const secretHash = await sha256(data.secret);
-          const endpointId = (await ctx.runMutation(
-            config.component.public.groupWebhookEndpointCreate,
-            {
-              connectionId: connection._id,
-              groupId: connection.groupId,
-              url: data.url,
-              secretHash,
-              subscriptions: data.subscriptions,
-              createdByUserId: data.createdByUserId,
-            },
-          )) as string;
-          await recordGroupAuditEvent(ctx, {
-            connectionId: connection._id,
-            groupId: connection.groupId,
-            eventType: "group.sso.webhook.endpoint.created",
-            actorType: data.createdByUserId ? "user" : "system",
-            actorId: data.createdByUserId,
-            subjectType: "group_webhook_endpoint",
-            subjectId: endpointId,
-            ok: true,
-          });
-          return { endpointId };
-        },
-        list: async (ctx: ComponentReadCtx, connectionId: string) => {
-          return await ctx.runQuery(
-            config.component.public.groupWebhookEndpointList,
-            { connectionId },
-          );
-        },
-        disable: async (ctx: ComponentCtx, endpointId: string) => {
-          await ctx.runMutation(
-            config.component.public.groupWebhookEndpointUpdate,
-            { endpointId, data: { status: "disabled" } },
-          );
-          return { endpointId };
-        },
-      },
-      emit: async (
-        ctx: ComponentCtx,
-        data: {
-          connectionId: string;
-          eventType: string;
-          payload: Record<string, unknown>;
-          auditEventId?: string;
-        },
-      ) => {
-        await emitGroupWebhookDeliveries(ctx, data);
-      },
-      delivery: {
-        list: async (
-          ctx: ComponentReadCtx,
-          data: { connectionId: string; limit?: number },
-        ) => {
-          return await ctx.runQuery(
-            (config.component.public as any).groupWebhookDeliveryList,
-            data,
-          );
-        },
-        listReady: async (ctx: ComponentReadCtx, limit?: number) => {
-          return await ctx.runQuery(
-            config.component.public.groupWebhookDeliveryListReady,
-            { now: Date.now(), limit },
-          );
-        },
-        markDelivered: async (
-          ctx: ComponentCtx,
-          deliveryId: string,
-          responseStatus?: number,
-        ) => {
-          await ctx.runMutation(
-            config.component.public.groupWebhookDeliveryPatch,
-            {
-              deliveryId,
-              data: {
-                status: "delivered",
-                attemptCount: 1,
-                lastAttemptAt: Date.now(),
-                lastResponseStatus: responseStatus,
-              },
-            },
-          );
-        },
-        markFailed: async (
-          ctx: ComponentCtx,
-          deliveryId: string,
-          data: {
-            attemptCount: number;
-            responseStatus?: number;
-            error?: string;
-            retryAt?: number;
-          },
-        ) => {
-          await ctx.runMutation(
-            config.component.public.groupWebhookDeliveryPatch,
-            {
-              deliveryId,
-              data: {
-                status: data.retryAt ? "pending" : "failed",
-                attemptCount: data.attemptCount,
-                lastAttemptAt: Date.now(),
-                lastResponseStatus: data.responseStatus,
-                lastError: data.error,
-                nextAttemptAt: data.retryAt ?? Date.now(),
-              },
-            },
-          );
-        },
-      },
-    },
+    webhook,
   };
 }

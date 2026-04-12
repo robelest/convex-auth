@@ -1,20 +1,35 @@
-import { Fx } from "@robelest/fx";
-import { Cv } from "@robelest/fx/convex";
-import type { GenericActionCtx, HttpRouter } from "convex/server";
+import type { GenericActionCtx, GenericDataModel, HttpRouter } from "convex/server";
 import { ConvexError } from "convex/values";
 import { serialize as serializeCookie } from "cookie";
+import { Effect, Match } from "effect";
 
+import {
+  deleteScimIdentity,
+  getScimIdentity,
+  getScimIdentityByConnectionAndUser,
+  getScimIdentityByMappedGroup,
+  insertAccount,
+  insertUser,
+  listScimIdentitiesByConnection,
+  patchUser,
+  upsertScimIdentity,
+  type ScimIdentityRecord,
+} from "../contract";
 import { redirectToParamCookie, useRedirectToParam } from "../cookies";
 import { addSSORoutes, convertErrorsToResponse, getCookies } from "../http";
 import type { SSORuntimeRoute } from "../http";
-import { createOAuthAuthorizationURL, handleOAuthCallback } from "../oauth";
+import { createOAuthAuthorizationURL, handleOAuthCallback } from "../oauth/runtime";
 import { redirectAbsoluteUrl, setURLSearchParam } from "../redirects";
+import type { AuthAccountExtend, AuthProfile } from "../payloads";
 import { createGroupConnectionOidcRuntime } from "./oidc";
+import { resolveProvisionedRoleIds } from "./policy";
+import { finalizeNormalizedProfile, normalizeStringArray } from "./profile";
 import {
   createGroupConnectionSamlMetadataXml,
   createGroupConnectionSamlSignInRequest,
   createSamlPostBindingResponse,
   encodeGroupSamlRelayState,
+  enforceGroupConnectionSamlSecurity,
   parseGroupConnectionSamlLoginResponse,
   parseGroupConnectionSamlLogoutMessage,
   profileFromSamlExtract,
@@ -28,29 +43,211 @@ import {
   serializeScimUser,
 } from "./scim";
 import {
+  decodeGroupOidcState,
+  encodeGroupOidcState,
+  groupOidcProviderId,
   groupSamlProviderId,
   SCIM_GROUP_SCHEMA_ID,
   SCIM_USER_SCHEMA_ID,
 } from "./shared";
+import { configDefaults } from "../config";
+
+type ComponentConfig = ReturnType<typeof configDefaults>;
+
+type AuthRuntime = {
+  user: {
+    get(ctx: GenericActionCtx<GenericDataModel>, userId: string): Promise<UserRecord | null>;
+  };
+  group: {
+    get(ctx: GenericActionCtx<GenericDataModel>, groupId: string): Promise<GroupRecord | null>;
+    list(
+      ctx: GenericActionCtx<GenericDataModel>,
+      opts: { where?: Record<string, unknown>; limit?: number },
+    ): Promise<{ items: Array<Record<string, unknown>> }>;
+    create(
+      ctx: GenericActionCtx<GenericDataModel>,
+      args: { name: string; parentGroupId: string; type: string },
+    ): Promise<{ groupId: string }>;
+    update(
+      ctx: GenericActionCtx<GenericDataModel>,
+      groupId: string,
+      data: Record<string, unknown>,
+    ): Promise<unknown>;
+    delete(ctx: GenericActionCtx<GenericDataModel>, groupId: string): Promise<unknown>;
+  };
+  member: {
+    list(
+      ctx: GenericActionCtx<GenericDataModel>,
+      opts: { where?: Record<string, unknown>; limit?: number },
+    ): Promise<{ items: Array<{ _id: string; userId: string; status?: string }> }>;
+    create(
+      ctx: GenericActionCtx<GenericDataModel>,
+      args: { groupId: string; userId: string; roleIds: string[]; status: string },
+    ): Promise<unknown>;
+    update(
+      ctx: GenericActionCtx<GenericDataModel>,
+      memberId: string,
+      data: Record<string, unknown>,
+    ): Promise<unknown>;
+    delete(ctx: GenericActionCtx<GenericDataModel>, memberId: string): Promise<unknown>;
+    inspect(
+      ctx: GenericActionCtx<GenericDataModel>,
+      args: { groupId: string; userId: string },
+    ): Promise<{ membership: { _id: string } | null }>;
+  };
+};
+
+type ActiveSamlConnection = {
+  loaded: {
+    source: { kind: "connection"; id: string };
+    config: unknown;
+    [key: string]: unknown;
+  };
+  connection: { _id: string; groupId: string };
+  saml: Record<string, unknown>;
+};
+
+type OidcConnection = {
+  connection: { _id: string; groupId: string };
+  oidc: Record<string, unknown>;
+};
+
+type ScimContext = {
+  parsedPath: {
+    connectionId: string;
+    resource: string;
+    resourceId?: string;
+  };
+  connection: { _id: string; groupId: string; protocol: "oidc" | "saml" };
+  scimConfig: { _id: string; connectionId: string; status: string; extend?: unknown };
+};
+
+type GroupPolicy = {
+  provisioning: {
+    user: {
+      authority: "app" | "sso" | "scim";
+      updateProfileOnLogin: "never" | "missing" | "always";
+      updateProfileFromScim: "never" | "missing" | "always";
+    };
+    jit: { defaultRoleIds: string[] };
+    deprovision: { mode: "hard" | "soft" };
+    groups: {
+      mode: "ignore" | "sync";
+      mapping?: Record<string, string[]>;
+    };
+    roles: {
+      mode: "ignore" | "map";
+      mapping?: Record<string, string[]>;
+    };
+  };
+};
+
+type CookieToSerialize = {
+  name: string;
+  value: string;
+  options: Parameters<typeof serializeCookie>[2];
+};
+
+async function getOidcCallbackParams(request: Request) {
+  const url = new URL(request.url);
+  const params = new URLSearchParams(url.searchParams);
+  if (
+    request.headers
+      .get("Content-Type")
+      ?.includes("application/x-www-form-urlencoded")
+  ) {
+    const formData = await request.formData();
+    formData.forEach((value, key) => {
+      if (typeof value === "string") {
+        params.append(key, value);
+      }
+    });
+  }
+  return params;
+}
+
+type MemberRecord = { _id: string; userId: string; status?: string };
+type UserRecord = { _id: string; email?: string } & Record<string, unknown>;
+type GroupRecord = { _id: string; name?: string } & Record<string, unknown>;
+
+type UserListItem = {
+  user: UserRecord;
+  member: MemberRecord;
+  identity?: ScimIdentityRecord;
+};
+
+type GroupListItem = {
+  group: GroupRecord;
+  identity?: ScimIdentityRecord;
+  memberIds?: string[];
+};
 
 export type GroupHttpRuntimeDeps = {
   http: HttpRouter;
   hasSSO: boolean;
-  auth: any;
-  config: any;
+  auth: AuthRuntime;
+  config: ComponentConfig;
   routeBase: string;
   requireEnv: (name: string) => string;
-  loadActiveConnectionSamlOrThrow: any;
-  loadConnectionOidcOrThrow: any;
-  getGroupConnectionScimContext: any;
-  loadGroupPolicyOrThrow: any;
-  normalizeGroupConnectionPolicy: any;
-  recordGroupAuditEvent: any;
-  emitGroupWebhookDeliveries: any;
+  loadActiveConnectionSamlOrThrow: (
+    ctx: GenericActionCtx<GenericDataModel>,
+    connectionId: string,
+  ) => Promise<ActiveSamlConnection>;
+  loadConnectionOidcOrThrow: (
+    ctx: GenericActionCtx<GenericDataModel>,
+    connectionId: string,
+  ) => Promise<OidcConnection>;
+  getGroupConnectionScimContext: (
+    ctx: GenericActionCtx<GenericDataModel>,
+    request: Request,
+  ) => Promise<ScimContext>;
+  loadGroupPolicyOrThrow: (
+    ctx: GenericActionCtx<GenericDataModel>,
+    groupId: string,
+  ) => Promise<GroupPolicy>;
+  normalizeGroupConnectionPolicy: (policy: unknown) => GroupPolicy;
+  recordGroupAuditEvent: (
+    ctx: GenericActionCtx<GenericDataModel>,
+    args: {
+      connectionId?: string;
+      groupId: string;
+      eventType: string;
+      actorType: "user" | "system" | "scim" | "api_key" | "webhook";
+      actorId?: string;
+      subjectType: string;
+      subjectId?: string;
+      ok: boolean;
+      requestId?: string;
+      ip?: string;
+      metadata?: Record<string, unknown>;
+    },
+  ) => Promise<string>;
+  emitGroupWebhookDeliveries: (
+    ctx: GenericActionCtx<GenericDataModel>,
+    args: {
+      connectionId: string;
+      eventType: string;
+      payload: Record<string, unknown>;
+      auditEventId?: string;
+    },
+  ) => Promise<void>;
   generateRandomString: (length: number, alphabet: string) => string;
   inviteTokenAlphabet: string;
-  callUserOAuth: any;
-  callVerifierSignature: any;
+  callUserOAuth: (
+    ctx: GenericActionCtx<GenericDataModel>,
+    args: {
+      provider: string;
+      providerAccountId: string;
+      signature: string;
+      profile: AuthProfile;
+      accountExtend?: AuthAccountExtend;
+    },
+  ) => Promise<string>;
+  callVerifierSignature: (
+    ctx: GenericActionCtx<GenericDataModel>,
+    args: { verifier: string; signature: string },
+  ) => Promise<void>;
+  sharedOidcRedirectURI?: string;
 };
 
 export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
@@ -73,23 +270,18 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
     inviteTokenAlphabet: INVITE_TOKEN_ALPHABET,
     callUserOAuth,
     callVerifierSignature,
+    sharedOidcRedirectURI,
   } = deps;
   const GROUP_CONNECTION_ROUTE_BASE = deps.routeBase;
 
   type ScimState = {
-    ctx: any;
+    ctx: GenericActionCtx<GenericDataModel>;
     request: Request;
     url: URL;
-    parsedPath: Awaited<
-      ReturnType<typeof getGroupConnectionScimContext>
-    >["parsedPath"];
-    connection: Awaited<
-      ReturnType<typeof getGroupConnectionScimContext>
-    >["connection"];
-    scimConfig: Awaited<
-      ReturnType<typeof getGroupConnectionScimContext>
-    >["scimConfig"];
-    policy: any;
+    parsedPath: ScimContext["parsedPath"];
+    connection: ScimContext["connection"];
+    scimConfig: ScimContext["scimConfig"];
+    policy: GroupPolicy;
     recordScimEvent: (
       eventType: string,
       ok: boolean,
@@ -100,6 +292,9 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
   };
 
   type ScimHandler = (state: ScimState) => Promise<Response>;
+
+  const convexError = (code: string, message: string) =>
+    new ConvexError({ code, message });
 
   const SCIM_SCHEMAS = [
     {
@@ -159,19 +354,202 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
     });
   };
 
+  const pickPrimaryEmail = (body: ScimBody) =>
+    Array.isArray(body.emails)
+      ? (body.emails.find((entry) => entry.primary === true)?.value ??
+        body.emails[0]?.value)
+      : undefined;
+
+  const pickDisplayName = (body: ScimBody) => {
+    const name = typeof body.name === "object" && body.name !== null ? body.name : undefined;
+    const derivedName = [name?.givenName, name?.familyName].filter(Boolean).join(" ");
+    if (body.displayName !== undefined) {
+      return body.displayName;
+    }
+    if (name?.formatted !== undefined) {
+      return name.formatted;
+    }
+    return derivedName !== "" ? derivedName : undefined;
+  };
+
+  const pickPhone = (body: ScimBody) =>
+    Array.isArray(body.phoneNumbers) ? body.phoneNumbers[0]?.value : undefined;
+
+  const getScimProfileConfig = (scimConfig: { extend?: unknown } | null | undefined) => {
+    const extend =
+      typeof scimConfig?.extend === "object" && scimConfig.extend !== null
+        ? (scimConfig.extend as Record<string, unknown>)
+        : {};
+    const profile =
+      typeof extend.profile === "object" && extend.profile !== null
+        ? (extend.profile as Record<string, unknown>)
+        : {};
+    return {
+      mapping:
+        typeof profile.mapping === "object" && profile.mapping !== null
+          ? (profile.mapping as Record<string, string>)
+          : {},
+      extraFields:
+        typeof profile.extraFields === "object" && profile.extraFields !== null
+          ? (profile.extraFields as Record<string, string>)
+          : {},
+    };
+  };
+
+  const resolveScimField = (body: ScimBody, key: string | undefined) => {
+    switch (key) {
+      case "userName":
+        return body.userName;
+      case "externalId":
+        return body.externalId;
+      case "displayName":
+        return body.displayName;
+      case "name.formatted":
+        return body.name?.formatted;
+      case "name.givenName":
+        return body.name?.givenName;
+      case "name.familyName":
+        return body.name?.familyName;
+      case "emails.primary":
+        return pickPrimaryEmail(body);
+      case "emails.value":
+        return Array.isArray(body.emails)
+          ? body.emails.map((entry) => entry.value).filter(Boolean)
+          : undefined;
+      case "phoneNumbers.primary":
+      case "phoneNumbers.value":
+        return pickPhone(body);
+      case "active":
+        return body.active;
+      case "groups":
+        return (body as Record<string, unknown>).groups;
+      case "roles":
+        return (body as Record<string, unknown>).roles;
+      default:
+        return key ? (body as Record<string, unknown>)[key] : undefined;
+    }
+  };
+
+  const extractScimProfile = (scimConfig: { extend?: unknown } | null | undefined, body: ScimBody) => {
+    const { mapping, extraFields } = getScimProfileConfig(scimConfig);
+    const extend = Object.fromEntries(
+      Object.entries(extraFields)
+        .map(([fieldName, source]) => [fieldName, resolveScimField(body, source)])
+        .filter(([, value]) => value !== undefined),
+    );
+
+    return finalizeNormalizedProfile({
+      externalId:
+        (resolveScimField(body, mapping.externalId) as string | undefined) ??
+        (typeof body.externalId === "string" ? body.externalId : undefined),
+      name:
+        (resolveScimField(body, mapping.name) as string | undefined) ??
+        pickDisplayName(body),
+      firstName: resolveScimField(body, mapping.firstName) as string | undefined,
+      lastName: resolveScimField(body, mapping.lastName) as string | undefined,
+      email:
+        (resolveScimField(body, mapping.email) as string | undefined) ??
+        pickPrimaryEmail(body) ??
+        body.userName,
+      phone:
+        (resolveScimField(body, mapping.phone) as string | undefined) ??
+        pickPhone(body),
+      active:
+        (resolveScimField(body, mapping.active) as boolean | undefined) ?? body.active,
+      groups: pickStringArray(resolveScimField(body, mapping.groups)),
+      roles: pickStringArray(resolveScimField(body, mapping.roles)),
+      extend: Object.keys(extend).length > 0 ? extend : undefined,
+    });
+  };
+
+  const pickStringArray = (value: unknown) => {
+    return normalizeStringArray(
+      Array.isArray(value)
+        ? value.map((entry) => {
+            if (typeof entry === "string") {
+              return entry;
+            }
+            if (
+              typeof entry === "object" &&
+              entry !== null &&
+              typeof (entry as { value?: unknown }).value === "string"
+            ) {
+              return (entry as { value: string }).value;
+            }
+            return undefined;
+          })
+        : value,
+    );
+  };
+
+  const normalizeScimValues = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+      return value.flatMap((entry) => normalizeScimValues(entry));
+    }
+    if (typeof value === "string") {
+      return [value];
+    }
+    if (typeof value === "boolean") {
+      return [String(value)];
+    }
+    return [];
+  };
+
+  const applyUserProvisioningPatch = (args: {
+    currentUser: Record<string, unknown>;
+    nextUser: Record<string, unknown>;
+    policy: {
+      authority?: "app" | "sso" | "scim";
+      updateProfileOnLogin?: "never" | "missing" | "always";
+      updateProfileFromScim?: "never" | "missing" | "always";
+    };
+    source: "scim";
+  }) => {
+    const mode = args.policy.updateProfileFromScim ?? "always";
+    if (mode === "never") {
+      return {};
+    }
+    if (mode === "always") {
+      return args.nextUser;
+    }
+    return Object.fromEntries(
+      Object.entries(args.nextUser).filter(([key, value]) => {
+        if (value === undefined) {
+          return false;
+        }
+        const current = args.currentUser[key];
+        return current === undefined || current === null || current === "";
+      }),
+    );
+  };
+
   const filterScimCollection = <T>(
     items: T[],
     filter: ReturnType<typeof parseScimListRequest>["filter"],
-    filters: Record<string, (item: T, value: string) => boolean>,
+    filters: Record<string, (item: T) => unknown>,
   ) => {
     if (!filter) {
       return items;
     }
-    const predicate = filters[filter.attribute];
-    if (!predicate) {
+    const accessor = filters[filter.attribute];
+    if (!accessor) {
       throw new Error("Unsupported SCIM filter.");
     }
-    return items.filter((item) => predicate(item, filter.value));
+    return items.filter((item) => {
+      const values = normalizeScimValues(accessor(item));
+      switch (filter.operator) {
+        case "pr":
+          return values.length > 0;
+        case "eq":
+          return values.includes(filter.value ?? "");
+        case "co":
+          return values.some((value) => value.includes(filter.value ?? ""));
+        case "sw":
+          return values.some((value) => value.startsWith(filter.value ?? ""));
+        case "ew":
+          return values.some((value) => value.endsWith(filter.value ?? ""));
+      }
+    });
   };
 
   const paginateScimCollection = <T>(
@@ -193,84 +571,128 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
   };
 
   const readScimJson = async (request: Request) =>
-    (await request.json()) as Record<string, any>;
+    (await request.json()) as Record<string, unknown>;
+
+  type ScimBody = Record<string, unknown> & {
+    displayName?: string;
+    userName?: string;
+    active?: boolean;
+  externalId?: string;
+  emails?: Array<{ value?: string; primary?: boolean }>;
+  phoneNumbers?: Array<{ value?: string }>;
+  name?: { formatted?: string; givenName?: string; familyName?: string };
+    Operations?: Array<{ op?: string; path?: string; value?: unknown }>;
+    members?: Array<{ value?: string }>;
+  };
 
   const handleSamlAcs = async (
-    ctx: GenericActionCtx<any>,
+    ctx: GenericActionCtx<GenericDataModel>,
     request: Request,
     runtimeRoute: SSORuntimeRoute,
   ) =>
-    Fx.run(
-      Fx.gen(function* () {
-        yield* Fx.guard(
+    Effect.runPromise(
+      Effect.gen(function* () {
+        if (
           runtimeRoute.protocol !== "saml" ||
-            runtimeRoute.rest.length !== 1 ||
-            runtimeRoute.rest[0] !== "acs",
-          Cv.fail({
-            code: "INVALID_PARAMETERS",
-            message: "Invalid connection runtime path.",
-          }),
-        );
+          runtimeRoute.rest.length !== 1 ||
+          runtimeRoute.rest[0] !== "acs"
+        ) {
+          return yield* Effect.fail(
+            convexError("INVALID_PARAMETERS", "Invalid connection runtime path."),
+          );
+        }
 
         const connectionId = runtimeRoute.connectionId;
-        const { loaded, connection, saml } = yield* Fx.from({
-          ok: () => loadActiveConnectionSamlOrThrow(ctx, connectionId),
-          err: (e) => e,
-        });
+        const loadedConnection = (yield* Effect.tryPromise({
+          try: () => loadActiveConnectionSamlOrThrow(ctx, connectionId),
+          catch: (error) => error,
+        })) as Awaited<ReturnType<typeof loadActiveConnectionSamlOrThrow>>;
+        const { loaded, connection, saml } = loadedConnection;
 
-        const parsedResponse = yield* Fx.from({
-          ok: () =>
+        const parsedResponse = yield* Effect.tryPromise({
+          try: () =>
             parseGroupConnectionSamlLoginResponse({
               request,
               rootUrl: requireEnv("CONVEX_SITE_URL"),
               source: { kind: "connection", id: connection._id },
               config: loaded.config,
             }),
-          err: (e) =>
-            Cv.error({
-              code: "OAUTH_PROVIDER_ERROR",
-              message: `SAML response parse failed: ${e instanceof Error ? e.message : String(e)}`,
-            }),
+          catch: (error) =>
+            convexError(
+              "OAUTH_PROVIDER_ERROR",
+              `SAML response parse failed: ${error instanceof Error ? error.message : String(error)}`,
+            ),
         });
 
-        yield* Fx.from({
-          ok: () => {
+        yield* Effect.try({
+          try: () =>
+            enforceGroupConnectionSamlSecurity({
+              extract: parsedResponse.parsed.extract,
+              config: loaded.config,
+            }),
+          catch: (error) =>
+            convexError(
+              "OAUTH_PROVIDER_ERROR",
+              error instanceof Error
+                ? error.message
+                : "SAML assertion failed security validation.",
+            ),
+        });
+
+        yield* Effect.try({
+          try: () =>
             validateGroupConnectionSamlLoginRelayState({
               relayState: parsedResponse.relayState,
               source: { kind: "connection", id: connection._id },
               inResponseTo:
                 parsedResponse.parsed.extract?.response?.inResponseTo,
-            });
-            return Promise.resolve();
-          },
-          err: () =>
-            Cv.error({
-              code: "OAUTH_INVALID_STATE",
-              message:
-                "SAML RelayState did not match the pending login request.",
             }),
+          catch: () =>
+            convexError(
+              "OAUTH_INVALID_STATE",
+              "SAML RelayState did not match the pending login request.",
+            ),
         });
 
         const { samlAttributes, samlSessionIndex, ...userProfile } =
           profileFromSamlExtract(
             parsedResponse.parsed.extract,
-            saml.attributeMapping,
+            (((saml.profile as Record<string, unknown> | undefined)?.mapping ??
+              {}) as Record<string, string> | undefined),
           );
         const profile = userProfile as Record<string, unknown> & {
           id: string;
         };
+        const extraFields =
+          typeof saml.profile === "object" && saml.profile !== null
+            ? ((saml.profile as Record<string, unknown>).extraFields as
+                | Record<string, string>
+                | undefined)
+            : undefined;
+        if (extraFields) {
+          const extend: Record<string, unknown> = {};
+          for (const [fieldName, attributeName] of Object.entries(extraFields)) {
+            const value = samlAttributes[attributeName];
+            if (value !== undefined) {
+              extend[fieldName] = value;
+            }
+          }
+          if (Object.keys(extend).length > 0) {
+            profile.extend = extend;
+          }
+        }
 
         const maybeRedirectTo = useRedirectToParam(
           groupSamlProviderId(connection._id),
           getCookies(request),
         );
 
-        const verificationCode = yield* Fx.from({
-          ok: () =>
+        const verificationCode = (yield* Effect.tryPromise({
+          try: () =>
             callUserOAuth(ctx, {
               provider: groupSamlProviderId(connection._id),
               providerAccountId: profile.id,
-              profile,
+              profile: profile as AuthProfile,
               signature: parsedResponse.relayState.signature,
               accountExtend: {
                 identity: {
@@ -283,16 +705,16 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
                       : undefined,
                 },
                 saml: {
-                  attributes: samlAttributes,
+                  attributes: samlAttributes as Record<string, string | string[]>,
                   sessionIndex: samlSessionIndex,
                 },
               },
             }),
-          err: (e) => e,
-        });
+          catch: (error) => error,
+        })) as string;
 
-        const destinationUrl = yield* Fx.from({
-          ok: () =>
+        const destinationUrl = (yield* Effect.tryPromise({
+          try: () =>
             redirectAbsoluteUrl(config, {
               redirectTo:
                 maybeRedirectTo?.redirectTo ??
@@ -300,8 +722,8 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
                   ? parsedResponse.relayState.redirectTo
                   : undefined),
             }),
-          err: (e) => e,
-        });
+          catch: (error) => error,
+        })) as string;
 
         const vurl = setURLSearchParam(
           destinationUrl,
@@ -316,23 +738,21 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
           vheaders.append("Set-Cookie", serializeCookie(name, value, options));
         }
         return new Response(null, { status: 302, headers: vheaders });
-      }).pipe(Fx.recover((e) => Fx.fatal(e))),
+      }),
     );
 
   const handleSamlSlo = async (
-    ctx: GenericActionCtx<any>,
+    ctx: GenericActionCtx<GenericDataModel>,
     request: Request,
     runtimeRoute: SSORuntimeRoute,
   ) => {
+    type LogoutResponseContext = { context: string; entityEndpoint: string };
     if (
       runtimeRoute.protocol !== "saml" ||
       runtimeRoute.rest.length !== 1 ||
       runtimeRoute.rest[0] !== "slo"
     ) {
-      throw Cv.error({
-        code: "INVALID_PARAMETERS",
-        message: "Invalid connection runtime path.",
-      });
+      throw convexError("INVALID_PARAMETERS", "Invalid connection runtime path.");
     }
     const { loaded, connection } = await loadActiveConnectionSamlOrThrow(
       ctx,
@@ -344,39 +764,38 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
       source: { kind: "connection", id: connection._id },
       config: loaded.config,
     });
-    if (parsedMessage.hasSamlRequest && parsedMessage.parsedRequest) {
-      const responseContext = (
-        parsedMessage.runtime.sp as any
-      ).createLogoutResponse(
-        parsedMessage.runtime.idp as any,
-        parsedMessage.parsedRequest.extract,
-        parsedMessage.binding as any,
-        parsedMessage.relayState ?? "",
-      ) as any;
-      if (parsedMessage.binding === "redirect") {
-        return new Response(null, {
-          status: 302,
-          headers: { Location: responseContext.context },
-        });
-      }
-      return createSamlPostBindingResponse({
-        endpoint: responseContext.entityEndpoint,
-        parameter: "SAMLResponse",
-        value: responseContext.context,
-        relayState: parsedMessage.relayState,
-      });
-    }
-    if (parsedMessage.hasSamlResponse) {
-      return new Response(null, { status: 204 });
-    }
-    throw Cv.error({
-      code: "INVALID_PARAMETERS",
-      message: "Missing SAML logout payload.",
-    });
+    return Match.value(parsedMessage).pipe(
+      Match.when({ hasSamlRequest: true }, (parsedMessage) => {
+        if (!parsedMessage.parsedRequest) {
+          throw convexError("INVALID_PARAMETERS", "Missing SAML logout payload.");
+        }
+        const responseContext = parsedMessage.runtime.sp.createLogoutResponse(
+          parsedMessage.runtime.idp,
+          parsedMessage.parsedRequest.extract,
+          parsedMessage.binding,
+          parsedMessage.relayState ?? "",
+        ) as unknown as LogoutResponseContext;
+        return parsedMessage.binding === "redirect"
+          ? new Response(null, {
+              status: 302,
+              headers: { Location: responseContext.context },
+            })
+          : createSamlPostBindingResponse({
+              endpoint: responseContext.entityEndpoint,
+              parameter: "SAMLResponse",
+              value: responseContext.context,
+              relayState: parsedMessage.relayState,
+            });
+      }),
+      Match.when({ hasSamlResponse: true }, () => new Response(null, { status: 204 })),
+      Match.orElse(() => {
+        throw convexError("INVALID_PARAMETERS", "Missing SAML logout payload.");
+      }),
+    );
   };
 
   const handleScimRequest = async (
-    ctx: GenericActionCtx<any>,
+    ctx: GenericActionCtx<GenericDataModel>,
     request: Request,
   ) => {
     try {
@@ -426,45 +845,53 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
           where: { groupId: state.connection.groupId },
           limit: 100,
         });
-        const identities = await state.ctx.runQuery(
-          config.component.public.groupConnectionScimIdentityListByGroupConnection,
-          { connectionId: state.connection._id },
+        const identities = await listScimIdentitiesByConnection(
+          state.ctx,
+          config.component.public,
+          state.connection._id,
         );
         const identityByUserId = new Map(
           identities
-            .filter((identity: any) => identity.userId !== undefined)
-            .map((identity: any) => [identity.userId, identity]),
+            .filter(
+              (
+                identity: ScimIdentityRecord,
+              ): identity is ScimIdentityRecord & { userId: string } =>
+                typeof identity.userId === "string",
+            )
+            .map((identity: ScimIdentityRecord & { userId: string }) => [
+              identity.userId,
+              identity,
+            ]),
         );
         const users = (
           await Promise.all(
-            members.items.map(async (member: any) => {
+            members.items.map(async (member) => {
               const user = await auth.user.get(state.ctx, member.userId);
+              const typedUser = user as UserRecord | null;
               return user
                 ? {
-                    user,
+                    user: typedUser,
                     member,
-                    identity: identityByUserId.get(user._id),
+                    identity: identityByUserId.get(typedUser!._id),
                   }
                 : null;
             }),
           )
-        ).filter(Boolean) as Array<{
-          user: any;
-          member: any;
-          identity?: any;
-        }>;
+        ).filter(Boolean) as UserListItem[];
         const listRequest = parseScimListRequest(state.url);
-        const filtered = filterScimCollection(users, listRequest.filter, {
-          id: (item: { user: any }, value: string) => item.user._id === value,
-          externalId: (item: { identity?: any }, value: string) =>
-            item.identity?.externalId === value,
-          userName: (item: { user: any }, value: string) =>
-            item.user.email === value,
-          "emails.value": (item: { user: any }, value: string) =>
-            item.user.email === value,
-          active: (item: { identity?: any; member: any }, value: string) =>
-            String(item.identity?.active ?? item.member.status === "active") ===
-            value,
+        const filtered = filterScimCollection<UserListItem>(users, listRequest.filter, {
+          id: (item) => item.user._id,
+          externalId: (item) => item.identity?.externalId,
+          userName: (item) =>
+            item.user.email ?? item.user.phone ?? item.user.name ?? item.user._id,
+          displayName: (item) => item.user.name,
+          name: (item) => item.user.name,
+          "name.formatted": (item) => item.user.name,
+          "name.givenName": (item) => item.user.name,
+          "name.familyName": (item) => item.user.name,
+          "emails.value": (item) => item.user.email,
+          "phoneNumbers.value": (item) => item.user.phone,
+          active: (item) => item.identity?.active ?? item.member.status === "active",
         });
         if (state.parsedPath.resourceId) {
           const resource = filtered.find(
@@ -513,70 +940,146 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
       };
 
       const handleUsersPost: ScimHandler = async (state) => {
-        const body = await readScimJson(state.request);
-        const primaryEmail = Array.isArray(body.emails)
-          ? (body.emails.find((entry) => entry.primary === true)?.value ??
-            body.emails[0]?.value)
-          : undefined;
-        const phone = Array.isArray(body.phoneNumbers)
-          ? body.phoneNumbers[0]?.value
-          : undefined;
-        const userId = (await state.ctx.runMutation(
-          config.component.public.userInsert,
-          {
-            data: {
-              name: body.displayName ?? body.name?.formatted,
-              email: primaryEmail ?? body.userName,
-              ...(typeof (primaryEmail ?? body.userName) === "string"
+        const body = (await readScimJson(state.request)) as ScimBody;
+        const extractedBase = extractScimProfile(state.scimConfig, body);
+        const extracted =
+          ((await config.sso?.hooks?.profileResolved?.({
+            protocol: "scim",
+            connectionId: state.connection._id,
+            profile: extractedBase as Record<string, unknown>,
+          })) as typeof extractedBase | undefined) ?? extractedBase;
+        const provisionProfile =
+          ((await config.sso?.hooks?.beforeProvision?.({
+            protocol: "scim",
+            connectionId: state.connection._id,
+            profile: extracted as Record<string, unknown>,
+          })) as typeof extracted | undefined) ?? extracted;
+        const externalId = provisionProfile.externalId;
+        const existingIdentity = externalId
+          ? await getScimIdentity(state.ctx, config.component.public, {
+              connectionId: state.connection._id,
+              resourceType: "user",
+              externalId,
+            })
+          : null;
+        const existingUser = existingIdentity?.userId
+          ? await auth.user.get(state.ctx, existingIdentity.userId)
+          : null;
+        const created = existingUser === null;
+        const provisionedRoleIds = resolveProvisionedRoleIds({
+          policy: state.policy as any,
+          groups: provisionProfile.groups,
+          roles: provisionProfile.roles,
+        });
+        const userId = existingUser?._id
+          ? existingUser._id
+          : await insertUser(state.ctx, config.component.public, {
+              name: provisionProfile.name,
+              ...(typeof provisionProfile.firstName === "string"
+                ? { firstName: provisionProfile.firstName }
+                : {}),
+              ...(typeof provisionProfile.lastName === "string"
+                ? { lastName: provisionProfile.lastName }
+                : {}),
+              email: provisionProfile.email,
+              ...(typeof provisionProfile.email === "string"
                 ? { emailVerificationTime: Date.now() }
                 : {}),
-              phone,
-              ...(typeof phone === "string"
+              phone: provisionProfile.phone,
+              ...(typeof provisionProfile.phone === "string"
                 ? { phoneVerificationTime: Date.now() }
                 : {}),
-            },
-          },
-        )) as string;
-        try {
+              ...(provisionProfile.extend ? { extend: provisionProfile.extend } : {}),
+            });
+        if (created && externalId) {
+          const providerId = state.connection.protocol === "oidc"
+            ? groupOidcProviderId(state.connection._id)
+            : groupSamlProviderId(state.connection._id);
+          await insertAccount(state.ctx, config.component.public, {
+            userId,
+            provider: providerId,
+            providerAccountId: externalId,
+          });
+        }
+        if (existingUser) {
+          const nextUserData: Record<string, unknown> = {
+            name: provisionProfile.name,
+            firstName: provisionProfile.firstName,
+            lastName: provisionProfile.lastName,
+            email: provisionProfile.email,
+            phone: provisionProfile.phone,
+            ...(provisionProfile.extend ? { extend: provisionProfile.extend } : {}),
+          };
+          if (typeof provisionProfile.email === "string") {
+            nextUserData.emailVerificationTime = Date.now();
+          }
+          if (typeof provisionProfile.phone === "string") {
+            nextUserData.phoneVerificationTime = Date.now();
+          }
+          const patchData = applyUserProvisioningPatch({
+            currentUser: existingUser as Record<string, unknown>,
+            nextUser: nextUserData,
+            policy: state.policy.provisioning.user,
+            source: "scim",
+          });
+          if (Object.keys(patchData).length > 0) {
+          await patchUser(state.ctx, config.component.public, {
+            userId,
+            data: patchData,
+          });
+          }
+        }
+        const resolution = await auth.member.inspect(state.ctx, {
+          groupId: state.connection.groupId,
+          userId,
+        });
+        if (resolution.membership) {
+          await auth.member.update(state.ctx, resolution.membership._id, {
+            status: body.active === false ? "inactive" : "active",
+          });
+        } else {
           await auth.member.create(state.ctx, {
             groupId: state.connection.groupId,
             userId,
-            roleIds: state.policy.provisioning.jit.defaultRoleIds,
-            status: body.active === false ? "inactive" : "active",
+            roleIds: provisionedRoleIds,
+            status: provisionProfile.active === false ? "inactive" : "active",
           });
-        } catch {}
-        if (typeof body.externalId === "string") {
-          await state.ctx.runMutation(
-            config.component.public.groupConnectionScimIdentityUpsert,
-            {
-              connectionId: state.connection._id,
-              groupId: state.connection.groupId,
-              resourceType: "user",
-              externalId: body.externalId,
-              userId,
-              active: body.active !== false,
-              raw: body,
-              lastProvisionedAt: Date.now(),
-            },
-          );
+        }
+        if (externalId) {
+          await upsertScimIdentity(state.ctx, config.component.public, {
+            connectionId: state.connection._id,
+            groupId: state.connection.groupId,
+            resourceType: "user",
+            externalId,
+            userId,
+            active: provisionProfile.active !== false,
+            raw: body,
+            lastProvisionedAt: Date.now(),
+          });
         }
         await state.recordScimEvent(
-          "group.sso.scim.user.created",
+          created ? "group.sso.scim.user.created" : "group.sso.scim.user.updated",
           true,
           "user",
           userId,
         );
         const createdUser = await auth.user.get(state.ctx, userId);
+        await config.sso?.hooks?.afterProvision?.({
+          protocol: "scim",
+          connectionId: state.connection._id,
+          profile: provisionProfile as Record<string, unknown>,
+          userId,
+        });
         const location = `${state.url.origin}${state.url.pathname}/${userId}`;
         return scimJson(
-          serializeScimUser({
-            id: userId,
-            user: createdUser ?? {},
-            externalId: body.externalId,
-            location,
-            active: body.active !== false,
-          }),
-          201,
+            serializeScimUser({
+              id: userId,
+              user: createdUser ?? {},
+              externalId,
+              location,
+              active: provisionProfile.active !== false,
+            }),
+          created ? 201 : 200,
           { Location: location },
         );
       };
@@ -592,17 +1095,32 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         if (!existingUser) {
           return scimError(404, "notFound", "User not found.");
         }
-        const body = await readScimJson(state.request);
+        const body = (await readScimJson(state.request)) as ScimBody;
+        const extractedBase = extractScimProfile(state.scimConfig, body);
+        const extracted =
+          ((await config.sso?.hooks?.profileResolved?.({
+            protocol: "scim",
+            connectionId: state.connection._id,
+            profile: extractedBase as Record<string, unknown>,
+          })) as typeof extractedBase | undefined) ?? extractedBase;
+        const provisionProfile =
+          ((await config.sso?.hooks?.beforeProvision?.({
+            protocol: "scim",
+            connectionId: state.connection._id,
+            profile: extracted as Record<string, unknown>,
+          })) as typeof extracted | undefined) ?? extracted;
+        const externalId = provisionProfile.externalId;
         const patchData: Record<string, unknown> = {};
         let nextActive: boolean | undefined;
         if (state.request.method === "PUT") {
-          patchData.name = body.displayName ?? body.name?.formatted;
-          patchData.email =
-            body.userName ??
-            (Array.isArray(body.emails) ? body.emails[0]?.value : undefined);
-          patchData.phone = Array.isArray(body.phoneNumbers)
-            ? body.phoneNumbers[0]?.value
-            : undefined;
+          patchData.name = provisionProfile.name;
+          patchData.firstName = provisionProfile.firstName;
+          patchData.lastName = provisionProfile.lastName;
+          patchData.email = provisionProfile.email;
+          patchData.phone = provisionProfile.phone;
+          if (provisionProfile.extend) {
+            patchData.extend = provisionProfile.extend;
+          }
           if (typeof patchData.email === "string") {
             patchData.emailVerificationTime = Date.now();
           }
@@ -614,13 +1132,22 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
             ? body.Operations
             : []) {
             if (operation.path === "active") {
-              nextActive = operation.value;
+              nextActive =
+                typeof operation.value === "boolean"
+                  ? operation.value
+                  : undefined;
             }
             if (
               operation.path === "displayName" ||
               operation.path === "name.formatted"
             ) {
               patchData.name = operation.value;
+            }
+            if (operation.path === "name.givenName") {
+              patchData.firstName = operation.value;
+            }
+            if (operation.path === "name.familyName") {
+              patchData.lastName = operation.value;
             }
             if (
               operation.path === "userName" ||
@@ -639,47 +1166,57 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
             }
           }
         }
-        await state.ctx.runMutation(config.component.public.userPatch, {
-          userId,
-          data: patchData,
+        const nextPatchData = applyUserProvisioningPatch({
+          currentUser: existingUser as Record<string, unknown>,
+          nextUser: patchData,
+          policy: state.policy.provisioning.user,
+          source: "scim",
         });
+        if (Object.keys(nextPatchData).length > 0) {
+          await patchUser(state.ctx, config.component.public, {
+            userId,
+            data: nextPatchData,
+          });
+        }
         const resolution = await auth.member.inspect(state.ctx, {
           groupId: state.connection.groupId,
           userId,
         });
         if (resolution.membership) {
           await auth.member.update(state.ctx, resolution.membership._id, {
+            roleIds: resolveProvisionedRoleIds({
+              policy: state.policy as any,
+              groups: provisionProfile.groups,
+              roles: provisionProfile.roles,
+            }),
             status:
-              body.active === false || nextActive === false
+              provisionProfile.active === false || nextActive === false
                 ? "inactive"
                 : "active",
           });
         }
-        await state.ctx.runMutation(
-          config.component.public.groupConnectionScimIdentityUpsert,
-          {
-            connectionId: state.connection._id,
-            groupId: state.connection.groupId,
-            resourceType: "user",
-            externalId:
-              typeof body.externalId === "string"
-                ? body.externalId
-                : ((
-                    await state.ctx.runQuery(
-                      config.component.public
-                        .groupConnectionScimIdentityGetByGroupConnectionAndUser,
-                      {
-                        connectionId: state.connection._id,
-                        userId,
-                      },
-                    )
-                  )?.externalId ?? userId),
-            userId,
-            active: body.active !== false && nextActive !== false,
-            raw: body,
-            lastProvisionedAt: Date.now(),
-          },
-        );
+        await upsertScimIdentity(state.ctx, config.component.public, {
+          connectionId: state.connection._id,
+          groupId: state.connection.groupId,
+          resourceType: "user",
+          externalId:
+            externalId !== undefined
+              ? externalId
+              : ((
+                  await getScimIdentityByConnectionAndUser(
+                    state.ctx,
+                    config.component.public,
+                    {
+                      connectionId: state.connection._id,
+                      userId,
+                    },
+                  )
+                )?.externalId ?? userId),
+          userId,
+          active: provisionProfile.active !== false && nextActive !== false,
+          raw: body,
+          lastProvisionedAt: Date.now(),
+        });
         await state.recordScimEvent(
           "group.sso.scim.user.updated",
           true,
@@ -687,16 +1224,21 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
           userId,
         );
         const updatedUser = await auth.user.get(state.ctx, userId);
+        await config.sso?.hooks?.afterProvision?.({
+          protocol: "scim",
+          connectionId: state.connection._id,
+          profile: provisionProfile as Record<string, unknown>,
+          userId,
+        });
         const location = `${state.url.origin}${state.url.pathname}`;
         return scimJson(
-          serializeScimUser({
-            id: userId,
-            user: updatedUser ?? existingUser,
-            externalId:
-              typeof body.externalId === "string" ? body.externalId : undefined,
-            location,
-            active: body.active !== false && nextActive !== false,
-          }),
+            serializeScimUser({
+              id: userId,
+              user: updatedUser ?? existingUser,
+              externalId,
+              location,
+              active: provisionProfile.active !== false && nextActive !== false,
+           }),
           200,
           { Location: location },
         );
@@ -716,8 +1258,9 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         if (resolution.membership) {
           await auth.member.delete(state.ctx, resolution.membership._id);
         }
-        const identity = await state.ctx.runQuery(
-          config.component.public.groupConnectionScimIdentityGetByGroupConnectionAndUser,
+        const identity = await getScimIdentityByConnectionAndUser(
+          state.ctx,
+          config.component.public,
           {
             connectionId: state.connection._id,
             userId,
@@ -725,25 +1268,23 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         );
         if (identity) {
           if (state.policy.provisioning.deprovision.mode === "hard") {
-            await state.ctx.runMutation(
-              config.component.public.groupConnectionScimIdentityDelete,
-              { identityId: identity._id },
+            await deleteScimIdentity(
+              state.ctx,
+              config.component.public,
+              identity._id,
             );
           } else {
-            await state.ctx.runMutation(
-              config.component.public.groupConnectionScimIdentityUpsert,
-              {
-                connectionId: identity.connectionId,
-                groupId: identity.groupId,
-                resourceType: identity.resourceType,
-                externalId: identity.externalId,
-                userId: identity.userId,
-                mappedGroupId: identity.mappedGroupId,
-                active: false,
-                raw: identity.raw,
-                lastProvisionedAt: Date.now(),
-              },
-            );
+            await upsertScimIdentity(state.ctx, config.component.public, {
+              connectionId: identity.connectionId,
+              groupId: identity.groupId,
+              resourceType: identity.resourceType,
+              externalId: identity.externalId,
+              userId: identity.userId,
+              mappedGroupId: identity.mappedGroupId,
+              active: false,
+              raw: identity.raw,
+              lastProvisionedAt: Date.now(),
+            });
           }
         }
         await state.recordScimEvent(
@@ -760,29 +1301,44 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
           where: { parentGroupId: state.connection.groupId },
           limit: 100,
         });
-        const identities = await state.ctx.runQuery(
-          config.component.public.groupConnectionScimIdentityListByGroupConnection,
-          { connectionId: state.connection._id },
+        const identities = await listScimIdentitiesByConnection(
+          state.ctx,
+          config.component.public,
+          state.connection._id,
         );
         const identityByGroupId = new Map(
           identities
-            .filter((identity: any) => identity.mappedGroupId !== undefined)
-            .map((identity: any) => [identity.mappedGroupId, identity]),
+            .filter(
+              (
+                identity: ScimIdentityRecord,
+              ): identity is ScimIdentityRecord & { mappedGroupId: string } =>
+                typeof identity.mappedGroupId === "string",
+            )
+            .map((identity: ScimIdentityRecord & { mappedGroupId: string }) => [
+              identity.mappedGroupId,
+              identity,
+            ]),
         );
-        const groups = groupsList.items.map((group: any) => ({
-          group,
-          identity: identityByGroupId.get(group._id),
-        }));
+        const groups: GroupListItem[] = await Promise.all(
+          groupsList.items.map(async (group) => {
+            const typedGroup = group as GroupRecord;
+            const members = await auth.member.list(state.ctx, {
+              where: { groupId: typedGroup._id, status: "active" },
+              limit: 100,
+            });
+            return {
+              group: typedGroup,
+              identity: identityByGroupId.get(typedGroup._id),
+              memberIds: members.items.map((member) => member.userId),
+            };
+          }),
+        );
         const listRequest = parseScimListRequest(state.url);
-        const filtered = filterScimCollection<{
-          group: any;
-          identity?: any;
-        }>(groups, listRequest.filter, {
-          id: (item: { group: any }, value: string) => item.group._id === value,
-          externalId: (item: { identity?: any }, value: string) =>
-            item.identity?.externalId === value,
-          displayName: (item: { group: any }, value: string) =>
-            item.group.name === value,
+        const filtered = filterScimCollection<GroupListItem>(groups, listRequest.filter, {
+          id: (item) => item.group._id,
+          externalId: (item) => item.identity?.externalId,
+          displayName: (item) => item.group.name,
+          "members.value": (item) => item.memberIds,
         });
         if (state.parsedPath.resourceId) {
           const resource = filtered.find(
@@ -799,7 +1355,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
               },
               limit: 100,
             })
-          ).items.map((member: any) => ({ value: member.userId }));
+            ).items.map((member) => ({ value: member.userId }));
           const location = `${state.url.origin}${state.url.pathname.replace(/\/[^/]+$/, "")}/${resource.group._id}`;
           return scimJson(
             serializeScimGroup({
@@ -832,36 +1388,95 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
 
       const handleGroupsPost: ScimHandler = async (state) => {
         const body = await readScimJson(state.request);
-        const { groupId } = await auth.group.create(state.ctx, {
-          name: String(body.displayName ?? "Group"),
-          parentGroupId: state.connection.groupId,
-          type: "organization",
+        const externalId =
+          typeof body.externalId === "string" ? body.externalId : undefined;
+        const existingIdentity = externalId
+          ? await getScimIdentity(state.ctx, config.component.public, {
+              connectionId: state.connection._id,
+              resourceType: "group",
+              externalId,
+            })
+          : null;
+        const existingGroup = existingIdentity?.mappedGroupId
+          ? await auth.group.get(state.ctx, existingIdentity.mappedGroupId)
+          : null;
+        const created = existingGroup === null;
+        const provisionedRoleIds = resolveProvisionedRoleIds({
+          policy: state.policy as any,
+          groups:
+            typeof body.displayName === "string" ? [body.displayName] : undefined,
+          roles: pickStringArray((body as Record<string, unknown>).roles),
         });
-        await state.ctx.runMutation(
-          config.component.public.groupConnectionScimIdentityUpsert,
-          {
-            connectionId: state.connection._id,
-            groupId: state.connection.groupId,
-            resourceType: "group",
-            externalId: body.externalId ?? groupId,
-            mappedGroupId: groupId,
-            active: true,
-            raw: body,
-            lastProvisionedAt: Date.now(),
-          },
+        const groupId = existingGroup?._id
+          ? existingGroup._id
+          : (
+              await auth.group.create(state.ctx, {
+                name:
+                  typeof body.displayName === "string"
+                    ? body.displayName
+                    : "Group",
+                parentGroupId: state.connection.groupId,
+                type: "organization",
+              })
+            ).groupId;
+        if (!created && existingGroup) {
+          const location = `${state.url.origin}${state.url.pathname}/${groupId}`;
+          return scimJson(
+            serializeScimGroup({
+              id: groupId,
+              group: existingGroup,
+              externalId,
+              location,
+              members: (
+                await auth.member.list(state.ctx, {
+                  where: { groupId, status: "active" },
+                  limit: 100,
+                })
+              ).items.map((member) => ({ value: member.userId })),
+            }),
+            200,
+            { Location: location },
+          );
+        }
+        await upsertScimIdentity(state.ctx, config.component.public, {
+          connectionId: state.connection._id,
+          groupId: state.connection.groupId,
+          resourceType: "group",
+          externalId: externalId ?? groupId,
+          mappedGroupId: groupId,
+          active: true,
+          raw: body,
+          lastProvisionedAt: Date.now(),
+        });
+        const currentMembers = (
+          await auth.member.list(state.ctx, {
+            where: { groupId, status: "active" },
+            limit: 100,
+          })
+        ).items as Array<{ _id: string; userId: string }>;
+        const currentByUserId = new Map(currentMembers.map((member) => [member.userId, member]));
+        const nextUserIds = new Set(
+          (Array.isArray(body.members) ? body.members : []).map((member) => String(member.value)),
         );
-        for (const member of Array.isArray(body.members) ? body.members : []) {
-          try {
-            await auth.member.create(state.ctx, {
-              groupId,
-              userId: String(member.value),
-              roleIds: state.policy.provisioning.jit.defaultRoleIds,
-              status: "active",
-            });
-          } catch {}
+        for (const member of currentMembers) {
+          if (!nextUserIds.has(member.userId)) {
+            await auth.member.delete(state.ctx, member._id);
+          }
+        }
+        for (const userId of nextUserIds.values()) {
+          if (!currentByUserId.has(userId)) {
+            try {
+              await auth.member.create(state.ctx, {
+                groupId,
+                userId,
+                roleIds: provisionedRoleIds,
+                status: "active",
+              });
+            } catch {}
+          }
         }
         await state.recordScimEvent(
-          "group.sso.scim.group.created",
+          created ? "group.sso.scim.group.created" : "group.sso.scim.group.updated",
           true,
           "group",
           groupId,
@@ -872,16 +1487,16 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
           serializeScimGroup({
             id: groupId,
             group: group ?? {},
-            externalId: body.externalId,
+            externalId,
             location,
             members: (
               await auth.member.list(state.ctx, {
                 where: { groupId, status: "active" },
                 limit: 100,
               })
-            ).items.map((member: any) => ({ value: member.userId })),
+            ).items.map((member) => ({ value: member.userId })),
           }),
-          201,
+          created ? 201 : 200,
           { Location: location },
         );
       };
@@ -906,11 +1521,18 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
             for (const member of Array.isArray(operation.value)
               ? operation.value
               : []) {
-              try {
+                try {
                 await auth.member.create(state.ctx, {
                   groupId,
                   userId: String(member.value),
-                  roleIds: state.policy.provisioning.jit.defaultRoleIds,
+                  roleIds: resolveProvisionedRoleIds({
+                    policy: state.policy as any,
+                    groups:
+                      typeof body.displayName === "string"
+                        ? [body.displayName]
+                        : undefined,
+                    roles: pickStringArray((body as Record<string, unknown>).roles),
+                  }),
                   status: "active",
                 });
               } catch {}
@@ -926,11 +1548,11 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
             const currentUserIds = new Set<string>(
               currentMembers.map((member) => member.userId),
             );
-            const nextUserIds = new Set<string>(
-              (Array.isArray(operation.value) ? operation.value : []).map(
-                (member: any) => String(member.value),
-              ),
-            );
+              const nextUserIds = new Set<string>(
+                (Array.isArray(operation.value) ? operation.value : []).map(
+                  (member: unknown) => String((member as { value?: unknown }).value),
+                ),
+              );
             for (const member of currentMembers) {
               if (!nextUserIds.has(member.userId)) {
                 await auth.member.delete(state.ctx, member._id);
@@ -942,7 +1564,14 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
                   await auth.member.create(state.ctx, {
                     groupId,
                     userId,
-                    roleIds: state.policy.provisioning.jit.defaultRoleIds,
+                    roleIds: resolveProvisionedRoleIds({
+                      policy: state.policy as any,
+                      groups:
+                        typeof body.displayName === "string"
+                          ? [body.displayName]
+                          : undefined,
+                      roles: pickStringArray((body as Record<string, unknown>).roles),
+                    }),
                     status: "active",
                   });
                 } catch {}
@@ -1005,14 +1634,16 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         if (missing) return missing;
         const groupId = state.parsedPath.resourceId!;
         await auth.group.delete(state.ctx, groupId);
-        const identity = await state.ctx.runQuery(
-          config.component.public.groupConnectionScimIdentityGetByMappedGroup,
-          { mappedGroupId: groupId },
+        const identity = await getScimIdentityByMappedGroup(
+          state.ctx,
+          config.component.public,
+          groupId,
         );
         if (identity) {
-          await state.ctx.runMutation(
-            config.component.public.groupConnectionScimIdentityDelete,
-            { identityId: identity._id },
+          await deleteScimIdentity(
+            state.ctx,
+            config.component.public,
+            identity._id,
           );
         }
         await state.recordScimEvent(
@@ -1118,6 +1749,94 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
     }
   };
 
+  const handleOidcCallbackForConnection = async (
+    ctx: GenericActionCtx<GenericDataModel>,
+    request: Request,
+    connectionId: string,
+  ) => {
+    const url = new URL(request.url);
+    const { connection, oidc } = await loadConnectionOidcOrThrow(ctx, connectionId);
+    const { providerId, provider, oauthConfig } =
+      await createGroupConnectionOidcRuntime({
+        rootUrl: requireEnv("CONVEX_SITE_URL"),
+        connectionId: connection._id,
+        oidc,
+        sharedRedirectURI: sharedOidcRedirectURI,
+      });
+    const cookies = getCookies(request);
+    const maybeRedirectTo = useRedirectToParam(providerId, cookies);
+    const destinationUrl = await redirectAbsoluteUrl(config, {
+      redirectTo: maybeRedirectTo?.redirectTo,
+    });
+    const result = await Effect.runPromise(
+      handleOAuthCallback(
+        providerId,
+        { ...oauthConfig, provider },
+        Object.fromEntries(url.searchParams.entries()),
+        cookies,
+      ),
+    );
+    const extraFields =
+      typeof oidc.profile === "object" && oidc.profile !== null
+        ? ((oidc.profile as Record<string, unknown>).extraFields as
+            | Record<string, string>
+            | undefined)
+        : undefined;
+    let profile = result.profile as Record<string, unknown>;
+    if (extraFields && typeof profile === "object" && profile) {
+      const extend: Record<string, unknown> = {};
+      for (const [claimName, fieldName] of Object.entries(extraFields)) {
+        if (claimName in profile) {
+          extend[fieldName] = profile[claimName];
+        }
+      }
+      if (Object.keys(extend).length > 0) {
+        profile = { ...profile, extend };
+      }
+    }
+
+    const verificationCode = await callUserOAuth(ctx, {
+      provider: providerId,
+      providerAccountId: result.providerAccountId,
+      profile: profile as AuthProfile,
+      signature: result.signature,
+      accountExtend: {
+        identity: {
+          protocol: "oidc",
+          connectionId: connection._id,
+          subject: result.providerAccountId,
+          issuer:
+            typeof (oidc.discovery as Record<string, unknown> | undefined)?.issuer ===
+            "string"
+              ? ((oidc.discovery as Record<string, unknown>).issuer as string)
+              : undefined,
+          discoveryUrl:
+            typeof (oidc.discovery as Record<string, unknown> | undefined)
+              ?.discoveryUrl === "string"
+              ? ((oidc.discovery as Record<string, unknown>).discoveryUrl as string)
+              : undefined,
+        },
+      },
+    });
+    const headers = new Headers({
+      Location: setURLSearchParam(destinationUrl, "code", verificationCode),
+    });
+    for (const { name, value, options } of result.cookies) {
+      headers.append("Set-Cookie", serializeCookie(name, value, options));
+    }
+    if (maybeRedirectTo) {
+      headers.append(
+        "Set-Cookie",
+        serializeCookie(
+          maybeRedirectTo.updatedCookie.name,
+          maybeRedirectTo.updatedCookie.value,
+          maybeRedirectTo.updatedCookie.options,
+        ),
+      );
+    }
+    return new Response(null, { status: 302, headers });
+  };
+
   addSSORoutes(http, {
     routeBase: GROUP_CONNECTION_ROUTE_BASE,
     convertErrorsToResponse,
@@ -1142,10 +1861,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
       const url = new URL(request.url);
       const verifier = url.searchParams.get("code");
       if (!verifier) {
-        throw Cv.error({
-          code: "OAUTH_MISSING_VERIFIER",
-          message: "Missing sign-in verifier.",
-        });
+        throw convexError("OAUTH_MISSING_VERIFIER", "Missing sign-in verifier.");
       }
       const { loaded, connection } = await loadActiveConnectionSamlOrThrow(
         ctx,
@@ -1185,7 +1901,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         const headers = new Headers({
           Location: redirectUrl.toString(),
         });
-        for (const { name, value, options } of redirectCookies as any) {
+        for (const { name, value, options } of redirectCookies as CookieToSerialize[]) {
           headers.append("Set-Cookie", serializeCookie(name, value, options));
         }
         return new Response(null, { status: 302, headers });
@@ -1196,7 +1912,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         value: signInRequest.post!.value,
         relayState,
       });
-      for (const { name, value, options } of redirectCookies as any) {
+      for (const { name, value, options } of redirectCookies as CookieToSerialize[]) {
         response.headers.append(
           "Set-Cookie",
           serializeCookie(name, value, options),
@@ -1208,10 +1924,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
       const url = new URL(request.url);
       const verifier = url.searchParams.get("code");
       if (!verifier) {
-        throw Cv.error({
-          code: "OAUTH_MISSING_VERIFIER",
-          message: "Missing sign-in verifier.",
-        });
+        throw convexError("OAUTH_MISSING_VERIFIER", "Missing sign-in verifier.");
       }
       const { connection, oidc } = await loadConnectionOidcOrThrow(
         ctx,
@@ -1222,11 +1935,27 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
           rootUrl: requireEnv("CONVEX_SITE_URL"),
           connectionId: connection._id,
           oidc,
+          sharedRedirectURI: sharedOidcRedirectURI,
         });
       const { redirect, cookies, signature } =
         await createOAuthAuthorizationURL(providerId, {
           ...oauthConfig,
           provider,
+        }, {
+          loginHint:
+            url.searchParams.get("loginHint") ??
+            (typeof (oidc.request as Record<string, unknown> | undefined)
+              ?.loginHint === "string"
+              ? ((oidc.request as Record<string, unknown>).loginHint as string)
+              : undefined),
+          stateTransform:
+            typeof sharedOidcRedirectURI === "string"
+              ? (state) =>
+                  encodeGroupOidcState({
+                    connectionId: connection._id,
+                    state,
+                  })
+              : undefined,
         });
       await callVerifierSignature(ctx, { verifier, signature });
       const redirectTo = url.searchParams.get("redirectTo");
@@ -1236,7 +1965,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         ...(redirectTo !== null
           ? [redirectToParamCookie(providerId, redirectTo)]
           : []),
-      ] as any) {
+      ] as CookieToSerialize[]) {
         headers_.append("Set-Cookie", serializeCookie(name, value, options));
       }
       return new Response(null, {
@@ -1245,89 +1974,31 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
       });
     },
     handleOidcCallback: async (ctx, request, runtimeRoute) => {
-      const url = new URL(request.url);
-      const { connection, oidc } = await loadConnectionOidcOrThrow(
+      return await handleOidcCallbackForConnection(
         ctx,
+        request,
         runtimeRoute.connectionId,
       );
-      const { providerId, provider, oauthConfig } =
-        await createGroupConnectionOidcRuntime({
-          rootUrl: requireEnv("CONVEX_SITE_URL"),
-          connectionId: connection._id,
-          oidc,
-        });
-      const cookies = getCookies(request);
-      const maybeRedirectTo = useRedirectToParam(providerId, cookies);
-      const destinationUrl = await redirectAbsoluteUrl(config, {
-        redirectTo: maybeRedirectTo?.redirectTo,
-      });
-      const params = url.searchParams;
-      const result = (await Fx.run(
-        handleOAuthCallback(
-          providerId,
-          { ...oauthConfig, provider },
-          Object.fromEntries(params.entries()),
-          cookies,
-        ),
-      )) as any;
-      const extraFields = oidc.extraFields as
-        | Record<string, string>
-        | undefined;
-      let profile = result.profile as Record<string, unknown>;
-      if (extraFields && typeof profile === "object" && profile) {
-        const extend: Record<string, unknown> = {};
-        for (const [claimName, fieldName] of Object.entries(extraFields)) {
-          if (claimName in profile) {
-            extend[fieldName] = profile[claimName];
-          }
-        }
-        if (Object.keys(extend).length > 0) {
-          profile = { ...profile, extend };
-        }
-      }
-
-      const verificationCode = await callUserOAuth(ctx, {
-        provider: providerId,
-        providerAccountId: result.providerAccountId,
-        profile,
-        signature: result.signature,
-        accountExtend: {
-          identity: {
-            protocol: "oidc",
-            connectionId: connection._id,
-            subject: result.providerAccountId,
-            issuer: typeof oidc.issuer === "string" ? oidc.issuer : undefined,
-            discoveryUrl:
-              typeof oidc.discoveryUrl === "string"
-                ? oidc.discoveryUrl
-                : undefined,
-          },
-        },
-      });
-      const headers = new Headers({
-        Location: setURLSearchParam(destinationUrl, "code", verificationCode),
-      });
-      for (const { name, value, options } of result.cookies) {
-        headers.append(
-          "Set-Cookie",
-          serializeCookie(name, value, options as any),
-        );
-      }
-      if (maybeRedirectTo) {
-        headers.append(
-          "Set-Cookie",
-          serializeCookie(
-            maybeRedirectTo.updatedCookie.name,
-            maybeRedirectTo.updatedCookie.value,
-            maybeRedirectTo.updatedCookie.options as any,
-          ),
-        );
-      }
-      return new Response(null, { status: 302, headers });
     },
     handleSamlAcs,
     handleSamlSlo,
     handleScimRequest,
+    sharedOidcCallbackPath: sharedOidcRedirectURI,
+    handleOidcSharedCallback: async (ctx, request) => {
+      const url = new URL(request.url);
+      const params = await getOidcCallbackParams(request);
+      const { connectionId, state } = decodeGroupOidcState(
+        params.get("state"),
+      );
+      params.set("state", state);
+      url.search = params.toString();
+      const normalizedRequest = new Request(url, request);
+      return await handleOidcCallbackForConnection(
+        ctx,
+        normalizedRequest,
+        connectionId,
+      );
+    },
     scimError,
   });
 }
