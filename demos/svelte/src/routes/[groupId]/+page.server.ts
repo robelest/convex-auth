@@ -1,9 +1,8 @@
-import { redirect } from "@sveltejs/kit";
-import type { GroupSummary } from "../../../../../convex/shared";
-
 import { api } from "$convex/_generated/api.js";
 import { getConvexClient } from "$lib/server/convex";
+import { redirect } from "@sveltejs/kit";
 
+import type { GroupSummary } from "../../../../../convex/shared";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ locals, params }) => {

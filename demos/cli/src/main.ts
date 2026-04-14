@@ -1,17 +1,20 @@
-import process from "node:process";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { ConvexHttpClient } from "convex/browser";
-import { Argument, Command } from "effect/unstable/cli";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
-import { Effect, Option } from "effect";
+import { ConvexHttpClient } from "convex/browser";
 import { config as loadEnvFile } from "dotenv";
+import { Effect, Option } from "effect";
+import { Argument, Command } from "effect/unstable/cli";
 
 import { api } from "../../../convex/_generated/api.js";
-
-import { clearStoredSession, readStoredSession, writeStoredSession } from "./storage";
+import {
+  clearStoredSession,
+  readStoredSession,
+  writeStoredSession,
+} from "./storage";
 
 type DeviceCodeResult = {
   deviceCode: string;
@@ -53,7 +56,9 @@ loadCliEnv();
 function requireConvexUrl() {
   const url = process.env.VITE_CONVEX_URL ?? process.env.CONVEX_URL;
   if (!url) {
-    throw new Error("Set VITE_CONVEX_URL or CONVEX_URL before running the CLI demo.");
+    throw new Error(
+      "Set VITE_CONVEX_URL or CONVEX_URL before running the CLI demo.",
+    );
   }
   return url;
 }
@@ -102,13 +107,20 @@ async function startDeviceLogin(client: ConvexHttpClient) {
   const result = await client.action(api.auth.signIn, {
     provider: "device",
   });
-  if (!isRecord(result) || result.kind !== "deviceCode" || !isDeviceCodeResult(result.deviceCode)) {
+  if (
+    !isRecord(result) ||
+    result.kind !== "deviceCode" ||
+    !isDeviceCodeResult(result.deviceCode)
+  ) {
     throw new Error("Device sign-in did not return a device code.");
   }
   return result.deviceCode;
 }
 
-async function pollDeviceLogin(client: ConvexHttpClient, code: DeviceCodeResult) {
+async function pollDeviceLogin(
+  client: ConvexHttpClient,
+  code: DeviceCodeResult,
+) {
   const deadline = Date.now() + code.expiresIn * 1000;
   while (Date.now() < deadline) {
     await sleep(code.interval * 1000);
@@ -256,7 +268,11 @@ async function doIssuesCreate(
 
 const authLogin = Command.make("login", {}, () =>
   Effect.tryPromise(doAuthLogin),
-).pipe(Command.withDescription("Authenticate with device flow and store session tokens locally."));
+).pipe(
+  Command.withDescription(
+    "Authenticate with device flow and store session tokens locally.",
+  ),
+);
 
 const authStatus = Command.make("status", {}, () =>
   Effect.tryPromise(doAuthStatus),
@@ -273,7 +289,9 @@ const authCommand = Command.make("auth").pipe(
 
 const groupsList = Command.make("list", {}, () =>
   Effect.tryPromise(doGroupsList),
-).pipe(Command.withDescription("List groups available to the current session."));
+).pipe(
+  Command.withDescription("List groups available to the current session."),
+);
 
 const groupsCommand = Command.make("groups").pipe(
   Command.withSubcommands([groupsList]),
@@ -345,7 +363,9 @@ const rootCommand = Command.make("convex-auth-demo").pipe(
     projectsCommand,
     issuesCommand,
   ]),
-  Command.withDescription("CLI demo for convex-auth using device login and direct Convex calls."),
+  Command.withDescription(
+    "CLI demo for convex-auth using device login and direct Convex calls.",
+  ),
 );
 
 const runCli = Command.run(rootCommand, { version: "0.0.1" });

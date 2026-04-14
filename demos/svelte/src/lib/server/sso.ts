@@ -1,8 +1,7 @@
-import { redirect } from "@sveltejs/kit";
-import type { GroupSummary } from "../../../../../convex/shared";
-
 import { api } from "$convex/_generated/api.js";
+import { redirect } from "@sveltejs/kit";
 
+import type { GroupSummary } from "../../../../../convex/shared";
 import { getConvexClient } from "./convex";
 
 type SelectedGroup = {

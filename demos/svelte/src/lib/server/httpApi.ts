@@ -4,7 +4,9 @@ function requireSiteUrl() {
   const siteUrl =
     env.CONVEX_SITE_URL ?? env.VITE_CONVEX_URL?.replace(".cloud", ".site");
   if (!siteUrl) {
-    throw new Error("Missing CONVEX_SITE_URL or VITE_CONVEX_URL for API proxying.");
+    throw new Error(
+      "Missing CONVEX_SITE_URL or VITE_CONVEX_URL for API proxying.",
+    );
   }
   return siteUrl;
 }

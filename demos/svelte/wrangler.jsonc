@@ -10,7 +10,7 @@
   },
   "vars": {
     "VITE_CONVEX_URL": "https://tangible-snake-149.convex.cloud",
-    "CONVEX_SITE_URL": "https://tangible-snake-149.convex.site"
+    "CONVEX_SITE_URL": "https://tangible-snake-149.convex.site",
   },
   "workers_dev": true,
   "preview_urls": true,

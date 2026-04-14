@@ -36,7 +36,7 @@
     client: ConvexClient;
   }>();
 
-  let tab = $state<"members" | "permissions">("members");
+  let tab = $state<"passkeys" | "apikeys" | "members" | "permissions">("passkeys");
   let isSigningOut = $state(false);
   let errorMessage = $state<string | null>(null);
 
@@ -228,6 +228,8 @@
   ];
 
   const tabs = [
+    { id: "passkeys" as const, label: "Passkeys" },
+    { id: "apikeys" as const, label: "API keys" },
     { id: "members" as const, label: "Members" },
     { id: "permissions" as const, label: "Permissions" },
   ];
@@ -247,250 +249,242 @@
     >{isSigningOut ? "..." : "Sign out"}</button>
   </div>
 
-  <div class="grid gap-4 md:grid-cols-2">
-    <section class="border border-gray-300 bg-white p-4 flex flex-col gap-3">
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <h3 class="heading text-base m-0">Passkeys</h3>
-          <p class="muted m-0">Register a passkey for faster sign-in on this device.</p>
-        </div>
+  <div class="border border-gray-300 bg-white h-[80dvh] flex flex-col">
+    <div class="flex gap-0 border-b border-gray-300 shrink-0">
+      {#each tabs as t (t.id)}
         <button
-          class="button button--secondary button--compact"
-          disabled={!passkeySupported || isRegisteringPasskey}
-          onclick={handleRegisterPasskey}
-        >{isRegisteringPasskey ? "Adding..." : "Add passkey"}</button>
-      </div>
-
-      {#if !passkeySupported}
-        <p class="muted">This browser does not support WebAuthn passkeys.</p>
-      {:else if passkeys.length === 0}
-        <p class="muted">No passkeys registered yet.</p>
-      {:else}
-        <div class="flex flex-col">
-          {#each passkeys as passkey (passkey.passkeyId)}
-            <div class="flex justify-between items-center gap-3 py-1.5 border-b border-gray-200">
-              <div class="flex flex-col">
-                <span class="text-sm text-gray-900">{passkey.name ?? passkey.deviceType}</span>
-                <span class="font-label text-[0.6875rem] text-gray-400">
-                  {passkey.backedUp ? "Synced" : "Local"}
-                  {#if passkey.lastUsedAt}
-                    · last used {new Date(passkey.lastUsedAt).toLocaleString()}
-                  {/if}
-                </span>
-              </div>
-              <button
-                class="button button--ghost text-[0.65rem] text-gray-400 hover:text-accent-600"
-                disabled={isDeletingPasskeyId === passkey.passkeyId}
-                onclick={() => handleDeletePasskey(passkey.passkeyId)}
-              >{isDeletingPasskeyId === passkey.passkeyId ? "removing" : "remove"}</button>
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </section>
-
-    <section class="border border-gray-300 bg-white p-4 flex flex-col gap-3">
-      <div>
-        <h3 class="heading text-base m-0">API keys</h3>
-        <p class="muted m-0">Create a key for <code>/api/me</code> and <code>/api/issues</code> curl requests.</p>
-      </div>
-
-      <form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); handleCreateApiKey(); }}>
-        <input
-          bind:value={apiKeyName}
-          class="input input--compact"
-          type="text"
-          maxlength="60"
-          placeholder="CLI key"
-        />
-        <label class="flex items-center gap-2 font-label text-[0.75rem] text-gray-700">
-          <input bind:checked={issueReadScope} type="checkbox" />
-          Allow <code>GET /api/issues</code>
-        </label>
-        <label class="flex items-center gap-2 font-label text-[0.75rem] text-gray-700">
-          <input bind:checked={issueWriteScope} type="checkbox" />
-          Allow <code>POST /api/issues</code>
-        </label>
-        <button class="button button--secondary button--compact self-start" disabled={isCreatingApiKey || !apiKeyName.trim()} type="submit">
-          {isCreatingApiKey ? "Creating..." : "Create API key"}
-        </button>
-      </form>
-
-      {#if createdApiKey}
-        <div class="flex flex-col gap-2 p-3 border border-gray-200 bg-gray-50">
-          <p class="m-0 font-label text-[0.75rem] text-gray-700">Copy this secret now. It will only be shown once.</p>
-          <code class="block overflow-x-auto border border-gray-200 bg-white px-2 py-1 text-[0.75rem]">{createdApiKey.secret}</code>
-          <code class="block overflow-x-auto border border-gray-200 bg-white px-2 py-1 text-[0.75rem]">curl -H "Authorization: Bearer {createdApiKey.secret}" {origin}/api/me</code>
-          {#if selectedProject}
-            <code class="block overflow-x-auto border border-gray-200 bg-white px-2 py-1 text-[0.75rem]">curl -H "Authorization: Bearer {createdApiKey.secret}" "{origin}/api/issues?projectId={selectedProject.projectId}"</code>
-          {:else}
-            <p class="muted m-0">Select a project in the sidebar to get a ready-to-run <code>/api/issues</code> curl command.</p>
-          {/if}
-        </div>
-      {/if}
-
-      {#if apiKeys.length === 0}
-        <p class="muted">No API keys yet.</p>
-      {:else}
-        <div class="flex flex-col">
-          {#each apiKeys as key (key.keyId)}
-            <div class="flex justify-between items-center gap-3 py-1.5 border-b border-gray-200">
-              <div class="flex flex-col">
-                <span class="text-sm text-gray-900">{key.name}</span>
-                <span class="font-label text-[0.6875rem] text-gray-400">
-                  {key.prefix}
-                  {#if key.scopes.length > 0}
-                    · {formatScopes(key.scopes)}
-                  {:else}
-                    · no scopes
-                  {/if}
-                </span>
-              </div>
-              {#if key.revoked}
-                <span class="chip chip--role">Revoked</span>
-              {:else}
-                <button
-                  class="button button--ghost text-[0.65rem] text-gray-400 hover:text-accent-600"
-                  disabled={isRevokingApiKeyId === key.keyId}
-                  onclick={() => handleRevokeApiKey(key.keyId)}
-                >{isRevokingApiKeyId === key.keyId ? "revoking" : "revoke"}</button>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      {/if}
-    </section>
-  </div>
-
-  <!-- Tabs -->
-  <div class="flex gap-0 border-b border-gray-300">
-    {#each tabs as t (t.id)}
-      <button
-        class="py-2 px-4 border-0 border-b-2 bg-transparent font-label text-[0.75rem] font-medium cursor-pointer {tab === t.id ? 'border-b-accent-500 text-accent-600 font-semibold' : 'border-b-transparent text-gray-500 hover:text-gray-700'}"
-        onclick={() => { tab = t.id; }}
-      >{t.label}</button>
-    {/each}
-  </div>
-
-  <!-- Tab content -->
-  {#if tab === "members"}
-    <!-- Action buttons -->
-    {#if permissions.canManageMembers || permissions.canManageSso}
-      <div class="flex gap-2">
-        {#if permissions.canManageMembers}
-          <button
-            class="button button--secondary button--compact"
-            onclick={() => { showInviteForm = !showInviteForm; inviteSentTo = null; }}
-          >{showInviteForm ? "Cancel" : "Invite member"}</button>
-        {/if}
-        {#if permissions.canManageSso}
-          <a class="button button--secondary button--compact no-underline" href="/{groupId}/sso">
-            Configure SSO
-          </a>
-        {/if}
-      </div>
-    {/if}
-
-    <!-- Invite form -->
-    {#if showInviteForm}
-      <div class="flex flex-col gap-2 p-3 border border-gray-200 bg-gray-50">
-        <form class="flex gap-1.5 items-center flex-wrap" onsubmit={(e) => { e.preventDefault(); handleInvite(); }}>
-          <input
-            class="input input--compact flex-1 min-w-[10rem]"
-            bind:value={inviteEmail}
-            type="email"
-            placeholder="Email address"
-          />
-          <select class="select select--compact" bind:value={inviteRoleId}>
-            {#each roleOptions as role (role.id)}
-              <option value={role.id}>{role.label}</option>
-            {/each}
-          </select>
-          <button
-            class="button button--accent button--compact"
-            type="submit"
-            disabled={isInviting || !inviteEmail.includes("@")}
-          >{isInviting ? "..." : "Send"}</button>
-        </form>
-
-        {#if inviteSentTo}
-          <p class="font-label text-[0.75rem] text-green-600 m-0">Invite sent to {inviteSentTo}</p>
-        {/if}
-
-        <!-- Pending invites -->
-        {#if pendingInvites.length > 0}
-          <div class="flex flex-col mt-1">
-            <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-gray-400 mb-1">Pending</span>
-            {#each pendingInvites as invite (invite.inviteId)}
-              <div class="flex justify-between items-center gap-2 py-1 border-b border-gray-200">
-                <div class="flex items-center gap-2">
-                  <span class="font-label text-[0.75rem] text-gray-700">{invite.email ?? "—"}</span>
-                  <span class="chip chip--role">{getRoleLabel(invite.roleIds)}</span>
-                </div>
-                <button
-                  class="button button--ghost text-[0.65rem] text-gray-400 hover:text-accent-600"
-                  onclick={() => handleRevokeInvite(invite.inviteId)}
-                >revoke</button>
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    {/if}
-
-    <!-- Member list -->
-    <div class="flex flex-col">
-      {#each members as member (member.userId)}
-        <div class="flex justify-between items-center gap-2 py-1.5 border-b border-gray-200">
-          <div class="flex flex-col">
-            <span class="text-sm text-gray-900">{member.name}</span>
-            {#if member.email}
-              <span class="font-label text-[0.6875rem] text-gray-400">{member.email}</span>
-            {/if}
-          </div>
-          {#if permissions.canManageMembers}
-            <select
-              class="select select--compact"
-              value={member.roleIds[0] ?? "viewer"}
-              onchange={(e) => handleRoleChange(member.memberId, e.currentTarget.value)}
-            >
-              {#each roleOptions as role (role.id)}
-                <option value={role.id}>{role.label}</option>
-              {/each}
-            </select>
-          {:else}
-            <span class="chip chip--role">{getRoleLabel(member.roleIds)}</span>
-          {/if}
-        </div>
-      {:else}
-        <p class="muted">No members.</p>
+          class="py-2 px-4 border-0 border-b-2 bg-transparent font-label text-[0.75rem] font-medium cursor-pointer {tab === t.id ? 'border-b-accent-500 text-accent-600 font-semibold' : 'border-b-transparent text-gray-500 hover:text-gray-700'}"
+          onclick={() => { tab = t.id; }}
+        >{t.label}</button>
       {/each}
     </div>
 
-  {:else if tab === "permissions"}
-    <div class="overflow-x-auto">
-      <table class="w-full font-label text-[0.75rem]">
-        <thead>
-          <tr class="border-b border-gray-300">
-            <th class="text-left py-1.5 pr-4 text-gray-500 font-semibold">Action</th>
-            <th class="text-center py-1.5 px-3 text-gray-500 font-semibold">Admin</th>
-            <th class="text-center py-1.5 px-3 text-gray-500 font-semibold">Member</th>
-            <th class="text-center py-1.5 px-3 text-gray-500 font-semibold">Viewer</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each permissionMatrix as row (row.label)}
-            <tr class="border-b border-gray-200">
-              <td class="py-1.5 pr-4 text-gray-700">{row.label}</td>
-              <td class="text-center py-1.5 px-3 {row.admin ? 'text-green-600' : 'text-gray-300'}">{row.admin ? "yes" : "—"}</td>
-              <td class="text-center py-1.5 px-3 {row.member ? 'text-green-600' : 'text-gray-300'}">{row.member ? "yes" : "—"}</td>
-              <td class="text-center py-1.5 px-3 {row.viewer ? 'text-green-600' : 'text-gray-300'}">{row.viewer ? "yes" : "—"}</td>
-            </tr>
+    <div class="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
+      {#if tab === 'passkeys'}
+        <div class="flex items-center justify-between gap-3">
+          <p class="muted m-0">Register a passkey for faster sign-in on this device.</p>
+          <button
+            class="button button--secondary button--compact"
+            disabled={!passkeySupported || isRegisteringPasskey}
+            onclick={handleRegisterPasskey}
+          >{isRegisteringPasskey ? "Adding..." : "Add passkey"}</button>
+        </div>
+
+        {#if !passkeySupported}
+          <p class="muted">This browser does not support WebAuthn passkeys.</p>
+        {:else if passkeys.length === 0}
+          <p class="muted">No passkeys registered yet.</p>
+        {:else}
+          <div class="flex flex-col">
+            {#each passkeys as passkey (passkey.passkeyId)}
+              <div class="flex justify-between items-center gap-3 py-1.5 border-b border-gray-200">
+                <div class="flex flex-col">
+                  <span class="text-sm text-gray-900">{passkey.name ?? passkey.deviceType}</span>
+                  <span class="font-label text-[0.6875rem] text-gray-400">
+                    {passkey.backedUp ? "Synced" : "Local"}
+                    {#if passkey.lastUsedAt}
+                      · last used {new Date(passkey.lastUsedAt).toLocaleString()}
+                    {/if}
+                  </span>
+                </div>
+                <button
+                  class="button button--ghost text-[0.65rem] text-gray-400 hover:text-accent-600"
+                  disabled={isDeletingPasskeyId === passkey.passkeyId}
+                  onclick={() => handleDeletePasskey(passkey.passkeyId)}
+                >{isDeletingPasskeyId === passkey.passkeyId ? "removing" : "remove"}</button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
+      {:else if tab === 'apikeys'}
+        <p class="muted m-0">Create a key for <code>/api/me</code> and <code>/api/issues</code> curl requests.</p>
+
+        <form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); handleCreateApiKey(); }}>
+          <input
+            bind:value={apiKeyName}
+            class="input input--compact"
+            type="text"
+            maxlength="60"
+            placeholder="CLI key"
+          />
+          <label class="flex items-center gap-2 font-label text-[0.75rem] text-gray-700">
+            <input bind:checked={issueReadScope} type="checkbox" />
+            Allow <code>GET /api/issues</code>
+          </label>
+          <label class="flex items-center gap-2 font-label text-[0.75rem] text-gray-700">
+            <input bind:checked={issueWriteScope} type="checkbox" />
+            Allow <code>POST /api/issues</code>
+          </label>
+          <button class="button button--secondary button--compact self-start" disabled={isCreatingApiKey || !apiKeyName.trim()} type="submit">
+            {isCreatingApiKey ? "Creating..." : "Create API key"}
+          </button>
+        </form>
+
+        {#if createdApiKey}
+          <div class="flex flex-col gap-2 p-3 border border-gray-200 bg-gray-50">
+            <p class="m-0 font-label text-[0.75rem] text-gray-700">Copy this secret now. It will only be shown once.</p>
+            <code class="block overflow-x-auto border border-gray-200 bg-white px-2 py-1 text-[0.75rem]">{createdApiKey.secret}</code>
+            <code class="block overflow-x-auto border border-gray-200 bg-white px-2 py-1 text-[0.75rem]">curl -H "Authorization: Bearer {createdApiKey.secret}" {origin}/api/me</code>
+            {#if selectedProject}
+              <code class="block overflow-x-auto border border-gray-200 bg-white px-2 py-1 text-[0.75rem]">curl -H "Authorization: Bearer {createdApiKey.secret}" "{origin}/api/issues?projectId={selectedProject.projectId}"</code>
+            {:else}
+              <p class="muted m-0">Select a project in the sidebar to get a ready-to-run <code>/api/issues</code> curl command.</p>
+            {/if}
+          </div>
+        {/if}
+
+        {#if apiKeys.length === 0}
+          <p class="muted">No API keys yet.</p>
+        {:else}
+          <div class="flex flex-col">
+            {#each apiKeys as key (key.keyId)}
+              <div class="flex justify-between items-center gap-3 py-1.5 border-b border-gray-200">
+                <div class="flex flex-col">
+                  <span class="text-sm text-gray-900">{key.name}</span>
+                  <span class="font-label text-[0.6875rem] text-gray-400">
+                    {key.prefix}
+                    {#if key.scopes.length > 0}
+                      · {formatScopes(key.scopes)}
+                    {:else}
+                      · no scopes
+                    {/if}
+                  </span>
+                </div>
+                {#if key.revoked}
+                  <span class="chip chip--role">Revoked</span>
+                {:else}
+                  <button
+                    class="button button--ghost text-[0.65rem] text-gray-400 hover:text-accent-600"
+                    disabled={isRevokingApiKeyId === key.keyId}
+                    onclick={() => handleRevokeApiKey(key.keyId)}
+                  >{isRevokingApiKeyId === key.keyId ? "revoking" : "revoke"}</button>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {/if}
+
+      {:else if tab === "members"}
+        <!-- Action buttons -->
+        {#if permissions.canManageMembers || permissions.canManageSso}
+          <div class="flex gap-2">
+            {#if permissions.canManageMembers}
+              <button
+                class="button button--secondary button--compact"
+                onclick={() => { showInviteForm = !showInviteForm; inviteSentTo = null; }}
+              >{showInviteForm ? "Cancel" : "Invite member"}</button>
+            {/if}
+            {#if permissions.canManageSso}
+              <a class="button button--secondary button--compact no-underline" href="/{groupId}/sso">
+                Configure SSO
+              </a>
+            {/if}
+          </div>
+        {/if}
+
+        <!-- Invite form -->
+        {#if showInviteForm}
+          <div class="flex flex-col gap-2 p-3 border border-gray-200 bg-gray-50">
+            <form class="flex gap-1.5 items-center flex-wrap" onsubmit={(e) => { e.preventDefault(); handleInvite(); }}>
+              <input
+                class="input input--compact flex-1 min-w-[10rem]"
+                bind:value={inviteEmail}
+                type="email"
+                placeholder="Email address"
+              />
+              <select class="select select--compact" bind:value={inviteRoleId}>
+                {#each roleOptions as role (role.id)}
+                  <option value={role.id}>{role.label}</option>
+                {/each}
+              </select>
+              <button
+                class="button button--accent button--compact"
+                type="submit"
+                disabled={isInviting || !inviteEmail.includes("@")}
+              >{isInviting ? "..." : "Send"}</button>
+            </form>
+
+            {#if inviteSentTo}
+              <p class="font-label text-[0.75rem] text-green-600 m-0">Invite sent to {inviteSentTo}</p>
+            {/if}
+
+            <!-- Pending invites -->
+            {#if pendingInvites.length > 0}
+              <div class="flex flex-col mt-1">
+                <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-gray-400 mb-1">Pending</span>
+                {#each pendingInvites as invite (invite.inviteId)}
+                  <div class="flex justify-between items-center gap-2 py-1 border-b border-gray-200">
+                    <div class="flex items-center gap-2">
+                      <span class="font-label text-[0.75rem] text-gray-700">{invite.email ?? "—"}</span>
+                      <span class="chip chip--role">{getRoleLabel(invite.roleIds)}</span>
+                    </div>
+                    <button
+                      class="button button--ghost text-[0.65rem] text-gray-400 hover:text-accent-600"
+                      onclick={() => handleRevokeInvite(invite.inviteId)}
+                    >revoke</button>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
+
+        <!-- Member list -->
+        <div class="flex flex-col">
+          {#each members as member (member.userId)}
+            <div class="flex justify-between items-center gap-2 py-1.5 border-b border-gray-200">
+              <div class="flex flex-col">
+                <span class="text-sm text-gray-900">{member.name}</span>
+                {#if member.email}
+                  <span class="font-label text-[0.6875rem] text-gray-400">{member.email}</span>
+                {/if}
+              </div>
+              {#if permissions.canManageMembers}
+                <select
+                  class="select select--compact"
+                  value={member.roleIds[0] ?? "viewer"}
+                  onchange={(e) => handleRoleChange(member.memberId, e.currentTarget.value)}
+                >
+                  {#each roleOptions as role (role.id)}
+                    <option value={role.id}>{role.label}</option>
+                  {/each}
+                </select>
+              {:else}
+                <span class="chip chip--role">{getRoleLabel(member.roleIds)}</span>
+              {/if}
+            </div>
+          {:else}
+            <p class="muted">No members.</p>
           {/each}
-        </tbody>
-      </table>
+        </div>
+
+      {:else if tab === "permissions"}
+        <div class="overflow-x-auto">
+          <table class="w-full font-label text-[0.75rem]">
+            <thead>
+              <tr class="border-b border-gray-300">
+                <th class="text-left py-1.5 pr-4 text-gray-500 font-semibold">Action</th>
+                <th class="text-center py-1.5 px-3 text-gray-500 font-semibold">Admin</th>
+                <th class="text-center py-1.5 px-3 text-gray-500 font-semibold">Member</th>
+                <th class="text-center py-1.5 px-3 text-gray-500 font-semibold">Viewer</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each permissionMatrix as row (row.label)}
+                <tr class="border-b border-gray-200">
+                  <td class="py-1.5 pr-4 text-gray-700">{row.label}</td>
+                  <td class="text-center py-1.5 px-3 {row.admin ? 'text-green-600' : 'text-gray-300'}">{row.admin ? "yes" : "—"}</td>
+                  <td class="text-center py-1.5 px-3 {row.member ? 'text-green-600' : 'text-gray-300'}">{row.member ? "yes" : "—"}</td>
+                  <td class="text-center py-1.5 px-3 {row.viewer ? 'text-green-600' : 'text-gray-300'}">{row.viewer ? "yes" : "—"}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
     </div>
-  {/if}
+  </div>
 
   {#if errorMessage}
     <p class="error-banner">{errorMessage}</p>
