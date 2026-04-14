@@ -51,13 +51,27 @@ For the common case, create a single app-owned file such as
 After exporting those wrappers, frontend code can use normal Convex hooks/calls:
 
 ```ts
-import { group } from "@robelest/convex-auth/server";
-import { auth, authorized } from "../auth";
-import { useAction } from "convex/react";
+import { createAuthGroupSso } from "@robelest/convex-auth/server";
+import { auth } from "../auth";
+import { roles } from "../roles";
+import { useAction, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 
-export const { createConnection, configureOidc, configureScim } = group(auth, {
-  admin: { authorized },
+export const { createConnection, configureOidc, configureScim } = createAuthGroupSso(auth, {
+  permissions: {
+    sso: { require: [roles.orgAdmin] },
+    scim: { require: [roles.orgAdmin] },
+  },
+  access: async (ctx, input, requiredRoles) => {
+    if (!input.groupId) {
+      throw new Error("Group scope required");
+    }
+    await auth.member.require(ctx, {
+      userId: input.userId,
+      groupId: input.groupId,
+      roleIds: requiredRoles.map((role) => role.id),
+    });
+  },
 });
 
 const createConnection = useAction(api.auth.group.createConnection);
@@ -68,6 +82,9 @@ const signIn = useQuery(api.auth.group.signIn, {
   redirectTo: "/dashboard",
 });
 ```
+
+`createConnection` requires a `groupId`, so create the group first or read it
+from the current route/context before calling the mounted RPC.
 
 These are app-owned wrappers over the server helper namespaces. You can also
 skip the flat mounted surface entirely and call the server helpers directly:
@@ -120,9 +137,8 @@ Convex database. There is no app-level configuration file needed. Each tenant
 `auth.group.sso.connection.create(...)` returns an object with `connectionId`
 and `groupId`. Use `connectionId` for the rest of the `auth.group.sso.*` APIs.
 
-If you use the mounted flat group SSO RPC builder, configure `admin.roles` so
-the creator of a newly auto-created group gets the initial grants required to
-manage that tenant.
+If you use the mounted flat group SSO RPC builder, create the group first and
+then call `createConnection({ groupId, ... })` with your app's access policy.
 
 This means you can:
 

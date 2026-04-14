@@ -1,6 +1,6 @@
-import { group } from "@robelest/convex-auth/server";
+import { createAuthGroupSso } from "@robelest/convex-auth/server";
 
-import { auth, authorized } from "../auth";
+import { auth } from "../auth";
 import { roles } from "../roles";
 
 export const {
@@ -34,9 +34,19 @@ export const {
   validateScim,
   signIn,
   metadata,
-} = group(auth, {
-  admin: {
-    authorized,
-    roles: [roles.orgAdmin],
+} = createAuthGroupSso(auth, {
+  permissions: {
+    sso: { require: [roles.orgAdmin] },
+    scim: { require: [roles.orgAdmin] },
+  },
+  access: async (ctx, input, requiredRoles) => {
+    if (!input.groupId) {
+      throw new Error("Group scope required.");
+    }
+    await auth.member.require(ctx as never, {
+      userId: input.userId,
+      groupId: input.groupId,
+      roleIds: requiredRoles.map((role) => role.id),
+    });
   },
 });

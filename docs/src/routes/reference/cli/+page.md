@@ -44,11 +44,25 @@ Group SSO RPC is app-owned. Create a single file like
 `convex/auth/group.ts` and export only the helpers your app needs:
 
 ```ts
-import { group } from "@robelest/convex-auth/server";
-import { auth, authorized } from "../auth";
+import { createAuthGroupSso } from "@robelest/convex-auth/server";
+import { auth } from "../auth";
+import { roles } from "../roles";
 
-export const { createConnection, configureScim } = group(auth, {
-  authorized,
+export const { createConnection, configureScim } = createAuthGroupSso(auth, {
+  permissions: {
+    sso: { require: [roles.orgAdmin] },
+    scim: { require: [roles.orgAdmin] },
+  },
+  access: async (ctx, input, requiredRoles) => {
+    if (!input.groupId) {
+      throw new Error("Group scope required");
+    }
+    await auth.member.require(ctx, {
+      userId: input.userId,
+      groupId: input.groupId,
+      roleIds: requiredRoles.map((role) => role.id),
+    });
+  },
 });
 ```
 
@@ -67,3 +81,5 @@ import { api } from "../convex/_generated/api";
 const createConnection = useAction(api.auth.group.createConnection);
 const configureScim = useAction(api.auth.group.configureScim);
 ```
+
+Pass a concrete `groupId` when calling `createConnection(...)`.

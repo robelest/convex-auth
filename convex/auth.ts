@@ -80,23 +80,5 @@ const auth = createAuth(components.auth, {
   },
 });
 
-export async function authorized(
-  ctx: any,
-  input: {
-    userId: string;
-    permission: (typeof roles)[keyof typeof roles]["grants"][number];
-    resolvedGroupId: string | null;
-  },
-) {
-  if (input.resolvedGroupId === null) {
-    return;
-  }
-  await auth.member.require(ctx, {
-    userId: input.userId,
-    groupId: input.resolvedGroupId,
-    grants: [input.permission],
-  });
-}
-
 export { auth };
 export const { signIn, signOut, store } = auth;

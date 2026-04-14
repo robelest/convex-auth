@@ -54,9 +54,13 @@ test("group SSO control-plane HTTP endpoints are not exposed", async () => {
 test("group management RPC is available when group SSO helpers are mounted", async () => {
   const t = convexTest(schema);
   const asAdmin = await groupAdmin(t);
+  const { groupId } = await asAdmin.mutation(api.groups.createGroup, {
+    name: "Mounted group SSO API group",
+  });
   const created = await asAdmin.mutation(
     api.auth.group.createConnection,
     {
+      groupId,
       name: "Mounted group SSO API",
       slug: "mounted-group-api",
       protocol: "saml",
@@ -85,9 +89,13 @@ test("group management RPC is available when group SSO helpers are mounted", asy
 test("group metadata query returns service provider setup values", async () => {
   const t = convexTest(schema);
   const asAdmin = await groupAdmin(t);
+  const { groupId } = await asAdmin.mutation(api.groups.createGroup, {
+    name: "Mounted SAML metadata group",
+  });
   const created = await asAdmin.mutation(
     api.auth.group.createConnection,
     {
+      groupId,
       name: "Mounted saml metadata",
       slug: "mounted-saml-metadata",
       protocol: "saml",
@@ -111,10 +119,14 @@ test("disableWebhookEndpoint authorizes against the endpoint connection", async 
   const t = convexTest(schema);
   const asAdmin = await groupAdmin(t);
   const asOtherUser = await groupAdmin(t);
+  const { groupId } = await asAdmin.mutation(api.groups.createGroup, {
+    name: "Webhook auth group",
+  });
 
   const created = await asAdmin.mutation(
     api.auth.group.createConnection,
     {
+      groupId,
       name: "Webhook auth",
       slug: "webhook-auth",
       protocol: "oidc",

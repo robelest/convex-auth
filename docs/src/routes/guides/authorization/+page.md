@@ -167,7 +167,7 @@ const result = await auth.member.inspect(ctx, {
 });
 
 if (result.grants.includes("members.read")) {
-  // authorized
+  // allow read access
 }
 ```
 
@@ -195,21 +195,29 @@ same user and group.
 
 ## Group Connection mounted RPC
 
-When you mount group SSO RPC, keep the authorization callback and the initial
-admin role assignment in the same block:
+When you mount group SSO RPC, keep the access policy close to the mounted
+builder:
 
 ```ts
-export const groupApi = group(auth, {
-  admin: {
-    authorized,
-    roles: [roles.orgAdmin],
+export const groupApi = createAuthGroupSso(auth, {
+  permissions: {
+    sso: { require: [roles.orgAdmin] },
+    scim: { require: [roles.orgAdmin] },
+  },
+  access: async (ctx, input, requiredRoles) => {
+    if (!input.groupId) {
+      throw new Error("Group scope required");
+    }
+    await auth.member.require(ctx, {
+      userId: input.userId,
+      groupId: input.groupId,
+      roleIds: requiredRoles.map((role) => role.id),
+    });
   },
 });
 ```
 
-`admin.authorized` decides whether the caller may perform the requested admin
-operation. `admin.roles` are assigned to the creator when `createConnection`
-auto-creates a new group.
+`access` decides whether the caller may perform the requested admin operation.
 
 ## Account/User relationship
 

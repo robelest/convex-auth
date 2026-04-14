@@ -1,7 +1,7 @@
 import { api, components } from "@convex/_generated/api";
 import { auth } from "@convex/auth";
 import schema from "@convex/schema";
-import { group, scim, sso } from "@robelest/convex-auth/server";
+import { createAuthGroupSso, scim, sso } from "@robelest/convex-auth/server";
 import {
   getPublicOidcConfig,
   upsertProtocolConfig,
@@ -721,8 +721,8 @@ test("group saml.register persists config directly on group connection", async (
 test("mounted group SSO helpers expose only the narrowed public surface", () => {
   const mountedSso = sso(auth);
   const mountedScim = scim(auth);
-  const mountedGroup = group(auth, {
-    admin: { authorized: async () => {} },
+  const mountedGroup = createAuthGroupSso(auth, {
+    access: async () => {},
   });
 
   expect(Object.keys(mountedSso.admin.oidc).sort()).toEqual([

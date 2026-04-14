@@ -18,7 +18,7 @@ import {
   ssoSamlSpValidator,
   groupConnectionStatusValidator,
 } from "./sso/validators";
-import type { AuthAuthorizationConfig, AuthRoleId } from "./types";
+import type { AuthAuthorizationConfig } from "./types";
 
 type MountConnection = { _id: string; groupId: string };
 type DeliveryApi = {
@@ -33,20 +33,20 @@ type DeliveryApi = {
 /**
  * Permission identifiers used by mounted group SSO admin APIs.
  *
- * These permission strings are passed to your {@link SsoAuthorizer}
+ * These permission strings are passed to your {@link GroupSsoAccessHandler}
  * callback so app code can decide whether the current user may perform a
  * specific SSO or SCIM management operation.
  *
  * @example
  * ```ts
- * const authorized: SsoAuthorizer = async (ctx, input) => {
+ * const access: GroupSsoAccessHandler = async (ctx, input) => {
  *   if (input.permission === "sso.connection.create") {
  *     // Only org admins may create SSO connections
  *   }
  * };
  * ```
  */
-export type SsoAdminPermission =
+export type GroupSsoPermission =
   | "sso.connection.create"
   | "sso.connection.read"
   | "sso.connection.manage"
@@ -58,84 +58,111 @@ export type SsoAdminPermission =
   | "scim.manage";
 
 /**
- * Input passed to an {@link SsoAuthorizer}.
+ * Input passed to a mounted Group SSO access check.
  *
  * Contains the acting user, the requested permission, and the resolved
  * group connection/group scope for the operation being authorized.
  */
-export type SsoAdminAuthorizationInput = {
+export type GroupSsoAccessInput = {
   /** The signed-in user's ID performing the admin action. */
   userId: string;
-  /** The {@link SsoAdminPermission} being requested. */
-  permission: SsoAdminPermission;
+  /** The {@link GroupSsoPermission} being requested. */
+  permission: GroupSsoPermission;
   /** Connection document ID, if the operation targets a specific SSO connection. */
   connectionId?: string;
-  /** Group document ID, if explicitly provided by the caller. */
+  /** Resolved group document ID, when the operation has group scope. */
   groupId?: string;
-  /** Resolved group ID from the connection record, or `null` when no connection context. */
-  resolvedGroupId: string | null;
 };
 
 /**
- * App-defined authorization hook for mounted group SSO admin APIs.
+ * App-defined access hook for mounted group SSO admin APIs.
  *
  * Return `void` (or resolve) to allow the operation, or throw to deny it.
  *
  * @param ctx - Convex context with `ctx.auth` for identity checks.
- * @param input - The {@link SsoAdminAuthorizationInput} describing who is doing what.
+ * @param input - The {@link GroupSsoAccessInput} describing who is doing what.
  * @returns `void` to allow; throw to deny.
  *
  * @example
  * ```ts
- * import { SsoAuthorizer } from "@robelest/convex-auth/server";
+ * import { GroupSsoAccessHandler } from "@robelest/convex-auth/server";
  *
- * const authorized: SsoAuthorizer = async (ctx, input) => {
+ * const access: GroupSsoAccessHandler = async (ctx, input) => {
  *   const identity = await ctx.auth.getUserIdentity();
  *   if (!identity) throw new Error("Forbidden");
  *   // Allow all admin ops for the org owner
  * };
  * ```
  */
-export type SsoAuthorizer = (
+export type GroupSsoAccessHandler = (
   ctx: { auth: import("convex/server").Auth },
-  input: SsoAdminAuthorizationInput,
+  input: GroupSsoAccessInput,
 ) => Promise<void>;
 
-type RoleRef<TRoleId extends string> = { id: TRoleId };
-
-export type MountedGroupOptions<TRoleId extends string = string> = {
-  admin?: {
-    authorized?: SsoAuthorizer;
-    roles?: Array<TRoleId | RoleRef<TRoleId>>;
+export type GroupSsoAccessPermissions<TRequirement> = {
+  sso?: {
+    require?: readonly TRequirement[];
+    connection?: {
+      create?: readonly TRequirement[];
+      read?: readonly TRequirement[];
+      manage?: readonly TRequirement[];
+    };
+    domain?: {
+      manage?: readonly TRequirement[];
+    };
+    protocol?: {
+      manage?: readonly TRequirement[];
+    };
+    policy?: {
+      manage?: readonly TRequirement[];
+    };
+    audit?: {
+      read?: readonly TRequirement[];
+    };
+    webhook?: {
+      manage?: readonly TRequirement[];
+    };
+  };
+  scim?: {
+    require?: readonly TRequirement[];
+    manage?: readonly TRequirement[];
   };
 };
 
+export type GroupSsoResolvedAccessHandler<TRequirement> = (
+  ctx: { auth: import("convex/server").Auth },
+  input: GroupSsoAccessInput,
+  required: readonly TRequirement[],
+) => Promise<void>;
+
 /**
- * Configuration for {@link group}, {@link sso}, and {@link scim}
+ * Configuration for {@link createAuthGroupSso}, {@link sso}, and {@link scim}
  * mounted admin APIs.
- *
- * @typeParam TRoleId - Role IDs that may be assigned to group connection creators.
  *
  * @example
  * ```ts
- * import { group, GroupMountOptions } from "@robelest/convex-auth/server";
+ * import { createAuthGroupSso, CreateAuthGroupSsoOptions } from "@robelest/convex-auth/server";
  *
- * const options: GroupMountOptions = {
- *   admin: {
- *     authorized: async (ctx, input) => {
- *       // Verify the user has permission for `input.permission`
- *     },
- *     roles: ["admin", "owner"],
+ * const options: CreateAuthGroupSsoOptions<string> = {
+ *   permissions: {
+ *     sso: { require: ["workspace.sso.manage"] },
+ *     scim: { require: ["workspace.scim.manage"] },
+ *   },
+ *   access: async (_ctx, _input, _required) => {
+ *     // Verify the current user satisfies the resolved requirements.
  *   },
  * };
  * ```
  */
-export type GroupMountOptions<TRoleId extends string = string> = {
-  admin: {
-    authorized: SsoAuthorizer;
-    roles?: Array<TRoleId | RoleRef<TRoleId>>;
-  };
-};
+export type CreateAuthGroupSsoOptions<TRequirement = unknown> =
+  | {
+      access: GroupSsoAccessHandler;
+      permissions?: undefined;
+    }
+  | {
+      permissions: GroupSsoAccessPermissions<TRequirement>;
+      access: GroupSsoResolvedAccessHandler<TRequirement>;
+    };
 
 type MountedGroupTarget = {
   connectionId?: string;
@@ -151,12 +178,6 @@ function requireSignedInUser(auth: Pick<AuthApi, "context">) {
   };
 }
 
-function normalizeCreatorRoleIds<TRoleId extends string>(
-  roles?: Array<TRoleId | RoleRef<TRoleId>>,
-) {
-  return roles?.map((role) => (typeof role === "string" ? role : role.id));
-}
-
 async function resolveMountedGroupTarget(
   auth: Pick<AuthApi, "group">,
   ctx: { auth: import("convex/server").Auth },
@@ -166,7 +187,6 @@ async function resolveMountedGroupTarget(
     return {
       connectionId: target.connectionId,
       groupId: target.groupId,
-      resolvedGroupId: target.groupId,
     };
   }
 
@@ -184,7 +204,6 @@ async function resolveMountedGroupTarget(
     return {
       connectionId: connection._id,
       groupId: connection.groupId,
-      resolvedGroupId: connection.groupId,
     };
   }
 
@@ -202,26 +221,52 @@ async function resolveMountedGroupTarget(
     return {
       connectionId: resolved.connection._id,
       groupId: resolved.connection.groupId,
-      resolvedGroupId: resolved.connection.groupId,
     };
   }
 
-  return {
-    connectionId: undefined,
-    groupId: undefined,
-    resolvedGroupId: null,
-  };
+    return {
+      connectionId: undefined,
+      groupId: undefined,
+    };
 }
 
-function createMountedAdminAuthorizer(
+function resolveRequiredAccess<TRequirement>(
+  permissions: GroupSsoAccessPermissions<TRequirement>,
+  permission: GroupSsoPermission,
+): readonly TRequirement[] | undefined {
+  const ssoRequire = permissions.sso?.require;
+  const scimRequire = permissions.scim?.require;
+  switch (permission) {
+    case "sso.connection.create":
+      return permissions.sso?.connection?.create ?? ssoRequire;
+    case "sso.connection.read":
+      return permissions.sso?.connection?.read ?? ssoRequire;
+    case "sso.connection.manage":
+      return permissions.sso?.connection?.manage ?? ssoRequire;
+    case "sso.domain.manage":
+      return permissions.sso?.domain?.manage ?? ssoRequire;
+    case "sso.protocol.manage":
+      return permissions.sso?.protocol?.manage ?? ssoRequire;
+    case "sso.policy.manage":
+      return permissions.sso?.policy?.manage ?? ssoRequire;
+    case "sso.audit.read":
+      return permissions.sso?.audit?.read ?? ssoRequire;
+    case "sso.webhook.manage":
+      return permissions.sso?.webhook?.manage ?? ssoRequire;
+    case "scim.manage":
+      return permissions.scim?.manage ?? scimRequire;
+  }
+}
+
+function createMountedAdminAuthorizer<TRequirement>(
   auth: Pick<AuthApi, "context" | "group">,
-  options?: GroupMountOptions,
+  options?: CreateAuthGroupSsoOptions<TRequirement>,
 ) {
   const requireUserId = requireSignedInUser(auth);
 
   return async (
     ctx: { auth: import("convex/server").Auth },
-    permission: SsoAdminPermission,
+    permission: GroupSsoPermission,
     target: MountedGroupTarget = {},
   ) => {
     const userId = await requireUserId(ctx);
@@ -231,20 +276,30 @@ function createMountedAdminAuthorizer(
         message: "You must be signed in to perform this action.",
       });
     }
-    if (!options?.admin?.authorized) {
+    if (!options) {
       throw new ConvexError({
         code: "FORBIDDEN",
         message: "Access denied.",
       });
     }
     const resolved = await resolveMountedGroupTarget(auth, ctx, target);
-    await options.admin.authorized(ctx, {
+    const input = {
       userId,
       permission,
       connectionId: resolved.connectionId,
       groupId: resolved.groupId,
-      resolvedGroupId: resolved.resolvedGroupId,
-    });
+    } satisfies GroupSsoAccessInput;
+    if (options.permissions === undefined) {
+      await options.access(ctx, input);
+      return { userId, ...resolved };
+    }
+    const required = resolveRequiredAccess(options.permissions, permission);
+    if (required === undefined) {
+      throw new Error(
+        `Missing permissions entry for mounted Group SSO permission: ${permission}`,
+      );
+    }
+    await options.access(ctx, input, required);
     return { userId, ...resolved };
   };
 }
@@ -254,11 +309,11 @@ function createMountedAdminAuthorizer(
  * `convex/auth/sso/**` when they want client-callable group SSO APIs.
  *
  * `admin` is for tenant-admin control-plane operations and should be mounted
- * with an explicit authorization policy. `client` is for end-user sign-in
+ * with an explicit access policy. `client` is for end-user sign-in
  * helpers and does not require tenant-admin authorization.
  *
  * @param auth - Auth API subset providing `group`, `member`, `sso`, and `user` namespaces.
- * @param options - Optional admin authorization config. See {@link GroupMountOptions}.
+ * @param options - Optional admin access config. See {@link CreateAuthGroupSsoOptions}.
  * @typeParam TAuthorization - Optional authorization config for typed role IDs.
  * @returns An object with `admin` (connection CRUD, OIDC/SAML protocol config, policy,
  *   audit, webhooks, domain management) and `client` (signIn, metadata) namespaces.
@@ -269,11 +324,7 @@ function createMountedAdminAuthorizer(
  * import { sso } from "@robelest/convex-auth/server";
  * import { auth } from "../auth";
  *
- * const mounted = sso(auth, {
- *   admin: {
- *     authorized: async (ctx, input) => { /* check permissions *\/ },
- *   },
- * });
+ * const mounted = sso(auth, { access: async (_ctx, _input) => {} });
  *
  * export const createConnection = mounted.admin.connection.create;
  * export const signIn = mounted.client.signIn;
@@ -284,19 +335,19 @@ function createMountedAdminAuthorizer(
  */
 export function sso<
   TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+  TRequirement = unknown,
 >(
   auth: Pick<AuthApi<TAuthorization>, "context" | "group" | "member">,
-  options?: GroupMountOptions<AuthRoleId<TAuthorization>>,
+  options?: CreateAuthGroupSsoOptions<TRequirement>,
 ) {
   const authorize = createMountedAdminAuthorizer(auth, options);
-  const adminRoleIds = normalizeCreatorRoleIds(options?.admin?.roles);
 
   return {
     admin: {
       connection: {
         create: mutationGeneric({
           args: {
-            groupId: v.optional(v.string()),
+            groupId: v.string(),
             name: v.optional(v.string()),
             slug: v.optional(v.string()),
             protocol: v.union(v.literal("oidc"), v.literal("saml")),
@@ -304,31 +355,13 @@ export function sso<
             domain: v.optional(v.string()),
           },
           handler: async (ctx, args) => {
-            const authResult = await authorize(ctx, "sso.connection.create", {
+            await authorize(ctx, "sso.connection.create", {
               groupId: args.groupId,
             });
-            const { userId } = authResult;
-            const createsGroup = args.groupId === undefined;
-            const groupId =
-              args.groupId ??
-              (
-                await auth.group.create(ctx as never, {
-                  name: args.name?.trim() || args.slug?.trim() || "Group Connection",
-                  slug: args.slug,
-                  type: "group connection",
-                })
-              ).groupId;
-            if (createsGroup) {
-              await auth.member.create(ctx as never, {
-                groupId,
-                userId,
-                roleIds: adminRoleIds as AuthRoleId<TAuthorization>[] | undefined,
-              });
-            }
             const created = await auth.group.sso.connection.create(
               ctx as never,
               {
-                groupId,
+                groupId: args.groupId,
                 name: args.name,
                 slug: args.slug,
                 protocol: args.protocol,
@@ -344,8 +377,7 @@ export function sso<
             }
             return {
               ...created,
-              groupId,
-              createdGroup: createsGroup,
+              groupId: args.groupId,
             };
           },
         }),
@@ -891,7 +923,7 @@ export function sso<
  * `convex/auth/group/**` when they want client-callable group SSO admin APIs.
  *
  * @param auth - Auth API subset providing `group` and `context` namespaces.
- * @param options - Optional admin authorization config. See {@link GroupMountOptions}.
+ * @param options - Optional admin access config. See {@link CreateAuthGroupSsoOptions}.
  * @typeParam TAuthorization - Optional authorization config for typed role IDs.
  * @returns An object with `admin.configure`, `admin.get`, and `admin.validate` actions.
  *
@@ -901,11 +933,7 @@ export function sso<
  * import { scim } from "@robelest/convex-auth/server";
  * import { auth } from "../auth";
  *
- * const mounted = scim(auth, {
- *   admin: {
- *     authorized: async (ctx, input) => { /* check permissions *\/ },
- *   },
- * });
+ * const mounted = scim(auth, { access: async (_ctx, _input) => {} });
  *
  * export const configure = mounted.admin.configure;
  * export const get = mounted.admin.get;
@@ -917,9 +945,10 @@ export function sso<
  */
 export function scim<
   TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+  TRequirement = unknown,
 >(
   auth: Pick<AuthApi<TAuthorization>, "context" | "group">,
-  options?: GroupMountOptions<AuthRoleId<TAuthorization>>,
+  options?: CreateAuthGroupSsoOptions<TRequirement>,
 ) {
   const authorize = createMountedAdminAuthorizer(auth, options);
 
@@ -1006,11 +1035,11 @@ export function scim<
  *
  * Combines {@link sso} and {@link scim} into a single flat object with
  * all SSO connection, protocol, policy, audit, webhook, and SCIM
- * management functions plus end-user sign-in helpers. The `authorized`
- * callback is required for all admin operations.
+ * management functions plus end-user sign-in helpers. The `access`
+ * config is required for all admin operations.
  *
  * @param auth - Auth API subset providing `group`, `member`, and `context` namespaces.
- * @param options - Required {@link GroupMountOptions} with an `admin.authorized` callback.
+ * @param options - Required {@link CreateAuthGroupSsoOptions} with an `access` policy.
  * @typeParam TAuthorization - Optional authorization config for typed role IDs.
  * @returns A flat object with all group connection management functions (e.g. `createConnection`,
  *   `configureOidc`, `configureScim`, `signIn`, etc.).
@@ -1018,14 +1047,11 @@ export function scim<
  * @example
  * ```ts
  * // convex/auth/group.ts
- * import { group connection } from "@robelest/convex-auth/server";
+ * import { createAuthGroupSso } from "@robelest/convex-auth/server";
  * import { auth } from "../auth";
  *
- * const api = group(auth, {
- *   admin: {
- *     authorized: async (ctx, input) => { /* check permissions *\/ },
- *     roles: ["admin"],
- *   },
+ * const api = createAuthGroupSso(auth, {
+ *   access: async (_ctx, _input) => {},
  * });
  *
  * export const createConnection = api.createConnection;
@@ -1036,18 +1062,15 @@ export function scim<
  * @see {@link sso}
  * @see {@link scim}
  */
-export function group<
+export function createAuthGroupSso<
   TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+  TRequirement = unknown,
 >(
   auth: Pick<AuthApi<TAuthorization>, "context" | "group" | "member">,
-  options: GroupMountOptions<AuthRoleId<TAuthorization>>,
+  options: CreateAuthGroupSsoOptions<TRequirement>,
 ) {
-  const mountedSso = sso(auth, {
-    admin: options.admin,
-  });
-  const mountedScim = scim(auth, {
-    admin: { authorized: options.admin.authorized },
-  });
+  const mountedSso = sso(auth, options);
+  const mountedScim = scim(auth, options);
 
   return {
     createConnection: mountedSso.admin.connection.create,

@@ -49,10 +49,10 @@ Create one app-owned file and export only what your app needs:
 
 ```ts
 // convex/auth/group.ts
-import { group } from "@robelest/convex-auth/server";
+import { createAuthGroupSso } from "@robelest/convex-auth/server";
 
-import { auth, authorized } from "../auth";
-import { roles } from "../authorization";
+import { auth } from "../auth";
+import { roles } from "../roles";
 
 export const {
   createConnection,
@@ -84,10 +84,20 @@ export const {
   validateScim,
   signIn,
   metadata,
-} = group(auth, {
-  admin: {
-    authorized,
-    roles: [roles.orgAdmin],
+} = createAuthGroupSso(auth, {
+  permissions: {
+    sso: { require: [roles.orgAdmin] },
+    scim: { require: [roles.orgAdmin] },
+  },
+  access: async (ctx, input, requiredRoles) => {
+    if (!input.groupId) {
+      throw new Error("Group scope required");
+    }
+    await auth.member.require(ctx, {
+      userId: input.userId,
+      groupId: input.groupId,
+      roleIds: requiredRoles.map((role) => role.id),
+    });
   },
 });
 ```
@@ -123,46 +133,44 @@ const signIn = useQuery(api.auth.group.signIn, {
 
 ## Authorization
 
-`group(auth, { admin: { authorized, roles? } })` requires an app-owned
-authorization callback for admin operations.
-
-When `createConnection` creates a new group automatically, `admin.roles` are
-assigned to the creator's initial membership in that group.
+`createAuthGroupSso(auth, { access })` requires an app-owned access policy for
+admin operations.
 
 See [Authorization Patterns](/guides/authorization) for how role objects and
 grant checks fit into this mounted group SSO pattern.
 
-The callback receives a normalized authorization input, including:
+The access check receives a normalized access input, including:
 
 - `userId`
 - `permission`
 - `connectionId?`
 - `groupId?`
-- `resolvedGroupId`
 
 Example:
 
 ```ts
-// convex/auth.ts
-export async function authorized(
-  ctx: any,
-  input: {
-    userId: string;
-    permission: string;
-    resolvedGroupId: string | null;
+// convex/auth/group.ts
+export const groupApi = createAuthGroupSso(auth, {
+  permissions: {
+    sso: { require: [roles.orgAdmin] },
+    scim: { require: [roles.orgAdmin] },
   },
-) {
-  if (input.resolvedGroupId === null) {
-    return;
-  }
+  access: async (ctx, input, requiredRoles) => {
+    if (!input.groupId) {
+      throw new Error("Group scope required");
+    }
 
-  await auth.member.require(ctx, {
-    userId: input.userId,
-    groupId: input.resolvedGroupId,
-    grants: [input.permission],
-  });
-}
+    await auth.member.require(ctx, {
+      userId: input.userId,
+      groupId: input.groupId,
+      roleIds: requiredRoles.map((role) => role.id),
+    });
+  },
+});
 ```
+
+`createConnection` requires a `groupId`; creating the group remains a separate
+app concern via `auth.group.create(...)` or your own app-owned wrapper.
 
 ## What gets exported
 
