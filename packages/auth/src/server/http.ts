@@ -239,14 +239,6 @@ async function resolveHttpAuthContext(
   ctx: HttpContextCtx,
   request: Request,
 ): Promise<HttpAuthContext | null> {
-  const authHeader = request.headers.get("Authorization");
-  if (authHeader?.startsWith("Bearer sk_")) {
-    const keyContext = await getHttpKeyContext(auth, ctx, request);
-    if (keyContext !== null) {
-      return keyContext;
-    }
-  }
-
   const sessionUserId = await getSessionUserId(ctx);
   if (sessionUserId !== null) {
     const authContext = await getAuthContextForUser(auth, ctx, sessionUserId);
