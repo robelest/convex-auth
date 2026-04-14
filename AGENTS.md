@@ -10,7 +10,7 @@ Monorepo for `@robelest/convex-auth` — a Convex authentication library. Uses
 | ------------------ | --------------------------------------------------------------- |
 | `packages/auth`    | Core library (server, client, providers, CLI, Convex component) |
 | `tests/`           | Vitest test suite (convex, node, and samlify projects)          |
-| `packages/samlify` | Local SAML runtime fork used for group SSO work           |
+| `packages/samlify` | Local SAML runtime fork used for group SSO work                 |
 | `convex/`          | App-level Convex backend functions                              |
 
 ## Build / Lint / Test Commands
@@ -178,8 +178,7 @@ use options objects.
 ## Testing Conventions
 
 - **Framework**: Vitest + convex-test + edge-runtime environment.
-- Tests live under `tests/` (root feature tests and
-  `tests/group/*.test.ts`).
+- Tests live under `tests/` (root feature tests and `tests/group/*.test.ts`).
 - Use `test()` directly (no `describe()` blocks).
 - Each test creates an isolated environment via `convexTest(schema)`.
 - Call Convex functions: `t.action(api.auth.signIn, { ... })`.

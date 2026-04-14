@@ -57,22 +57,23 @@ import { roles } from "../roles";
 import { useAction, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 
-export const { createConnection, configureOidc, configureScim } = createAuthGroupSso(auth, {
-  permissions: {
-    sso: { require: [roles.orgAdmin] },
-    scim: { require: [roles.orgAdmin] },
-  },
-  access: async (ctx, input, requiredRoles) => {
-    if (!input.groupId) {
-      throw new Error("Group scope required");
-    }
-    await auth.member.require(ctx, {
-      userId: input.userId,
-      groupId: input.groupId,
-      roleIds: requiredRoles.map((role) => role.id),
-    });
-  },
-});
+export const { createConnection, configureOidc, configureScim } =
+  createAuthGroupSso(auth, {
+    permissions: {
+      sso: { require: [roles.orgAdmin] },
+      scim: { require: [roles.orgAdmin] },
+    },
+    access: async (ctx, input, requiredRoles) => {
+      if (!input.groupId) {
+        throw new Error("Group scope required");
+      }
+      await auth.member.require(ctx, {
+        userId: input.userId,
+        groupId: input.groupId,
+        roleIds: requiredRoles.map((role) => role.id),
+      });
+    },
+  });
 
 const createConnection = useAction(api.auth.group.createConnection);
 const configureOidc = useAction(api.auth.group.configureOidc);

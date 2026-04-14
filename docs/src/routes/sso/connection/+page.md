@@ -11,9 +11,9 @@ description:
 
 # auth.group.sso.connection
 
-The `auth.group.sso.connection` namespace manages group SSO records. Each
-record links a group (tenant) to an identity provider configuration. It is also
-the root namespace for group connection domain management through
+The `auth.group.sso.connection` namespace manages group SSO records. Each record
+links a group (tenant) to an identity provider configuration. It is also the
+root namespace for group connection domain management through
 [`auth.group.sso.connection.domain.*`](/sso/connection/). The returned
 `connectionId` is passed to the rest of the group SSO APIs.
 
@@ -39,14 +39,14 @@ the root namespace for group connection domain management through
 The [`auth.group.sso.connection.domain`](/sso/connection/) namespace manages
 domains owned by the connection.
 
-| Method                 | Signature                         | Returns                     | Description                                                                 |
-| ---------------------- | --------------------------------- | --------------------------- | --------------------------------------------------------------------------- |
-| `list`                 | `(ctx, connectionId)`             | Domain list                 | Lists domains attached to the connection.                                   |
+| Method                 | Signature                         | Returns                     | Description                                                                     |
+| ---------------------- | --------------------------------- | --------------------------- | ------------------------------------------------------------------------------- |
+| `list`                 | `(ctx, connectionId)`             | Domain list                 | Lists domains attached to the connection.                                       |
 | `status`               | `(ctx, connectionId)`             | Onboarding status           | Returns trust status, pending challenges, warnings, and recommended next steps. |
-| `validate`             | `(ctx, connectionId)`             | Status info                 | Returns onboarding diagnostics for domains.                                 |
-| `set`                  | `(ctx, connectionId, domains)`    | `{ connectionId, domains }` | Replaces the connection's full domain set and returns the canonical result. |
-| `verification.request` | `(ctx, { connectionId, domain })` | Verification challenge      | Issues a DNS TXT verification challenge for an attached domain.             |
-| `verification.confirm` | `(ctx, { connectionId, domain })` | Confirmation result         | Resolves the TXT record and marks the domain verified on success.           |
+| `validate`             | `(ctx, connectionId)`             | Status info                 | Returns onboarding diagnostics for domains.                                     |
+| `set`                  | `(ctx, connectionId, domains)`    | `{ connectionId, domains }` | Replaces the connection's full domain set and returns the canonical result.     |
+| `verification.request` | `(ctx, { connectionId, domain })` | Verification challenge      | Issues a DNS TXT verification challenge for an attached domain.                 |
+| `verification.confirm` | `(ctx, { connectionId, domain })` | Confirmation result         | Resolves the TXT record and marks the domain verified on success.               |
 
 ## Example
 
@@ -107,8 +107,8 @@ Verified domains establish trusted ownership for a connection.
   the connection has verified domain ownership
 
 Use `domain.status(...)` when building onboarding UIs. It returns the current
-primary domain, verified domains, pending DNS challenges, warnings, and the
-next recommended admin steps.
+primary domain, verified domains, pending DNS challenges, warnings, and the next
+recommended admin steps.
 
 `verification.request(...)` also acts as the renewal path for expired TXT
 challenges.

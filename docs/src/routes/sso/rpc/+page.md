@@ -1,8 +1,7 @@
 ---
 title: Group SSO RPC
 description:
-  App-owned client-callable group SSO RPC built from convex-auth server
-  helpers.
+  App-owned client-callable group SSO RPC built from convex-auth server helpers.
 ---
 
 <svelte:head>
@@ -12,14 +11,14 @@ description:
 
 # Group SSO RPC
 
-`api.auth.group.*` is an optional, app-owned RPC surface for group
-admin UI and group SSO sign-in flows.
+`api.auth.group.*` is an optional, app-owned RPC surface for group admin UI and
+group SSO sign-in flows.
 
 It is **not** created automatically by `createAuth(...)`.
 
 - `auth.group.sso.*` is the server-side helper namespace
-- `api.auth.group.*` exists only after your app exports Convex functions
-  from a file such as `convex/auth/group.ts`
+- `api.auth.group.*` exists only after your app exports Convex functions from a
+  file such as `convex/auth/group.ts`
 
 ## When you need it
 
@@ -32,7 +31,8 @@ Use `api.auth.group.*` when your app needs client-callable functions for:
 
 The mounted RPC layer mirrors the server helper model:
 
-- protocol namespaces (`oidc`, `saml`, `scim`) configure how external identity is read
+- protocol namespaces (`oidc`, `saml`, `scim`) configure how external identity
+  is read
 - `policy` decides how users and memberships are provisioned
 - connection and domain helpers manage trust and onboarding state
 
@@ -109,8 +109,8 @@ The mounted API keeps the same mental model as the server helpers:
 - `updatePolicy` controls how that identity is applied
 - domain helpers manage trust and onboarding
 
-Top-level `sso.hooks` remain server-only configuration on `createAuth(...)`; they
-are not part of the mounted `api.auth.group.*` RPC surface.
+Top-level `sso.hooks` remain server-only configuration on `createAuth(...)`;
+they are not part of the mounted `api.auth.group.*` RPC surface.
 
 ## Client usage
 
@@ -274,8 +274,8 @@ helpers:
 - `auth.group.sso.metadata`
 - `auth.group.sso.scim.*`
 
-If you need a custom public shape, skip `group(...)` and expose your own
-Convex functions directly from those server helpers.
+If you need a custom public shape, skip `group(...)` and expose your own Convex
+functions directly from those server helpers.
 
 ## Payload shapes
 

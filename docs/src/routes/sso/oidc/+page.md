@@ -18,8 +18,8 @@ for SSO connections.
 > This page documents the **server-side helper API**:
 > [`auth.group.sso.oidc.*`](/sso/oidc/) plus
 > [`auth.group.sso.signIn(...)`](/sso/rpc/). Public RPC like
-> [`api.auth.group.configureOidc`](/sso/rpc/) only exists after your app
-> exposes app-owned group SSO wrappers.
+> [`api.auth.group.configureOidc`](/sso/rpc/) only exists after your app exposes
+> app-owned group SSO wrappers.
 
 Use the `connectionId` returned by
 [`auth.group.sso.connection.create(...)`](/sso/connection/) when configuring
@@ -27,13 +27,13 @@ OIDC.
 
 ## Methods
 
-| Method                          | Signature                                                                                                      | Returns                   | Description                                                                                                      |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `auth.group.sso.oidc.configure` | `(ctx, { connectionId, discovery, client, request?, security?, profile? })` | OIDC config document      | Configures OIDC settings for a connection and stores the normalized config.                                      |
-| `auth.group.sso.oidc.get`       | `(ctx, connectionId)`                                                                                          | OIDC config document      | Returns the current OIDC configuration for a connection.                                                         |
-| `auth.group.sso.oidc.status`    | `(ctx, connectionId)`                                                                                          | `{ configured, ready, ... }` | Returns a lightweight readiness summary for a connection.                                                        |
-| `auth.group.sso.oidc.validate`  | `(ctx, connectionId)`                                                                                          | `{ checks: [...] }`       | Validates that the OIDC configuration is complete and the IdP is reachable. Each check has its own `ok` field.   |
-| `auth.group.sso.signIn`         | `(ctx, { connectionId?, email?, domain?, redirectTo?, loginHint? })`                                           | Sign-in route description | Resolves the client-facing OIDC sign-in route for a connection. Domain/email routing requires a verified domain. |
+| Method                          | Signature                                                                   | Returns                      | Description                                                                                                      |
+| ------------------------------- | --------------------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `auth.group.sso.oidc.configure` | `(ctx, { connectionId, discovery, client, request?, security?, profile? })` | OIDC config document         | Configures OIDC settings for a connection and stores the normalized config.                                      |
+| `auth.group.sso.oidc.get`       | `(ctx, connectionId)`                                                       | OIDC config document         | Returns the current OIDC configuration for a connection.                                                         |
+| `auth.group.sso.oidc.status`    | `(ctx, connectionId)`                                                       | `{ configured, ready, ... }` | Returns a lightweight readiness summary for a connection.                                                        |
+| `auth.group.sso.oidc.validate`  | `(ctx, connectionId)`                                                       | `{ checks: [...] }`          | Validates that the OIDC configuration is complete and the IdP is reachable. Each check has its own `ok` field.   |
+| `auth.group.sso.signIn`         | `(ctx, { connectionId?, email?, domain?, redirectTo?, loginHint? })`        | Sign-in route description    | Resolves the client-facing OIDC sign-in route for a connection. Domain/email routing requires a verified domain. |
 
 `clientSecret` is write-only. Configure it through
 [`auth.group.sso.oidc.configure(...)`](/sso/oidc/), but expect
@@ -86,7 +86,8 @@ await auth.group.sso.oidc.configure(ctx, {
 
 ## Claim mapping
 
-Use `profile.mapping` to override the core OIDC claims used for the built-in profile:
+Use `profile.mapping` to override the core OIDC claims used for the built-in
+profile:
 
 ```ts
 await auth.group.sso.oidc.configure(ctx, {
@@ -132,8 +133,9 @@ await auth.group.sso.oidc.configure(ctx, {
 The keys are field names on your user document; the values are the claim names
 from the IdP's ID token.
 
-The normalized OIDC profile then flows into [`auth.group.sso.policy`](/sso/policy/)
-and optional `sso.hooks`, so extraction and provisioning stay separate.
+The normalized OIDC profile then flows into
+[`auth.group.sso.policy`](/sso/policy/) and optional `sso.hooks`, so extraction
+and provisioning stay separate.
 
 ## Login hints
 

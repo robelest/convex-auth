@@ -12,9 +12,9 @@ description:
 
 # Context Enrichment
 
-Eliminate per-handler auth boilerplate with `auth.ctx()`. Set up once, and
-every query/mutation gets `ctx.auth.userId`, `ctx.auth.groupId`,
-`ctx.auth.role`, and `ctx.auth.grants` automatically.
+Eliminate per-handler auth boilerplate with `auth.ctx()`. Set up once, and every
+query/mutation gets `ctx.auth.userId`, `ctx.auth.groupId`, `ctx.auth.role`, and
+`ctx.auth.grants` automatically.
 
 Requires [`convex-helpers`](https://github.com/get-convex/convex-helpers).
 
@@ -67,10 +67,7 @@ The canonical `convex-auth` integration still only needs:
 ## Optional auth (public routes)
 
 ```ts
-export const publicQuery = customQuery(
-  rawQuery,
-  auth.ctx({ optional: true }),
-);
+export const publicQuery = customQuery(rawQuery, auth.ctx({ optional: true }));
 // ctx.auth.userId is null and ctx.auth.grants is [] when unauthenticated
 ```
 
@@ -109,8 +106,8 @@ tables.
 
 ### Why this needs a hook
 
-`auth.ctx()` captures the `auth` object at module load time and resolves auth from
-the component's `User`, `Member`, and group state tables. In `convex-test`,
+`auth.ctx()` captures the `auth` object at module load time and resolves auth
+from the component's `User`, `Member`, and group state tables. In `convex-test`,
 those component tables are empty, so resolution always returns an
 unauthenticated state even if you mock the auth module import.
 

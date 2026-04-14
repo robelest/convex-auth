@@ -15,8 +15,8 @@ group SSO admin tooling.
 
 > This page documents the **server-side helper API**:
 > [`auth.group.sso.audit.*`](/sso/audit/). Public RPC like
-> [`api.auth.group.listAudit`](/sso/rpc/) only exists after your app
-> exposes app-owned group SSO wrappers.
+> [`api.auth.group.listAudit`](/sso/rpc/) only exists after your app exposes
+> app-owned group SSO wrappers.
 
 ## Methods
 

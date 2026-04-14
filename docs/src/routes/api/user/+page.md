@@ -15,7 +15,8 @@ The `auth.user` namespace provides methods for managing users. All methods
 require a Convex context (`ctx`) as the first argument.
 
 In normal app code, prefer `auth.ctx()` / `ctx.auth.userId` for the current
-signed-in user. Raw mixed-auth HTTP handlers should use `auth.http.context(...)`.
+signed-in user. Raw mixed-auth HTTP handlers should use
+`auth.http.context(...)`.
 
 The `ctx.auth` examples on this page assume you created auth-aware builders such
 as `authQuery`, `authMutation`, or `authAction` with `auth.ctx()` in

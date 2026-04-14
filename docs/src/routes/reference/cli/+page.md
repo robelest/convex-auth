@@ -40,8 +40,8 @@ for explicit or self-hosted targets.
 
 ## Group Connection API
 
-Group SSO RPC is app-owned. Create a single file like
-`convex/auth/group.ts` and export only the helpers your app needs:
+Group SSO RPC is app-owned. Create a single file like `convex/auth/group.ts` and
+export only the helpers your app needs:
 
 ```ts
 import { createAuthGroupSso } from "@robelest/convex-auth/server";

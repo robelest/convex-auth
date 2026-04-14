@@ -121,19 +121,19 @@ export const mutation = convex.mutation().use(withRequiredAuth).extend(WithZod);
 
 ## Providers
 
-| Provider          | Import                                                                  |
-| ----------------- | ----------------------------------------------------------------------- |
-| Google            | `import { google } from "@robelest/convex-auth/providers"`              |
-| GitHub            | `import { github } from "@robelest/convex-auth/providers"`              |
-| Apple             | `import { apple } from "@robelest/convex-auth/providers"`                |
-| Microsoft         | `import { microsoft } from "@robelest/convex-auth/providers"`            |
-| Password          | `import { password } from "@robelest/convex-auth/providers"`            |
-| Passkey           | `import { passkey } from "@robelest/convex-auth/providers"`             |
-| TOTP              | `import { totp } from "@robelest/convex-auth/providers"`                |
-| Phone/SMS         | `import { phone } from "@robelest/convex-auth/providers"`               |
-| Anonymous         | `import { anonymous } from "@robelest/convex-auth/providers"`           |
-| Device (RFC 8628) | `import { device } from "@robelest/convex-auth/providers"`              |
-| Custom OAuth      | `import { custom } from "@robelest/convex-auth/providers"`              |
+| Provider          | Import                                                        |
+| ----------------- | ------------------------------------------------------------- |
+| Google            | `import { google } from "@robelest/convex-auth/providers"`    |
+| GitHub            | `import { github } from "@robelest/convex-auth/providers"`    |
+| Apple             | `import { apple } from "@robelest/convex-auth/providers"`     |
+| Microsoft         | `import { microsoft } from "@robelest/convex-auth/providers"` |
+| Password          | `import { password } from "@robelest/convex-auth/providers"`  |
+| Passkey           | `import { passkey } from "@robelest/convex-auth/providers"`   |
+| TOTP              | `import { totp } from "@robelest/convex-auth/providers"`      |
+| Phone/SMS         | `import { phone } from "@robelest/convex-auth/providers"`     |
+| Anonymous         | `import { anonymous } from "@robelest/convex-auth/providers"` |
+| Device (RFC 8628) | `import { device } from "@robelest/convex-auth/providers"`    |
+| Custom OAuth      | `import { custom } from "@robelest/convex-auth/providers"`    |
 
 OAuth provider-specific setup details live in the docs:
 

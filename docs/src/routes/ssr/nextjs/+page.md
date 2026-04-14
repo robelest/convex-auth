@@ -115,5 +115,5 @@ export default async function RootLayout({
 ```
 
 `AuthProvider` is your client component that creates the auth client with
-`client({ convex, proxyPath: "/api/auth", tokenSeed: token })` from `@robelest/convex-auth/browser` and exposes it
-to the rest of your React tree.
+`client({ convex, proxyPath: "/api/auth", tokenSeed: token })` from
+`@robelest/convex-auth/browser` and exposes it to the rest of your React tree.

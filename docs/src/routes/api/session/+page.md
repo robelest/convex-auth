@@ -17,12 +17,12 @@ backed builders such as `authQuery`, `authMutation`, or `authAction`.
 
 ## Methods
 
-| Method       | Signature                    | Returns                   | Description                                                                                           |
-| ------------ | ---------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `current`    | `(ctx)`                      | `Id<"Session"> \| null` | Returns the current session ID from the JWT, or `null` if not authenticated.                          |
-| `invalidate` | `(ctx, { userId, except? })` | `{ userId, except }`      | Invalidates all sessions for a user. Pass `except` as an array of session IDs to keep those active. |
-| `get`        | `(ctx, sessionId)`           | `Doc<"Session"> \| null` | Fetches a session document by ID.                                                                     |
-| `list`       | `(ctx, { userId })`          | `Doc<"Session">[]`       | Lists all sessions for a user.                                                                        |
+| Method       | Signature                    | Returns                  | Description                                                                                         |
+| ------------ | ---------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------- |
+| `current`    | `(ctx)`                      | `Id<"Session"> \| null`  | Returns the current session ID from the JWT, or `null` if not authenticated.                        |
+| `invalidate` | `(ctx, { userId, except? })` | `{ userId, except }`     | Invalidates all sessions for a user. Pass `except` as an array of session IDs to keep those active. |
+| `get`        | `(ctx, sessionId)`           | `Doc<"Session"> \| null` | Fetches a session document by ID.                                                                   |
+| `list`       | `(ctx, { userId })`          | `Doc<"Session">[]`       | Lists all sessions for a user.                                                                      |
 
 ## Examples
 

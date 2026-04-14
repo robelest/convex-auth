@@ -84,8 +84,8 @@ The `client()` function from `@robelest/convex-auth/browser` creates the
 client-side auth state manager. It works with any Convex client transport.
 
 Use `@robelest/convex-auth/browser` for browser apps and SSR frameworks because
-it wires in browser defaults like URL handling, local storage, sync, and
-passkey support. Use `@robelest/convex-auth/client` only when you need the
+it wires in browser defaults like URL handling, local storage, sync, and passkey
+support. Use `@robelest/convex-auth/client` only when you need the
 framework-agnostic client in a non-browser runtime or want to provide those
 runtime pieces yourself.
 

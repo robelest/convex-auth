@@ -44,16 +44,16 @@ try {
 
 ## Auth errors
 
-| Code                      | Description                      |
-| ------------------------- | -------------------------------- |
-| `NOT_SIGNED_IN`           | No valid session                 |
+| Code                      | Description                       |
+| ------------------------- | --------------------------------- |
+| `NOT_SIGNED_IN`           | No valid session                  |
 | `NOT_A_MEMBER`            | User is not a member of the group |
 | `MISSING_GRANTS`          | User is missing required grants   |
-| `ACCOUNT_NOT_FOUND`       | Account does not exist           |
-| `USER_NOT_FOUND`          | User does not exist              |
-| `INVALID_PARAMETERS`      | Bad input arguments              |
-| `INTERNAL_ERROR`          | Unexpected server error          |
-| `PROVIDER_NOT_CONFIGURED` | Provider not in config           |
+| `ACCOUNT_NOT_FOUND`       | Account does not exist            |
+| `USER_NOT_FOUND`          | User does not exist               |
+| `INVALID_PARAMETERS`      | Bad input arguments               |
+| `INTERNAL_ERROR`          | Unexpected server error           |
+| `PROVIDER_NOT_CONFIGURED` | Provider not in config            |
 
 Mounted group SSO admin APIs may also throw `FORBIDDEN` when the app-level
 authorization callback rejects the caller.

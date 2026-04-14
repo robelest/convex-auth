@@ -15,8 +15,8 @@ SSO-related events.
 
 > This page documents the **server-side helper API**:
 > [`auth.group.sso.webhook.*`](/sso/webhook/). Public RPC like
-> [`api.auth.group.createWebhookEndpoint`](/sso/rpc/) only exists after
-> your app exposes app-owned group SSO wrappers.
+> [`api.auth.group.createWebhookEndpoint`](/sso/rpc/) only exists after your app
+> exposes app-owned group SSO wrappers.
 
 ## Endpoint methods
 

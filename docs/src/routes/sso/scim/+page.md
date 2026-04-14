@@ -12,20 +12,20 @@ description:
 
 # auth.group.sso.scim
 
-The `auth.group.sso.scim` namespace configures SCIM 2.0 provisioning for automatic
-user and group synchronization from an identity provider's directory.
+The `auth.group.sso.scim` namespace configures SCIM 2.0 provisioning for
+automatic user and group synchronization from an identity provider's directory.
 
 > This page documents the **server-side helper API**:
 > [`auth.group.sso.scim.*`](/sso/scim/). Public RPC like
-> [`api.auth.group.configureScim`](/sso/rpc/) only exists after your app
-> exposes app-owned group SSO wrappers.
+> [`api.auth.group.configureScim`](/sso/rpc/) only exists after your app exposes
+> app-owned group SSO wrappers.
 
 Use the `connectionId` returned by
 [`auth.group.sso.connection.create(...)`](/sso/connection/) when configuring
 SCIM.
 
-The SCIM base URL is derived from your app's public site URL and the
-connection ID. It is not an app-managed override.
+The SCIM base URL is derived from your app's public site URL and the connection
+ID. It is not an app-managed override.
 
 The current SCIM surface is intentionally vendor-agnostic and focused on the
 common interoperability subset:
@@ -39,12 +39,12 @@ common interoperability subset:
 
 ## Methods
 
-| Method      | Signature                                     | Returns                                       | Description                                                                           |
-| ----------- | --------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `configure` | `(ctx, { connectionId, status?, security?, profile? })` | `{ connectionId, token, configId, basePath }` | Configures SCIM provisioning and returns the SCIM bearer token once.                  |
-| `get`       | `(ctx, connectionId)`                         | SCIM config document                          | Returns the current SCIM configuration for a connection.                              |
-| `status`    | `(ctx, connectionId)`                         | `{ configured, ready, ... }`                 | Returns a lightweight readiness summary for a connection.                             |
-| `validate`  | `(ctx, connectionId)`                         | `{ checks: [...], capabilities }`             | Validates that the SCIM configuration is complete and returns the supported SCIM capability subset. |
+| Method      | Signature                                               | Returns                                       | Description                                                                                         |
+| ----------- | ------------------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `configure` | `(ctx, { connectionId, status?, security?, profile? })` | `{ connectionId, token, configId, basePath }` | Configures SCIM provisioning and returns the SCIM bearer token once.                                |
+| `get`       | `(ctx, connectionId)`                                   | SCIM config document                          | Returns the current SCIM configuration for a connection.                                            |
+| `status`    | `(ctx, connectionId)`                                   | `{ configured, ready, ... }`                  | Returns a lightweight readiness summary for a connection.                                           |
+| `validate`  | `(ctx, connectionId)`                                   | `{ checks: [...], capabilities }`             | Validates that the SCIM configuration is complete and returns the supported SCIM capability subset. |
 
 ## Example
 
@@ -77,11 +77,12 @@ const config = await auth.group.sso.scim.get(ctx, connectionId);
 // token         — the authorization token for SCIM requests
 ```
 
-The normalized SCIM profile then flows into [`auth.group.sso.policy`](/sso/policy/)
-and optional `sso.hooks`, so extraction stays separate from provisioning rules.
+The normalized SCIM profile then flows into
+[`auth.group.sso.policy`](/sso/policy/) and optional `sso.hooks`, so extraction
+stays separate from provisioning rules.
 
-When `profile.mapping.groups` or `profile.mapping.roles` are configured, external
-values can map into membership `roleIds` through policy.
+When `profile.mapping.groups` or `profile.mapping.roles` are configured,
+external values can map into membership `roleIds` through policy.
 
 ## Status
 

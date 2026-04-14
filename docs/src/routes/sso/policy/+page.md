@@ -1,8 +1,8 @@
 ---
 title: auth.group.sso.policy
 description:
-  Group policy management — centralize account linking, SCIM reuse, JIT,
-  and deprovision behavior.
+  Group policy management — centralize account linking, SCIM reuse, JIT, and
+  deprovision behavior.
 ---
 
 <svelte:head>
@@ -19,12 +19,11 @@ and how deprovisioning behaves.
 
 > This page documents the **server-side helper API**:
 > [`auth.group.sso.policy.*`](/sso/policy/). Public RPC like
-> [`api.auth.group.updatePolicy`](/sso/rpc/) only exists after your app
-> exposes app-owned group SSO wrappers.
+> [`api.auth.group.updatePolicy`](/sso/rpc/) only exists after your app exposes
+> app-owned group SSO wrappers.
 
-Connector mechanics stay in
-[`auth.group.sso.oidc`](/sso/oidc/), [`auth.group.sso.saml`](/sso/saml/), and
-[`auth.group.sso.scim`](/sso/scim/).
+Connector mechanics stay in [`auth.group.sso.oidc`](/sso/oidc/),
+[`auth.group.sso.saml`](/sso/saml/), and [`auth.group.sso.scim`](/sso/scim/).
 
 `auth.group.sso.policy` is where you define how normalized external identity is
 applied to your app:
@@ -38,11 +37,11 @@ applied to your app:
 
 ## Methods
 
-| Method     | Signature                    | Returns             | Description                                                                        |
-| ---------- | ---------------------------- | ------------------- | ---------------------------------------------------------------------------------- |
-| `get`      | `(ctx, groupId)`             | `GroupConnectionPolicy` | Returns the canonical policy for a group.                                      |
-| `update`   | `(ctx, groupId, patch)`      | `GroupConnectionPolicy` | Applies a partial update and returns the new policy.                            |
-| `validate` | `(ctx, groupId)`             | `{ checks: [...] }` | Validates the policy document for a group. Each check has its own `ok` field.      |
+| Method     | Signature               | Returns                 | Description                                                                   |
+| ---------- | ----------------------- | ----------------------- | ----------------------------------------------------------------------------- |
+| `get`      | `(ctx, groupId)`        | `GroupConnectionPolicy` | Returns the canonical policy for a group.                                     |
+| `update`   | `(ctx, groupId, patch)` | `GroupConnectionPolicy` | Applies a partial update and returns the new policy.                          |
+| `validate` | `(ctx, groupId)`        | `{ checks: [...] }`     | Validates the policy document for a group. Each check has its own `ok` field. |
 
 ## Default policy
 
@@ -122,9 +121,9 @@ SCIM bearer tokens remain in their respective
 [`auth.group.sso.scim`](/sso/scim/) configuration APIs.
 
 `provisioning.groups` and `provisioning.roles` currently map external protocol
-values into membership `roleIds`. They do not create or mirror nested app
-groups automatically.
+values into membership `roleIds`. They do not create or mirror nested app groups
+automatically.
 
-If you need app-specific tweaks after protocol extraction but before provisioning,
-use top-level `sso.hooks` on `createAuth(...)` rather than overloading policy
-with transport-specific logic.
+If you need app-specific tweaks after protocol extraction but before
+provisioning, use top-level `sso.hooks` on `createAuth(...)` rather than
+overloading policy with transport-specific logic.
