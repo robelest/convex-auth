@@ -25,20 +25,42 @@ import { server } from "@robelest/convex-auth/server";
 const auth = server({ url: process.env.CONVEX_URL! });
 
 // In your server handler / middleware:
-const { cookies, redirect, token } = await auth.refresh(request);
+const result = await auth.refresh(request);
+
+if (result.redirect) {
+  return result.response;
+}
+
+const { cookies, token } = result;
 ```
 
 `auth.refresh(request)` reads the auth cookies from the incoming request,
-exchanges or refreshes tokens with your Convex backend, and returns everything
-you need to continue the response.
+exchanges or refreshes tokens with your Convex backend, and returns either a
+ready-made redirect `Response` or the cookies and token needed to continue the
+current SSR response.
 
-## Return fields
+## Return shape
 
-| Field      | Type             | Description                                                                                |
-| ---------- | ---------------- | ------------------------------------------------------------------------------------------ |
-| `cookies`  | `AuthCookie[]`   | Array of `Set-Cookie` values to apply to the response. Always set these, even on redirect. |
-| `redirect` | `string \| null` | If non-null, the user should be redirected to this URL (e.g. after OAuth code exchange).   |
-| `token`    | `string \| null` | The current JWT access token, or `null` if the user is not authenticated.                  |
+`auth.refresh(request)` returns a discriminated union:
+
+### Redirect branch
+
+```ts
+{ redirect: true, response: Response }
+```
+
+When OAuth code exchange occurs, Convex Auth builds the redirect `Response`
+including any `Set-Cookie` headers for you. Return `response` directly from
+your framework handler.
+
+### Non-redirect branch
+
+```ts
+{ redirect: false, cookies: AuthCookie[], token: string | null }
+```
+
+When no redirect is needed, apply `cookies` to the outgoing response and use
+`token` for SSR hydration or server-side Convex calls.
 
 Each `AuthCookie` object contains `name`, `value`, and standard cookie options
 (`httpOnly`, `secure`, `sameSite`, `path`, `maxAge`). How you apply them depends

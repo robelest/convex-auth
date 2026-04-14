@@ -28,22 +28,13 @@ import type { NextRequest } from "next/server";
 const auth = server({ url: process.env.CONVEX_URL! });
 
 export async function middleware(request: NextRequest) {
-  const { cookies, redirect, token } = await auth.refresh(request);
+  const result = await auth.refresh(request);
 
-  // Handle OAuth redirects
-  if (redirect) {
-    const response = NextResponse.redirect(redirect);
-    for (const cookie of cookies) {
-      response.cookies.set(cookie.name, cookie.value, {
-        path: cookie.path ?? "/",
-        httpOnly: cookie.httpOnly,
-        secure: cookie.secure,
-        sameSite: cookie.sameSite as "lax" | "strict" | "none",
-        maxAge: cookie.maxAge,
-      });
-    }
-    return response;
+  if (result.redirect) {
+    return result.response;
   }
+
+  const { cookies, token } = result;
 
   const response = NextResponse.next();
 

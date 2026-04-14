@@ -30,7 +30,13 @@ const auth = server({ url: process.env.CONVEX_URL! });
 
 export const getAuthToken = createServerFn("GET", async () => {
   const request = getRequest();
-  const { cookies, redirect, token } = await auth.refresh(request);
+  const result = await auth.refresh(request);
+
+  if (result.redirect) {
+    return result.response;
+  }
+
+  const { cookies, token } = result;
 
   // Apply auth cookies
   for (const cookie of cookies) {
@@ -41,11 +47,6 @@ export const getAuthToken = createServerFn("GET", async () => {
       sameSite: cookie.sameSite as "lax" | "strict" | "none",
       maxAge: cookie.maxAge,
     });
-  }
-
-  // Return redirect URL or token
-  if (redirect) {
-    return { redirect };
   }
 
   return { token };
@@ -65,8 +66,8 @@ export const Route = createFileRoute("/")({
   beforeLoad: async () => {
     const result = await getAuthToken();
 
-    if ("redirect" in result && result.redirect) {
-      throw redirect({ href: result.redirect });
+    if (result instanceof Response) {
+      throw redirect({ href: result.headers.get("Location") ?? "/" });
     }
 
     return { token: result.token };

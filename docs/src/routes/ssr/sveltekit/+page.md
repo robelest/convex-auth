@@ -27,7 +27,13 @@ import type { Handle } from "@sveltejs/kit";
 const auth = server({ url: import.meta.env.CONVEX_URL });
 
 export const handle: Handle = async ({ event, resolve }) => {
-  const { cookies, redirect, token } = await auth.refresh(event.request);
+  const result = await auth.refresh(event.request);
+
+  if (result.redirect) {
+    return result.response;
+  }
+
+  const { cookies, token } = result;
 
   // Apply auth cookies to the response
   for (const cookie of cookies) {
@@ -37,14 +43,6 @@ export const handle: Handle = async ({ event, resolve }) => {
       secure: cookie.secure,
       sameSite: cookie.sameSite as "lax" | "strict" | "none",
       maxAge: cookie.maxAge,
-    });
-  }
-
-  // Handle OAuth redirects
-  if (redirect) {
-    return new Response(null, {
-      status: 302,
-      headers: { Location: redirect },
     });
   }
 
