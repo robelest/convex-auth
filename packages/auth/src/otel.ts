@@ -26,12 +26,19 @@ import * as WebSdk from "@effect/opentelemetry/WebSdk";
  * readers. Convex Auth only turns this configuration into an Effect layer.
  */
 export type TelemetryConfig = {
+  /** Service name reported to the telemetry backend. */
   serviceName: string;
+  /** Optional service version reported alongside the service name. */
   serviceVersion?: string;
+  /** Additional OpenTelemetry resource attributes to attach to all spans. */
   attributes?: Attributes;
+  /** Span processor or processors used for tracing export. */
   spanProcessor?: SpanProcessor | ReadonlyArray<SpanProcessor>;
+  /** Optional tracer configuration forwarded to the underlying SDK. */
   tracerConfig?: Omit<TracerConfig, "resource">;
+  /** Metric reader or readers used for metrics export. */
   metricReader?: MetricReader | ReadonlyArray<MetricReader>;
+  /** Log record processor or processors used for logs export. */
   logRecordProcessor?: LogRecordProcessor | ReadonlyArray<LogRecordProcessor>;
 };
 
@@ -41,6 +48,9 @@ export type TelemetryConfig = {
  * Convex Auth does not install this layer automatically. Provide it from your
  * application runtime when you want server-side spans, metrics, or logs to be
  * exported.
+ *
+ * @param config - Telemetry configuration supplied by the host application.
+ * @returns An Effect layer that installs the Node OpenTelemetry SDK.
  *
  * @example
  * ```ts
@@ -79,6 +89,9 @@ export function nodeTelemetry(config: TelemetryConfig) {
  *
  * Convex Auth does not install this layer automatically. Provide it from your
  * browser runtime when you want client-side Convex Auth spans to be exported.
+ *
+ * @param config - Telemetry configuration supplied by the host application.
+ * @returns An Effect layer that installs the browser OpenTelemetry SDK.
  *
  * @example
  * ```ts

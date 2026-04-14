@@ -27,18 +27,25 @@ import type {
 export interface CredentialsConfig<
   DataModel extends GenericDataModel = GenericDataModel,
 > {
+  /** Stable provider identifier used in `signIn("<id>")`. */
   id?: string;
+  /**
+   * Validate the submitted credentials and return the authenticated user.
+   * Return `null` to reject the sign-in attempt.
+   */
   authorize: (
     credentials: Partial<Record<string, Value | undefined>>,
     ctx: GenericActionCtxWithAuthConfig<DataModel>,
   ) => Promise<{
-    userId: GenericId<"User">;
-    sessionId?: GenericId<"Session">;
-  } | null>;
+      userId: GenericId<"User">;
+      sessionId?: GenericId<"Session">;
+    } | null>;
+  /** Optional hashing helpers for password-style credential verification. */
   crypto?: {
     hashSecret: (secret: string) => Promise<string>;
     verifySecret: (secret: string, hash: string) => Promise<boolean>;
   };
+  /** Additional providers to register alongside this credentials provider. */
   extraProviders?: (AuthProviderConfig | undefined)[];
 }
 

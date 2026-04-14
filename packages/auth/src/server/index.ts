@@ -1,3 +1,12 @@
+/**
+ * Server-side entrypoint for `@robelest/convex-auth/server`.
+ *
+ * Re-exports the public helpers, types, and HTTP integration utilities used to
+ * configure Convex Auth on the backend.
+ *
+ * @module
+ */
+
 export { createAuth } from "./auth";
 export type {
   AuthApi,

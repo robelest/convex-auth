@@ -14,8 +14,11 @@ import type { TotpProviderConfig } from "../server/types";
 
 /** Configuration for the {@link totp} provider. */
 export interface TotpConfig {
+  /** Issuer label embedded in the otpauth URI shown to authenticator apps. */
   issuer?: string;
+  /** Number of digits expected in generated TOTP codes. */
   digits?: number;
+  /** Time step, in seconds, used when generating and validating codes. */
   period?: number;
 }
 

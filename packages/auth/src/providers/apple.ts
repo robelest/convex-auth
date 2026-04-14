@@ -24,12 +24,19 @@ const DEFAULT_SCOPES = ["name", "email"];
 
 /** Configuration for the {@link apple} provider. */
 export interface AppleConfig {
+  /** Services ID or app bundle identifier registered with Sign in with Apple. */
   clientId: string;
+  /** Apple Developer team identifier used to sign client secrets. */
   teamId: string;
+  /** Apple private key identifier. */
   keyId: string;
+  /** Apple private key PEM contents or bytes. */
   privateKey: string | Uint8Array;
+  /** Optional callback URL override. Defaults to `CUSTOM_AUTH_SITE_URL` or `CONVEX_SITE_URL` plus `/api/auth/callback/apple`. */
   redirectUri?: string;
+  /** Optional OAuth scopes. Defaults to `name email`. */
   scopes?: string[];
+  /** Account-linking strategy for existing users with matching email addresses. */
   accountLinking?: "verifiedEmail" | "none";
 }
 

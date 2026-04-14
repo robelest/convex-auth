@@ -25,7 +25,12 @@ import { credentials } from "./credentials";
 
 /** Configuration for the {@link anonymous} provider. */
 export interface AnonymousConfig<DataModel extends GenericDataModel> {
+  /** Stable provider identifier used in `signIn("<id>")`. */
   id?: string;
+  /**
+   * Optional profile factory used when creating the anonymous user document.
+   * Must return a profile that includes `isAnonymous: true`.
+   */
   profile?: (
     params: Record<string, Value | undefined>,
     ctx: GenericActionCtxWithAuthConfig<DataModel>,

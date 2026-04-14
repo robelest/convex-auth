@@ -10,8 +10,11 @@ import type { PhoneConfig } from "../server/types";
 
 /** Configuration for the {@link phone} provider. */
 export interface PhoneProviderConfig {
+  /** SMS or phone delivery callback for verification tokens. */
   send: PhoneConfig["sendVerificationRequest"];
+  /** Stable provider identifier used in `signIn("<id>")`. */
   id?: string;
+  /** Verification token lifetime in seconds. */
   maxAge?: number;
 }
 

@@ -24,40 +24,67 @@ type TokenAuthMethod = "basic" | "body" | "none";
 
 /** Configuration for the custom provider authorization URL. */
 export interface CustomOAuthAuthorizationConfig {
+  /** Authorization endpoint URL. */
   url: string;
+  /** PKCE requirement for this provider's authorization flow. */
   pkce?: PkceMode;
+  /** Query parameter name used for the client ID. */
   clientIdParam?: string;
+  /** Query parameter name used for scopes. */
   scopeParam?: string;
+  /** Separator used when joining multiple scopes. */
   scopeSeparator?: ScopeSeparator;
+  /** Additional query parameters appended to the authorization URL. */
   extraParams?: Record<string, string>;
 }
 
 /** Configuration for the custom provider token exchange request. */
 export interface CustomOAuthTokenConfig {
+  /** Token endpoint URL. */
   url: string;
+  /** How client credentials are sent to the token endpoint. */
   authMethod?: TokenAuthMethod;
+  /** Form field name used for the client ID. */
   clientIdParam?: string;
+  /** Form field name used for the client secret. */
   clientSecretParam?: string;
+  /** Form field name used for the PKCE code verifier. */
   codeVerifierParam?: string;
+  /** Form field name used for scopes. */
   scopeParam?: string;
+  /** Separator used when joining multiple scopes. */
   scopeSeparator?: ScopeSeparator;
+  /** Whether to include the redirect URI in token requests. */
   includeRedirectUri?: boolean;
+  /** Whether to include configured scopes in token requests. */
   includeScopes?: boolean;
+  /** Additional form parameters appended to token requests. */
   extraParams?: Record<string, string>;
 }
 
 /** Configuration for the {@link custom} provider. */
 export interface CustomOAuthConfig {
+  /** Stable provider identifier used in `signIn("<id>")`. */
   id: string;
+  /** OAuth client identifier. */
   clientId: string;
+  /** Optional OAuth client secret. */
   clientSecret?: string | null;
+  /** Optional callback URL override. Defaults to `CUSTOM_AUTH_SITE_URL` or `CONVEX_SITE_URL` plus `/api/auth/callback/<id>`. */
   redirectUri?: string;
+  /** Optional default scopes requested during sign-in. */
   scopes?: string[];
+  /** Account-linking strategy for existing users with matching email addresses. */
   accountLinking?: "verifiedEmail" | "none";
+  /** Whether the provider requires nonce generation and validation. */
   nonce?: boolean;
+  /** Authorization endpoint configuration. */
   authorization: CustomOAuthAuthorizationConfig;
+  /** Token exchange endpoint configuration. */
   token: CustomOAuthTokenConfig;
+  /** Optional profile loader that converts OAuth tokens into a normalized profile. */
   profile?: (tokens: OAuthTokens) => Promise<OAuthProfile>;
+  /** Optional token validation hook for provider-specific checks. */
   validateTokens?: (
     tokens: OAuthTokens,
     ctx: { nonce?: string },
@@ -202,6 +229,19 @@ function createRuntimeClient(config: CustomOAuthConfig): OAuthRuntimeClient {
  *
  * @param config - OAuth endpoints, credentials, and profile callbacks.
  * @returns A configured OAuth provider for `createAuth`.
+ *
+ * @example
+ * ```ts
+ * import { custom } from "@robelest/convex-auth/providers";
+ *
+ * custom({
+ *   id: "workos",
+ *   clientId: process.env.WORKOS_CLIENT_ID!,
+ *   clientSecret: process.env.WORKOS_CLIENT_SECRET!,
+ *   authorization: { url: "https://api.workos.com/sso/authorize" },
+ *   token: { url: "https://api.workos.com/sso/token", authMethod: "basic" },
+ * })
+ * ```
  */
 export function custom(config: CustomOAuthConfig) {
   return createOAuthProvider({

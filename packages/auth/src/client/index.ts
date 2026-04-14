@@ -151,14 +151,15 @@ function buildSignInRequestKey(
 /**
  * Create a framework-agnostic auth client.
  *
- * Returns an object with `signIn`, `signOut`, `onChange`, `state`,
- * `passkey`, and `totp` — everything needed for client-side auth.
+ * Returns an object with `signIn`, `signOut`, `onChange`, `state`, and any
+ * factor helpers enabled by your configured providers. Browser-specific
+ * passkey support is added by the `@robelest/convex-auth/browser` entrypoint.
  *
  * ### SPA mode (default)
  *
  * ```ts
  * import { ConvexClient } from 'convex/browser';
- * import { client } from '@robelest/convex-auth/browser';
+ * import { client } from '@robelest/convex-auth/client';
  * import { api } from '../convex/_generated/api';
  *
  * const convex = new ConvexClient(CONVEX_URL);
@@ -182,7 +183,7 @@ function buildSignInRequestKey(
  *
  * @param options - Client configuration. See {@link ClientOptions}.
  * @typeParam Api - An AuthApiRefs type determining which factor helpers are available.
- * @returns Auth client with conditional `passkey`, `totp`, and `device` helpers.
+ * @returns Auth client with conditional `totp` and `device` helpers.
  * @throws {Error} When the Convex deployment URL cannot be determined and `url` is not passed explicitly.
  * @throws {Error} When `proxyPath` is not set and the `api` option is missing.
  * @throws {Error} When `proxyPath` is set and `runtime.proxy` is missing.

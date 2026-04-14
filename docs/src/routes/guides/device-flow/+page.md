@@ -33,6 +33,10 @@ createAuth(components.auth, {
 
 ## Device side (CLI)
 
+Use `@robelest/convex-auth/client` here because CLIs and device flows usually
+run outside the browser. The `browser` entrypoint is for web apps and adds
+browser-only defaults like passkeys, storage, and URL integration.
+
 ```ts
 import { client } from "@robelest/convex-auth/client";
 import { api } from "../convex/_generated/api";

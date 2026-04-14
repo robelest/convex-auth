@@ -11,13 +11,18 @@ import type { EmailConfig } from "../server/types";
 
 /** Configuration for the {@link email} provider. */
 export interface EmailProviderConfig {
+  /** Sender address used for outgoing verification emails. */
   from: string;
+  /** Delivery callback that actually sends the rendered verification email. */
   send: (
     ctx: GenericActionCtx<GenericDataModel>,
     opts: { from: string; to: string; subject: string; html: string },
   ) => Promise<void>;
+  /** Optional custom token generator for OTP or magic-link flows. */
   generateVerificationToken?: () => Promise<string>;
+  /** Stable provider identifier used in `signIn("<id>")`. */
   id?: string;
+  /** Verification token lifetime in seconds. */
   maxAge?: number;
 }
 

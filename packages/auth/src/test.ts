@@ -45,5 +45,14 @@ const testHelpers: {
  *
  * Exposes the auth component `schema`, lazily discovered `modules`, and the
  * `register()` helper as a convenience default export.
+ *
+ * @example
+ * ```ts
+ * import authTest from "@robelest/convex-auth/test";
+ * import { convexTest } from "convex-test";
+ *
+ * const t = convexTest(schema);
+ * authTest.register(t);
+ * ```
  */
 export default testHelpers;

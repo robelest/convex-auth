@@ -17,10 +17,15 @@ import type { DeviceProviderConfig } from "../server/types";
 
 /** Configuration for the {@link device} provider. */
 export interface DeviceConfig {
+  /** Character set used to generate the short user code. */
   charset?: string;
+  /** Number of characters in the generated user code. */
   userCodeLength?: number;
+  /** Device code lifetime in seconds. */
   expiresIn?: number;
+  /** Polling interval in seconds suggested to the device client. */
   interval?: number;
+  /** Verification page URL shown to the user on the device. */
   verificationUri?: string;
 }
 

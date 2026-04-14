@@ -119,6 +119,9 @@ resolver.
 
 ### Register the component
 
+Make sure your `convex-test` harness mounts the Convex Auth component before
+invoking wrappers that call `auth.ctx()` or `auth.context(...)`.
+
 ```ts
 // convex/test.setup.ts
 import { convexTest } from "convex-test";

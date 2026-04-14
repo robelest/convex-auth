@@ -99,6 +99,34 @@ export type GroupSsoAccessHandler = (
   input: GroupSsoAccessInput,
 ) => Promise<void>;
 
+/**
+ * Declarative requirement map for mounted Group SSO admin permissions.
+ *
+ * Use `require` at any subtree to define the default requirements for all
+ * descendant operations. Child entries override that inherited default when
+ * present. This lets apps describe coarse defaults with narrower overrides for
+ * specific admin operations.
+ *
+ * @typeParam TRequirement - App-defined requirement values passed back to
+ *   {@link GroupSsoResolvedAccessHandler}. These can be role refs, grant
+ *   strings, or any other policy tokens your app understands.
+ *
+ * @example
+ * ```ts
+ * const permissions: GroupSsoAccessPermissions<string> = {
+ *   sso: {
+ *     require: ["workspace.sso.read"],
+ *     connection: {
+ *       create: ["workspace.sso.manage"],
+ *       manage: ["workspace.sso.manage"],
+ *     },
+ *   },
+ *   scim: {
+ *     require: ["workspace.scim.manage"],
+ *   },
+ * };
+ * ```
+ */
 export type GroupSsoAccessPermissions<TRequirement> = {
   sso?: {
     require?: readonly TRequirement[];
@@ -129,6 +157,39 @@ export type GroupSsoAccessPermissions<TRequirement> = {
   };
 };
 
+/**
+ * App-defined access hook for declarative mounted Group SSO permissions.
+ *
+ * The mounted API resolves the requirements for the current
+ * {@link GroupSsoPermission} from {@link GroupSsoAccessPermissions} and passes
+ * them to this callback. Throw to deny the operation, or resolve to allow it.
+ *
+ * @typeParam TRequirement - App-defined requirement values resolved from the
+ *   configured permission tree.
+ * @param ctx - Convex context with `ctx.auth` for identity checks.
+ * @param input - The normalized mounted access input.
+ * @param required - The resolved requirement values for the current operation.
+ * @returns `void` to allow; throw to deny.
+ *
+ * @example
+ * ```ts
+ * const access: GroupSsoResolvedAccessHandler<string> = async (
+ *   ctx,
+ *   input,
+ *   required,
+ * ) => {
+ *   if (!input.groupId) {
+ *     throw new Error("Group scope required");
+ *   }
+ *
+ *   await auth.member.require(ctx, {
+ *     userId: input.userId,
+ *     groupId: input.groupId,
+ *     grants: [...required],
+ *   });
+ * };
+ * ```
+ */
 export type GroupSsoResolvedAccessHandler<TRequirement> = (
   ctx: { auth: import("convex/server").Auth },
   input: GroupSsoAccessInput,
@@ -315,6 +376,8 @@ function createMountedAdminAuthorizer<TRequirement>(
  * @param auth - Auth API subset providing `group`, `member`, `sso`, and `user` namespaces.
  * @param options - Optional admin access config. See {@link CreateAuthGroupSsoOptions}.
  * @typeParam TAuthorization - Optional authorization config for typed role IDs.
+ * @typeParam TRequirement - App-defined requirement values used by declarative
+ *   `permissions` configs.
  * @returns An object with `admin` (connection CRUD, OIDC/SAML protocol config, policy,
  *   audit, webhooks, domain management) and `client` (signIn, metadata) namespaces.
  *
@@ -324,14 +387,19 @@ function createMountedAdminAuthorizer<TRequirement>(
  * import { sso } from "@robelest/convex-auth/server";
  * import { auth } from "../auth";
  *
- * const mounted = sso(auth, { access: async (_ctx, _input) => {} });
+ * const mounted = sso(auth, {
+ *   permissions: {
+ *     sso: { require: ["workspace.sso.manage"] },
+ *   },
+ *   access: async (_ctx, _input, _required) => {},
+ * });
  *
  * export const createConnection = mounted.admin.connection.create;
  * export const signIn = mounted.client.signIn;
  * ```
  *
  * @see {@link scim}
- * @see {@link group connection}
+ * @see {@link createAuthGroupSso}
  */
 export function sso<
   TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
@@ -925,6 +993,8 @@ export function sso<
  * @param auth - Auth API subset providing `group` and `context` namespaces.
  * @param options - Optional admin access config. See {@link CreateAuthGroupSsoOptions}.
  * @typeParam TAuthorization - Optional authorization config for typed role IDs.
+ * @typeParam TRequirement - App-defined requirement values used by declarative
+ *   `permissions` configs.
  * @returns An object with `admin.configure`, `admin.get`, and `admin.validate` actions.
  *
  * @example
@@ -933,7 +1003,12 @@ export function sso<
  * import { scim } from "@robelest/convex-auth/server";
  * import { auth } from "../auth";
  *
- * const mounted = scim(auth, { access: async (_ctx, _input) => {} });
+ * const mounted = scim(auth, {
+ *   permissions: {
+ *     scim: { require: ["workspace.scim.manage"] },
+ *   },
+ *   access: async (_ctx, _input, _required) => {},
+ * });
  *
  * export const configure = mounted.admin.configure;
  * export const get = mounted.admin.get;
@@ -941,7 +1016,7 @@ export function sso<
  * ```
  *
  * @see {@link sso}
- * @see {@link group connection}
+ * @see {@link createAuthGroupSso}
  */
 export function scim<
   TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
@@ -1041,6 +1116,8 @@ export function scim<
  * @param auth - Auth API subset providing `group`, `member`, and `context` namespaces.
  * @param options - Required {@link CreateAuthGroupSsoOptions} with an `access` policy.
  * @typeParam TAuthorization - Optional authorization config for typed role IDs.
+ * @typeParam TRequirement - App-defined requirement values used by declarative
+ *   `permissions` configs.
  * @returns A flat object with all group connection management functions (e.g. `createConnection`,
  *   `configureOidc`, `configureScim`, `signIn`, etc.).
  *
@@ -1051,7 +1128,11 @@ export function scim<
  * import { auth } from "../auth";
  *
  * const api = createAuthGroupSso(auth, {
- *   access: async (_ctx, _input) => {},
+ *   permissions: {
+ *     sso: { require: ["workspace.sso.manage"] },
+ *     scim: { require: ["workspace.scim.manage"] },
+ *   },
+ *   access: async (_ctx, _input, _required) => {},
  * });
  *
  * export const createConnection = api.createConnection;

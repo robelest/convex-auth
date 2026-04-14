@@ -477,8 +477,11 @@ export interface AuthClientBase {
 }
 
 /**
- * Auth client return type — conditionally includes `passkey`, `totp`, and
- * `device` helpers based on the capabilities in the `AuthApiRefs` type.
+ * Framework-agnostic auth client return type.
+ *
+ * Conditionally includes `totp` and `device` helpers based on the
+ * capabilities in the `AuthApiRefs` type. Browser-only `passkey` helpers are
+ * added by {@link BrowserAuthClient}.
  *
  * @typeParam Api - An AuthApiRefs type that determines which factor helpers are included.
  */
@@ -488,6 +491,14 @@ export type AuthClient<
   (InferCaps<Api>["totp"] extends true ? { totp: TotpClient } : {}) &
   (InferCaps<Api>["device"] extends true ? { device: DeviceClient } : {});
 
+/**
+ * Browser auth client return type.
+ *
+ * Extends {@link AuthClient} with conditional passkey helpers when the
+ * generated auth API exposes passkey capabilities.
+ *
+ * @typeParam Api - An AuthApiRefs type that determines which factor helpers are included.
+ */
 export type BrowserAuthClient<
   Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs,
 > = AuthClient<Api> &
@@ -509,22 +520,32 @@ export type ClientOptions<
   adapters?: ClientAdapters;
   /** Platform-specific adapter factories supplied by higher-level entrypoints. */
   adapterFactories?: ClientAdapterFactories;
-  /** Typed auth function refs from your generated `api` object. */
+  /**
+   * Typed auth function refs from your generated `api` object.
+   * Required outside proxy mode.
+   */
   api?: Api;
   /** Explicit Convex deployment URL when it cannot be inferred from the client. */
   url?: string;
-   /** Optional action-only transport for direct code exchange outside proxy mode. */
-   httpClient?: ActionTransport | null;
-   /**
-    * Storage backend for persisted tokens.
-    *
-    * Defaults to `runtime.storage` when provided, otherwise `null`.
-    */
-   storage?: Storage | null;
+  /**
+   * Optional action-only transport for direct code exchange outside proxy mode.
+   * Required in non-browser runtimes when `proxyPath` is not set.
+   */
+  httpClient?: ActionTransport | null;
+  /**
+   * Storage backend for persisted tokens.
+   *
+   * Defaults to `runtime.storage` when provided, otherwise `null`.
+   */
+  storage?: Storage | null;
   /** Override how OAuth code cleanup updates the current URL. */
   replaceUrl?: (relativeUrl: string) => void | Promise<void>;
-   /** Proxy endpoint used instead of direct Convex auth calls. Requires `runtime.proxy`. */
-   proxyPath?: string;
+  /**
+   * Proxy endpoint used instead of direct Convex auth calls.
+   * When set, provide `runtime.proxy` and omit direct `api`/`httpClient`
+   * transport requirements.
+   */
+  proxyPath?: string;
   /** Server-provided JWT seed used for flash-free SSR hydration. */
   tokenSeed?: string | null;
   /** SSR-safe URL source for reading query parameters. */

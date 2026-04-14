@@ -647,7 +647,8 @@ export interface PhoneConfig<
    * Any tokens shorter than 24 characters are assumed to not
    * be secure enough on their own, and require providing
    * the original `phone` used in the initial `signIn` call.
-   * @returns
+   *
+   * @returns The verification token to send to the user.
    */
   generateVerificationToken?: () => Promise<string>;
   /**
@@ -686,6 +687,11 @@ export type PhoneUserConfig<
 
 /**
  * Credentials provider config used by Convex Auth.
+ *
+ * Extends the user-facing {@link CredentialsConfig} with the stable provider
+ * `id` and `type` fields injected by the library.
+ *
+ * @typeParam DataModel - The Convex data model used by the auth context.
  */
 export type ConvexCredentialsConfig<
   DataModel extends GenericDataModel = GenericDataModel,

@@ -35,10 +35,15 @@ type GitHubEmail = {
 
 /** Configuration for the {@link github} provider. */
 export interface GitHubConfig {
+  /** OAuth app client ID from GitHub. */
   clientId: string;
+  /** OAuth app client secret from GitHub. */
   clientSecret: string;
+  /** Optional callback URL override. Defaults to `CUSTOM_AUTH_SITE_URL` or `CONVEX_SITE_URL` plus `/api/auth/callback/github`. */
   redirectUri?: string;
+  /** Optional OAuth scopes. Defaults to `user:email`. */
   scopes?: string[];
+  /** Account-linking strategy for existing users with matching email addresses. */
   accountLinking?: "verifiedEmail" | "none";
 }
 

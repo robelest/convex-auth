@@ -14,14 +14,23 @@ import type { PasskeyProviderConfig } from "../server/types";
 
 /** Configuration for the {@link passkey} provider. */
 export interface PasskeyConfig {
+  /** Human-readable relying party name shown in authenticator prompts. */
   rpName?: string;
+  /** Relying party ID, typically your app's hostname. */
   rpId?: string;
+  /** Allowed origins for registration and authentication ceremonies. */
   origin?: string | string[];
+  /** Attestation conveyance preference sent to authenticators. */
   attestation?: "none" | "direct";
+  /** User verification requirement for authentication ceremonies. */
   userVerification?: "required" | "preferred" | "discouraged";
+  /** Discoverable credential preference for resident keys. */
   residentKey?: "required" | "preferred" | "discouraged";
+  /** Restrict credentials to platform or roaming authenticators. */
   authenticatorAttachment?: "platform" | "cross-platform";
+  /** Supported COSE algorithms in authenticator preference order. */
   algorithms?: number[];
+  /** Challenge lifetime in milliseconds before registration/login expires. */
   challengeExpirationMs?: number;
 }
 

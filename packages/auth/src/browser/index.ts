@@ -1,3 +1,13 @@
+/**
+ * Browser-first auth client for `@robelest/convex-auth/browser`.
+ *
+ * This entrypoint wraps the framework-agnostic `client(...)`
+ * helper with browser defaults such as `ConvexHttpClient`, local storage, URL
+ * replacement, and passkey adapters.
+ *
+ * @module
+ */
+
 import { ConvexHttpClient } from "convex/browser";
 
 import {
@@ -23,6 +33,28 @@ export type {
   ClientOptions,
 } from "../client/index";
 
+/**
+ * Create a browser-configured auth client.
+ *
+ * This is the recommended entrypoint for web apps. It applies browser runtime
+ * defaults on top of the framework-agnostic `client(...)`
+ * helper, including `ConvexHttpClient` transport discovery and passkey support.
+ *
+ * @param options - Browser client configuration. See {@link ClientOptions}.
+ * @typeParam Api - Auth API references that control which factor helpers are
+ *   available on the returned client.
+ * @returns A browser auth client with the configured auth helpers.
+ *
+ * @example
+ * ```ts
+ * import { ConvexReactClient } from "convex/react";
+ * import { client } from "@robelest/convex-auth/browser";
+ * import { api } from "../convex/_generated/api";
+ *
+ * const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
+ * const auth = client({ convex, api: api.auth });
+ * ```
+ */
 export function client<
   Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs,
 >(options: ClientOptions<Api>): BrowserAuthClient<Api> {

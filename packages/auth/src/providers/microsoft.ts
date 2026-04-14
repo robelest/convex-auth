@@ -24,11 +24,17 @@ const DEFAULT_SCOPES = ["openid", "profile", "email"];
 
 /** Configuration for the {@link microsoft} provider. */
 export interface MicrosoftConfig {
+  /** Microsoft Entra tenant ID or domain used to scope the OAuth issuer. */
   tenant: string;
+  /** OAuth client ID from Microsoft Entra ID. */
   clientId: string;
+  /** OAuth client secret for confidential clients, when required. */
   clientSecret?: string | null;
+  /** Optional callback URL override. Defaults to `CUSTOM_AUTH_SITE_URL` or `CONVEX_SITE_URL` plus `/api/auth/callback/microsoft`. */
   redirectUri?: string;
+  /** Optional OAuth scopes. Defaults to `openid profile email`. */
   scopes?: string[];
+  /** Account-linking strategy for existing users with matching email addresses. */
   accountLinking?: "verifiedEmail" | "none";
 }
 
