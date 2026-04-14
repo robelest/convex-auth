@@ -232,8 +232,7 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
     connectionId,
     groupId,
     runId,
-  } =
-    await startGroupConnectionContext("combined-oidc", "oidc");
+  } = await startGroupConnectionContext("combined-oidc", "oidc");
 
   const email = `${runId}@example.com`;
 
@@ -456,7 +455,9 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
   expect(callbackResponse.status).toBe(302);
   const completionLocation = callbackResponse.headers.get("location");
   if (!completionLocation) {
-    throw new Error("Group Connection callback did not return completion redirect.");
+    throw new Error(
+      "Group Connection callback did not return completion redirect.",
+    );
   }
   const verificationCode = new URL(completionLocation).searchParams.get("code");
   expect(verificationCode).toBeTruthy();
@@ -471,11 +472,10 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
   const signedInUserId = parseUserIdFromToken(exchanged.tokens!.token);
   expect(signedInUserId).toBe(provisionedUserId);
 
-  const auditEvents = (await groupAuditListRpc(
-    convexClient,
-    convexUserToken,
-    { connectionId, limit: 50 },
-  )) as GroupAuditEvent[];
+  const auditEvents = (await groupAuditListRpc(convexClient, convexUserToken, {
+    connectionId,
+    limit: 50,
+  })) as GroupAuditEvent[];
   expect(
     auditEvents.some(
       (event) =>
@@ -496,8 +496,7 @@ test("SCIM + SAML reuses provisioned userId", async () => {
     connectionId,
     groupId,
     runId,
-  } =
-    await startGroupConnectionContext("combined-saml", "saml");
+  } = await startGroupConnectionContext("combined-saml", "saml");
 
   const email = `${runId}@example.com`;
 
@@ -783,11 +782,10 @@ test("SCIM + SAML reuses provisioned userId", async () => {
   const signedInUserId = parseUserIdFromToken(exchanged.tokens!.token);
   expect(signedInUserId).toBe(provisionedUserId);
 
-  const auditEvents = (await groupAuditListRpc(
-    convexClient,
-    convexUserToken,
-    { connectionId, limit: 50 },
-  )) as GroupAuditEvent[];
+  const auditEvents = (await groupAuditListRpc(convexClient, convexUserToken, {
+    connectionId,
+    limit: 50,
+  })) as GroupAuditEvent[];
   expect(
     auditEvents.some(
       (event) =>

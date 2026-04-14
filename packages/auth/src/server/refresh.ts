@@ -1,11 +1,11 @@
 import { ConvexError, GenericId } from "convex/values";
 import { Effect } from "effect";
 
-import { envOptionalNumber, readConfigSync } from "./env";
 import { authDb } from "./db";
+import { envOptionalNumber, readConfigSync } from "./env";
 import type { AuthErrorData } from "./errors";
-import type { ConvexAuthConfig, Doc, MutationCtx } from "./types";
 import { LOG_LEVELS, log, maybeRedact } from "./log";
+import type { ConvexAuthConfig, Doc, MutationCtx } from "./types";
 
 export const REFRESH_TOKEN_DIVIDER = "|";
 
@@ -105,9 +105,10 @@ export const refreshTokenIfValid = (
   refreshTokenId: string,
   tokenSessionId: string,
   config: ConvexAuthConfig,
-): Effect.Effect<
-  { session: Doc<"Session">; refreshTokenDoc: Doc<"RefreshToken"> } | null
-> => {
+): Effect.Effect<{
+  session: Doc<"Session">;
+  refreshTokenDoc: Doc<"RefreshToken">;
+} | null> => {
   const db = authDb(ctx, config);
 
   const fetchDoc = <T>(
@@ -134,9 +135,7 @@ export const refreshTokenIfValid = (
     "Invalid refresh token format",
   ).pipe(
     Effect.flatMap((doc) =>
-      doc !== null
-        ? Effect.succeed(doc)
-        : Effect.fail("Invalid refresh token"),
+      doc !== null ? Effect.succeed(doc) : Effect.fail("Invalid refresh token"),
     ),
     Effect.flatMap((doc) =>
       doc.expirationTime >= Date.now()

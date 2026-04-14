@@ -78,7 +78,9 @@ export type AuthAuthorizationConfig = {
  */
 export type AuthRoleId<
   TAuthorization extends AuthAuthorizationConfig | undefined,
-> = TAuthorization extends { roles: infer TRoles extends Record<string, unknown> }
+> = TAuthorization extends {
+  roles: infer TRoles extends Record<string, unknown>;
+}
   ? keyof TRoles & string
   : string;
 
@@ -1063,11 +1065,10 @@ export interface SSOProfileMapping {
   roles?: string;
 }
 
-export interface OIDCClaimMapping
-  extends Pick<
-    SSOProfileMapping,
-    "subject" | "email" | "emailVerified" | "name" | "image" | "groups" | "roles"
-  > {}
+export interface OIDCClaimMapping extends Pick<
+  SSOProfileMapping,
+  "subject" | "email" | "emailVerified" | "name" | "image" | "groups" | "roles"
+> {}
 
 /**
  * Materialized OAuth provider config.

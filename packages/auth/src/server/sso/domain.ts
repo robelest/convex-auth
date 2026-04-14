@@ -20,12 +20,12 @@ import {
   upsertGroupConnectionSecret,
   verifyConnectionDomain,
 } from "../contract";
+import { log } from "../log";
 import type {
   ConvexAuthMaterializedConfig,
   OIDCClaimMapping,
   GroupConnectionPolicy,
 } from "../types";
-import { log } from "../log";
 import {
   getOidcConfig,
   getPublicOidcConfig,
@@ -34,6 +34,7 @@ import {
   withOidcSecretState,
 } from "./config";
 import { createGroupPolicyDomain } from "./policies";
+import { createGroupScimDomain } from "./provision";
 import {
   createServiceProviderMetadata,
   parseSamlIdpMetadataChecked,
@@ -46,7 +47,6 @@ import {
   groupSamlProviderId,
   normalizeDomain,
 } from "./shared";
-import { createGroupScimDomain } from "./provision";
 import { createGroupWebhookDomain } from "./webhook";
 
 type DomainOidcConfig = {
@@ -216,9 +216,9 @@ const runSsoBoundary = <A, E>(effect: Effect.Effect<A, E, never>) =>
 /**
  * Build the connection and SSO management domain.
  */
-export function createGroupConnectionDomain<
-  TDeps extends DomainDeps,
->(deps: TDeps) {
+export function createGroupConnectionDomain<TDeps extends DomainDeps>(
+  deps: TDeps,
+) {
   const {
     config,
     getGroupConnectionSecret,
@@ -279,8 +279,7 @@ export function createGroupConnectionDomain<
 
   const GROUP_CONNECTION_DOMAIN_VERIFICATION_PREFIX =
     "_convex-auth-verification";
-  const GROUP_CONNECTION_DOMAIN_VERIFICATION_TTL_MS =
-    1000 * 60 * 60 * 24 * 7;
+  const GROUP_CONNECTION_DOMAIN_VERIFICATION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 
   const toDomainSummary = (domain: {
     _id: string;
@@ -352,7 +351,11 @@ export function createGroupConnectionDomain<
         };
       },
       get: async (ctx: ComponentReadCtx, connectionId: string) => {
-        return await getGroupConnection(ctx, config.component.public, connectionId);
+        return await getGroupConnection(
+          ctx,
+          config.component.public,
+          connectionId,
+        );
       },
       getByDomain: async (ctx: ComponentReadCtx, domain: string) => {
         return await getGroupConnectionByDomain(
@@ -582,8 +585,9 @@ export function createGroupConnectionDomain<
           connectionId,
         );
         const primaryDomain =
-          domains.find((domain: (typeof domains)[number]) => domain.isPrimary) ??
-          null;
+          domains.find(
+            (domain: (typeof domains)[number]) => domain.isPrimary,
+          ) ?? null;
         const verifiedDomains = domains.filter(
           (domain: (typeof domains)[number]) => domain.verifiedAt !== undefined,
         );
@@ -605,8 +609,9 @@ export function createGroupConnectionDomain<
               };
             }),
           )
-        ).filter((challenge): challenge is NonNullable<typeof challenge> =>
-          challenge !== null,
+        ).filter(
+          (challenge): challenge is NonNullable<typeof challenge> =>
+            challenge !== null,
         );
 
         const warnings: string[] = [];
@@ -985,7 +990,8 @@ export function createGroupConnectionDomain<
               );
             }
             const metadataUrl =
-              typeof data.metadata.url === "string" && data.metadata.url.length > 0
+              typeof data.metadata.url === "string" &&
+              data.metadata.url.length > 0
                 ? data.metadata.url
                 : undefined;
             const metadataXml = metadataUrl
@@ -1050,7 +1056,8 @@ export function createGroupConnectionDomain<
               serviceProvider: data.serviceProvider,
               request: {
                 signAuthnRequests:
-                  data.request?.signAuthnRequests ?? parsed.wantsSignedAuthnRequests,
+                  data.request?.signAuthnRequests ??
+                  parsed.wantsSignedAuthnRequests,
                 nameIdFormat: data.request?.nameIdFormat,
                 forceAuthn: data.request?.forceAuthn,
                 authnContextClassRefs: data.request?.authnContextClassRefs,
@@ -1066,13 +1073,15 @@ export function createGroupConnectionDomain<
               ? { ...baseConfig, domains: normalizedDomains }
               : baseConfig;
             const nextSamlConfig =
-              (nextConfig.protocols?.saml as DomainSamlConfig | undefined) ?? undefined;
+              (nextConfig.protocols?.saml as DomainSamlConfig | undefined) ??
+              undefined;
             log("DEBUG", "[group-sso] saml:configure:nextConfig", {
               connectionId: data.connectionId,
               entityId: nextSamlConfig?.idp?.entityId ?? null,
               issuer: nextSamlConfig?.idp?.issuer ?? null,
               metadataUrl: nextSamlConfig?.idp?.metadataUrl ?? null,
-              hasMetadataXml: typeof nextSamlConfig?.idp?.metadataXml === "string",
+              hasMetadataXml:
+                typeof nextSamlConfig?.idp?.metadataXml === "string",
             });
 
             yield* tryPromise({
@@ -1162,9 +1171,9 @@ export function createGroupConnectionDomain<
                   : Effect.succeed(connection),
               ),
             );
-            const samlConfig =
-              (connection.config as { protocols?: { saml?: DomainSamlConfig } })
-                ?.protocols?.saml;
+            const samlConfig = (
+              connection.config as { protocols?: { saml?: DomainSamlConfig } }
+            )?.protocols?.saml;
             if (connection.protocol !== "saml") {
               return yield* Effect.fail(
                 convexError({
@@ -1200,8 +1209,8 @@ export function createGroupConnectionDomain<
                   error instanceof Error
                     ? error.message
                     : "Failed to fetch SAML metadata",
-                }),
-              }).pipe(Effect.retry({ schedule: NETWORK_RETRY_SCHEDULE }));
+              }),
+            }).pipe(Effect.retry({ schedule: NETWORK_RETRY_SCHEDULE }));
             const parsed = yield* tryPromise({
               try: () =>
                 parseSamlIdpMetadataChecked({
@@ -1223,7 +1232,9 @@ export function createGroupConnectionDomain<
                 metadataXml: response,
                 ...parsed,
               },
-              serviceProvider: (samlConfig as { serviceProvider?: Record<string, unknown> }).serviceProvider,
+              serviceProvider: (
+                samlConfig as { serviceProvider?: Record<string, unknown> }
+              ).serviceProvider,
               request: samlConfig.request,
               profile: samlConfig.profile,
               security: samlConfig.security,
@@ -1295,33 +1306,37 @@ export function createGroupConnectionDomain<
         );
       },
       status: (ctx: ComponentReadCtx, connectionId: string) => {
-        return getGroupConnection(ctx, config.component.public, connectionId).then(
-          (connection) => {
-            if (!connection) {
-              throw convexError({
-                code: "INVALID_PARAMETERS",
-                message: connectionNotFoundError,
-              });
-            }
-            const currentConfig = getSamlConfig(connection.config);
-            const configured = currentConfig.enabled === true;
-            const ready =
-              configured && typeof (currentConfig.idp as Record<string, unknown> | undefined)?.entityId === "string";
-            return {
-              connectionId,
-              configured,
-              ready,
-              config: currentConfig,
-              checks: [
-                {
-                  name: "saml_configured",
-                  ok: configured,
-                  message: configured ? undefined : "SAML is not configured.",
-                },
-              ],
-            };
-          },
-        );
+        return getGroupConnection(
+          ctx,
+          config.component.public,
+          connectionId,
+        ).then((connection) => {
+          if (!connection) {
+            throw convexError({
+              code: "INVALID_PARAMETERS",
+              message: connectionNotFoundError,
+            });
+          }
+          const currentConfig = getSamlConfig(connection.config);
+          const configured = currentConfig.enabled === true;
+          const ready =
+            configured &&
+            typeof (currentConfig.idp as Record<string, unknown> | undefined)
+              ?.entityId === "string";
+          return {
+            connectionId,
+            configured,
+            ready,
+            config: currentConfig,
+            checks: [
+              {
+                name: "saml_configured",
+                ok: configured,
+                message: configured ? undefined : "SAML is not configured.",
+              },
+            ],
+          };
+        });
       },
       metadata: async <DataModel extends GenericDataModel>(
         ctx: GenericActionCtx<DataModel>,
@@ -1394,8 +1409,9 @@ export function createGroupConnectionDomain<
           };
         }
 
-        const samlConfig = (connection.config as { protocols?: { saml?: DomainSamlConfig } })
-          ?.protocols?.saml;
+        const samlConfig = (
+          connection.config as { protocols?: { saml?: DomainSamlConfig } }
+        )?.protocols?.saml;
         const samlConfigured =
           samlConfig?.enabled === true &&
           typeof samlConfig?.idp?.metadataXml === "string";
@@ -1491,10 +1507,14 @@ export function createGroupConnectionDomain<
               : "Signed assertions are required but the IdP metadata has no signing certificate.",
         });
 
-        const signAuthnRequests = samlConfig?.request?.signAuthnRequests === true;
+        const signAuthnRequests =
+          samlConfig?.request?.signAuthnRequests === true;
         const hasSpPrivateKey =
-          typeof (samlConfig as { serviceProvider?: { privateKey?: string } } | undefined)
-            ?.serviceProvider?.privateKey === "string";
+          typeof (
+            samlConfig as
+              | { serviceProvider?: { privateKey?: string } }
+              | undefined
+          )?.serviceProvider?.privateKey === "string";
         checks.push({
           name: "authn_request_signing_compatible",
           ok: !signAuthnRequests || hasSpPrivateKey,
@@ -1526,7 +1546,7 @@ export function createGroupConnectionDomain<
        * Register or update connection OIDC connection settings.
        *
        * Persists protocol config under `connection.config.protocols.oidc` and
-        * records a `group.sso.oidc.registered` audit event.
+       * records a `group.sso.oidc.registered` audit event.
        */
       configure: (
         ctx: ComponentCtx,
@@ -1772,7 +1792,9 @@ export function createGroupConnectionDomain<
             });
           }
           const currentConfig = getPublicOidcConfig(connection.config);
-          const oidcConfig = getOidcConfig(connection.config) as DomainOidcConfig;
+          const oidcConfig = getOidcConfig(
+            connection.config,
+          ) as DomainOidcConfig;
           const configured =
             currentConfig.enabled === true &&
             typeof oidcConfig.client?.id === "string" &&
@@ -1793,7 +1815,10 @@ export function createGroupConnectionDomain<
               {
                 name: "client_secret_stored",
                 ok: secret !== null,
-                message: secret !== null ? undefined : "OIDC client secret is missing.",
+                message:
+                  secret !== null
+                    ? undefined
+                    : "OIDC client secret is missing.",
               },
             ],
           };
@@ -1825,15 +1850,15 @@ export function createGroupConnectionDomain<
               data.connectionId !== undefined
                 ? yield* tryPromise({
                     try: () =>
-                        getGroupConnection(
-                          ctx,
-                          config.component.public,
-                          data.connectionId!,
-                        ),
+                      getGroupConnection(
+                        ctx,
+                        config.component.public,
+                        data.connectionId!,
+                      ),
                     catch: () => ({
-                        code: "INTERNAL_ERROR",
-                        message: "Failed to load connection.",
-                      }),
+                      code: "INTERNAL_ERROR",
+                      message: "Failed to load connection.",
+                    }),
                   }).pipe(
                     Effect.flatMap((connection) =>
                       connection === null
@@ -1859,9 +1884,9 @@ export function createGroupConnectionDomain<
                           ),
                         ),
                       catch: () => ({
-                          code: "INTERNAL_ERROR",
-                          message: "Failed to resolve connection by domain.",
-                        }),
+                        code: "INTERNAL_ERROR",
+                        message: "Failed to resolve connection by domain.",
+                      }),
                     }).pipe(
                       Effect.tap((result) =>
                         Effect.sync(() => {
@@ -2108,7 +2133,8 @@ export function createGroupConnectionDomain<
 
         const hasJwksUri =
           discoveryConfig.jwksUri === undefined ||
-          (typeof discoveryConfig.jwksUri === "string" && discoveryConfig.jwksUri.length > 0);
+          (typeof discoveryConfig.jwksUri === "string" &&
+            discoveryConfig.jwksUri.length > 0);
         checks.push({
           name: "jwks_uri_present",
           ok: hasJwksUri,
@@ -2119,11 +2145,15 @@ export function createGroupConnectionDomain<
           discoveryConfig.audience === undefined ||
           typeof discoveryConfig.audience === "string" ||
           (Array.isArray(discoveryConfig.audience) &&
-            discoveryConfig.audience.every((value) => typeof value === "string"));
+            discoveryConfig.audience.every(
+              (value) => typeof value === "string",
+            ));
         checks.push({
           name: "audience_valid",
           ok: hasAudience,
-          message: hasAudience ? undefined : "audience must be a string or string array.",
+          message: hasAudience
+            ? undefined
+            : "audience must be a string or string array.",
         });
 
         return {

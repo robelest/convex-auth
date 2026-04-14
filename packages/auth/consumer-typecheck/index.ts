@@ -1,5 +1,5 @@
-import { client as browserClient } from "@robelest/convex-auth/browser";
 import { defineRoles } from "@robelest/convex-auth/authorization";
+import { client as browserClient } from "@robelest/convex-auth/browser";
 import { client } from "@robelest/convex-auth/client";
 import {
   createAuth,

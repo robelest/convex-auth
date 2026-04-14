@@ -5,7 +5,10 @@ import { defineConfig } from "vite-plus/pack";
 const jsExtensions = () => ({ js: ".js", dts: ".d.ts" });
 
 const toEntryName = (file: string) =>
-  file.replaceAll("\\", "/").replace(/^src\//, "").replace(/\.ts$/, "");
+  file
+    .replaceAll("\\", "/")
+    .replace(/^src\//, "")
+    .replace(/\.ts$/, "");
 
 const entryMap = (patterns: string[], exclude: string[] = []) => {
   const excluded = new Set(exclude.map((file) => file.replaceAll("\\", "/")));
@@ -34,9 +37,10 @@ const publicDeclarationEntries = {
   "component/_generated/component": "src/component/_generated/component.ts",
 };
 
-const componentRuntimeEntries = entryMap(["src/component/**/*.ts"], [
-  "src/component/index.ts",
-]);
+const componentRuntimeEntries = entryMap(
+  ["src/component/**/*.ts"],
+  ["src/component/index.ts"],
+);
 
 export default defineConfig([
   {

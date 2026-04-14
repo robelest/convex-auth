@@ -1,6 +1,7 @@
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError } from "convex/values";
 
+import { configDefaults } from "../config";
 import {
   getGroupConnectionSecret as queryGroupConnectionSecret,
   getGroup,
@@ -8,7 +9,6 @@ import {
   getScimConfigByConnection,
   listWebhookEndpoints,
 } from "../contract";
-import { configDefaults } from "../config";
 import { decryptSecret } from "../secret";
 import { getSamlConfig, getOidcConfig } from "../sso/config";
 import { normalizeGroupConnectionPolicy } from "../sso/policy";
@@ -165,7 +165,10 @@ export function createGroupService(deps: {
     ctx: ComponentReadCtx,
     connectionId: string,
   ) => {
-    const connection = await loadActiveGroupConnectionOrThrow(ctx, connectionId);
+    const connection = await loadActiveGroupConnectionOrThrow(
+      ctx,
+      connectionId,
+    );
     const oidc = await getGroupConnectionOidcConfigWithSecret(ctx, connection);
     if (oidc.enabled !== true) {
       throw convexError({
@@ -180,7 +183,10 @@ export function createGroupService(deps: {
     ctx: ComponentReadCtx,
     connectionId: string,
   ): Promise<"oidc" | "saml"> => {
-    const connection = await loadActiveGroupConnectionOrThrow(ctx, connectionId);
+    const connection = await loadActiveGroupConnectionOrThrow(
+      ctx,
+      connectionId,
+    );
     if (connection.protocol === "oidc") {
       return "oidc";
     }
@@ -279,11 +285,14 @@ export function createGroupService(deps: {
     },
   ) => {
     const { ok, ...rest } = data;
-    return (await ctx.runMutation(config.component.public.groupAuditEventCreate, {
-      ...rest,
-      status: ok ? "success" : "failure",
-      occurredAt: Date.now(),
-    })) as string;
+    return (await ctx.runMutation(
+      config.component.public.groupAuditEventCreate,
+      {
+        ...rest,
+        status: ok ? "success" : "failure",
+        occurredAt: Date.now(),
+      },
+    )) as string;
   };
 
   const emitGroupWebhookDeliveries = async (
@@ -307,14 +316,17 @@ export function createGroupService(deps: {
       ) {
         continue;
       }
-      await ctx.runMutation(config.component.public.groupWebhookDeliveryEnqueue, {
-        connectionId: data.connectionId,
-        endpointId: endpoint._id,
-        auditEventId: data.auditEventId,
-        eventType: data.eventType,
-        payload: data.payload,
-        nextAttemptAt: Date.now(),
-      });
+      await ctx.runMutation(
+        config.component.public.groupWebhookDeliveryEnqueue,
+        {
+          connectionId: data.connectionId,
+          endpointId: endpoint._id,
+          auditEventId: data.auditEventId,
+          eventType: data.eventType,
+          payload: data.payload,
+          nextAttemptAt: Date.now(),
+        },
+      );
     }
   };
 

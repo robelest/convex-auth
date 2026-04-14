@@ -1,11 +1,13 @@
 import { GenericId, ConvexError, type Value } from "convex/values";
 import { Effect, Match } from "effect";
 
-import { envOptionalString, readConfigSync } from "./env";
-import { handleDevice } from "./device";
 import { authFlowError } from "../shared/errors";
+import { handleDevice } from "./device";
+import { envOptionalString, readConfigSync } from "./env";
+import { requireEnv } from "./env";
 import type { AuthErrorData } from "./errors";
 import { toConvexError } from "./errors";
+import { log } from "./log";
 import {
   callCreateVerificationCode,
   callRefreshSession,
@@ -16,6 +18,7 @@ import {
 } from "./mutations/index";
 import { handlePasskeyFx } from "./passkey";
 import type { SignInParams } from "./payloads";
+import { generateRandomString } from "./random";
 import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects";
 import { handleTotp } from "./totp";
 import {
@@ -33,9 +36,6 @@ import {
   queryTotpVerifiedByUserId,
 } from "./types";
 import type { OAuthMaterializedConfig } from "./types";
-import { generateRandomString } from "./random";
-import { log } from "./log";
-import { requireEnv } from "./env";
 
 const DEFAULT_EMAIL_VERIFICATION_CODE_DURATION_S = 60 * 60 * 24; // 24 hours
 
@@ -46,7 +46,11 @@ type SignInResult =
   | { kind: "refreshTokens"; signedIn: { tokens: Tokens } }
   | { kind: "started"; started: true }
   | { kind: "redirect"; redirect: string; verifier: string }
-  | { kind: "passkeyOptions"; options: Record<string, unknown>; verifier: string }
+  | {
+      kind: "passkeyOptions";
+      options: Record<string, unknown>;
+      verifier: string;
+    }
   | { kind: "totpRequired"; verifier: string }
   | {
       kind: "totpSetup";
@@ -109,7 +113,9 @@ const asConvexError = (
   code: string,
   message: string,
 ): ConvexError<AuthErrorData> =>
-  error instanceof ConvexError ? error : toConvexError(authFlowError(code, message));
+  error instanceof ConvexError
+    ? error
+    : toConvexError(authFlowError(code, message));
 
 const asCredentialsError = (error: unknown): ConvexError<AuthErrorData> => {
   if (error instanceof ConvexError) {
@@ -172,7 +178,8 @@ function signInFx(
   return Effect.gen(function* () {
     if (provider === null && args.refreshToken) {
       const tokens = yield* Effect.tryPromise({
-        try: () => callRefreshSession(ctx, { refreshToken: args.refreshToken! }),
+        try: () =>
+          callRefreshSession(ctx, { refreshToken: args.refreshToken! }),
         catch: (error) =>
           asConvexError(error, "INTERNAL_ERROR", "Failed to refresh session."),
       });
@@ -192,22 +199,26 @@ function signInFx(
             allowExtraProviders: options.allowExtraProviders,
           }),
         catch: (error) =>
-          asConvexError(error, "INTERNAL_ERROR", "Failed to verify sign-in code."),
+          asConvexError(
+            error,
+            "INTERNAL_ERROR",
+            "Failed to verify sign-in code.",
+          ),
       });
-        return { kind: "signedIn" as const, signedIn: result };
-      }
+      return { kind: "signedIn" as const, signedIn: result };
+    }
 
-      const resolvedProvider = provider;
-      if (resolvedProvider === null) {
-        return yield* Effect.fail(
-          toConvexError(
-            authFlowError(
+    const resolvedProvider = provider;
+    if (resolvedProvider === null) {
+      return yield* Effect.fail(
+        toConvexError(
+          authFlowError(
             "SIGN_IN_MISSING_PARAMS",
             "Cannot sign in: missing provider, code, or refresh token.",
-            ),
           ),
-        );
-      }
+        ),
+      );
+    }
 
     return yield* Match.value(resolvedProvider).pipe(
       Match.when({ type: "email" }, (provider) =>
@@ -225,9 +236,15 @@ function signInFx(
       Match.when({ type: "passkey" }, (provider) =>
         handlePasskeyFx(ctx, provider, args),
       ),
-      Match.when({ type: "totp" }, (provider) => handleTotp(ctx, provider, args)),
-      Match.when({ type: "device" }, (provider) => handleDevice(ctx, provider, args)),
-      Match.when({ type: "sso" }, () => handleSsoProviderFx(ctx, args, options)),
+      Match.when({ type: "totp" }, (provider) =>
+        handleTotp(ctx, provider, args),
+      ),
+      Match.when({ type: "device" }, (provider) =>
+        handleDevice(ctx, provider, args),
+      ),
+      Match.when({ type: "sso" }, () =>
+        handleSsoProviderFx(ctx, args, options),
+      ),
       Match.exhaustive,
     );
   }).pipe(
@@ -279,8 +296,8 @@ function handleEmailAndPhoneProviderFx(
         return yield* Effect.fail(
           toConvexError(
             authFlowError(
-            "INVALID_VERIFICATION_CODE",
-            "Invalid or expired verification code.",
+              "INVALID_VERIFICATION_CODE",
+              "Invalid or expired verification code.",
             ),
           ),
         );
@@ -299,8 +316,8 @@ function handleEmailAndPhoneProviderFx(
           catch: () =>
             toConvexError(
               authFlowError(
-              "INTERNAL_ERROR",
-              "Failed to generate verification token",
+                "INTERNAL_ERROR",
+                "Failed to generate verification token",
               ),
             ),
         })
@@ -335,7 +352,11 @@ function handleEmailAndPhoneProviderFx(
           (args.params ?? {}) as { redirectTo: unknown },
         ),
       catch: (error) =>
-        asConvexError(error, "INVALID_REDIRECT", "Failed to resolve redirect URL."),
+        asConvexError(
+          error,
+          "INVALID_REDIRECT",
+          "Failed to resolve redirect URL.",
+        ),
     });
     const verificationArgs = {
       identifier,
@@ -417,7 +438,11 @@ function handleCredentialsFx(
         return totpDoc !== null;
       },
       catch: (error) =>
-        asConvexError(error, "INTERNAL_ERROR", "Failed to load TOTP enrollment."),
+        asConvexError(
+          error,
+          "INTERNAL_ERROR",
+          "Failed to load TOTP enrollment.",
+        ),
     });
 
     if (hasTotpEnrolled) {
@@ -429,7 +454,11 @@ function handleCredentialsFx(
             generateTokens: false,
           }),
         catch: (error) =>
-          asConvexError(error, "INTERNAL_ERROR", "Failed to start TOTP sign-in."),
+          asConvexError(
+            error,
+            "INTERNAL_ERROR",
+            "Failed to start TOTP sign-in.",
+          ),
       });
       const verifier = yield* Effect.tryPromise({
         try: () => callVerifier(ctx),
@@ -443,7 +472,11 @@ function handleCredentialsFx(
             signature: JSON.stringify({ userId: result.userId }),
           }),
         catch: (error) =>
-          asConvexError(error, "INTERNAL_ERROR", "Failed to store verifier signature."),
+          asConvexError(
+            error,
+            "INTERNAL_ERROR",
+            "Failed to store verifier signature.",
+          ),
       });
       return { kind: "totpRequired" as const, verifier };
     }
@@ -488,7 +521,11 @@ function handleOAuthProviderFx(
             allowExtraProviders: options.allowExtraProviders,
           }),
         catch: (error) =>
-          asConvexError(error, "INTERNAL_ERROR", "Failed to verify OAuth sign-in."),
+          asConvexError(
+            error,
+            "INTERNAL_ERROR",
+            "Failed to verify OAuth sign-in.",
+          ),
       });
       return {
         kind: "signedIn" as const,
@@ -498,8 +535,7 @@ function handleOAuthProviderFx(
 
     const redirect = new URL(
       (readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ??
-        requireEnv("CONVEX_SITE_URL")) +
-        `/api/auth/signin/${provider.id}`,
+        requireEnv("CONVEX_SITE_URL")) + `/api/auth/signin/${provider.id}`,
     );
     const verifier = yield* Effect.tryPromise({
       try: () => callVerifier(ctx),
@@ -509,16 +545,16 @@ function handleOAuthProviderFx(
     redirect.searchParams.set("code", verifier);
 
     if (args.params?.redirectTo !== undefined) {
-        if (typeof args.params.redirectTo !== "string") {
-          return yield* Effect.fail(
-            toConvexError(
-              authFlowError(
+      if (typeof args.params.redirectTo !== "string") {
+        return yield* Effect.fail(
+          toConvexError(
+            authFlowError(
               "INVALID_REDIRECT",
               `Expected \`redirectTo\` to be a string, got ${describeUnknown(args.params.redirectTo)}`,
-              ),
             ),
-          );
-        }
+          ),
+        );
+      }
       redirect.searchParams.set("redirectTo", args.params.redirectTo);
     }
 
@@ -527,7 +563,11 @@ function handleOAuthProviderFx(
       redirect: redirect.toString(),
       verifier,
     };
-  }).pipe(Effect.withSpan(`convex-auth.signin.oauth`, { attributes: { provider: provider.id } }));
+  }).pipe(
+    Effect.withSpan(`convex-auth.signin.oauth`, {
+      attributes: { provider: provider.id },
+    }),
+  );
 }
 
 function handleSsoProviderFx(
@@ -552,15 +592,16 @@ function handleSsoProviderFx(
       return yield* Effect.fail(
         toConvexError(
           authFlowError(
-          "SIGN_IN_MISSING_PARAMS",
-          "connectionId is required for SSO sign-in.",
+            "SIGN_IN_MISSING_PARAMS",
+            "connectionId is required for SSO sign-in.",
           ),
         ),
       );
     }
 
     const protocol: "oidc" | "saml" =
-      (normalizedParams.protocol === "oidc" || normalizedParams.protocol === "saml"
+      (normalizedParams.protocol === "oidc" ||
+      normalizedParams.protocol === "saml"
         ? normalizedParams.protocol
         : undefined) ??
       (options.resolveSsoProtocol
@@ -588,8 +629,8 @@ function handleSsoProviderFx(
       return yield* Effect.fail(
         toConvexError(
           authFlowError(
-          "SIGN_IN_MISSING_PARAMS",
-          `Invalid SSO protocol: ${protocol as string}. Expected "oidc" or "saml".`,
+            "SIGN_IN_MISSING_PARAMS",
+            `Invalid SSO protocol: ${protocol as string}. Expected "oidc" or "saml".`,
           ),
         ),
       );

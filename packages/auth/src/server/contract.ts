@@ -215,13 +215,15 @@ export const createGroupConnection = (
     config?: Record<string, unknown>;
     extend?: Record<string, unknown>;
   },
-) => mutate<typeof args, string>(ctx, componentPublic.groupConnectionCreate, args);
+) =>
+  mutate<typeof args, string>(ctx, componentPublic.groupConnectionCreate, args);
 
 export const updateGroupConnection = (
   ctx: ComponentWriteCtx,
   componentPublic: ComponentPublic,
   args: { connectionId: string; data: Record<string, unknown> },
-) => mutate<typeof args, null>(ctx, componentPublic.groupConnectionUpdate, args);
+) =>
+  mutate<typeof args, null>(ctx, componentPublic.groupConnectionUpdate, args);
 
 export const deleteGroupConnection = (
   ctx: ComponentWriteCtx,
@@ -265,7 +267,12 @@ export const addConnectionDomain = (
     domain: string;
     isPrimary?: boolean;
   },
-) => mutate<typeof args, string>(ctx, componentPublic.groupConnectionDomainAdd, args);
+) =>
+  mutate<typeof args, string>(
+    ctx,
+    componentPublic.groupConnectionDomainAdd,
+    args,
+  );
 
 export const deleteConnectionDomain = (
   ctx: ComponentWriteCtx,
@@ -366,7 +373,12 @@ export const verifyConnectionDomain = (
   ctx: ComponentWriteCtx,
   componentPublic: ComponentPublic,
   args: { domainId: string; verifiedAt: number },
-) => mutate<typeof args, null>(ctx, componentPublic.groupConnectionDomainVerify, args);
+) =>
+  mutate<typeof args, null>(
+    ctx,
+    componentPublic.groupConnectionDomainVerify,
+    args,
+  );
 
 export const getGroupConnectionSecret = (
   ctx: ComponentReadCtx,
@@ -491,12 +503,7 @@ export const insertAccount = (
     provider: string;
     providerAccountId: string;
   },
-) =>
-  mutate<typeof args, string>(
-    ctx,
-    componentPublic.accountInsert,
-    args,
-  );
+) => mutate<typeof args, string>(ctx, componentPublic.accountInsert, args);
 
 export const insertUser = (
   ctx: ComponentWriteCtx,
@@ -574,7 +581,12 @@ export const updateWebhookEndpoint = (
   ctx: ComponentWriteCtx,
   componentPublic: ComponentPublic,
   args: { endpointId: string; data: Record<string, unknown> },
-) => mutate<typeof args, null>(ctx, componentPublic.groupWebhookEndpointUpdate, args);
+) =>
+  mutate<typeof args, null>(
+    ctx,
+    componentPublic.groupWebhookEndpointUpdate,
+    args,
+  );
 
 export const listReadyWebhookDeliveries = (
   ctx: ComponentReadCtx,
@@ -591,4 +603,9 @@ export const patchWebhookDelivery = (
   ctx: ComponentWriteCtx,
   componentPublic: ComponentPublic,
   args: { deliveryId: string; data: Record<string, unknown> },
-) => mutate<typeof args, null>(ctx, componentPublic.groupWebhookDeliveryPatch, args);
+) =>
+  mutate<typeof args, null>(
+    ctx,
+    componentPublic.groupWebhookDeliveryPatch,
+    args,
+  );

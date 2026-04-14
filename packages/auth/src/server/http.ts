@@ -9,18 +9,14 @@ import { ConvexError } from "convex/values";
 import { parse as parseCookies } from "cookie";
 import { Cause, Effect, Exit } from "effect";
 
-import type {
-  AuthContext,
-  OptionalAuthContext,
-  UserDoc,
-} from "./auth";
+import type { AuthContext, OptionalAuthContext, UserDoc } from "./auth";
 import {
   createUnauthenticatedAuthContext,
   getAuthContextForUser,
   getSessionUserId,
 } from "./context";
-import type { CorsConfig, HttpKeyContext } from "./types";
 import { logError } from "./log";
+import type { CorsConfig, HttpKeyContext } from "./types";
 
 type HttpQueryCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
 type HttpIdentityCtx = {
@@ -33,7 +29,10 @@ type HttpContextCtx = HttpIdentityCtx & HttpQueryCtx;
 type HttpContextAuthLike = {
   user: {
     get: (ctx: HttpQueryCtx, userId: string) => Promise<UserDoc>;
-    getActiveGroup: (ctx: HttpQueryCtx, args: { userId: string }) => Promise<string | null>;
+    getActiveGroup: (
+      ctx: HttpQueryCtx,
+      args: { userId: string },
+    ) => Promise<string | null>;
   };
   member: {
     inspect: (
@@ -46,7 +45,10 @@ type HttpContextAuthLike = {
     }>;
   };
   key: {
-    verify: (ctx: GenericActionCtx<GenericDataModel>, rawKey: string) => Promise<{
+    verify: (
+      ctx: GenericActionCtx<GenericDataModel>,
+      rawKey: string,
+    ) => Promise<{
       userId: string;
       keyId: string;
       scopes: HttpKeyContext["key"]["scopes"];
@@ -185,9 +187,7 @@ function buildCorsHeaders(
       : null;
 
   return {
-    ...(matchedOrigin
-      ? { "Access-Control-Allow-Origin": matchedOrigin }
-      : {}),
+    ...(matchedOrigin ? { "Access-Control-Allow-Origin": matchedOrigin } : {}),
     "Access-Control-Allow-Methods":
       corsConfig?.methods ?? "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     "Access-Control-Allow-Headers":

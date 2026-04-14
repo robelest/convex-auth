@@ -199,14 +199,10 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
         user: GenericDoc<DataModel, "User">,
       ) => {
         if (verifyProvider && !account.emailVerified) {
-          return await ctx.auth.provider.signIn(
-            ctx,
-            verifyProvider,
-            {
-              accountId: account._id,
-              params,
-            },
-          );
+          return await ctx.auth.provider.signIn(ctx, verifyProvider, {
+            accountId: account._id,
+            params,
+          });
         }
         return { userId: user._id };
       };
@@ -263,14 +259,10 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
                 provider,
                 account: { id: email },
               });
-              return await ctx.auth.provider.signIn(
-                ctx,
-                resetProvider,
-                {
-                  accountId: account._id,
-                  params,
-                },
-              );
+              return await ctx.auth.provider.signIn(ctx, resetProvider, {
+                accountId: account._id,
+                params,
+              });
             }),
           ),
           Match.when({ tag: "resetVerification" }, () =>
@@ -317,14 +309,10 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
                 provider,
                 account: { id: email },
               });
-              return await ctx.auth.provider.signIn(
-                ctx,
-                verifyProvider,
-                {
-                  accountId: account._id,
-                  params,
-                },
-              );
+              return await ctx.auth.provider.signIn(ctx, verifyProvider, {
+                accountId: account._id,
+                params,
+              });
             }),
           ),
           Match.when({ tag: "invalid" }, () =>
@@ -348,10 +336,7 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
         return await verifyPassword(password, hash);
       },
     },
-    extraProviders: [
-      resetProvider,
-      verifyProvider,
-    ],
+    extraProviders: [resetProvider, verifyProvider],
     ...config,
   });
 }

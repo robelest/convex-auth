@@ -6,11 +6,16 @@ import { ConvexError } from "convex/values";
 import { Effect, Match } from "effect";
 
 import { AuthFlowError, authFlowError } from "../shared/errors";
+import { requireEnv } from "./env";
 import type { AuthErrorData } from "./errors";
 import { toConvexError } from "./errors";
 import { userIdFromIdentitySubject } from "./identity";
 import { callSignIn } from "./mutations/index";
-import type { DeviceProviderConfig, GenericActionCtxWithAuthConfig } from "./types";
+import { generateRandomString, sha256 } from "./random";
+import type {
+  DeviceProviderConfig,
+  GenericActionCtxWithAuthConfig,
+} from "./types";
 import {
   type AuthDataModel,
   type SessionInfo,
@@ -21,8 +26,6 @@ import {
   queryDeviceByCodeHash,
   queryDeviceByUserCode,
 } from "./types";
-import { generateRandomString, sha256 } from "./random";
-import { requireEnv } from "./env";
 
 type EnrichedActionCtx = GenericActionCtxWithAuthConfig<AuthDataModel>;
 
@@ -72,7 +75,9 @@ export const handleDevice = (
   Effect.tryPromise({
     try: async () => {
       const params = args.params ?? {};
-      const flow = assertFlow(typeof params.flow === "string" ? params.flow : "create");
+      const flow = assertFlow(
+        typeof params.flow === "string" ? params.flow : "create",
+      );
 
       return await Match.value(flow).pipe(
         Match.when("create", async () => {
@@ -87,7 +92,8 @@ export const handleDevice = (
             provider.charset,
           );
           const mid = Math.floor(rawUserCode.length / 2);
-          const userCode = rawUserCode.slice(0, mid) + "-" + rawUserCode.slice(mid);
+          const userCode =
+            rawUserCode.slice(0, mid) + "-" + rawUserCode.slice(mid);
 
           const expiresAt = Date.now() + provider.expiresIn * 1000;
           await mutateDeviceInsert(ctx, {
@@ -234,8 +240,11 @@ export const handleDevice = (
         : error instanceof AuthFlowError
           ? toConvexError(error)
           : error instanceof Error
-          ? toConvexError(
-              authFlowError("INTERNAL_ERROR", `Device flow failed: ${error.message}`),
-            )
-          : toConvexError(error),
+            ? toConvexError(
+                authFlowError(
+                  "INTERNAL_ERROR",
+                  `Device flow failed: ${error.message}`,
+                ),
+              )
+            : toConvexError(error),
   });

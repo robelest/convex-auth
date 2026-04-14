@@ -75,7 +75,9 @@ export const listMyGroups = authQuery({
           : null;
       }),
     );
-    return groups.filter((group): group is NonNullable<typeof group> => group !== null);
+    return groups.filter(
+      (group): group is NonNullable<typeof group> => group !== null,
+    );
   },
 });
 
@@ -148,7 +150,9 @@ export const getDashboard = authQuery({
     const projects = permissions.canReadProjects
       ? await ctx.db
           .query("projects")
-          .withIndex("by_groupId", (q) => q.eq("groupId", selectedGroup.groupId))
+          .withIndex("by_groupId", (q) =>
+            q.eq("groupId", selectedGroup.groupId),
+          )
           .take(50)
       : [];
 
@@ -216,7 +220,10 @@ export const createGroup = authMutation({
         message: "Name must be at least 3 characters.",
       });
     }
-    const { groupId } = await auth.group.create(ctx, { name, slug: toSlug(name) });
+    const { groupId } = await auth.group.create(ctx, {
+      name,
+      slug: toSlug(name),
+    });
     await auth.member.create(ctx, {
       userId,
       groupId,
@@ -257,7 +264,8 @@ export const updateMemberRole = authMutation({
       });
       const adminCount = members.items.filter(
         (member: (typeof members.items)[number]) =>
-          member.roleIds?.includes(validRoleIds[0]) && member._id !== args.memberId,
+          member.roleIds?.includes(validRoleIds[0]) &&
+          member._id !== args.memberId,
       ).length;
       if (adminCount === 0) {
         throw new ConvexError({

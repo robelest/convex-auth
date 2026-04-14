@@ -11,4 +11,9 @@ import type { Value } from "convex/values";
  */
 export const AUTH_STORE_REF = makeFunctionReference(
   "auth:store",
-) as unknown as FunctionReference<"mutation", "public", Record<string, Value>, unknown>;
+) as unknown as FunctionReference<
+  "mutation",
+  "public",
+  Record<string, Value>,
+  unknown
+>;

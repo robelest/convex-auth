@@ -156,7 +156,10 @@ export function decodeGroupOidcState(value: string | null) {
     connectionId?: unknown;
     state?: unknown;
   };
-  if (typeof parsed.connectionId !== "string" || typeof parsed.state !== "string") {
+  if (
+    typeof parsed.connectionId !== "string" ||
+    typeof parsed.state !== "string"
+  ) {
     throw new Error("Invalid OIDC state.");
   }
   return {
@@ -166,9 +169,7 @@ export function decodeGroupOidcState(value: string | null) {
 }
 
 /** @internal */
-export function isGroupSamlSourceActive(
-  source: GroupSamlLoadedSource,
-) {
+export function isGroupSamlSourceActive(source: GroupSamlLoadedSource) {
   return source.status === "active";
 }
 

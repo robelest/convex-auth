@@ -111,10 +111,13 @@ test("proxy sign up can immediately accept invite", async () => {
           };
 
           if (payload.action !== "auth:signIn") {
-            return new Response(JSON.stringify({ error: "Unsupported action" }), {
-              status: 400,
-              headers: { "Content-Type": "application/json" },
-            });
+            return new Response(
+              JSON.stringify({ error: "Unsupported action" }),
+              {
+                status: 400,
+                headers: { "Content-Type": "application/json" },
+              },
+            );
           }
 
           if (payload.args?.refreshToken === true) {

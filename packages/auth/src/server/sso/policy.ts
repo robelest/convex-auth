@@ -1,4 +1,7 @@
-import type { GroupConnectionPolicy, GroupConnectionPolicyPatch } from "../types";
+import type {
+  GroupConnectionPolicy,
+  GroupConnectionPolicyPatch,
+} from "../types";
 import { asRecord } from "./shared";
 
 export const DEFAULT_GROUP_CONNECTION_POLICY: GroupConnectionPolicy = {
@@ -37,7 +40,9 @@ export const DEFAULT_GROUP_CONNECTION_POLICY: GroupConnectionPolicy = {
   },
 };
 
-export function normalizeGroupConnectionPolicy(policy: unknown): GroupConnectionPolicy {
+export function normalizeGroupConnectionPolicy(
+  policy: unknown,
+): GroupConnectionPolicy {
   const input = asRecord(policy) ?? {};
   const identity = asRecord(input.identity) ?? {};
   const accountLinking = asRecord(identity.accountLinking) ?? {};
@@ -74,12 +79,14 @@ export function normalizeGroupConnectionPolicy(policy: unknown): GroupConnection
           user.updateProfileOnLogin === "never" ||
           user.updateProfileOnLogin === "always"
             ? user.updateProfileOnLogin
-            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.user.updateProfileOnLogin,
+            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.user
+                .updateProfileOnLogin,
         updateProfileFromScim:
           user.updateProfileFromScim === "never" ||
           user.updateProfileFromScim === "missing"
             ? user.updateProfileFromScim
-            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.user.updateProfileFromScim,
+            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.user
+                .updateProfileFromScim,
         authority:
           user.authority === "sso" || user.authority === "scim"
             ? user.authority
@@ -127,7 +134,10 @@ export function normalizeGroupConnectionPolicy(policy: unknown): GroupConnection
           ? {
               mapping: Object.fromEntries(
                 Object.entries(groups.mapping)
-                  .filter(([key, value]) => typeof key === "string" && Array.isArray(value))
+                  .filter(
+                    ([key, value]) =>
+                      typeof key === "string" && Array.isArray(value),
+                  )
                   .map(([key, value]) => [
                     key,
                     Array.from(
@@ -153,7 +163,10 @@ export function normalizeGroupConnectionPolicy(policy: unknown): GroupConnection
           ? {
               mapping: Object.fromEntries(
                 Object.entries(roles.mapping)
-                  .filter(([key, value]) => typeof key === "string" && Array.isArray(value))
+                  .filter(
+                    ([key, value]) =>
+                      typeof key === "string" && Array.isArray(value),
+                  )
                   .map(([key, value]) => [
                     key,
                     Array.from(

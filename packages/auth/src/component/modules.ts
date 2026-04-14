@@ -30,8 +30,7 @@ const modules: Record<string, () => Promise<unknown>> = {
     import("./public/identity/users"),
   "./component/public/identity/verifiers.ts": () =>
     import("./public/identity/verifiers"),
-  "./component/public/security/keys.ts": () =>
-    import("./public/security/keys"),
+  "./component/public/security/keys.ts": () => import("./public/security/keys"),
   "./component/public/security/limits.ts": () =>
     import("./public/security/limits"),
   "./component/public/sso/audit.ts": () => import("./public/sso/audit"),

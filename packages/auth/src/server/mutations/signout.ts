@@ -25,21 +25,23 @@ export function signOutImpl(
       Option.match({
         onNone: () => Effect.succeed(null),
         onSome: (sessionId) =>
-          Effect.flatMap(Effect.promise(() => db.sessions.getById(sessionId)), (session) =>
-            pipe(
-              Option.fromNullishOr(session),
-              Option.match({
-                onNone: () => Effect.succeed(null),
-                onSome: (session) =>
-                  Effect.as(
-                    Effect.promise(() => deleteSession(ctx, session, config)),
-                    {
-                      userId: session.userId,
-                      sessionId: session._id,
-                    } satisfies Exclude<ReturnType, null>,
-                  ),
-              }),
-            ),
+          Effect.flatMap(
+            Effect.promise(() => db.sessions.getById(sessionId)),
+            (session) =>
+              pipe(
+                Option.fromNullishOr(session),
+                Option.match({
+                  onNone: () => Effect.succeed(null),
+                  onSome: (session) =>
+                    Effect.as(
+                      Effect.promise(() => deleteSession(ctx, session, config)),
+                      {
+                        userId: session.userId,
+                        sessionId: session._id,
+                      } satisfies Exclude<ReturnType, null>,
+                    ),
+                }),
+              ),
           ),
       }),
     );

@@ -57,7 +57,9 @@ export const resetSignInRateLimit = (
 ): Effect.Effect<void> =>
   Effect.flatMap(getRateLimitState(ctx, identifier, config), (state) =>
     state !== null
-      ? Effect.promise(() => authDb(ctx, config).rateLimits.delete(state.limit._id))
+      ? Effect.promise(() =>
+          authDb(ctx, config).rateLimits.delete(state.limit._id),
+        )
       : Effect.void,
   );
 

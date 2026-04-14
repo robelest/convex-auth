@@ -4,9 +4,9 @@
  * @module
  */
 
-import { defaultMagicLinkEmail } from "../server/templates";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 
+import { defaultMagicLinkEmail } from "../server/templates";
 import type { EmailConfig } from "../server/types";
 
 /** Configuration for the {@link email} provider. */

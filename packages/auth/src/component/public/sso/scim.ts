@@ -91,7 +91,9 @@ export const groupConnectionScimConfigGetByGroupConnection = query({
   handler: async (ctx, { connectionId }) => {
     return await ctx.db
       .query("GroupConnectionScimConfig")
-      .withIndex("group_connection_id", (idx) => idx.eq("connectionId", connectionId))
+      .withIndex("group_connection_id", (idx) =>
+        idx.eq("connectionId", connectionId),
+      )
       .first();
   },
 });
@@ -298,7 +300,9 @@ export const groupConnectionScimIdentityListByGroupConnection = query({
   handler: async (ctx, { connectionId }) => {
     return await ctx.db
       .query("GroupConnectionScimIdentity")
-      .withIndex("group_connection_id", (idx) => idx.eq("connectionId", connectionId))
+      .withIndex("group_connection_id", (idx) =>
+        idx.eq("connectionId", connectionId),
+      )
       .collect();
   },
 });

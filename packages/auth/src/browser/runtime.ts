@@ -1,15 +1,12 @@
-import * as BrowserStream from "@effect/platform-browser/BrowserStream";
-import * as BrowserKeyValueStore from "@effect/platform-browser/BrowserKeyValueStore";
 import * as BrowserHttpClient from "@effect/platform-browser/BrowserHttpClient";
+import * as BrowserKeyValueStore from "@effect/platform-browser/BrowserKeyValueStore";
+import * as BrowserStream from "@effect/platform-browser/BrowserStream";
 import { Effect, Fiber, Stream } from "effect";
 import * as KeyValueStore from "effect/unstable/persistence/KeyValueStore";
 
 import type { ClientRuntime } from "../client/core/types";
 import { BrowserLocks, BrowserLocksLive } from "./locks";
-import {
-  BrowserNavigation,
-  BrowserNavigationLive,
-} from "./navigation";
+import { BrowserNavigation, BrowserNavigationLive } from "./navigation";
 
 const browserStorage = {
   async getItem(key: string) {

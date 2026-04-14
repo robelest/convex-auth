@@ -37,9 +37,9 @@ export interface CredentialsConfig<
     credentials: Partial<Record<string, Value | undefined>>,
     ctx: GenericActionCtxWithAuthConfig<DataModel>,
   ) => Promise<{
-      userId: GenericId<"User">;
-      sessionId?: GenericId<"Session">;
-    } | null>;
+    userId: GenericId<"User">;
+    sessionId?: GenericId<"Session">;
+  } | null>;
   /** Optional hashing helpers for password-style credential verification. */
   crypto?: {
     hashSecret: (secret: string) => Promise<string>;

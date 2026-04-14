@@ -57,16 +57,13 @@ test("group management RPC is available when group SSO helpers are mounted", asy
   const { groupId } = await asAdmin.mutation(api.groups.createGroup, {
     name: "Mounted group SSO API group",
   });
-  const created = await asAdmin.mutation(
-    api.auth.group.createConnection,
-    {
-      groupId,
-      name: "Mounted group SSO API",
-      slug: "mounted-group-api",
-      protocol: "saml",
-      status: "active",
-    },
-  );
+  const created = await asAdmin.mutation(api.auth.group.createConnection, {
+    groupId,
+    name: "Mounted group SSO API",
+    slug: "mounted-group-api",
+    protocol: "saml",
+    status: "active",
+  });
 
   expect(created).toEqual(
     expect.objectContaining({
@@ -92,16 +89,13 @@ test("group metadata query returns service provider setup values", async () => {
   const { groupId } = await asAdmin.mutation(api.groups.createGroup, {
     name: "Mounted SAML metadata group",
   });
-  const created = await asAdmin.mutation(
-    api.auth.group.createConnection,
-    {
-      groupId,
-      name: "Mounted saml metadata",
-      slug: "mounted-saml-metadata",
-      protocol: "saml",
-      status: "active",
-    },
-  );
+  const created = await asAdmin.mutation(api.auth.group.createConnection, {
+    groupId,
+    name: "Mounted saml metadata",
+    slug: "mounted-saml-metadata",
+    protocol: "saml",
+    status: "active",
+  });
 
   const metadata = await asAdmin.query(api.auth.group.metadata, {
     connectionId: created.connectionId,
@@ -111,8 +105,12 @@ test("group metadata query returns service provider setup values", async () => {
   expect(metadata).toContain(
     `/api/auth/connections/${created.connectionId}/saml/metadata`,
   );
-  expect(metadata).toContain(`/api/auth/connections/${created.connectionId}/saml/acs`);
-  expect(metadata).toContain(`/api/auth/connections/${created.connectionId}/saml/slo`);
+  expect(metadata).toContain(
+    `/api/auth/connections/${created.connectionId}/saml/acs`,
+  );
+  expect(metadata).toContain(
+    `/api/auth/connections/${created.connectionId}/saml/slo`,
+  );
 });
 
 test("disableWebhookEndpoint authorizes against the endpoint connection", async () => {
@@ -123,16 +121,13 @@ test("disableWebhookEndpoint authorizes against the endpoint connection", async 
     name: "Webhook auth group",
   });
 
-  const created = await asAdmin.mutation(
-    api.auth.group.createConnection,
-    {
-      groupId,
-      name: "Webhook auth",
-      slug: "webhook-auth",
-      protocol: "oidc",
-      status: "active",
-    },
-  );
+  const created = await asAdmin.mutation(api.auth.group.createConnection, {
+    groupId,
+    name: "Webhook auth",
+    slug: "webhook-auth",
+    protocol: "oidc",
+    status: "active",
+  });
 
   const endpoint = await asAdmin.mutation(
     api.auth.group.createWebhookEndpoint,

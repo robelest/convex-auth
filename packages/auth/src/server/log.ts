@@ -5,8 +5,11 @@ export { LOG_LEVELS };
 export type { LogLevel };
 
 const configuredLogLevel =
-  LOG_LEVELS[(readConfigSync(envOptionalString("AUTH_LOG_LEVEL")) as LogLevel | undefined) ?? "INFO"] ??
-  "INFO";
+  LOG_LEVELS[
+    (readConfigSync(envOptionalString("AUTH_LOG_LEVEL")) as
+      | LogLevel
+      | undefined) ?? "INFO"
+  ] ?? "INFO";
 
 const shouldRedactSecrets = !readConfigSync(
   envBoolean("AUTH_LOG_SECRETS") ?? false,

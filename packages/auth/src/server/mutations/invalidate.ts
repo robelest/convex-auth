@@ -4,10 +4,10 @@ import { Effect } from "effect";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
-import { deleteSession } from "../sessions";
-import { Doc, MutationCtx } from "../types";
 import { LOG_LEVELS } from "../log";
 import { log } from "../log";
+import { deleteSession } from "../sessions";
+import { Doc, MutationCtx } from "../types";
 import { AUTH_STORE_REF } from "./store/refs";
 
 export const invalidateSessionsArgs = v.object({
@@ -42,10 +42,12 @@ export function invalidateSessionsImpl(
     const sessions = (yield* Effect.promise(() =>
       authDb(ctx, config).sessions.listByUser(typedUserId),
     )) as Doc<"Session">[];
-    yield* Effect.forEach(sessions, (session) =>
-      exceptSet.has(session._id)
-        ? Effect.void
-        : Effect.promise(() => deleteSession(ctx, session, config)),
+    yield* Effect.forEach(
+      sessions,
+      (session) =>
+        exceptSet.has(session._id)
+          ? Effect.void
+          : Effect.promise(() => deleteSession(ctx, session, config)),
       { discard: true },
     );
   });

@@ -4,7 +4,11 @@
  * @module
  */
 
-import type { GenericActionCtx, GenericDataModel, UserIdentity } from "convex/server";
+import type {
+  GenericActionCtx,
+  GenericDataModel,
+  UserIdentity,
+} from "convex/server";
 import { ConvexError, type GenericId } from "convex/values";
 
 import type { AuthApiRefs } from "../client/index";
@@ -18,7 +22,6 @@ import type {
   AuthAuthorizationConfig,
   AuthGrant,
   AuthProviderConfig,
-  AuthRoleDefinition,
   AuthRoleId,
   ConvexAuthConfig,
   HasDeviceProvider,
@@ -50,9 +53,10 @@ type AuthQueryCtx = {
   runQuery: (...args: never[]) => Promise<unknown>;
 };
 
-type CustomFunctionInputResult<TAuth extends Record<string, unknown>> = Promise<{
-  ctx: { auth: TAuth };
-}>;
+type CustomFunctionInputResult<TAuth extends Record<string, unknown>> =
+  Promise<{
+    ctx: { auth: TAuth };
+  }>;
 
 type MemberApiWithAuthorization<
   TAuthorization extends AuthAuthorizationConfig | undefined,
@@ -452,7 +456,9 @@ export type AuthApi<
   };
 };
 
-type PublicContextFactory = <TResolve extends Record<string, unknown> = Record<string, never>>(
+type PublicContextFactory = <
+  TResolve extends Record<string, unknown> = Record<string, never>,
+>(
   ctx: AuthResolverCtx,
   config?: AuthContextConfig<TResolve, AuthResolverCtx>,
 ) => Promise<ResolvedAuthContext<TResolve>>;
@@ -579,11 +585,7 @@ function createNotSignedInError() {
 async function createPublicAuthContext<
   TCtx extends AuthIdentityCtx & AuthQueryCtx,
   TResolve extends Record<string, unknown> = Record<string, never>,
->(
-  auth: AuthLike,
-  ctx: TCtx,
-  config?: AuthContextConfig<TResolve, TCtx>,
-) {
+>(auth: AuthLike, ctx: TCtx, config?: AuthContextConfig<TResolve, TCtx>) {
   const resolved = await resolveConfiguredAuthContext(auth, ctx, config);
 
   if (resolved === null) {
@@ -713,15 +715,14 @@ export function createAuth<
           isPrimary: Boolean(nextDomain.isPrimary),
         });
         if (current?.verifiedAt !== undefined) {
-          await (ctx as {
-            runMutation: GenericActionCtx<GenericDataModel>["runMutation"];
-          }).runMutation(
-            component.public.groupConnectionDomainVerify,
-            {
-              domainId,
-              verifiedAt: current.verifiedAt,
-            },
-          );
+          await (
+            ctx as {
+              runMutation: GenericActionCtx<GenericDataModel>["runMutation"];
+            }
+          ).runMutation(component.public.groupConnectionDomainVerify, {
+            domainId,
+            verifiedAt: current.verifiedAt,
+          });
         }
       }
 
@@ -730,10 +731,10 @@ export function createAuth<
         connectionId,
         domains: updatedDomains.map(
           (domain: (typeof updatedDomains)[number]) => ({
-              domainId: domain._id,
-              domain: domain.domain,
-              isPrimary: Boolean(domain.isPrimary),
-              verified: domain.verifiedAt !== undefined,
+            domainId: domain._id,
+            domain: domain.domain,
+            isPrimary: Boolean(domain.isPrimary),
+            verified: domain.verifiedAt !== undefined,
             verifiedAt: domain.verifiedAt ?? null,
           }),
         ),
@@ -798,14 +799,19 @@ export function createAuth<
     key: authResult.auth.key,
     http: authResult.auth.http,
 
-    context: ((ctx: AuthResolverCtx, config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>) =>
+    context: ((
+      ctx: AuthResolverCtx,
+      config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>,
+    ) =>
       createPublicAuthContext(
         authResult.auth,
         ctx as Parameters<typeof createPublicAuthContext>[1],
         config,
       )) as PublicContextFactory as AuthContextResolver,
 
-    ctx: ((config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>) =>
+    ctx: ((
+      config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>,
+    ) =>
       createAuthContextCustomization(
         authResult.auth,
         config,
@@ -933,13 +939,14 @@ function createAuthContextCustomization<
   TCtx extends AuthIdentityCtx & {
     runQuery: (...args: never[]) => Promise<unknown>;
   } = AuthIdentityCtx & { runQuery: (...args: never[]) => Promise<unknown> },
->(
-  auth: AuthLike,
-  config?: AuthContextConfig<TResolve, TCtx>,
-) {
+>(auth: AuthLike, config?: AuthContextConfig<TResolve, TCtx>) {
   return {
     args: {},
-    input: async (ctx: TCtx, _args: Record<string, never>, _extra?: unknown) => {
+    input: async (
+      ctx: TCtx,
+      _args: Record<string, never>,
+      _extra?: unknown,
+    ) => {
       const nativeAuth = ctx.auth;
       const getUserIdentity = nativeAuth.getUserIdentity.bind(nativeAuth);
       const resolved = await resolveConfiguredAuthContext(auth, ctx, config);
@@ -1002,5 +1009,9 @@ function createAuthContextCustomization<
  * @see {@link createAuth}
  */
 export type InferAuth<
-  T extends { input: (...args: never[]) => CustomFunctionInputResult<Record<string, unknown>> },
+  T extends {
+    input: (
+      ...args: never[]
+    ) => CustomFunctionInputResult<Record<string, unknown>>;
+  },
 > = Awaited<ReturnType<T["input"]>>["ctx"]["auth"];

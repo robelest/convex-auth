@@ -11,13 +11,16 @@
  * in your app's existing OpenTelemetry pipeline.
  */
 
-import type { LogRecordProcessor } from "@opentelemetry/sdk-logs";
-import type { MetricReader } from "@opentelemetry/sdk-metrics";
-import type { SpanProcessor, TracerConfig } from "@opentelemetry/sdk-trace-base";
-import type { Attributes } from "@opentelemetry/api";
-import { Effect } from "effect";
 import * as NodeSdk from "@effect/opentelemetry/NodeSdk";
 import * as WebSdk from "@effect/opentelemetry/WebSdk";
+import type { Attributes } from "@opentelemetry/api";
+import type { LogRecordProcessor } from "@opentelemetry/sdk-logs";
+import type { MetricReader } from "@opentelemetry/sdk-metrics";
+import type {
+  SpanProcessor,
+  TracerConfig,
+} from "@opentelemetry/sdk-trace-base";
+import { Effect } from "effect";
 
 /**
  * Consumer-provided telemetry configuration for Convex Auth spans.

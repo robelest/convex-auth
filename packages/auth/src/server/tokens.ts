@@ -1,9 +1,9 @@
 import { GenericId } from "convex/values";
 import { SignJWT, importPKCS8 } from "jose";
 
-import { ConvexAuthConfig } from "./types";
-import { generateRandomString } from "./random";
 import { requireEnv } from "./env";
+import { generateRandomString } from "./random";
+import { ConvexAuthConfig } from "./types";
 
 export const TOKEN_SUB_CLAIM_DIVIDER = "|";
 

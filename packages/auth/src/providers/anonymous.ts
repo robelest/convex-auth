@@ -71,7 +71,8 @@ export function anonymous<
   return credentials<DataModel>({
     id: provider,
     authorize: async (params, ctx) => {
-      const profile = config.profile?.(params, ctx) ?? defaultAnonymousProfile<DataModel>();
+      const profile =
+        config.profile?.(params, ctx) ?? defaultAnonymousProfile<DataModel>();
       const { user } = await ctx.auth.account.create(ctx, {
         provider,
         account: { id: crypto.randomUUID() },

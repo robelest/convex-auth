@@ -20,7 +20,10 @@ export const payloadValueValidator = v.union(
   payloadNestedRecordValidator,
 );
 
-export const payloadRecordValidator = v.record(v.string(), payloadValueValidator);
+export const payloadRecordValidator = v.record(
+  v.string(),
+  payloadValueValidator,
+);
 
 export const accountIdentityValidator = v.object({
   type: v.optional(v.string()),

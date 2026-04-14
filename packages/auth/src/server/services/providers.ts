@@ -1,9 +1,9 @@
 import { ConvexError } from "convex/values";
 import { Layer, ServiceMap } from "effect";
 
-import type { GetProviderOrThrowFunc } from "../crypto";
-import { listAvailableProviders, configDefaults } from "../config";
 import { LOG_LEVELS, type LogLevel } from "../../shared/log";
+import { listAvailableProviders, configDefaults } from "../config";
+import type { GetProviderOrThrowFunc } from "../crypto";
 
 export class ProviderRegistryService extends ServiceMap.Service<
   ProviderRegistryService,
@@ -15,12 +15,11 @@ export const ProviderRegistryLive = (
   logger: { log: (level: LogLevel, ...args: unknown[]) => void },
 ) =>
   Layer.succeed(ProviderRegistryService)({
-    getProviderOrThrow: (
-      id: string,
-      allowExtraProviders: boolean = false,
-    ) => {
+    getProviderOrThrow: (id: string, allowExtraProviders: boolean = false) => {
       const provider =
-        config.providers.find((configuredProvider) => configuredProvider.id === id) ??
+        config.providers.find(
+          (configuredProvider) => configuredProvider.id === id,
+        ) ??
         (allowExtraProviders
           ? config.extraProviders.find(
               (configuredProvider) => configuredProvider.id === id,

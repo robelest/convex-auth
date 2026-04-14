@@ -9,8 +9,8 @@ import {
   recordFailedSignIn,
   resetSignInRateLimit,
 } from "../limits";
-import { Doc, MutationCtx } from "../types";
 import { LOG_LEVELS, log, maybeRedact } from "../log";
+import { Doc, MutationCtx } from "../types";
 import { AUTH_STORE_REF } from "./store/refs";
 
 export const retrieveAccountWithCredentialsArgs = v.object({
@@ -77,7 +77,9 @@ export function retrieveAccountWithCredentialsImpl(
 
       const user = yield* Effect.promise(
         () =>
-          db.users.getById(existingAccount.userId) as Promise<Doc<"User"> | null>,
+          db.users.getById(
+            existingAccount.userId,
+          ) as Promise<Doc<"User"> | null>,
       );
 
       return yield* Match.value(user).pipe(

@@ -3,14 +3,16 @@ import { ConvexError, GenericId } from "convex/values";
 
 import { configDefaults, materializeProvider } from "./config";
 import { getSessionUserId } from "./context";
-import type { AuthProfile, SignInParams } from "./payloads";
 import {
   buildScopeChecker,
   checkKeyRateLimit,
   generateApiKey,
   hashApiKey,
 } from "./keys";
+import type { AuthProfile, SignInParams } from "./payloads";
+import { generateRandomString, sha256 } from "./random";
 import { signInImpl } from "./signin";
+import { TOKEN_SUB_CLAIM_DIVIDER } from "./tokens";
 import type {
   AuthProviderConfig,
   KeyDoc,
@@ -19,8 +21,6 @@ import type {
   UserOrderBy,
   UserWhere,
 } from "./types";
-import { generateRandomString, sha256 } from "./random";
-import { TOKEN_SUB_CLAIM_DIVIDER } from "./tokens";
 
 type ComponentCtx = Pick<
   GenericActionCtx<GenericDataModel>,
@@ -53,18 +53,16 @@ type CredentialsAccountResult = {
 
 type UserDocLike = Record<string, unknown> | null;
 type GroupDocLike = Record<string, unknown> | null;
-type MemberDocLike =
-  | {
-      _id: string;
-      _creationTime: number;
-      groupId: string;
-      userId: string;
-      role?: string;
-      roleIds?: string[];
-      status?: string;
-      extend?: Record<string, unknown>;
-    }
-  | null;
+type MemberDocLike = {
+  _id: string;
+  _creationTime: number;
+  groupId: string;
+  userId: string;
+  role?: string;
+  roleIds?: string[];
+  status?: string;
+  extend?: Record<string, unknown>;
+} | null;
 type KeyDocLike = {
   revoked?: boolean;
   userId: string;
@@ -88,7 +86,10 @@ type CoreDeps = {
     ctx: GenericActionCtx<DataModel>,
     args: RetrieveAccountArgs,
   ) => Promise<
-    CredentialsAccountResult | "InvalidAccountId" | "InvalidSecret" | "TooManyFailedAttempts"
+    | CredentialsAccountResult
+    | "InvalidAccountId"
+    | "InvalidSecret"
+    | "TooManyFailedAttempts"
   >;
   callModifyAccount: <DataModel extends GenericDataModel>(
     ctx: GenericActionCtx<DataModel>,
@@ -216,7 +217,7 @@ export function createCoreDomains(deps: CoreDeps) {
 
   const user = {
     /**
-      * Fetch a user document by ID.
+     * Fetch a user document by ID.
      *
      * Results are **cached per-execution** — calling `auth.user.get(ctx, id)`
      * multiple times within the same query or mutation handler for the same
@@ -277,8 +278,8 @@ export function createCoreDomains(deps: CoreDeps) {
       return await ctx.runQuery(config.component.public.userList, opts);
     },
     /**
-      * Convenience method: resolve the current session user and fetch their
-      * full document in one call. Returns `null` if unauthenticated.
+     * Convenience method: resolve the current session user and fetch their
+     * full document in one call. Returns `null` if unauthenticated.
      *
      * @param ctx - Convex query or mutation context with `auth` for session lookup.
      * @returns The authenticated user's document, or `null` if unauthenticated.
@@ -729,7 +730,7 @@ export function createCoreDomains(deps: CoreDeps) {
       const allAccounts = (await ctx.runQuery(
         config.component.public.accountListByUser,
         { userId: doc.userId },
-      )) as Array<{ _id: string }>; 
+      )) as Array<{ _id: string }>;
       if (allAccounts.length <= 1) {
         throw new ConvexError({
           code: "INVALID_PARAMETERS",
@@ -1373,10 +1374,10 @@ export function createCoreDomains(deps: CoreDeps) {
       if (useAncestry) {
         // Hierarchy walk — single component RPC
         const maxDepth = Math.max(0, Math.floor(opts.maxDepth ?? 32));
-        const memberResolveRef = (config.component.public as Record<string, unknown>)[
-          "memberResolve"
-        ];
-        const result = await (ctx.runQuery as UntypedRunQuery)(
+        const memberResolveRef = (
+          config.component.public as Record<string, unknown>
+        )["memberResolve"];
+        const result = (await (ctx.runQuery as UntypedRunQuery)(
           memberResolveRef,
           {
             userId: opts.userId,
@@ -1384,7 +1385,7 @@ export function createCoreDomains(deps: CoreDeps) {
             maxDepth,
             ancestry: true,
           },
-        ) as { membership: MemberDocLike };
+        )) as { membership: MemberDocLike };
         membership = result.membership;
       } else {
         // Fast path — direct lookup, 1 read

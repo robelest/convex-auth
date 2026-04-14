@@ -1,5 +1,5 @@
-import type { Storage } from "../core/types";
 import { LOG_LEVELS, logMessage } from "../../shared/log";
+import type { Storage } from "../core/types";
 
 /** @internal */
 export function createStorageHelpers(args: {

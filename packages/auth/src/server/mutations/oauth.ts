@@ -3,13 +3,18 @@ import { ConvexError } from "convex/values";
 import { Infer, v } from "convex/values";
 import { Effect } from "effect";
 
-import * as Provider from "../crypto";
 import { getGroup, getGroupConnection } from "../contract";
+import * as Provider from "../crypto";
 import { authDb } from "../db";
-import { createSyntheticOAuthMaterializedConfig } from "../sso/oidc";
-import { normalizeGroupConnectionPolicy, resolveProvisionedRoleIds } from "../sso/policy";
+import { log } from "../log";
 import type { AuthAccountExtend, AuthProfile } from "../payloads";
 import { accountExtendValidator, payloadRecordValidator } from "../payloads";
+import { generateRandomString, sha256 } from "../random";
+import { createSyntheticOAuthMaterializedConfig } from "../sso/oidc";
+import {
+  normalizeGroupConnectionPolicy,
+  resolveProvisionedRoleIds,
+} from "../sso/policy";
 import {
   GROUP_OIDC_PROVIDER_PREFIX,
   GROUP_SAML_PROVIDER_PREFIX,
@@ -18,9 +23,6 @@ import {
 import { MutationCtx } from "../types";
 import type { AuthProviderMaterializedConfig } from "../types";
 import { upsertUserAndAccount } from "../users";
-
-import { generateRandomString, sha256 } from "../random";
-import { log } from "../log";
 import { AUTH_STORE_REF } from "./store/refs";
 
 const OAUTH_SIGN_IN_EXPIRATION_MS = 1000 * 60 * 2; // 2 minutes
@@ -114,11 +116,14 @@ export function userOAuthImpl(
       existingAccount === null &&
       connectionPolicy?.provisioning.scimReuse.user === "externalId"
         ? yield* Effect.promise(() =>
-            ctx.runQuery(config.component.public.groupConnectionScimIdentityGet, {
-              connectionId,
-              resourceType: "user",
-              externalId: providerAccountId,
-            }),
+            ctx.runQuery(
+              config.component.public.groupConnectionScimIdentityGet,
+              {
+                connectionId,
+                resourceType: "user",
+                externalId: providerAccountId,
+              },
+            ),
           )
         : null;
 
@@ -204,17 +209,23 @@ export function userOAuthImpl(
       connectionId !== null &&
       connectionPolicy?.provisioning.jit.mode === "createUserAndMembership"
     ) {
-      const account = yield* Effect.promise(() => db.accounts.getById(accountId));
+      const account = yield* Effect.promise(() =>
+        db.accounts.getById(accountId),
+      );
       const userId = account?.userId;
       if (userId) {
         const groupId = connection?.groupId;
         if (groupId) {
           const provisionedRoleIds = resolveProvisionedRoleIds({
             policy: connectionPolicy,
-            groups: Array.isArray((typedProfile as Record<string, unknown>).groups)
+            groups: Array.isArray(
+              (typedProfile as Record<string, unknown>).groups,
+            )
               ? ((typedProfile as Record<string, unknown>).groups as string[])
               : undefined,
-            roles: Array.isArray((typedProfile as Record<string, unknown>).roles)
+            roles: Array.isArray(
+              (typedProfile as Record<string, unknown>).roles,
+            )
               ? ((typedProfile as Record<string, unknown>).roles as string[])
               : undefined,
           });
@@ -233,9 +244,7 @@ export function userOAuthImpl(
                 status: "active",
               }),
             );
-          } else if (
-            provisionedRoleIds.length > 0
-          ) {
+          } else if (provisionedRoleIds.length > 0) {
             yield* Effect.promise(() =>
               ctx.runMutation(config.component.public.memberUpdate, {
                 memberId: existingMembership._id,
@@ -248,7 +257,9 @@ export function userOAuthImpl(
     }
 
     if (connectionId !== null) {
-      const account = yield* Effect.promise(() => db.accounts.getById(accountId));
+      const account = yield* Effect.promise(() =>
+        db.accounts.getById(accountId),
+      );
       const userId = account?.userId;
       if (userId) {
         yield* Effect.promise(async () => {

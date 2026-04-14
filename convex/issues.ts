@@ -16,7 +16,11 @@ const projectIssueSummary = v.object({
   description: v.string(),
 });
 
-async function getProjectIssuesResult(ctx: any, userId: string, projectId: string) {
+async function getProjectIssuesResult(
+  ctx: any,
+  userId: string,
+  projectId: string,
+) {
   const project = await ctx.db.get(projectId);
   if (project === null) {
     throw new ConvexError({ code: "NOT_FOUND", message: "Project not found." });
@@ -33,8 +37,14 @@ async function getProjectIssuesResult(ctx: any, userId: string, projectId: strin
     .withIndex("by_projectId", (q: any) => q.eq("projectId", project._id))
     .take(200);
 
-  const assigneeMap = new Map<string, Awaited<ReturnType<typeof getUserSummary>>>();
-  const creatorMap = new Map<string, Awaited<ReturnType<typeof getUserSummary>>>();
+  const assigneeMap = new Map<
+    string,
+    Awaited<ReturnType<typeof getUserSummary>>
+  >();
+  const creatorMap = new Map<
+    string,
+    Awaited<ReturnType<typeof getUserSummary>>
+  >();
 
   for (const issue of issues) {
     if (issue.assigneeUserId && !assigneeMap.has(issue.assigneeUserId)) {
@@ -147,7 +157,10 @@ export const projectIssuesByString = authQuery({
   handler: async (ctx, args) => {
     const projectId = ctx.db.normalizeId("projects", args.projectId);
     if (!projectId) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Project not found." });
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Project not found.",
+      });
     }
     return await getProjectIssuesResult(ctx, ctx.auth.userId, projectId);
   },
@@ -178,7 +191,10 @@ export const createIssueByString = authMutation({
   handler: async (ctx, args) => {
     const projectId = ctx.db.normalizeId("projects", args.projectId);
     if (!projectId) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Project not found." });
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Project not found.",
+      });
     }
     return await createIssueRecord(ctx, ctx.auth.userId, {
       ...args,
@@ -265,7 +281,8 @@ export const updateIssue = authMutation({
 
     const patch: Record<string, unknown> = {};
     if (args.title !== undefined) patch.title = args.title.trim();
-    if (args.description !== undefined) patch.description = args.description.trim();
+    if (args.description !== undefined)
+      patch.description = args.description.trim();
     if (args.status !== undefined) patch.status = args.status;
     if (args.priority !== undefined) patch.priority = args.priority;
     if (args.assigneeUserId !== undefined) {
@@ -423,11 +440,17 @@ export const createIssueForApi = internalMutation({
   handler: async (ctx, args) => {
     const projectId = ctx.db.normalizeId("projects", args.projectId);
     if (!projectId) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Project not found." });
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Project not found.",
+      });
     }
     const project = await ctx.db.get(projectId);
     if (!project) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Project not found." });
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "Project not found.",
+      });
     }
     const number = project.issueCounter + 1;
     await ctx.db.patch(projectId, {

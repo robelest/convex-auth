@@ -211,12 +211,7 @@ export type AuthApiRefs<
   HasTotp extends boolean = boolean,
   HasDevice extends boolean = boolean,
 > = {
-  signIn: FunctionReference<
-    "action",
-    "public",
-    Record<string, Value>,
-    unknown
-  >;
+  signIn: FunctionReference<"action", "public", Record<string, Value>, unknown>;
   signOut: FunctionReference<
     "action",
     "public",

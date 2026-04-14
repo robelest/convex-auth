@@ -285,10 +285,10 @@ async function resolveMountedGroupTarget(
     };
   }
 
-    return {
-      connectionId: undefined,
-      groupId: undefined,
-    };
+  return {
+    connectionId: undefined,
+    groupId: undefined,
+  };
 }
 
 function resolveRequiredAccess<TRequirement>(
@@ -641,7 +641,9 @@ export function sso<
               v.object({
                 scopes: v.optional(v.array(v.string())),
                 loginHint: v.optional(v.string()),
-                authorizationParams: v.optional(v.record(v.string(), v.string())),
+                authorizationParams: v.optional(
+                  v.record(v.string(), v.string()),
+                ),
               }),
             ),
             security: v.optional(
@@ -792,10 +794,7 @@ export function sso<
             await authorize(ctx, "sso.protocol.manage", {
               connectionId: args.connectionId,
             });
-            return await auth.group.sso.saml.refresh(
-              ctx as never,
-              args,
-            );
+            return await auth.group.sso.saml.refresh(ctx as never, args);
           },
         }),
       },
@@ -806,10 +805,7 @@ export function sso<
             await authorize(ctx, "sso.policy.manage", {
               groupId: args.groupId,
             });
-            return await auth.group.sso.policy.get(
-              ctx as never,
-              args.groupId,
-            );
+            return await auth.group.sso.policy.get(ctx as never, args.groupId);
           },
         }),
         update: mutationGeneric({
@@ -871,10 +867,7 @@ export function sso<
               const deliveryApi = auth.group.sso.webhook as unknown as {
                 delivery: DeliveryApi["delivery"];
               };
-              return await deliveryApi.delivery.list(
-                ctx as never,
-                args,
-              );
+              return await deliveryApi.delivery.list(ctx as never, args);
             },
           }),
         },

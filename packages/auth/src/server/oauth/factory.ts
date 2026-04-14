@@ -57,7 +57,8 @@ function normalizeTokens(tokens: OAuth2Tokens): OAuthTokens {
   const raw = tokens.data as Record<string, unknown>;
   const rawScopes = typeof raw.scope === "string" ? raw.scope : undefined;
   return {
-    accessToken: typeof raw.access_token === "string" ? raw.access_token : undefined,
+    accessToken:
+      typeof raw.access_token === "string" ? raw.access_token : undefined,
     refreshToken:
       typeof raw.refresh_token === "string" ? raw.refresh_token : undefined,
     idToken: typeof raw.id_token === "string" ? raw.id_token : undefined,
@@ -89,26 +90,28 @@ export function createArcticOAuthClient(
   provider: ArcticOAuthProviderWithoutPkce | ArcticOAuthProviderWithPkce,
   options?: { pkce?: ArcticPkceMode },
 ): OAuthRuntimeClient {
-  const pkce = options?.pkce ?? (provider.createAuthorizationURL.length >= 3 ? "required" : "never");
+  const pkce =
+    options?.pkce ??
+    (provider.createAuthorizationURL.length >= 3 ? "required" : "never");
   return {
     pkce,
     createAuthorizationURL({ state, codeVerifier, scopes, nonce }) {
       const url =
         pkce === "required"
-          ? (provider as {
-              createAuthorizationURL(
-                state: string,
-                codeVerifier: string,
-                scopes: string[],
-              ): URL;
-            }).createAuthorizationURL(
-              state,
-              codeVerifier!,
-              scopes,
-            )
-          : (provider as {
-              createAuthorizationURL(state: string, scopes: string[]): URL;
-            }).createAuthorizationURL(state, scopes);
+          ? (
+              provider as {
+                createAuthorizationURL(
+                  state: string,
+                  codeVerifier: string,
+                  scopes: string[],
+                ): URL;
+              }
+            ).createAuthorizationURL(state, codeVerifier!, scopes)
+          : (
+              provider as {
+                createAuthorizationURL(state: string, scopes: string[]): URL;
+              }
+            ).createAuthorizationURL(state, scopes);
       if (nonce !== undefined) {
         url.searchParams.set("nonce", nonce);
       }
@@ -117,18 +120,19 @@ export function createArcticOAuthClient(
     async validateAuthorizationCode({ code, codeVerifier }) {
       const tokens =
         pkce === "required"
-          ? await (provider as {
-              validateAuthorizationCode(
-                code: string,
-                codeVerifier: string,
-              ): Promise<OAuth2Tokens>;
-            }).validateAuthorizationCode(
-              code,
-              codeVerifier!,
-            )
-          : await (provider as {
-              validateAuthorizationCode(code: string): Promise<OAuth2Tokens>;
-            }).validateAuthorizationCode(code);
+          ? await (
+              provider as {
+                validateAuthorizationCode(
+                  code: string,
+                  codeVerifier: string,
+                ): Promise<OAuth2Tokens>;
+              }
+            ).validateAuthorizationCode(code, codeVerifier!)
+          : await (
+              provider as {
+                validateAuthorizationCode(code: string): Promise<OAuth2Tokens>;
+              }
+            ).validateAuthorizationCode(code);
       return normalizeTokens(tokens);
     },
   };

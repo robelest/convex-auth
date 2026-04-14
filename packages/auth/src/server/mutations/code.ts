@@ -3,12 +3,12 @@ import { ConvexError, GenericId, Infer, v } from "convex/values";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
+import { LOG_LEVELS, log } from "../log";
+import { sha256 } from "../random";
 import { getAuthSessionId } from "../sessions";
 import { MutationCtx } from "../types";
 import { EmailConfig, PhoneConfig } from "../types";
 import { upsertUserAndAccount } from "../users";
-import { sha256 } from "../random";
-import { LOG_LEVELS, log } from "../log";
 import { AUTH_STORE_REF } from "./store/refs";
 
 export const createVerificationCodeArgs = v.object({

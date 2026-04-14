@@ -14,9 +14,7 @@ import { Effect, Match } from "effect";
 import { redirectToParamCookie, useRedirectToParam } from "./cookies";
 import { createCoreDomains } from "./core";
 import { GetProviderOrThrowFunc } from "./crypto";
-import { createGroupConnectionDomain } from "./sso/domain";
-import { addGroupHttpRuntime } from "./sso/http";
-import { normalizeGroupConnectionPolicy } from "./sso/policy";
+import { requireEnv } from "./env";
 import {
   addAuthRoutes,
   addOpenIdRoutes,
@@ -26,6 +24,7 @@ import {
   createHttpRoute,
   getCookies,
 } from "./http";
+import { logError, log, LOG_LEVELS } from "./log";
 import {
   callCreateAccountFromCredentials,
   callInvalidateSessions,
@@ -37,10 +36,20 @@ import {
   storeArgs,
   storeImpl,
 } from "./mutations/index";
-import { createOAuthAuthorizationURL, handleOAuthCallback } from "./oauth/runtime";
+import {
+  createOAuthAuthorizationURL,
+  handleOAuthCallback,
+} from "./oauth/runtime";
 import type { AuthProfile } from "./payloads";
 import { payloadRecordValidator } from "./payloads";
+import { generateRandomString, sha256 } from "./random";
 import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects";
+import { encryptSecret } from "./secret";
+import { createGroupService } from "./services/group";
+import { resolveServerServices } from "./services/resolve";
+import { createGroupConnectionDomain } from "./sso/domain";
+import { addGroupHttpRuntime } from "./sso/http";
+import { normalizeGroupConnectionPolicy } from "./sso/policy";
 import type {
   ConvexAuthConfig,
   FunctionReferenceFromExport,
@@ -49,17 +58,7 @@ import type {
   Tokens,
 } from "./types";
 import { MutationCtx } from "./types";
-import {
-  logError,
-  log,
-  LOG_LEVELS,
-} from "./log";
-import { encryptSecret } from "./secret";
-import { generateRandomString, sha256 } from "./random";
-import { requireEnv } from "./env";
 import { siteUrlsFromEnv } from "./url";
-import { createGroupService } from "./services/group";
-import { resolveServerServices } from "./services/resolve";
 
 const GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND = "oidc_client_secret" as const;
 
@@ -231,7 +230,9 @@ export function Auth(config_: ConvexAuthConfig) {
       addGroupHttpRuntime({
         http,
         hasSSO,
-        auth: authBase as unknown as Parameters<typeof addGroupHttpRuntime>[0]["auth"],
+        auth: authBase as unknown as Parameters<
+          typeof addGroupHttpRuntime
+        >[0]["auth"],
         config,
         routeBase: GROUP_CONNECTION_ROUTE_BASE,
         requireEnv,
@@ -369,7 +370,11 @@ export function Auth(config_: ConvexAuthConfig) {
                     ...(maybeRedirectTo !== null
                       ? [maybeRedirectTo.updatedCookie]
                       : []),
-                  ] as Array<{ name: string; value: string; options: Parameters<typeof serializeCookie>[2] }>) {
+                  ] as Array<{
+                    name: string;
+                    value: string;
+                    options: Parameters<typeof serializeCookie>[2];
+                  }>) {
                     redirHeaders.append(
                       "Set-Cookie",
                       serializeCookie(name, value, options),
@@ -388,7 +393,8 @@ export function Auth(config_: ConvexAuthConfig) {
                     const respHeaders = new Headers({
                       Location: destinationUrl,
                     });
-                    for (const { name, value, options } of maybeRedirectTo !== null
+                    for (const { name, value, options } of maybeRedirectTo !==
+                    null
                       ? [maybeRedirectTo.updatedCookie]
                       : []) {
                       respHeaders.append(
@@ -432,7 +438,9 @@ export function Auth(config_: ConvexAuthConfig) {
      * });
      * ```
      */
-    context: createHttpContext(authBase as unknown as Parameters<typeof createHttpContext>[0]),
+    context: createHttpContext(
+      authBase as unknown as Parameters<typeof createHttpContext>[0],
+    ),
 
     /**
      * Wrap an HTTP action handler with Bearer token authentication.
@@ -541,7 +549,9 @@ export function Auth(config_: ConvexAuthConfig) {
             ? getProviderOrThrow(args.provider)
             : null;
         const result = await services.signIn.signIn(
-          enrichCtx(ctx) as unknown as Parameters<typeof services.signIn.signIn>[0],
+          enrichCtx(ctx) as unknown as Parameters<
+            typeof services.signIn.signIn
+          >[0],
           provider,
           args,
           {

@@ -15,10 +15,10 @@ export class BrowserLocks extends ServiceMap.Service<
 export const BrowserLocksLive = Layer.succeed(BrowserLocks)({
   withKey: <T>(key: string, callback: () => Promise<T>) =>
     Effect.promise(async () => {
-        const lockManager =
-          typeof navigator === "undefined" ? undefined : navigator.locks;
-        return lockManager !== undefined
-          ? await lockManager.request(key, callback)
-          : await localMutex(key, callback);
-      }),
+      const lockManager =
+        typeof navigator === "undefined" ? undefined : navigator.locks;
+      return lockManager !== undefined
+        ? await lockManager.request(key, callback)
+        : await localMutex(key, callback);
+    }),
 });

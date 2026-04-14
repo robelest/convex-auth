@@ -1,9 +1,9 @@
-import { Layer, ServiceMap } from "effect";
 import type { GenericId } from "convex/values";
+import { Layer, ServiceMap } from "effect";
 
-import { signInImpl } from "../signin";
 import { configDefaults } from "../config";
 import type { SignInParams } from "../payloads";
+import { signInImpl } from "../signin";
 import type {
   AuthDataModel,
   AuthProviderMaterializedConfig,
@@ -14,14 +14,14 @@ export class AuthSignInService extends ServiceMap.Service<
   AuthSignInService,
   {
     readonly signIn: (
-        ctx: GenericActionCtxWithAuthConfig<AuthDataModel>,
-        provider: AuthProviderMaterializedConfig | null,
-        args: {
-          accountId?: GenericId<"Account">;
-          params?: SignInParams;
-          verifier?: string;
-          refreshToken?: string;
-          calledBy?: string;
+      ctx: GenericActionCtxWithAuthConfig<AuthDataModel>,
+      provider: AuthProviderMaterializedConfig | null,
+      args: {
+        accountId?: GenericId<"Account">;
+        params?: SignInParams;
+        verifier?: string;
+        refreshToken?: string;
+        calledBy?: string;
       },
       options: {
         generateTokens: boolean;
@@ -37,5 +37,6 @@ export class AuthSignInService extends ServiceMap.Service<
 
 export const AuthSignInLive = (_config: ReturnType<typeof configDefaults>) =>
   Layer.succeed(AuthSignInService)({
-    signIn: (ctx, provider, args, options) => signInImpl(ctx, provider, args, options),
+    signIn: (ctx, provider, args, options) =>
+      signInImpl(ctx, provider, args, options),
   });

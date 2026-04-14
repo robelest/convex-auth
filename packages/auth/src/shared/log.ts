@@ -34,9 +34,7 @@ export function logMessage(
   return Match.value(level).pipe(
     Match.when("ERROR", () =>
       Effect.runSync(
-        Effect.logError(message).pipe(
-          Effect.annotateLogs({ module, level }),
-        ),
+        Effect.logError(message).pipe(Effect.annotateLogs({ module, level })),
       ),
     ),
     Match.when("WARN", () => {
@@ -44,9 +42,7 @@ export function logMessage(
         return;
       }
       return Effect.runSync(
-        Effect.logWarning(message).pipe(
-          Effect.annotateLogs({ module, level }),
-        ),
+        Effect.logWarning(message).pipe(Effect.annotateLogs({ module, level })),
       );
     }),
     Match.when("INFO", () => {
@@ -54,9 +50,7 @@ export function logMessage(
         return;
       }
       return Effect.runSync(
-        Effect.logInfo(message).pipe(
-          Effect.annotateLogs({ module, level }),
-        ),
+        Effect.logInfo(message).pipe(Effect.annotateLogs({ module, level })),
       );
     }),
     Match.when("DEBUG", () => {
@@ -64,16 +58,18 @@ export function logMessage(
         return;
       }
       return Effect.runSync(
-        Effect.logDebug(message).pipe(
-          Effect.annotateLogs({ module, level }),
-        ),
+        Effect.logDebug(message).pipe(Effect.annotateLogs({ module, level })),
       );
     }),
     Match.exhaustive,
   );
 }
 
-export function logErrorCause(module: string, message: string, cause: Cause.Cause<unknown>) {
+export function logErrorCause(
+  module: string,
+  message: string,
+  cause: Cause.Cause<unknown>,
+) {
   return Effect.runSync(
     Effect.logError(`${message} ${serialize(Cause.squash(cause))}`).pipe(
       Effect.annotateLogs({ module, level: LOG_LEVELS.ERROR }),

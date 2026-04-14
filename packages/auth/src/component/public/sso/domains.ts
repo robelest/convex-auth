@@ -48,10 +48,7 @@ export const groupConnectionDomainAdd = mutation({
       .query("GroupConnectionDomain")
       .withIndex("domain", (idx) => idx.eq("domain", args.domain))
       .first();
-    if (
-      existingByDomain &&
-      existingByDomain.connectionId !== connectionId
-    ) {
+    if (existingByDomain && existingByDomain.connectionId !== connectionId) {
       throw new ConvexError({
         code: "GROUP_CONNECTION_DOMAIN_TAKEN",
         message: "That domain is already attached to another connection.",
@@ -60,9 +57,7 @@ export const groupConnectionDomainAdd = mutation({
 
     const existingForConnection = await ctx.db
       .query("GroupConnectionDomain")
-      .withIndex("connection_id", (idx) =>
-        idx.eq("connectionId", connectionId),
-      )
+      .withIndex("connection_id", (idx) => idx.eq("connectionId", connectionId))
       .collect();
 
     for (const row of existingForConnection) {

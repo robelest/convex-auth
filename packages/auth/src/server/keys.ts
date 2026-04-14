@@ -8,8 +8,8 @@
  * @module
  */
 
-import type { KeyScope, ScopeChecker } from "./types";
 import { sha256, generateRandomString } from "./random";
+import type { KeyScope, ScopeChecker } from "./types";
 
 // ============================================================================
 // Constants

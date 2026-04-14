@@ -10,13 +10,13 @@ import {
 } from "jose";
 import type { JWTVerifyGetKey, JWTVerifyOptions } from "jose";
 
+import { log } from "../log";
 import type {
   OIDCClaimMapping,
   OAuthMaterializedConfig,
   OAuthProfile,
   OAuthTokens,
 } from "../types";
-import { log } from "../log";
 import { finalizeNormalizedProfile, normalizeStringArray } from "./profile";
 import { groupOidcProviderId, getGroupOidcUrls } from "./shared";
 
@@ -133,7 +133,9 @@ function discoverOidcConfiguration(config: Record<string, unknown>) {
           `Failed to discover OIDC configuration: ${response.status}`,
         );
       }
-      return Schema.decodeUnknownSync(OidcDiscoverySchema)(await response.json());
+      return Schema.decodeUnknownSync(OidcDiscoverySchema)(
+        await response.json(),
+      );
     },
     catch: asError,
   }).pipe(
@@ -251,7 +253,9 @@ function userInfoProfileFx(opts: {
       if (!response.ok) {
         throw new Error(`OIDC userinfo request failed: ${response.status}`);
       }
-      return Schema.decodeUnknownSync(OidcUserInfoSchema)(await response.json());
+      return Schema.decodeUnknownSync(OidcUserInfoSchema)(
+        await response.json(),
+      );
     },
     catch: (error): UserInfoFetchFailure => ({ kind: "transport", error }),
   }).pipe(
@@ -310,8 +314,13 @@ export async function createGroupConnectionOidcProvider(
   config: Record<string, unknown>,
   redirectUri: string,
 ) {
-  const { discovery: discoveryConfig, client, request, security, profile } =
-    getOidcSections(config);
+  const {
+    discovery: discoveryConfig,
+    client,
+    request,
+    security,
+    profile,
+  } = getOidcSections(config);
   const discovery: OidcDiscovery = await Effect.runPromise(
     discoverOidcConfiguration(config),
   );
@@ -396,7 +405,9 @@ export async function createGroupConnectionOidcProvider(
         (value: unknown): value is string => typeof value === "string",
       )
     : ["openid", "profile", "email"];
-  const expectedAudience: string | string[] = Array.isArray(discoveryConfig.audience)
+  const expectedAudience: string | string[] = Array.isArray(
+    discoveryConfig.audience,
+  )
     ? discoveryConfig.audience.filter(
         (value: unknown): value is string => typeof value === "string",
       )
@@ -505,13 +516,10 @@ export async function createGroupConnectionOidcProvider(
         const basicAuth =
           typeof btoa === "function"
             ? btoa(`${String(client.id)}:${client.secret}`)
-            : Buffer.from(
-                `${String(client.id)}:${client.secret}`,
-              ).toString("base64");
-        headers.set(
-          "Authorization",
-          `Basic ${basicAuth}`,
-        );
+            : Buffer.from(`${String(client.id)}:${client.secret}`).toString(
+                "base64",
+              );
+        headers.set("Authorization", `Basic ${basicAuth}`);
       } else {
         body.set("client_id", String(client.id));
         if (typeof client.secret === "string") {
@@ -537,7 +545,9 @@ export async function createGroupConnectionOidcProvider(
         accessToken:
           typeof data.access_token === "string" ? data.access_token : undefined,
         refreshToken:
-          typeof data.refresh_token === "string" ? data.refresh_token : undefined,
+          typeof data.refresh_token === "string"
+            ? data.refresh_token
+            : undefined,
         idToken: typeof data.id_token === "string" ? data.id_token : undefined,
         accessTokenExpiresAt:
           typeof data.expires_in === "number"

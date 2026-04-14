@@ -1,7 +1,7 @@
 import { ConvexError } from "convex/values";
 
-import { ConvexAuthMaterializedConfig } from "./types";
 import { requireEnv } from "./env";
+import { ConvexAuthMaterializedConfig } from "./types";
 
 const describeUnknown = (value: unknown) => {
   if (typeof value === "string") {

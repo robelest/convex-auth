@@ -2,6 +2,8 @@ import { ConvexError, GenericId } from "convex/values";
 import { Effect, Match } from "effect";
 
 import { authDb } from "./db";
+import { LOG_LEVELS } from "./log";
+import { log } from "./log";
 import type { AuthAccountExtend, AuthProfile } from "./payloads";
 import type {
   AuthProviderMaterializedConfig,
@@ -10,8 +12,6 @@ import type {
   GroupConnectionPolicy,
   MutationCtx,
 } from "./types";
-import { LOG_LEVELS } from "./log";
-import { log } from "./log";
 
 type CreateOrUpdateUserArgs = {
   type: "oauth" | "credentials" | "email" | "phone" | "verification";
@@ -177,14 +177,14 @@ async function defaultCreateOrUpdateUser(
   if (existingUserId === null) {
     const existingUserWithVerifiedEmailId =
       typeof profile.email === "string" && shouldLinkViaEmail
-        ? ((await uniqueUserWithVerifiedEmail(ctx, profile.email, config))?._id ??
-          null)
+        ? ((await uniqueUserWithVerifiedEmail(ctx, profile.email, config))
+            ?._id ?? null)
         : null;
 
     const existingUserWithVerifiedPhoneId =
       typeof profile.phone === "string" && shouldLinkViaPhone
-        ? ((await uniqueUserWithVerifiedPhone(ctx, profile.phone, config))?._id ??
-          null)
+        ? ((await uniqueUserWithVerifiedPhone(ctx, profile.phone, config))
+            ?._id ?? null)
         : null;
     const linkDispatch = {
       tag:
@@ -202,17 +202,19 @@ async function defaultCreateOrUpdateUser(
 
     userId = await Effect.runPromise(
       Match.value(linkDispatch).pipe(
-        Match.when({ tag: "both" }, ({
-          existingUserWithVerifiedEmailId,
-          existingUserWithVerifiedPhoneId,
-        }) =>
-          Effect.sync(() => {
-            log(
-              LOG_LEVELS.DEBUG,
-              `Found existing email and phone verified users, so not linking: email: ${existingUserWithVerifiedEmailId}, phone: ${existingUserWithVerifiedPhoneId}`,
-            );
-            return null;
-          }),
+        Match.when(
+          { tag: "both" },
+          ({
+            existingUserWithVerifiedEmailId,
+            existingUserWithVerifiedPhoneId,
+          }) =>
+            Effect.sync(() => {
+              log(
+                LOG_LEVELS.DEBUG,
+                `Found existing email and phone verified users, so not linking: email: ${existingUserWithVerifiedEmailId}, phone: ${existingUserWithVerifiedPhoneId}`,
+              );
+              return null;
+            }),
         ),
         Match.when({ tag: "email" }, ({ existingUserWithVerifiedEmailId }) =>
           Effect.sync(() => {
@@ -277,9 +279,10 @@ async function defaultCreateOrUpdateUser(
   const existingOrLinkedUserId = userId;
   if (userId !== null) {
     const currentUserId = userId;
-    const currentUser = (await db.users.getById(currentUserId)) as
-      | Record<string, unknown>
-      | null;
+    const currentUser = (await db.users.getById(currentUserId)) as Record<
+      string,
+      unknown
+    > | null;
     const mode = effectiveUserUpdateMode(source, provisioningUser);
     const patchData = buildUserPatchData({
       currentUser: currentUser ?? {},
@@ -307,7 +310,8 @@ async function defaultCreateOrUpdateUser(
     if (source === "login" && provisioningUser?.createOnSignIn === false) {
       throw new ConvexError({
         code: "NOT_AUTHORIZED",
-        message: "This SSO connection does not allow creating users on sign-in.",
+        message:
+          "This SSO connection does not allow creating users on sign-in.",
       });
     }
     userId = (await db.users.insert(userData)) as GenericId<"User">;
@@ -315,10 +319,7 @@ async function defaultCreateOrUpdateUser(
 
   const afterUserCreatedOrUpdated = config.callbacks?.afterUserCreatedOrUpdated;
   if (afterUserCreatedOrUpdated !== undefined) {
-    log(
-      LOG_LEVELS.DEBUG,
-      "Calling custom afterUserCreatedOrUpdated callback",
-    );
+    log(LOG_LEVELS.DEBUG, "Calling custom afterUserCreatedOrUpdated callback");
     await afterUserCreatedOrUpdated(ctx, {
       userId,
       existingUserId: existingOrLinkedUserId,
@@ -378,7 +379,10 @@ async function createOrUpdateAccount(
           secret: account.secret,
           extend: mergedExtend,
         })) as GenericId<"Account">);
-  if ("existingAccount" in account && account.existingAccount.userId !== userId) {
+  if (
+    "existingAccount" in account &&
+    account.existingAccount.userId !== userId
+  ) {
     await db.accounts.patch(accountId, { userId });
   }
   const accountPatchData: Record<string, unknown> = {};

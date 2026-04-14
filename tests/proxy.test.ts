@@ -48,7 +48,10 @@ function createConvexMock() {
 }
 
 function createProxyRuntime(
-  fetchImpl: (body: Record<string, unknown>, proxyPath: string) => Promise<Response>,
+  fetchImpl: (
+    body: Record<string, unknown>,
+    proxyPath: string,
+  ) => Promise<Response>,
 ) {
   return {
     fetch: fetchImpl,
@@ -62,22 +65,24 @@ afterEach(() => {
 
 test("proxy mode re-syncs convex auth after sign in", async () => {
   const convex = createConvexMock();
-  const fetchMock = vi.fn(async (_body: Record<string, unknown>, proxyPath: string) => {
-    expect(proxyPath).toBe("/api/auth");
-    return new Response(
-      JSON.stringify({
-        kind: "signedIn",
-        tokens: {
-          token: "fresh-token",
-          refreshToken: "dummy",
+  const fetchMock = vi.fn(
+    async (_body: Record<string, unknown>, proxyPath: string) => {
+      expect(proxyPath).toBe("/api/auth");
+      return new Response(
+        JSON.stringify({
+          kind: "signedIn",
+          tokens: {
+            token: "fresh-token",
+            refreshToken: "dummy",
+          },
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
         },
-      }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      },
-    );
-  });
+      );
+    },
+  );
   const auth = client({
     convex,
     proxyPath: "/api/auth",
@@ -144,20 +149,21 @@ test("proxy signIn waits for Convex auth confirmation", async () => {
     proxyPath: "/api/auth",
     tokenSeed: "existing-token",
     runtime: {
-      proxy: createProxyRuntime(async () =>
-        new Response(
-          JSON.stringify({
-            kind: "signedIn",
-            tokens: {
-              token: "fresh-token",
-              refreshToken: "dummy",
+      proxy: createProxyRuntime(
+        async () =>
+          new Response(
+            JSON.stringify({
+              kind: "signedIn",
+              tokens: {
+                token: "fresh-token",
+                refreshToken: "dummy",
+              },
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
             },
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        ),
+          ),
       ),
     },
   });
@@ -191,20 +197,21 @@ test("proxy signIn tolerates transient auth false before confirmation", async ()
     proxyPath: "/api/auth",
     tokenSeed: "existing-token",
     runtime: {
-      proxy: createProxyRuntime(async () =>
-        new Response(
-          JSON.stringify({
-            kind: "signedIn",
-            tokens: {
-              token: "fresh-token",
-              refreshToken: "dummy",
+      proxy: createProxyRuntime(
+        async () =>
+          new Response(
+            JSON.stringify({
+              kind: "signedIn",
+              tokens: {
+                token: "fresh-token",
+                refreshToken: "dummy",
+              },
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
             },
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        ),
+          ),
       ),
     },
   });
@@ -241,20 +248,21 @@ test("proxy signIn times out after rejection signal with no later confirmation",
     proxyPath: "/api/auth",
     tokenSeed: "existing-token",
     runtime: {
-      proxy: createProxyRuntime(async () =>
-        new Response(
-          JSON.stringify({
-            kind: "signedIn",
-            tokens: {
-              token: "fresh-token",
-              refreshToken: "dummy",
+      proxy: createProxyRuntime(
+        async () =>
+          new Response(
+            JSON.stringify({
+              kind: "signedIn",
+              tokens: {
+                token: "fresh-token",
+                refreshToken: "dummy",
+              },
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
             },
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        ),
+          ),
       ),
     },
   });
@@ -293,20 +301,21 @@ test("proxy signIn times out when auth confirmation never arrives", async () => 
     proxyPath: "/api/auth",
     tokenSeed: "existing-token",
     runtime: {
-      proxy: createProxyRuntime(async () =>
-        new Response(
-          JSON.stringify({
-            kind: "signedIn",
-            tokens: {
-              token: "fresh-token",
-              refreshToken: "dummy",
+      proxy: createProxyRuntime(
+        async () =>
+          new Response(
+            JSON.stringify({
+              kind: "signedIn",
+              tokens: {
+                token: "fresh-token",
+                refreshToken: "dummy",
+              },
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
             },
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        ),
+          ),
       ),
     },
   });
@@ -340,20 +349,21 @@ test("proxy refresh does not re-register Convex auth", async () => {
     proxyPath: "/api/auth",
     tokenSeed: "existing-token",
     runtime: {
-      proxy: createProxyRuntime(async () =>
-        new Response(
-          JSON.stringify({
-            kind: "signedIn",
-            tokens: {
-              token: "fresh-token",
-              refreshToken: "dummy",
+      proxy: createProxyRuntime(
+        async () =>
+          new Response(
+            JSON.stringify({
+              kind: "signedIn",
+              tokens: {
+                token: "fresh-token",
+                refreshToken: "dummy",
+              },
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
             },
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        ),
+          ),
       ),
     },
   });
@@ -418,20 +428,21 @@ test("proxy client can call protected mutation immediately after signIn", async 
     proxyPath: "/api/auth",
     tokenSeed: "existing-token",
     runtime: {
-      proxy: createProxyRuntime(async () =>
-        new Response(
-          JSON.stringify({
-            kind: "signedIn",
-            tokens: {
-              token: "fresh-token",
-              refreshToken: "dummy",
+      proxy: createProxyRuntime(
+        async () =>
+          new Response(
+            JSON.stringify({
+              kind: "signedIn",
+              tokens: {
+                token: "fresh-token",
+                refreshToken: "dummy",
+              },
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
             },
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        ),
+          ),
       ),
     },
   });
@@ -530,11 +541,12 @@ test("empty SSR token is treated as signed out", () => {
     proxyPath: "/api/auth",
     tokenSeed: "",
     runtime: {
-      proxy: createProxyRuntime(async () =>
-        new Response(JSON.stringify({ kind: "signedIn", tokens: null }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
+      proxy: createProxyRuntime(
+        async () =>
+          new Response(JSON.stringify({ kind: "signedIn", tokens: null }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
       ),
     },
   });

@@ -9,7 +9,10 @@ import {
   upsertScimConfig,
   upsertScimIdentity,
 } from "../contract";
-import type { GroupConnectionPolicy, ConvexAuthMaterializedConfig } from "../types";
+import type {
+  GroupConnectionPolicy,
+  ConvexAuthMaterializedConfig,
+} from "../types";
 
 type DomainScimConfig = {
   security?: {
@@ -32,7 +35,9 @@ type DomainScimConfig = {
   };
 };
 
-function getScimConfigShape(scimConfig: { extend?: unknown } | null | undefined): DomainScimConfig {
+function getScimConfigShape(
+  scimConfig: { extend?: unknown } | null | undefined,
+): DomainScimConfig {
   return typeof scimConfig?.extend === "object" && scimConfig.extend !== null
     ? (scimConfig.extend as DomainScimConfig)
     : {};
@@ -150,7 +155,8 @@ export function createGroupScimDomain(deps: ScimDeps) {
     });
 
     const hasToken =
-      typeof scimConfig?.tokenHash === "string" && scimConfig.tokenHash.length > 0;
+      typeof scimConfig?.tokenHash === "string" &&
+      scimConfig.tokenHash.length > 0;
     checks.push({
       name: "token_hash_set",
       ok: hasToken,
@@ -181,7 +187,8 @@ export function createGroupScimDomain(deps: ScimDeps) {
     checks.push({
       name: "filter_subset_supported",
       ok: true,
-      message: "Supported filters: eq, co, sw, ew, pr on common user/group fields.",
+      message:
+        "Supported filters: eq, co, sw, ew, pr on common user/group fields.",
     });
 
     checks.push({
@@ -310,7 +317,8 @@ export function createGroupScimDomain(deps: ScimDeps) {
         ready: result.ok,
         config: currentConfig,
         checks: result.checks,
-        capabilities: "capabilities" in result ? result.capabilities : undefined,
+        capabilities:
+          "capabilities" in result ? result.capabilities : undefined,
       };
     },
     getConfigByToken: async (ctx: ComponentReadCtx, token: string) => {

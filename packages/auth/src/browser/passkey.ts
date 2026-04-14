@@ -4,10 +4,7 @@ import type {
   SignInActionResult,
   SignInResult,
 } from "../client/core/types";
-import {
-  base64urlDecode,
-  base64urlEncode,
-} from "./runtime";
+import { base64urlDecode, base64urlEncode } from "./runtime";
 
 type ConditionalMediationCredential = typeof PublicKeyCredential & {
   isConditionalMediationAvailable?: () => Promise<boolean>;
@@ -235,7 +232,9 @@ export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
           ),
         },
         ...(opts?.autofill
-          ? ({ mediation: "conditional" as CredentialMediationRequirement } as const)
+          ? ({
+              mediation: "conditional" as CredentialMediationRequirement,
+            } as const)
           : {}),
       };
 

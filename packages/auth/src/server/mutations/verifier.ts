@@ -14,10 +14,12 @@ export function verifierImpl(
   ctx: MutationCtx,
   config: Provider.Config,
 ): Effect.Effect<ReturnType> {
-  return Effect.flatMap(Effect.promise(() => getAuthSessionId(ctx)), (sessionId) =>
-    Effect.promise(
-      () => authDb(ctx, config).verifiers.create(sessionId ?? undefined),
-    ).pipe(Effect.map((verifierId) => verifierId as ReturnType)),
+  return Effect.flatMap(
+    Effect.promise(() => getAuthSessionId(ctx)),
+    (sessionId) =>
+      Effect.promise(() =>
+        authDb(ctx, config).verifiers.create(sessionId ?? undefined),
+      ).pipe(Effect.map((verifierId) => verifierId as ReturnType)),
   );
 }
 

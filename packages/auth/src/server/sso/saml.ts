@@ -9,8 +9,8 @@ import {
   setSchemaValidator,
 } from "@robelest/samlify";
 
-import type { SAMLAttributeMapping } from "../types";
 import { log } from "../log";
+import type { SAMLAttributeMapping } from "../types";
 import { getSamlConfig } from "./config";
 import { finalizeNormalizedProfile, normalizeStringArray } from "./profile";
 import type {
@@ -133,9 +133,7 @@ export function decodeRelayState(
 }
 
 /** @internal */
-export function encodeGroupSamlRelayState(
-  value: GroupSamlRelayState,
-) {
+export function encodeGroupSamlRelayState(value: GroupSamlRelayState) {
   return encodeBase64urlNoPadding(
     new TextEncoder().encode(
       JSON.stringify({
@@ -301,9 +299,11 @@ export function parseSamlIdpMetadata(metadata: string): ParsedSamlMetadata {
     return certs.length === 1 ? certs[0] : certs;
   };
 
-  const nameIdFormats = [...source.matchAll(
-    /<(?:[A-Za-z0-9_.-]+:)?NameIDFormat>([\s\S]*?)<\/(?:[A-Za-z0-9_.-]+:)?NameIDFormat>/gi,
-  )]
+  const nameIdFormats = [
+    ...source.matchAll(
+      /<(?:[A-Za-z0-9_.-]+:)?NameIDFormat>([\s\S]*?)<\/(?:[A-Za-z0-9_.-]+:)?NameIDFormat>/gi,
+    ),
+  ]
     .map((match) => match[1]?.trim())
     .filter((value): value is string => Boolean(value));
 
@@ -352,7 +352,8 @@ export function enforceSamlResponseSize(opts: {
   if (typeof maxResponseSize !== "number" || maxResponseSize <= 0) {
     return;
   }
-  const encoded = opts.request.body.SAMLResponse ?? opts.request.query.SAMLResponse;
+  const encoded =
+    opts.request.body.SAMLResponse ?? opts.request.query.SAMLResponse;
   if (typeof encoded === "string" && encoded.length > maxResponseSize) {
     throw new Error("SAML response exceeds the configured size limit.");
   }
@@ -517,7 +518,9 @@ export function createGroupConnectionSamlRuntime(opts: {
   return {
     saml,
     sp: createSamlServiceProvider(spOptions) as SamlServiceProvider,
-    idp: IdentityProvider({ metadata: saml.idp.metadataXml }) as SamlIdentityProvider,
+    idp: IdentityProvider({
+      metadata: saml.idp.metadataXml,
+    }) as SamlIdentityProvider,
     urls: getGroupSamlUrls({ rootUrl: opts.rootUrl, source: opts.source }),
   };
 }
@@ -660,10 +663,10 @@ export function createGroupConnectionSamlSignInRequest(opts: {
     config: opts.config,
   });
   const binding = runtime.saml.idp?.sso?.redirect ? "redirect" : "post";
-  const loginRequest = runtime.sp.createLoginRequest(
-    runtime.idp,
-    binding,
-  ) as SamlLoginRequest | PostBindingContext | SimpleSignBindingContext;
+  const loginRequest = runtime.sp.createLoginRequest(runtime.idp, binding) as
+    | SamlLoginRequest
+    | PostBindingContext
+    | SimpleSignBindingContext;
   const relayState = encodeGroupSamlRelayState({
     source: opts.source,
     signature: opts.signature,
@@ -785,7 +788,9 @@ export function enforceSamlAlgorithmPolicy(opts: {
     (sigAlg && WEAK_SAML_ALGORITHMS.has(sigAlg)) ||
     (digestAlg && WEAK_SAML_ALGORITHMS.has(digestAlg))
   ) {
-    throw new Error("SAML response uses a rejected weak cryptographic algorithm.");
+    throw new Error(
+      "SAML response uses a rejected weak cryptographic algorithm.",
+    );
   }
 }
 

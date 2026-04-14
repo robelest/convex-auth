@@ -8,14 +8,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createInterface } from "node:readline/promises";
 import process from "node:process";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
-import { config as loadEnvFile } from "dotenv";
-import { Command, Flag } from "effect/unstable/cli";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { config as loadEnvFile } from "dotenv";
 import { Effect, Option, Schema } from "effect";
+import { Command, Flag } from "effect/unstable/cli";
 
 import { generateKeys } from "./keys";
 
@@ -138,7 +138,9 @@ const allowDirtyGitStateOption = Flag.boolean("allow-dirty-git-state").pipe(
 const urlOption = Flag.string("url").pipe(Flag.optional);
 const adminKeyOption = Flag.string("admin-key").pipe(Flag.optional);
 const prodOption = Flag.boolean("prod").pipe(
-  Flag.withDescription("Set environment variables on this project's production deployment."),
+  Flag.withDescription(
+    "Set environment variables on this project's production deployment.",
+  ),
 );
 const previewNameOption = Flag.string("preview-name").pipe(
   Flag.optional,
@@ -206,7 +208,8 @@ async function runSetup(options: CliOptions) {
 
   const isNextjs = !!packageJson.dependencies?.next;
   const usesTypeScript = !!(
-    packageJson.dependencies?.typescript || packageJson.devDependencies?.typescript
+    packageJson.dependencies?.typescript ||
+    packageJson.devDependencies?.typescript
   );
   const isVite = !!(
     packageJson.dependencies?.vite || packageJson.devDependencies?.vite
@@ -1216,10 +1219,14 @@ async function promptForInput(
   },
 ): Promise<string> {
   if (process.stdin.isTTY) {
-    const suffix = options.default !== undefined ? ` (${options.default}) ` : " ";
+    const suffix =
+      options.default !== undefined ? ` (${options.default}) ` : " ";
     while (true) {
       const result = await prompt(`${message}${suffix}`);
-      const value = result === "" && options.default !== undefined ? options.default : result;
+      const value =
+        result === "" && options.default !== undefined
+          ? options.default
+          : result;
       if (options.validate) {
         const check = options.validate(value);
         if (check !== true) {

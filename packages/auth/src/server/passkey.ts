@@ -43,8 +43,8 @@ import {
 import { ConvexError } from "convex/values";
 import { Effect, Match } from "effect";
 
-import { authDb } from "./db";
 import { authFlowError } from "../shared/errors";
+import { authDb } from "./db";
 import type { AuthErrorData } from "./errors";
 import { toConvexError } from "./errors";
 import { userIdFromIdentitySubject } from "./identity";
@@ -382,7 +382,9 @@ const resolveRegistrationPublicKeyBytes = (
   );
 
 const verifyAssertionSignature = (
-  passkey: Awaited<ReturnType<typeof queryPasskeyByCredentialId>> extends infer T
+  passkey: Awaited<
+    ReturnType<typeof queryPasskeyByCredentialId>
+  > extends infer T
     ? Exclude<T, null>
     : never,
   signature: Uint8Array,
@@ -474,7 +476,8 @@ export function handlePasskeyFx(
               convexError("INTERNAL_ERROR", "An unexpected error occurred."),
           });
           const userName = params.userName ?? user?.email ?? "user";
-          const userDisplayName = params.userDisplayName ?? user?.name ?? userName;
+          const userDisplayName =
+            params.userDisplayName ?? user?.name ?? userName;
 
           const existing = yield* Effect.tryPromise({
             try: () => queryPasskeysByUserId(ctx, userId),
@@ -532,9 +535,10 @@ export function handlePasskeyFx(
             requireStringParam(params.clientDataJSON, "clientDataJSON"),
           );
           const clientData = parseClientDataJSON(clientDataJSON);
-          yield* verifyClientDataType(ClientDataType.Create, "webauthn.create")(
-            clientData,
-          );
+          yield* verifyClientDataType(
+            ClientDataType.Create,
+            "webauthn.create",
+          )(clientData);
           yield* verifyOrigin(rp)(clientData);
           yield* verifyAndConsumeChallenge(ctx, verifier)(clientData);
 
@@ -548,7 +552,10 @@ export function handlePasskeyFx(
 
           if (authData.credential == null) {
             return yield* Effect.fail(
-              convexError("PASSKEY_NO_CREDENTIAL", "No credential in attestation."),
+              convexError(
+                "PASSKEY_NO_CREDENTIAL",
+                "No credential in attestation.",
+              ),
             );
           }
 
@@ -649,7 +656,10 @@ export function handlePasskeyFx(
               const passkeys = yield* Effect.tryPromise({
                 try: () => queryPasskeysByUserId(ctx, user._id),
                 catch: () =>
-                  convexError("INTERNAL_ERROR", "An unexpected error occurred."),
+                  convexError(
+                    "INTERNAL_ERROR",
+                    "An unexpected error occurred.",
+                  ),
               });
               if (passkeys.length > 0) {
                 allowCredentials = passkeys.map((pk) => ({
@@ -698,9 +708,10 @@ export function handlePasskeyFx(
             requireStringParam(params.clientDataJSON, "clientDataJSON"),
           );
           const clientData = parseClientDataJSON(clientDataJSON);
-          yield* verifyClientDataType(ClientDataType.Get, "webauthn.get")(
-            clientData,
-          );
+          yield* verifyClientDataType(
+            ClientDataType.Get,
+            "webauthn.get",
+          )(clientData);
           yield* verifyOrigin(rp)(clientData);
           yield* verifyAndConsumeChallenge(ctx, verifier)(clientData);
 
@@ -740,7 +751,9 @@ export function handlePasskeyFx(
           const authenticatorDataBytes = decodeBase64urlIgnorePadding(
             requireStringParam(params.authenticatorData, "authenticatorData"),
           );
-          const authenticatorData = parseAuthenticatorData(authenticatorDataBytes);
+          const authenticatorData = parseAuthenticatorData(
+            authenticatorDataBytes,
+          );
           const signature = decodeBase64urlIgnorePadding(
             requireStringParam(params.signature, "signature"),
           );

@@ -361,7 +361,9 @@ test("group oidc login interoperates with zitadel through api-driven flow", asyn
   expect(callbackResponse.status).toBe(302);
   const completionLocation = callbackResponse.headers.get("location");
   if (!completionLocation) {
-    throw new Error("Group Connection callback did not return completion redirect.");
+    throw new Error(
+      "Group Connection callback did not return completion redirect.",
+    );
   }
 
   const verificationCode = new URL(completionLocation).searchParams.get("code");

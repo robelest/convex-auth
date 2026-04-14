@@ -16,7 +16,10 @@
 import { GitHub as ArcticGitHub } from "arctic";
 
 import { envOptionalString, readConfigSync } from "../server/env";
-import { createArcticOAuthClient, createOAuthProvider } from "../server/oauth/factory";
+import {
+  createArcticOAuthClient,
+  createOAuthProvider,
+} from "../server/oauth/factory";
 
 const DEFAULT_SCOPES = ["user:email"];
 

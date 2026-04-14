@@ -27,7 +27,11 @@ const apiKeySummary = v.object({
   scopes: v.array(apiKeyScope),
 });
 
-async function requireOwnedPasskey(ctx: any, userId: string, passkeyId: string) {
+async function requireOwnedPasskey(
+  ctx: any,
+  userId: string,
+  passkeyId: string,
+) {
   const passkeys = await auth.account.listPasskeys(ctx, { userId });
   const passkey = passkeys.find((item: any) => item._id === passkeyId);
   if (!passkey) {
@@ -73,7 +77,11 @@ export const renamePasskey = authMutation({
   returns: v.object({ passkeyId: v.string() }),
   handler: async (ctx, args) => {
     await requireOwnedPasskey(ctx, ctx.auth.userId, args.passkeyId);
-    return await auth.account.renamePasskey(ctx, args.passkeyId, args.name.trim());
+    return await auth.account.renamePasskey(
+      ctx,
+      args.passkeyId,
+      args.name.trim(),
+    );
   },
 });
 

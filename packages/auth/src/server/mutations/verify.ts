@@ -4,25 +4,25 @@ import { Data, Effect } from "effect";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
-import { createSyntheticOAuthMaterializedConfig } from "../sso/oidc";
-import { isGroupProviderId } from "../sso/shared";
+import { requireEnv } from "../env";
 import {
   isSignInRateLimited,
   recordFailedSignIn,
   resetSignInRateLimit,
 } from "../limits";
+import { LOG_LEVELS, log } from "../log";
+import type { SignInParams } from "../payloads";
+import { payloadRecordValidator } from "../payloads";
+import { sha256 } from "../random";
 import {
   createNewAndDeleteExistingSession,
   getAuthSessionId,
   maybeGenerateTokensForSession,
 } from "../sessions";
+import { createSyntheticOAuthMaterializedConfig } from "../sso/oidc";
+import { isGroupProviderId } from "../sso/shared";
 import { MutationCtx, SessionInfo } from "../types";
 import { upsertUserAndAccount } from "../users";
-import { sha256 } from "../random";
-import { LOG_LEVELS, log } from "../log";
-import { requireEnv } from "../env";
-import type { SignInParams } from "../payloads";
-import { payloadRecordValidator } from "../payloads";
 import { AUTH_STORE_REF } from "./store/refs";
 
 export const verifyCodeAndSignInArgs = v.object({
@@ -99,7 +99,9 @@ export function verifyCodeAndSignInImpl(
       );
     }
     const hash = yield* Effect.promise(() => sha256(codeValue));
-    const code = yield* Effect.promise(() => db.verificationCodes.getByCode(hash));
+    const code = yield* Effect.promise(() =>
+      db.verificationCodes.getByCode(hash),
+    );
     if (code === null) {
       return yield* Effect.fail(
         new VerifyFailure({ reason: "Invalid verification code" }),
@@ -109,7 +111,9 @@ export function verifyCodeAndSignInImpl(
     yield* Effect.promise(() => db.verificationCodes.delete(code._id));
 
     if (code.verifier !== verifier) {
-      return yield* Effect.fail(new VerifyFailure({ reason: "Invalid verifier" }));
+      return yield* Effect.fail(
+        new VerifyFailure({ reason: "Invalid verifier" }),
+      );
     }
     if (code.expirationTime < Date.now()) {
       return yield* Effect.fail(
@@ -124,7 +128,9 @@ export function verifyCodeAndSignInImpl(
       );
     }
 
-    const account = yield* Effect.promise(() => db.accounts.getById(code.accountId));
+    const account = yield* Effect.promise(() =>
+      db.accounts.getById(code.accountId),
+    );
     if (account === null) {
       return yield* Effect.fail(
         new VerifyFailure({
@@ -152,28 +158,26 @@ export function verifyCodeAndSignInImpl(
     const userId =
       methodProvider.type === "oauth"
         ? account.userId
-        : (
-            yield* Effect.promise(async () =>
-              upsertUserAndAccount(
-                ctx,
-                await getAuthSessionId(ctx),
-                { existingAccount: account },
-                {
-                  type: "verification",
-                  provider: methodProvider,
-                  profile: {
-                    ...(code.emailVerified !== undefined
-                      ? { email: code.emailVerified, emailVerified: true }
-                      : {}),
-                    ...(code.phoneVerified !== undefined
-                      ? { phone: code.phoneVerified, phoneVerified: true }
-                      : {}),
-                  },
+        : (yield* Effect.promise(async () =>
+            upsertUserAndAccount(
+              ctx,
+              await getAuthSessionId(ctx),
+              { existingAccount: account },
+              {
+                type: "verification",
+                provider: methodProvider,
+                profile: {
+                  ...(code.emailVerified !== undefined
+                    ? { email: code.emailVerified, emailVerified: true }
+                    : {}),
+                  ...(code.phoneVerified !== undefined
+                    ? { phone: code.phoneVerified, phoneVerified: true }
+                    : {}),
                 },
-                config,
-              ),
-            )
-          ).userId;
+              },
+              config,
+            ),
+          )).userId;
 
     if (identifier !== undefined) {
       yield* resetSignInRateLimit(ctx, identifier, config);

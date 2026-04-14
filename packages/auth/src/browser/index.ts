@@ -9,6 +9,7 @@
  */
 
 import { ConvexHttpClient } from "convex/browser";
+import { Layer } from "effect";
 
 import {
   client as createClient,
@@ -16,16 +17,15 @@ import {
   type BrowserAuthClient,
   type ClientOptions,
 } from "../client/index";
-import { createPasskeyClient } from "./passkey";
-import { createBrowserRuntime } from "./runtime";
 import {
   ClientAdapterFactoriesLive,
   ClientAdaptersLive,
 } from "../client/services/adapters";
 import { ClientHttpLive } from "../client/services/http";
-import { ClientRuntimeLive } from "../client/services/runtime";
 import { resolveClientServices } from "../client/services/resolve";
-import { Layer } from "effect";
+import { ClientRuntimeLive } from "../client/services/runtime";
+import { createPasskeyClient } from "./passkey";
+import { createBrowserRuntime } from "./runtime";
 
 export type {
   AuthApiRefs,
@@ -60,7 +60,7 @@ export function client<
 >(options: ClientOptions<Api>): BrowserAuthClient<Api> {
   const url =
     options.proxyPath === undefined
-      ? options.url ?? inferConvexUrl(options.convex)
+      ? (options.url ?? inferConvexUrl(options.convex))
       : undefined;
   const runtime = mergeBrowserRuntime(options.runtime);
 
@@ -71,12 +71,13 @@ export function client<
       ClientAdapterFactoriesLive({
         ...options.adapterFactories,
         passkey:
-          options.adapterFactories?.passkey ?? ((deps) => createPasskeyClient(deps)),
+          options.adapterFactories?.passkey ??
+          ((deps) => createPasskeyClient(deps)),
       }),
       ClientHttpLive(
         options.proxyPath !== undefined
           ? null
-          : options.httpClient ?? (url ? new ConvexHttpClient(url) : null),
+          : (options.httpClient ?? (url ? new ConvexHttpClient(url) : null)),
       ),
     ),
   );
@@ -94,7 +95,9 @@ export function client<
   }) as BrowserAuthClient<Api>;
 }
 
-function mergeBrowserRuntime(runtime: ClientOptions["runtime"]): NonNullable<ClientOptions["runtime"]> {
+function mergeBrowserRuntime(
+  runtime: ClientOptions["runtime"],
+): NonNullable<ClientOptions["runtime"]> {
   const defaults = createBrowserRuntime();
   return {
     ...defaults,

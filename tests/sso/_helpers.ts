@@ -393,8 +393,7 @@ export async function groupConnectionCreateRpc(
     convexClient,
     userToken,
     "mutation",
-    [
-      "auth", "group", "createConnection"],
+    ["auth", "group", "createConnection"],
     args as any,
   );
 }
@@ -442,8 +441,7 @@ export async function groupOidcConfigureRpc(
     convexClient,
     userToken,
     "mutation",
-    [
-      "auth", "group", "configureOidc"],
+    ["auth", "group", "configureOidc"],
     args as any,
   );
 }
@@ -502,8 +500,7 @@ export async function groupSamlConfigureRpc(
     convexClient,
     userToken,
     "action",
-    [
-      "auth", "group", "configureSaml"],
+    ["auth", "group", "configureSaml"],
     args as any,
   );
 }
@@ -538,8 +535,7 @@ export async function groupConnectionScimConfigureRpc(
     convexClient,
     userToken,
     "mutation",
-    [
-      "auth", "group", "configureScim"],
+    ["auth", "group", "configureScim"],
     args as any,
   );
 }
@@ -558,8 +554,7 @@ export async function groupWebhookEndpointCreateRpc(
     convexClient,
     userToken,
     "mutation",
-    [
-      "auth", "group", "createWebhookEndpoint"],
+    ["auth", "group", "createWebhookEndpoint"],
     args as any,
   );
 }
@@ -573,8 +568,7 @@ export async function groupWebhookDeliveryListRpc(
     convexClient,
     userToken,
     "query",
-    [
-      "auth", "group", "listWebhookDeliveries"],
+    ["auth", "group", "listWebhookDeliveries"],
     args as any,
   );
 }
@@ -588,8 +582,7 @@ export async function groupWebhookEndpointListRpc(
     convexClient,
     userToken,
     "query",
-    [
-      "auth", "group", "listWebhookEndpoints"],
+    ["auth", "group", "listWebhookEndpoints"],
     { connectionId },
   );
 }
@@ -603,8 +596,7 @@ export async function groupAuditListRpc(
     convexClient,
     userToken,
     "query",
-    [
-      "auth", "group", "listAudit"],
+    ["auth", "group", "listAudit"],
     args as any,
   );
 }

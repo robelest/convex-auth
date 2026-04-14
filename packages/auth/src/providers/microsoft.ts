@@ -18,7 +18,10 @@ import { MicrosoftEntraId } from "arctic";
 import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
 
 import { envOptionalString, readConfigSync } from "../server/env";
-import { createArcticOAuthClient, createOAuthProvider } from "../server/oauth/factory";
+import {
+  createArcticOAuthClient,
+  createOAuthProvider,
+} from "../server/oauth/factory";
 
 const DEFAULT_SCOPES = ["openid", "profile", "email"];
 

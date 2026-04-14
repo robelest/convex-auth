@@ -123,7 +123,10 @@ export const groupConnectionGetByDomain = query({
     if (!domainRow) {
       return null;
     }
-    const connection = await ctx.db.get("GroupConnection", domainRow.connectionId);
+    const connection = await ctx.db.get(
+      "GroupConnection",
+      domainRow.connectionId,
+    );
     if (!connection) {
       return null;
     }

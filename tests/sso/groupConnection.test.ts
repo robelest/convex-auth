@@ -2,11 +2,13 @@ import { api, components } from "@convex/_generated/api";
 import { auth } from "@convex/auth";
 import schema from "@convex/schema";
 import { createAuthGroupSso, scim, sso } from "@robelest/convex-auth/server";
+import { sha256 } from "@robelest/convex-auth/server/random";
 import {
   getPublicOidcConfig,
   upsertProtocolConfig,
 } from "@robelest/convex-auth/server/sso/config";
 import { createGroupConnectionOidcProvider } from "@robelest/convex-auth/server/sso/oidc";
+import { resolveProvisionedRoleIds } from "@robelest/convex-auth/server/sso/policy";
 import {
   createServiceProviderMetadata,
   enforceSamlAlgorithmPolicy,
@@ -25,8 +27,6 @@ import {
   groupOidcProviderId,
   groupSamlProviderId,
 } from "@robelest/convex-auth/server/sso/shared";
-import { resolveProvisionedRoleIds } from "@robelest/convex-auth/server/sso/policy";
-import { sha256 } from "@robelest/convex-auth/server/random";
 import idpMetadataXml from "@robelest/samlify/test/misc/idpmeta.xml?raw";
 import { SignJWT } from "jose";
 import { afterEach, expect, test, vi } from "vite-plus/test";
@@ -69,18 +69,21 @@ test("group connection component stores group connection records and domains", a
       slug: "acme",
       name: "Acme Corp",
       status: "draft",
-        protocol: "saml",
+      protocol: "saml",
       config: { protocols: { saml: { enabled: true } } },
     });
   });
 
   const domainId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupConnectionDomainAdd, {
-      connectionId,
-      groupId,
-      domain: "acme.com",
-      isPrimary: true,
-    });
+    return await ctx.runMutation(
+      components.auth.public.groupConnectionDomainAdd,
+      {
+        connectionId,
+        groupId,
+        domain: "acme.com",
+        isPrimary: true,
+      },
+    );
   });
 
   const connection = await t.run(async (ctx) => {
@@ -89,14 +92,20 @@ test("group connection component stores group connection records and domains", a
     });
   });
   const lookup = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupConnectionGetByDomain, {
-      domain: "acme.com",
-    });
+    return await ctx.runQuery(
+      components.auth.public.groupConnectionGetByDomain,
+      {
+        domain: "acme.com",
+      },
+    );
   });
   const domains = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupConnectionDomainList, {
-      connectionId,
-    });
+    return await ctx.runQuery(
+      components.auth.public.groupConnectionDomainList,
+      {
+        connectionId,
+      },
+    );
   });
   expect(domainId).toBeDefined();
   expect(connection?.groupId).toBe(groupId);
@@ -329,7 +338,7 @@ test("group connection component stores scim config, audit events, and webhook d
       slug: "globex",
       name: "Globex",
       status: "active",
-        protocol: "oidc",
+      protocol: "oidc",
     });
   });
 
@@ -361,18 +370,15 @@ test("group connection component stores scim config, audit events, and webhook d
     );
   });
   const auditEventId = await t.run(async (ctx) => {
-    return await ctx.runMutation(
-      components.auth.public.groupAuditEventCreate,
-      {
-        connectionId,
-        groupId,
-        eventType: "group.sso.scim.configured",
-        actorType: "system",
-        subjectType: "group_connection_scim",
-        status: "success",
-        occurredAt: Date.now(),
-      },
-    );
+    return await ctx.runMutation(components.auth.public.groupAuditEventCreate, {
+      connectionId,
+      groupId,
+      eventType: "group.sso.scim.configured",
+      actorType: "system",
+      subjectType: "group_connection_scim",
+      status: "success",
+      occurredAt: Date.now(),
+    });
   });
   const { endpointId } = await t.run(async (ctx) => {
     return await auth.group.sso.webhook.endpoint.create(ctx, {
@@ -383,17 +389,14 @@ test("group connection component stores scim config, audit events, and webhook d
     });
   });
   await t.run(async (ctx) => {
-    await ctx.runMutation(
-      components.auth.public.groupWebhookDeliveryEnqueue,
-      {
-        connectionId,
-        endpointId,
-        eventType: "group.sso.scim.configured",
-        auditEventId,
-        payload: { ok: true },
-        nextAttemptAt: Date.now(),
-      },
-    );
+    await ctx.runMutation(components.auth.public.groupWebhookDeliveryEnqueue, {
+      connectionId,
+      endpointId,
+      eventType: "group.sso.scim.configured",
+      auditEventId,
+      payload: { ok: true },
+      nextAttemptAt: Date.now(),
+    });
   });
 
   const scimConfig = await t.run(async (ctx) => {
@@ -469,22 +472,25 @@ test("group connection scim identity lookup is scoped to the group connection", 
     });
     const connectionId = await ctx.runMutation(
       components.auth.public.groupConnectionCreate,
-        {
-          groupId,
-          slug: "first-group-connection",
-          name: "First Group Connection",
-          status: "active",
-          protocol: "oidc",
-        },
+      {
+        groupId,
+        slug: "first-group-connection",
+        name: "First Group Connection",
+        status: "active",
+        protocol: "oidc",
+      },
     );
-    await ctx.runMutation(components.auth.public.groupConnectionScimIdentityUpsert, {
-      connectionId,
-      groupId,
-      resourceType: "user",
-      externalId: "first-external-id",
-      userId,
-      active: true,
-    });
+    await ctx.runMutation(
+      components.auth.public.groupConnectionScimIdentityUpsert,
+      {
+        connectionId,
+        groupId,
+        resourceType: "user",
+        externalId: "first-external-id",
+        userId,
+        active: true,
+      },
+    );
     return { connectionId, groupId };
   });
 
@@ -495,22 +501,25 @@ test("group connection scim identity lookup is scoped to the group connection", 
     });
     const connectionId = await ctx.runMutation(
       components.auth.public.groupConnectionCreate,
-        {
-          groupId,
-          slug: "second-group-connection",
-          name: "Second Group Connection",
-          status: "active",
-          protocol: "oidc",
-        },
+      {
+        groupId,
+        slug: "second-group-connection",
+        name: "Second Group Connection",
+        status: "active",
+        protocol: "oidc",
+      },
     );
-    await ctx.runMutation(components.auth.public.groupConnectionScimIdentityUpsert, {
-      connectionId,
-      groupId,
-      resourceType: "user",
-      externalId: "second-external-id",
-      userId,
-      active: true,
-    });
+    await ctx.runMutation(
+      components.auth.public.groupConnectionScimIdentityUpsert,
+      {
+        connectionId,
+        groupId,
+        resourceType: "user",
+        externalId: "second-external-id",
+        userId,
+        active: true,
+      },
+    );
     return { connectionId, groupId };
   });
 
@@ -535,10 +544,12 @@ test("group connection scim identity lookup is scoped to the group connection", 
   });
 
   expect(
-    firstIdentities.find((identity: any) => identity.userId === userId)?.externalId,
+    firstIdentities.find((identity: any) => identity.userId === userId)
+      ?.externalId,
   ).toBe("first-external-id");
   expect(
-    secondIdentities.find((identity: any) => identity.userId === userId)?.externalId,
+    secondIdentities.find((identity: any) => identity.userId === userId)
+      ?.externalId,
   ).toBe("second-external-id");
 });
 
@@ -575,7 +586,8 @@ test("group connection route helpers generate clean metadata and callback paths"
       source: { kind: "connection", id: "acme" },
     }),
   ).toEqual({
-    metadataUrl: "https://app.example.com/api/auth/connections/acme/saml/metadata",
+    metadataUrl:
+      "https://app.example.com/api/auth/connections/acme/saml/metadata",
     acsUrl: "https://app.example.com/api/auth/connections/acme/saml/acs",
     sloUrl: "https://app.example.com/api/auth/connections/acme/saml/slo",
   });
@@ -587,7 +599,8 @@ test("group connection route helpers generate clean metadata and callback paths"
     }),
   ).toEqual({
     signInUrl: "https://app.example.com/api/auth/connections/acme/oidc/signin",
-    callbackUrl: "https://app.example.com/api/auth/connections/acme/oidc/callback",
+    callbackUrl:
+      "https://app.example.com/api/auth/connections/acme/oidc/callback",
   });
 });
 
@@ -653,16 +666,16 @@ test("group saml.register persists config directly on group connection", async (
       '  <IDPSSODescriptor WantAuthnRequestsSigned="true" protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">',
       '    <KeyDescriptor use="signing">',
       '      <ds:KeyInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">',
-      '        <ds:X509Data>',
-      '          <ds:X509Certificate>MIIBlzCCATACCQC6n5q7Y9qs0DANBgkqhkiG9w0BAQsFADATMREwDwYDVQQDDAhFeGFtcGxlMB4XDTI2MDEwMTAwMDAwMFoXDTM2MDEwMTAwMDAwMFowEzERMA8GA1UEAwwIRXhhbXBsZTCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEAxT9F4N8wJ6i9wzV4Yw6n8m2s3mK4n4zQ6xV9S7L0Q2f8oUqg6P5lM4wL6V7I3mQf0Q3Lx1Q2U7Jx7wW0Oe0nM4V0a3mX4H2O1qYv8jGQJ2C1sO8Yf5C8W0w7bP1W0Q1x1uJ0r9tYp8F5s8VY4e1s1M3jJ8n1f3P5wYw3s9QmECAwEAATANBgkqhkiG9w0BAQsFAAOBgQB1u4hM1n6rP5M9w1jQk6R5P0rK4g6fJx7F2mK8nQ2wY8tC1n7xP9sV4kL6mR3yQ0hP2uL8Q4yZ7mS2vX5tN1cF8pG4wK9jL2mQ6rF1sT3uV8xY5zA0nQ6jP4mR2sY8wK5fL1nM7qV3tX6yZ0pR8uH2jK4mN6qP1sT9wY7zF0mQ==</ds:X509Certificate>',
-      '        </ds:X509Data>',
-      '      </ds:KeyInfo>',
-      '    </KeyDescriptor>',
+      "        <ds:X509Data>",
+      "          <ds:X509Certificate>MIIBlzCCATACCQC6n5q7Y9qs0DANBgkqhkiG9w0BAQsFADATMREwDwYDVQQDDAhFeGFtcGxlMB4XDTI2MDEwMTAwMDAwMFoXDTM2MDEwMTAwMDAwMFowEzERMA8GA1UEAwwIRXhhbXBsZTCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEAxT9F4N8wJ6i9wzV4Yw6n8m2s3mK4n4zQ6xV9S7L0Q2f8oUqg6P5lM4wL6V7I3mQf0Q3Lx1Q2U7Jx7wW0Oe0nM4V0a3mX4H2O1qYv8jGQJ2C1sO8Yf5C8W0w7bP1W0Q1x1uJ0r9tYp8F5s8VY4e1s1M3jJ8n1f3P5wYw3s9QmECAwEAATANBgkqhkiG9w0BAQsFAAOBgQB1u4hM1n6rP5M9w1jQk6R5P0rK4g6fJx7F2mK8nQ2wY8tC1n7xP9sV4kL6mR3yQ0hP2uL8Q4yZ7mS2vX5tN1cF8pG4wK9jL2mQ6rF1sT3uV8xY5zA0nQ6jP4mR2sY8wK5fL1nM7qV3tX6yZ0pR8uH2jK4mN6qP1sT9wY7zF0mQ==</ds:X509Certificate>",
+      "        </ds:X509Data>",
+      "      </ds:KeyInfo>",
+      "    </KeyDescriptor>",
       '    <SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="https://idp.example.org/sso/SingleSignOnService" />',
       '    <SingleLogoutService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="https://idp.example.org/sso/SingleLogoutService" />',
-      '    <NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</NameIDFormat>',
-      '  </IDPSSODescriptor>',
-      '</EntityDescriptor>',
+      "    <NameIDFormat>urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress</NameIDFormat>",
+      "  </IDPSSODescriptor>",
+      "</EntityDescriptor>",
     ].join("\n");
     return await auth.group.sso.saml.configure(ctx as any, {
       connectionId,
@@ -684,9 +697,12 @@ test("group saml.register persists config directly on group connection", async (
     });
   });
   const domains = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupConnectionDomainList, {
-      connectionId,
-    });
+    return await ctx.runQuery(
+      components.auth.public.groupConnectionDomainList,
+      {
+        connectionId,
+      },
+    );
   });
   const auditEvents = await t.run(async (ctx) => {
     return await ctx.runQuery(components.auth.public.groupAuditEventList, {
@@ -885,7 +901,10 @@ test("group connection domain status exposes trust and next steps", async () => 
   });
 
   const initial = await t.run(async (ctx) => {
-    return await auth.group.sso.connection.domain.status(ctx as any, connectionId);
+    return await auth.group.sso.connection.domain.status(
+      ctx as any,
+      connectionId,
+    );
   });
 
   expect(initial.primaryDomain?.domain).toBe("status.example.com");
@@ -896,14 +915,20 @@ test("group connection domain status exposes trust and next steps", async () => 
   );
 
   const requested = await t.run(async (ctx) => {
-    return await auth.group.sso.connection.domain.verification.request(ctx as any, {
-      connectionId,
-      domain: "status.example.com",
-    });
+    return await auth.group.sso.connection.domain.verification.request(
+      ctx as any,
+      {
+        connectionId,
+        domain: "status.example.com",
+      },
+    );
   });
 
   const withChallenge = await t.run(async (ctx) => {
-    return await auth.group.sso.connection.domain.status(ctx as any, connectionId);
+    return await auth.group.sso.connection.domain.status(
+      ctx as any,
+      connectionId,
+    );
   });
 
   expect(withChallenge.pendingChallenges).toHaveLength(1);
@@ -990,12 +1015,12 @@ test("group oidc.register merges config and client.signIn requires verified doma
     });
   });
   const explicitResolved = await t.run(async (ctx) => {
-      return await auth.group.sso.signIn(ctx as any, {
-        connectionId,
-        redirectTo: "/dashboard",
-        loginHint: "admin@oidc.example.com",
-      });
+    return await auth.group.sso.signIn(ctx as any, {
+      connectionId,
+      redirectTo: "/dashboard",
+      loginHint: "admin@oidc.example.com",
     });
+  });
   await expect(
     t.run(async (ctx) => {
       return await auth.group.sso.signIn(ctx as any, {
@@ -1004,9 +1029,7 @@ test("group oidc.register merges config and client.signIn requires verified doma
         loginHint: "admin@oidc.example.com",
       });
     }),
-  ).rejects.toThrow(
-    "No group connection matched the provided input.",
-  );
+  ).rejects.toThrow("No group connection matched the provided input.");
 
   const request = await t.run(async (ctx) => {
     return await auth.group.sso.connection.domain.verification.request(
@@ -1051,12 +1074,12 @@ test("group oidc.register merges config and client.signIn requires verified doma
   });
 
   const resolved = await t.run(async (ctx) => {
-      return await auth.group.sso.signIn(ctx as any, {
-        domain: "oidc.example.com",
-        redirectTo: "/dashboard",
-        loginHint: "admin@oidc.example.com",
-      });
+    return await auth.group.sso.signIn(ctx as any, {
+      domain: "oidc.example.com",
+      redirectTo: "/dashboard",
+      loginHint: "admin@oidc.example.com",
     });
+  });
   const clientResolved = await t.query(api.auth.group.signIn, {
     domain: "oidc.example.com",
     redirectTo: "/dashboard",
@@ -1118,7 +1141,9 @@ test("public group connection OIDC config omits client secret", () => {
   });
 
   expect((config.client as { id?: string } | undefined)?.id).toBe("client_123");
-  expect((config.client as { secret?: string } | undefined)?.secret).toBeUndefined();
+  expect(
+    (config.client as { secret?: string } | undefined)?.secret,
+  ).toBeUndefined();
 });
 
 test("group OIDC shared callback helpers resolve stable callback URL and state", () => {
@@ -1255,14 +1280,18 @@ test("provisioned membership stores resolved roleIds queryable via memberGetByGr
   });
 
   const membership = await t.run(async (ctx) => {
-    return await ctx.runQuery(
-      components.auth.public.memberGetByGroupAndUser,
-      { groupId, userId },
-    );
+    return await ctx.runQuery(components.auth.public.memberGetByGroupAndUser, {
+      groupId,
+      userId,
+    });
   });
 
   expect(membership).not.toBeNull();
-  expect(membership?.roleIds?.sort()).toEqual(["engineer", "member", "orgAdmin"]);
+  expect(membership?.roleIds?.sort()).toEqual([
+    "engineer",
+    "member",
+    "orgAdmin",
+  ]);
 });
 
 test("SSO hooks can transform normalized profiles", async () => {
@@ -1493,39 +1522,30 @@ test("group connection scim.configure stores hashed token and enqueues subscribe
     });
   });
   await t.run(async (ctx) => {
-    await ctx.runMutation(
-      components.auth.public.groupWebhookEndpointCreate,
-      {
-        connectionId,
-        groupId,
-        url: "https://hooks.example.com/a",
-        status: "active",
-        secretHash: "hash-a",
-        subscriptions: ["group.sso.scim.configured"],
-      } as any,
-    );
-    await ctx.runMutation(
-      components.auth.public.groupWebhookEndpointCreate,
-      {
-        connectionId,
-        groupId,
-        url: "https://hooks.example.com/b",
-        status: "disabled",
-        secretHash: "hash-b",
-        subscriptions: ["group.sso.scim.configured"],
-      } as any,
-    );
-    await ctx.runMutation(
-      components.auth.public.groupWebhookEndpointCreate,
-      {
-        connectionId,
-        groupId,
-        url: "https://hooks.example.com/c",
-        status: "active",
-        secretHash: "hash-c",
-        subscriptions: ["group.sso.other"],
-      } as any,
-    );
+    await ctx.runMutation(components.auth.public.groupWebhookEndpointCreate, {
+      connectionId,
+      groupId,
+      url: "https://hooks.example.com/a",
+      status: "active",
+      secretHash: "hash-a",
+      subscriptions: ["group.sso.scim.configured"],
+    } as any);
+    await ctx.runMutation(components.auth.public.groupWebhookEndpointCreate, {
+      connectionId,
+      groupId,
+      url: "https://hooks.example.com/b",
+      status: "disabled",
+      secretHash: "hash-b",
+      subscriptions: ["group.sso.scim.configured"],
+    } as any);
+    await ctx.runMutation(components.auth.public.groupWebhookEndpointCreate, {
+      connectionId,
+      groupId,
+      url: "https://hooks.example.com/c",
+      status: "active",
+      secretHash: "hash-c",
+      subscriptions: ["group.sso.other"],
+    } as any);
   });
 
   const configured = await t.run(async (ctx) => {

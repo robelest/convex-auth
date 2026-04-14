@@ -14,10 +14,10 @@ import {
 } from "convex/values";
 import { Effect } from "effect";
 
-import { envOptionalString, readConfigSync } from "../env";
 import { SHARED_COOKIE_OPTIONS } from "../cookies";
-import type { OAuthProfile, OAuthRuntimeClient, OAuthTokens } from "../types";
+import { envOptionalString, readConfigSync } from "../env";
 import { log } from "../log";
+import type { OAuthProfile, OAuthRuntimeClient, OAuthTokens } from "../types";
 import { isLocalHost } from "../url";
 
 type OAuthErrorData = {
@@ -88,12 +88,11 @@ export interface CallbackResult {
 
 const COOKIE_TTL = 60 * 15; // 15 minutes
 const convexSiteUrl = readConfigSync(envOptionalString("CONVEX_SITE_URL"));
-const oauthCookiePrefix = !isLocalHost(convexSiteUrl ?? undefined) ? "__Host-" : "";
+const oauthCookiePrefix = !isLocalHost(convexSiteUrl ?? undefined)
+  ? "__Host-"
+  : "";
 
-function oauthCookieName(
-  type: "state" | "pkce" | "nonce",
-  providerId: string,
-) {
+function oauthCookieName(type: "state" | "pkce" | "nonce", providerId: string) {
   return oauthCookiePrefix + providerId + "OAuth" + type;
 }
 
@@ -207,7 +206,10 @@ function extractProfile(
   }
 
   if (typeof tokens.idToken === "string") {
-    const claims = arctic.decodeIdToken(tokens.idToken) as Record<string, unknown>;
+    const claims = arctic.decodeIdToken(tokens.idToken) as Record<
+      string,
+      unknown
+    >;
     return Effect.succeed({
       id: (claims.sub as string) ?? crypto.randomUUID(),
       name: (claims.name as string) ?? undefined,
@@ -249,10 +251,14 @@ export async function createOAuthAuthorizationURL(
   options?: { loginHint?: string; stateTransform?: (state: string) => string },
 ): Promise<AuthorizationResult> {
   if (oauthConfig.provider === null) {
-    throw new Error(`OAuth provider "${providerId}" is missing a runtime client.`);
+    throw new Error(
+      `OAuth provider "${providerId}" is missing a runtime client.`,
+    );
   }
   const rawState = arctic.generateState();
-  const state = options?.stateTransform ? options.stateTransform(rawState) : rawState;
+  const state = options?.stateTransform
+    ? options.stateTransform(rawState)
+    : rawState;
   const cookies: OAuthCookie[] = [];
   let codeVerifier: string | undefined;
 
@@ -383,7 +389,11 @@ export function handleOAuthCallback(
       responseCookies.push(clearCookie("nonce", providerId));
     }
 
-    const tokens = yield* exchangeCode(oauthConfig.provider, code, codeVerifier);
+    const tokens = yield* exchangeCode(
+      oauthConfig.provider,
+      code,
+      codeVerifier,
+    );
 
     if (oauthConfig.validateTokens !== undefined) {
       yield* tryConvex({

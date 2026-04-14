@@ -1,7 +1,16 @@
-import type { GenericActionCtx, GenericDataModel, UserIdentity } from "convex/server";
+import type {
+  GenericActionCtx,
+  GenericDataModel,
+  UserIdentity,
+} from "convex/server";
 
+import type {
+  AuthContext,
+  AuthLike,
+  OptionalAuthContext,
+  UserDoc,
+} from "./auth";
 import { userIdFromIdentitySubject } from "./identity";
-import type { AuthContext, AuthLike, OptionalAuthContext, UserDoc } from "./auth";
 
 type AuthIdentityCtx = {
   auth: {
@@ -14,7 +23,10 @@ type AuthQueryCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
 type AuthContextResolverLike = {
   user: {
     get: (ctx: AuthQueryCtx, userId: string) => Promise<UserDoc>;
-    getActiveGroup: (ctx: AuthQueryCtx, args: { userId: string }) => Promise<string | null>;
+    getActiveGroup: (
+      ctx: AuthQueryCtx,
+      args: { userId: string },
+    ) => Promise<string | null>;
   };
   member: {
     inspect: (

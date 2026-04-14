@@ -1,15 +1,15 @@
 import { Auth } from "convex/server";
 import { GenericId } from "convex/values";
 
-import { envOptionalNumber, readConfigSync } from "./env";
 import { authDb } from "./db";
+import { envOptionalNumber, readConfigSync } from "./env";
+import { LOG_LEVELS, log, maybeRedact } from "./log";
 import { createRefreshToken } from "./refresh";
 import { REFRESH_TOKEN_DIVIDER } from "./refresh";
 import { generateToken } from "./tokens";
 import { TOKEN_SUB_CLAIM_DIVIDER } from "./tokens";
 import { Doc, MutationCtx, SessionInfo } from "./types";
 import { ConvexAuthConfig } from "./types";
-import { LOG_LEVELS, log, maybeRedact } from "./log";
 
 const DEFAULT_SESSION_TOTAL_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 

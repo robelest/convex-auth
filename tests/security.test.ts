@@ -3,18 +3,16 @@ import {
   parseAuthCookies,
   server,
 } from "@robelest/convex-auth/server";
-import {
-  createOAuthAuthorizationURL,
-  handleOAuthCallback,
-} from "../packages/auth/src/server/oauth/runtime";
-import {
-  isLocalHost,
-  siteUrlsFromEnv,
-} from "../packages/auth/src/server/url";
 import { ConvexHttpClient } from "convex/browser";
 import { ConvexError } from "convex/values";
 import { Effect } from "effect";
 import { afterEach, expect, test, vi } from "vite-plus/test";
+
+import {
+  createOAuthAuthorizationURL,
+  handleOAuthCallback,
+} from "../packages/auth/src/server/oauth/runtime";
+import { isLocalHost, siteUrlsFromEnv } from "../packages/auth/src/server/url";
 
 const TEST_COOKIE_NAMESPACE = "server_security_tests";
 
@@ -654,8 +652,12 @@ test("proxy signIn errors keep existing cookies for non-refresh requests", async
 });
 
 test("proxy signIn hydrates auth from refresh cookie for device verification", async () => {
-  const actionSpy = vi.spyOn(ConvexHttpClient.prototype, "action").mockImplementation(
-    async function (this: ConvexHttpClient, ...[_reference, args]: any[]) {
+  const actionSpy = vi
+    .spyOn(ConvexHttpClient.prototype, "action")
+    .mockImplementation(async function (
+      this: ConvexHttpClient,
+      ...[_reference, args]: any[]
+    ) {
       if (typeof args === "object" && args !== null && "refreshToken" in args) {
         return {
           kind: "signedIn",
@@ -666,14 +668,15 @@ test("proxy signIn hydrates auth from refresh cookie for device verification", a
         };
       }
 
-      expect((this as unknown as { auth?: string }).auth).toBe("fresh-jwt-token");
+      expect((this as unknown as { auth?: string }).auth).toBe(
+        "fresh-jwt-token",
+      );
       expect(args).toMatchObject({
         provider: "device",
         params: { flow: "verify", userCode: "ABCD-EFGH" },
       });
       return { kind: "signedIn", tokens: null };
-    },
-  );
+    });
 
   const auth = server({
     url: "https://example.convex.cloud",
@@ -717,7 +720,9 @@ test("proxy signIn hydrates auth from refresh cookie for device verification", a
       : (response.headers.get("set-cookie") ?? "");
 
   expect(setCookie).toContain(`${cookieNames.token}=fresh-jwt-token`);
-  expect(setCookie).toContain(`${cookieNames.refreshToken}=fresh-refresh-token`);
+  expect(setCookie).toContain(
+    `${cookieNames.refreshToken}=fresh-refresh-token`,
+  );
 });
 
 test("proxy signOut retries revocation via refresh token", async () => {

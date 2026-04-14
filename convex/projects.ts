@@ -42,7 +42,12 @@ async function listProjectsForGroup(ctx: any, userId: string, groupId: string) {
 async function createProjectRecord(
   ctx: any,
   userId: string,
-  args: { groupId: string; name: string; identifier: string; description: string },
+  args: {
+    groupId: string;
+    name: string;
+    identifier: string;
+    description: string;
+  },
 ) {
   await auth.member.require(ctx, {
     userId,

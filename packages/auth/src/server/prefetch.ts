@@ -5,14 +5,14 @@ import { parse, serialize } from "cookie";
 import { Cause, Effect, Exit, Match } from "effect";
 import { jwtDecode } from "jwt-decode";
 
+import { log } from "./log";
+import type { SignInParams } from "./payloads";
 import type {
   SignInAction,
   SignInActionResult,
   SignOutAction,
 } from "./runtime";
-import type { SignInParams } from "./payloads";
 import type { Tokens } from "./types";
-import { log } from "./log";
 import { isLocalHost } from "./url";
 
 const signInActionRef: SignInAction = makeFunctionReference("auth:signIn");
@@ -352,8 +352,7 @@ function getProxyErrorBody(error: unknown) {
     error.data !== null &&
     "code" in error.data
     ? {
-        error:
-          (error.data as { message?: string }).message ?? String(error),
+        error: (error.data as { message?: string }).message ?? String(error),
         authError: error.data,
       }
     : {
@@ -368,9 +367,7 @@ function extractSignedInTokens(
   return Match.value(result).pipe(
     Match.when({ kind: "signedIn" }, ({ tokens }) => Effect.succeed(tokens)),
     Match.orElse(() =>
-      Effect.fail(
-        new Error(`Invalid \`auth:signIn\` result for ${context}`),
-      ),
+      Effect.fail(new Error(`Invalid \`auth:signIn\` result for ${context}`)),
     ),
   );
 }
@@ -580,10 +577,7 @@ export function server(options: ServerOptions) {
         }
         return client;
       };
-      const runSignIn = (
-        client: ConvexHttpClient,
-        args: ProxySignInArgs,
-      ) =>
+      const runSignIn = (client: ConvexHttpClient, args: ProxySignInArgs) =>
         Effect.tryPromise({
           try: () =>
             client.action(signInActionRef, args) as Promise<SignInActionResult>,
@@ -605,7 +599,8 @@ export function server(options: ServerOptions) {
               ? args.params
               : undefined;
           const shouldAttachCurrentIdentity =
-            args.refreshToken === undefined && requestParams?.code === undefined;
+            args.refreshToken === undefined &&
+            requestParams?.code === undefined;
 
           if (!shouldAttachCurrentIdentity) {
             return { client, cookies: currentCookies };
@@ -664,102 +659,104 @@ export function server(options: ServerOptions) {
         currentCookies: AuthCookies,
         host: string,
       ): Effect.Effect<Response> =>
-        Match.value(result).pipe(
-          Match.when({ kind: "redirect" }, (redirectResult) =>
-            Effect.sync(() =>
-              appendCookieHeaders(
-                jsonResponse({
-                  kind: "redirect",
-                  redirect: redirectResult.redirect,
-                  verifier: redirectResult.verifier,
-                }),
-                serializeAuthCookies(
-                  {
-                    ...currentCookies,
+        Match.value(result)
+          .pipe(
+            Match.when({ kind: "redirect" }, (redirectResult) =>
+              Effect.sync(() =>
+                appendCookieHeaders(
+                  jsonResponse({
+                    kind: "redirect",
+                    redirect: redirectResult.redirect,
                     verifier: redirectResult.verifier,
-                  },
-                  host,
-                  cookieConfig,
-                  cookieNamespace,
+                  }),
+                  serializeAuthCookies(
+                    {
+                      ...currentCookies,
+                      verifier: redirectResult.verifier,
+                    },
+                    host,
+                    cookieConfig,
+                    cookieNamespace,
+                  ),
                 ),
               ),
             ),
-          ),
-          Match.when({ kind: "signedIn" }, (signedInResult) =>
-            Effect.sync(() => {
-              const nextCookies =
-                signedInResult.tokens === null
-                  ? {
-                      token: currentCookies.token,
-                      refreshToken: currentCookies.refreshToken,
+            Match.when({ kind: "signedIn" }, (signedInResult) =>
+              Effect.sync(() => {
+                const nextCookies =
+                  signedInResult.tokens === null
+                    ? {
+                        token: currentCookies.token,
+                        refreshToken: currentCookies.refreshToken,
+                        verifier: null,
+                      }
+                    : {
+                        token: signedInResult.tokens.token,
+                        refreshToken: signedInResult.tokens.refreshToken,
+                        verifier: null,
+                      };
+                return appendCookieHeaders(
+                  jsonResponse({
+                    kind: "signedIn",
+                    tokens:
+                      signedInResult.tokens === null
+                        ? null
+                        : {
+                            token: signedInResult.tokens.token,
+                            refreshToken: "dummy",
+                          },
+                  }),
+                  serializeAuthCookies(
+                    nextCookies,
+                    host,
+                    cookieConfig,
+                    cookieNamespace,
+                  ),
+                );
+              }),
+            ),
+            Match.when({ kind: "started" }, (startedResult) =>
+              Effect.succeed(jsonResponse(startedResult)),
+            ),
+            Match.when({ kind: "passkeyOptions" }, (passkeyOptionsResult) =>
+              Effect.succeed(jsonResponse(passkeyOptionsResult)),
+            ),
+            Match.when({ kind: "totpRequired" }, (totpRequiredResult) =>
+              Effect.succeed(jsonResponse(totpRequiredResult)),
+            ),
+            Match.when({ kind: "totpSetup" }, (totpSetupResult) =>
+              Effect.succeed(jsonResponse(totpSetupResult)),
+            ),
+            Match.when({ kind: "deviceCode" }, (deviceCodeResult) =>
+              Effect.succeed(jsonResponse(deviceCodeResult)),
+            ),
+            Match.exhaustive,
+          )
+          .pipe(
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                const response = jsonResponse(getProxyErrorBody(error), 400);
+                const clearSession =
+                  args.refreshToken !== undefined &&
+                  getConvexErrorCode(error) === "INVALID_REFRESH_TOKEN";
+                return appendCookieHeaders(
+                  response,
+                  serializeAuthCookies(
+                    {
+                      token: clearSession ? null : currentCookies.token,
+                      refreshToken: clearSession
+                        ? null
+                        : currentCookies.refreshToken,
                       verifier: null,
-                    }
-                  : {
-                      token: signedInResult.tokens.token,
-                      refreshToken: signedInResult.tokens.refreshToken,
-                      verifier: null,
-                    };
-              return appendCookieHeaders(
-                jsonResponse({
-                  kind: "signedIn",
-                  tokens:
-                    signedInResult.tokens === null
-                      ? null
-                      : {
-                          token: signedInResult.tokens.token,
-                          refreshToken: "dummy",
-                        },
-                }),
-                serializeAuthCookies(
-                  nextCookies,
-                  host,
-                  cookieConfig,
-                  cookieNamespace,
-                ),
-              );
-            }),
-          ),
-          Match.when({ kind: "started" }, (startedResult) =>
-            Effect.succeed(jsonResponse(startedResult)),
-          ),
-          Match.when({ kind: "passkeyOptions" }, (passkeyOptionsResult) =>
-            Effect.succeed(jsonResponse(passkeyOptionsResult)),
-          ),
-          Match.when({ kind: "totpRequired" }, (totpRequiredResult) =>
-            Effect.succeed(jsonResponse(totpRequiredResult)),
-          ),
-          Match.when({ kind: "totpSetup" }, (totpSetupResult) =>
-            Effect.succeed(jsonResponse(totpSetupResult)),
-          ),
-          Match.when({ kind: "deviceCode" }, (deviceCodeResult) =>
-            Effect.succeed(jsonResponse(deviceCodeResult)),
-          ),
-          Match.exhaustive,
-        ).pipe(
-          Effect.catch((error) =>
-            Effect.sync(() => {
-              const response = jsonResponse(getProxyErrorBody(error), 400);
-              const clearSession =
-                args.refreshToken !== undefined &&
-                getConvexErrorCode(error) === "INVALID_REFRESH_TOKEN";
-              return appendCookieHeaders(
-                response,
-                serializeAuthCookies(
-                  {
-                    token: clearSession ? null : currentCookies.token,
-                    refreshToken: clearSession
-                      ? null
-                      : currentCookies.refreshToken,
-                    verifier: null,
-                  },
-                  host,
-                  cookieConfig,
-                  cookieNamespace,
-                ),
-              );
-            }),
-          ),
-        );
+                    },
+                    host,
+                    cookieConfig,
+                    cookieNamespace,
+                  ),
+                );
+              }),
+            ),
+          );
 
       return runBoundary(
         Effect.gen(function* () {
@@ -813,14 +810,17 @@ export function server(options: ServerOptions) {
                 : { kind: "valid" as const };
 
           const validationErrorResponse = Match.value(requestDispatch).pipe(
-            Match.when({ kind: "invalidRoute" }, () =>
-              new Response("Invalid route", { status: 404 }),
+            Match.when(
+              { kind: "invalidRoute" },
+              () => new Response("Invalid route", { status: 404 }),
             ),
-            Match.when({ kind: "invalidMethod" }, () =>
-              new Response("Invalid method", { status: 405 }),
+            Match.when(
+              { kind: "invalidMethod" },
+              () => new Response("Invalid method", { status: 405 }),
             ),
-            Match.when({ kind: "invalidOrigin" }, () =>
-              new Response("Invalid origin", { status: 403 }),
+            Match.when(
+              { kind: "invalidOrigin" },
+              () => new Response("Invalid origin", { status: 403 }),
             ),
             Match.when({ kind: "valid" }, () => null),
             Match.exhaustive,
@@ -881,7 +881,9 @@ export function server(options: ServerOptions) {
                         : "hydrateRefreshFromCookie",
                   refreshToken: currentCookies.refreshToken,
                 } as const).pipe(
-                  Match.when({ kind: "passthrough" }, () => Effect.succeed(null)),
+                  Match.when({ kind: "passthrough" }, () =>
+                    Effect.succeed(null),
+                  ),
                   Match.when(
                     { kind: "hydrateRefreshFromCookie" },
                     ({ refreshToken }) =>
@@ -901,7 +903,9 @@ export function server(options: ServerOptions) {
                         currentToken !== null &&
                           decodedToken?.exp !== undefined &&
                           decodedToken.iss !== undefined &&
-                          acceptedIssuers.has(normalizeIssuer(decodedToken.iss)) &&
+                          acceptedIssuers.has(
+                            normalizeIssuer(decodedToken.iss),
+                          ) &&
                           decodedToken.exp * 1000 > Date.now()
                           ? { kind: "validToken" as const, token: currentToken }
                           : { kind: "missingToken" as const },
@@ -924,10 +928,8 @@ export function server(options: ServerOptions) {
                   return refreshResponse;
                 }
 
-                const {
-                  client,
-                  cookies: effectiveCookies,
-                } = yield* hydrateProxySignInClient(currentCookies, args);
+                const { client, cookies: effectiveCookies } =
+                  yield* hydrateProxySignInClient(currentCookies, args);
 
                 return yield* runSignIn(client, args).pipe(
                   Effect.flatMap((result) =>
@@ -969,7 +971,9 @@ export function server(options: ServerOptions) {
                         Match.when(null, () => Effect.void),
                         Match.orElse((refreshToken) =>
                           Effect.gen(function* () {
-                            yield* runSignIn(createClient(), { refreshToken }).pipe(
+                            yield* runSignIn(createClient(), {
+                              refreshToken,
+                            }).pipe(
                               Effect.flatMap((refreshed) =>
                                 extractSignedInTokens(
                                   refreshed,
@@ -1045,14 +1049,14 @@ export function server(options: ServerOptions) {
           : Effect.void;
       const refreshWithToken = (
         refreshToken: string,
-        ): Effect.Effect<Tokens | null | undefined> =>
-          Effect.tryPromise({
-            try: () =>
-              createClient().action(signInActionRef, {
-                refreshToken,
-              }) as Promise<SignInActionResult>,
-            catch: (error) => error,
-          }).pipe(
+      ): Effect.Effect<Tokens | null | undefined> =>
+        Effect.tryPromise({
+          try: () =>
+            createClient().action(signInActionRef, {
+              refreshToken,
+            }) as Promise<SignInActionResult>,
+          catch: (error) => error,
+        }).pipe(
           Effect.flatMap((result) =>
             extractSignedInTokens(result, "token refresh"),
           ),
@@ -1069,7 +1073,9 @@ export function server(options: ServerOptions) {
                 );
               });
               if (getConvexErrorCode(error) === "INVALID_REFRESH_TOKEN") {
-                yield* logVerbose("Refresh token rejected, clearing auth cookies");
+                yield* logVerbose(
+                  "Refresh token rejected, clearing auth cookies",
+                );
                 return null;
               }
               yield* logVerbose(
@@ -1098,7 +1104,10 @@ export function server(options: ServerOptions) {
                   const forwardedProto = forwardedProtoHeader
                     .split(",")[0]
                     ?.trim();
-                  if (forwardedProto !== undefined && forwardedProto.length > 0) {
+                  if (
+                    forwardedProto !== undefined &&
+                    forwardedProto.length > 0
+                  ) {
                     return forwardedProto.endsWith(":")
                       ? forwardedProto
                       : `${forwardedProto}:`;
@@ -1136,7 +1145,9 @@ export function server(options: ServerOptions) {
             shouldHandleCodeOption === undefined
               ? true
               : typeof shouldHandleCodeOption === "function"
-                ? yield* Effect.sync(() => shouldHandleCodeOption(request)).pipe(
+                ? yield* Effect.sync(() =>
+                    shouldHandleCodeOption(request),
+                  ).pipe(
                     Effect.flatMap((result) =>
                       typeof result === "boolean"
                         ? Effect.succeed(result)
@@ -1182,7 +1193,10 @@ export function server(options: ServerOptions) {
                 );
                 return {
                   redirect: true,
-                  response: buildRedirectResponse(redirectUrl.toString(), cookies),
+                  response: buildRedirectResponse(
+                    redirectUrl.toString(),
+                    cookies,
+                  ),
                 } satisfies RefreshResult;
               }).pipe(
                 Effect.catch((error) =>
@@ -1243,7 +1257,9 @@ export function server(options: ServerOptions) {
             refreshToken !== null &&
             (refreshToken.trim().length === 0 || refreshToken === "dummy");
           if (isMalformedRefreshToken) {
-            yield* logVerbose("Refresh token cookie malformed, clearing auth cookies");
+            yield* logVerbose(
+              "Refresh token cookie malformed, clearing auth cookies",
+            );
             return {
               redirect: false,
               cookies: structuredAuthCookies(
@@ -1262,7 +1278,9 @@ export function server(options: ServerOptions) {
             decodedToken?.iss !== undefined &&
             !acceptedIssuers.has(normalizeIssuer(decodedToken.iss))
           ) {
-            yield* logVerbose("Access token issuer mismatch, clearing auth cookies");
+            yield* logVerbose(
+              "Access token issuer mismatch, clearing auth cookies",
+            );
             return {
               redirect: false,
               cookies: structuredAuthCookies(
@@ -1295,7 +1313,7 @@ export function server(options: ServerOptions) {
               ).pipe(Effect.andThen(() => refreshWithToken(refreshToken))),
             ),
             Match.when({ kind: "accessOnly" }, () =>
-              (decodedToken?.exp !== undefined &&
+              decodedToken?.exp !== undefined &&
               decodedToken.iss !== undefined &&
               acceptedIssuers.has(normalizeIssuer(decodedToken.iss)) &&
               decodedToken.exp * 1000 > Date.now()
@@ -1304,11 +1322,12 @@ export function server(options: ServerOptions) {
                   ).pipe(Effect.as(undefined))
                 : logVerbose(
                     "Refresh token cookie missing and access token invalid, clearing",
-                  ).pipe(Effect.as(null))),
+                  ).pipe(Effect.as(null)),
             ),
             Match.when({ kind: "both" }, ({ refreshToken }) =>
               Match.value(
-                decodedToken?.exp === undefined || decodedToken.iat === undefined
+                decodedToken?.exp === undefined ||
+                  decodedToken.iat === undefined
                   ? { kind: "undecodable" as const }
                   : {
                       kind: "decoded" as const,
@@ -1336,9 +1355,9 @@ export function server(options: ServerOptions) {
                       ),
                     );
                   return decodedToken.exp * 1000 > minimumExpiration
-                    ? logVerbose("Token valid long enough, skipping refresh").pipe(
-                        Effect.as(undefined),
-                      )
+                    ? logVerbose(
+                        "Token valid long enough, skipping refresh",
+                      ).pipe(Effect.as(undefined))
                     : refreshWithToken(refreshToken);
                 }),
                 Match.exhaustive,

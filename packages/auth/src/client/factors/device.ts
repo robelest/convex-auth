@@ -78,14 +78,16 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
               (error): error is ConvexError<Value> =>
                 error instanceof ConvexError,
               (error) => {
-                const code =
-                  (error.data as Record<string, unknown> | undefined)?.code;
+                const code = (error.data as Record<string, unknown> | undefined)
+                  ?.code;
                 if (code === "DEVICE_AUTHORIZATION_PENDING") {
                   return Effect.succeed<SignInActionResult | null>(null);
                 }
                 if (code === "DEVICE_SLOW_DOWN") {
                   return Effect.promise(async () => {
-                    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+                    await new Promise((resolve) =>
+                      setTimeout(resolve, intervalMs),
+                    );
                     return null;
                   });
                 }
@@ -141,7 +143,9 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
               new ConvexError({
                 code: "DEVICE_AUTHORIZATION_FAILED",
                 message:
-                  error instanceof Error ? error.message : "Invalid or expired code.",
+                  error instanceof Error
+                    ? error.message
+                    : "Invalid or expired code.",
               }),
           ),
         ),

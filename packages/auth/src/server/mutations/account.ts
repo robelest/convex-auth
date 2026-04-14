@@ -6,8 +6,8 @@ import { GetProviderOrThrowFunc, hash } from "../crypto";
 import * as Provider from "../crypto";
 import { authDb } from "../db";
 import type { AuthErrorData } from "../errors";
-import { MutationCtx } from "../types";
 import { LOG_LEVELS, log, maybeRedact } from "../log";
+import { MutationCtx } from "../types";
 import { AUTH_STORE_REF } from "./store/refs";
 
 export const modifyAccountArgs = v.object({
@@ -42,10 +42,14 @@ export function modifyAccountImpl(
           ),
         ),
         Match.orElse((existingAccount) =>
-          Effect.flatMap(hash(getProviderOrThrow(provider), account.secret), (hashedSecret) =>
-            Effect.promise(() =>
-              db.accounts.patch(existingAccount._id, { secret: hashedSecret }),
-            ),
+          Effect.flatMap(
+            hash(getProviderOrThrow(provider), account.secret),
+            (hashedSecret) =>
+              Effect.promise(() =>
+                db.accounts.patch(existingAccount._id, {
+                  secret: hashedSecret,
+                }),
+              ),
           ),
         ),
       ),

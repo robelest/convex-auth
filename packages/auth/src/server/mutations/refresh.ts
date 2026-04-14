@@ -1,9 +1,10 @@
-import { Data, Effect, Match } from "effect";
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { GenericId, Infer, v } from "convex/values";
+import { Data, Effect, Match } from "effect";
 
 import type * as Provider from "../crypto";
 import { authDb } from "../db";
+import { log, maybeRedact } from "../log";
 import {
   invalidateRefreshTokensInSubtree,
   parseRefreshToken,
@@ -12,7 +13,6 @@ import {
 } from "../refresh";
 import { generateTokensForSession } from "../sessions";
 import type { MutationCtx } from "../types";
-import { log, maybeRedact } from "../log";
 import { AUTH_STORE_REF } from "./store/refs";
 
 type RefreshSessionId = GenericId<"Session">;
@@ -25,12 +25,10 @@ export const refreshSessionArgs = v.object({
   refreshToken: v.string(),
 });
 
-type RefreshResult =
-  | null
-  | {
-      token: string;
-      refreshToken: string;
-    };
+type RefreshResult = null | {
+  token: string;
+  refreshToken: string;
+};
 
 class RefreshFailure extends Data.TaggedError("RefreshFailure")<{
   readonly reason: string;
@@ -49,9 +47,7 @@ const softTryEffect = <A>(
   effect: Effect.Effect<A, unknown>,
   reason: string,
 ): Effect.Effect<A, RefreshFailure> =>
-  effect.pipe(
-    Effect.mapError(() => new RefreshFailure({ reason })),
-  );
+  effect.pipe(Effect.mapError(() => new RefreshFailure({ reason })));
 
 const softCleanup = (
   effect: Effect.Effect<unknown, RefreshFailure>,
@@ -75,13 +71,12 @@ export function refreshSessionImpl(
   const { refreshToken } = args;
 
   return Effect.gen(function* () {
-    const { refreshTokenId, sessionId: tokenSessionId } = yield* parseRefreshToken(
-      refreshToken,
-    ).pipe(
-      Effect.mapError(
-        (error) => new RefreshFailure({ reason: error.data.message }),
-      ),
-    );
+    const { refreshTokenId, sessionId: tokenSessionId } =
+      yield* parseRefreshToken(refreshToken).pipe(
+        Effect.mapError(
+          (error) => new RefreshFailure({ reason: error.data.message }),
+        ),
+      );
 
     yield* Effect.sync(() => {
       log(
@@ -100,7 +95,9 @@ export function refreshSessionImpl(
     if (validationResult === null) {
       yield* softCleanup(
         softTry(async () => {
-          const session = await db.sessions.getById(asSessionId(tokenSessionId));
+          const session = await db.sessions.getById(
+            asSessionId(tokenSessionId),
+          );
           if (session !== null) {
             await db.sessions.delete(session._id);
           }
@@ -109,7 +106,10 @@ export function refreshSessionImpl(
 
       yield* softCleanup(
         softTry(
-          () => authDb(ctx, config).refreshTokens.deleteAll(asSessionId(tokenSessionId)),
+          () =>
+            authDb(ctx, config).refreshTokens.deleteAll(
+              asSessionId(tokenSessionId),
+            ),
           "Skipping invalid token session id during refresh token cleanup",
         ),
       );
@@ -143,13 +143,12 @@ export function refreshSessionImpl(
                 parentRefreshTokenId: asRefreshTokenId(refreshTokenId),
               }),
             );
-            const { refreshTokenId: newRefreshTokenId } = yield* parseRefreshToken(
-              result.refreshToken,
-            ).pipe(
-              Effect.mapError(
-                (error) => new RefreshFailure({ reason: error.data.message }),
-              ),
-            );
+            const { refreshTokenId: newRefreshTokenId } =
+              yield* parseRefreshToken(result.refreshToken).pipe(
+                Effect.mapError(
+                  (error) => new RefreshFailure({ reason: error.data.message }),
+                ),
+              );
             yield* Effect.sync(() => {
               log(
                 "DEBUG",
@@ -163,7 +162,10 @@ export function refreshSessionImpl(
       ),
       Match.when({ tag: "reuse" }, ({ tokenFirstUsed }) =>
         softTry(
-          () => authDb(ctx, config).refreshTokens.getActive(asSessionId(tokenSessionId)),
+          () =>
+            authDb(ctx, config).refreshTokens.getActive(
+              asSessionId(tokenSessionId),
+            ),
           "Failed to load active refresh token",
         ).pipe(
           Effect.flatMap((activeRefreshToken) => {
@@ -216,14 +218,13 @@ export function refreshSessionImpl(
                         parentRefreshTokenId: asRefreshTokenId(refreshTokenId),
                       }),
                     );
-                    const { refreshTokenId: newRefreshTokenId } = yield* parseRefreshToken(
-                      result.refreshToken,
-                    ).pipe(
-                      Effect.mapError(
-                        (error) =>
-                          new RefreshFailure({ reason: error.data.message }),
-                      ),
-                    );
+                    const { refreshTokenId: newRefreshTokenId } =
+                      yield* parseRefreshToken(result.refreshToken).pipe(
+                        Effect.mapError(
+                          (error) =>
+                            new RefreshFailure({ reason: error.data.message }),
+                        ),
+                      );
                     yield* Effect.sync(() => {
                       log(
                         "DEBUG",
@@ -248,11 +249,12 @@ export function refreshSessionImpl(
                         `Token ${maybeRedact(refreshTokenDoc._id)} being used outside of reuse window, so invalidating all refresh tokens in subtree`,
                       );
                     });
-                    const tokensToInvalidate = yield* invalidateRefreshTokensInSubtree(
-                      ctx,
-                      refreshTokenDoc,
-                      config,
-                    );
+                    const tokensToInvalidate =
+                      yield* invalidateRefreshTokensInSubtree(
+                        ctx,
+                        refreshTokenDoc,
+                        config,
+                      );
                     yield* Effect.sync(() => {
                       log(
                         "DEBUG",

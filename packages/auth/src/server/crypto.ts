@@ -58,7 +58,10 @@ export const hash = (
           Effect.tryPromise({
             try: () => hashSecret(secret),
             catch: (error) =>
-              credentialsError("INTERNAL_ERROR", `Hash failed: ${errorMessage(error)}`),
+              credentialsError(
+                "INTERNAL_ERROR",
+                `Hash failed: ${errorMessage(error)}`,
+              ),
           }),
       }),
     ),

@@ -29,10 +29,18 @@ export const groupPolicyPatchValidator = v.object({
         v.object({
           createOnSignIn: v.optional(v.boolean()),
           updateProfileOnLogin: v.optional(
-            v.union(v.literal("never"), v.literal("missing"), v.literal("always")),
+            v.union(
+              v.literal("never"),
+              v.literal("missing"),
+              v.literal("always"),
+            ),
           ),
           updateProfileFromScim: v.optional(
-            v.union(v.literal("never"), v.literal("missing"), v.literal("always")),
+            v.union(
+              v.literal("never"),
+              v.literal("missing"),
+              v.literal("always"),
+            ),
           ),
           authority: v.optional(
             v.union(v.literal("app"), v.literal("sso"), v.literal("scim")),

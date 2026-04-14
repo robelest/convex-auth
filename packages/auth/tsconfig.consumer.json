@@ -9,6 +9,7 @@
     "noEmit": true,
     "paths": {
       "@robelest/convex-auth/authorization": ["./src/authorization/index"],
+      "@robelest/convex-auth/browser": ["./src/browser/index"],
       "@robelest/convex-auth/client": ["./src/client/index"],
       "@robelest/convex-auth/component": ["./src/component/index"],
       "@robelest/convex-auth/convex.config": ["./src/component/convex.config"],

@@ -5,13 +5,13 @@ import { Effect, Match } from "effect";
 import * as Provider from "../crypto";
 import { authDb } from "../db";
 import type { AuthErrorData } from "../errors";
+import { LOG_LEVELS, log, maybeRedact } from "../log";
+import type { AuthProfile } from "../payloads";
+import { payloadRecordValidator } from "../payloads";
 import { getAuthSessionId } from "../sessions";
 import { Doc, MutationCtx } from "../types";
 import { ConvexCredentialsConfig } from "../types";
 import { upsertUserAndAccount } from "../users";
-import { LOG_LEVELS, log, maybeRedact } from "../log";
-import type { AuthProfile } from "../payloads";
-import { payloadRecordValidator } from "../payloads";
 import { AUTH_STORE_REF } from "./store/refs";
 
 export const createAccountFromCredentialsArgs = v.object({
@@ -52,7 +52,10 @@ export function createAccountFromCredentialsImpl(
   return Effect.flatMap(
     Effect.promise(
       () =>
-        db.accounts.get(provider.id, account.id) as Promise<Doc<"Account"> | null>,
+        db.accounts.get(
+          provider.id,
+          account.id,
+        ) as Promise<Doc<"Account"> | null>,
     ),
     (existingAccount) =>
       Match.value(existingAccount).pipe(
@@ -86,7 +89,10 @@ export function createAccountFromCredentialsImpl(
             };
             const [createdAccount, createdUser] = yield* Effect.all([
               Effect.promise(
-                () => db.accounts.getById(accountId) as Promise<Doc<"Account"> | null>,
+                () =>
+                  db.accounts.getById(
+                    accountId,
+                  ) as Promise<Doc<"Account"> | null>,
               ),
               Effect.promise(
                 () => db.users.getById(userId) as Promise<Doc<"User"> | null>,
@@ -133,7 +139,10 @@ export function createAccountFromCredentialsImpl(
             }
 
             const user = yield* Effect.promise(
-              () => db.users.getById(existingAccount.userId) as Promise<Doc<"User"> | null>,
+              () =>
+                db.users.getById(
+                  existingAccount.userId,
+                ) as Promise<Doc<"User"> | null>,
             );
             if (user === null) {
               return yield* Effect.fail(

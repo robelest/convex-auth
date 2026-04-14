@@ -1,12 +1,12 @@
 import { Effect, Layer, ServiceMap } from "effect";
 
+import { configDefaults } from "../config";
+import type { ConvexAuthConfig } from "../types";
 import { AuthConfigService } from "./config";
 import { AuthLoggerLive, AuthLoggerService } from "./logger";
 import { ProviderRegistryLive, ProviderRegistryService } from "./providers";
-import { AuthSignInLive, AuthSignInService } from "./signin";
 import { AuthRefreshLive, AuthRefreshService } from "./refresh";
-import { configDefaults } from "../config";
-import type { ConvexAuthConfig } from "../types";
+import { AuthSignInLive, AuthSignInService } from "./signin";
 
 export function resolveServerServices(config: ConvexAuthConfig) {
   const configValue = configDefaults(config);
