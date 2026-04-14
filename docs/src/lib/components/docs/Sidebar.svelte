@@ -3,19 +3,22 @@
 	import { sidebar } from '$lib/config/sidebar';
 	import { slide } from 'svelte/transition';
 
-	let openGroups = $state<Record<string, boolean>>({});
+	let toggledGroups = $state<Record<string, boolean>>({});
+	const currentPath = $derived(page.url.pathname.replace(/\/$/, ''));
+	const activeGroupLabels = $derived(
+		new Set(
+			sidebar
+				.filter((group) => group.items.some((item) => currentPath === item.slug))
+				.map((group) => group.label)
+		)
+	);
 
-	// Auto-open the group containing the current page
-	$effect(() => {
-		for (const group of sidebar) {
-			if (group.items.some((item) => page.url.pathname.replace(/\/$/, '') === item.slug)) {
-				openGroups[group.label] = true;
-			}
-		}
-	});
+	function isGroupOpen(label: string): boolean {
+		return toggledGroups[label] ?? activeGroupLabels.has(label);
+	}
 
 	function toggleGroup(label: string) {
-		openGroups[label] = !openGroups[label];
+		toggledGroups[label] = !isGroupOpen(label);
 	}
 
 	function isActive(slug: string): boolean {
@@ -25,13 +28,13 @@
 
 <aside class="sidebar">
 	<nav>
-		{#each sidebar as group}
+		{#each sidebar as group (group.label)}
 			<div class="group">
 				<button class="group-label" onclick={() => toggleGroup(group.label)}>
 					<span>{group.label}</span>
 					<svg
 						class="chevron"
-						class:open={openGroups[group.label]}
+						class:open={isGroupOpen(group.label)}
 						width="12"
 						height="12"
 						viewBox="0 0 24 24"
@@ -41,9 +44,9 @@
 					</svg>
 				</button>
 
-				{#if openGroups[group.label]}
+				{#if isGroupOpen(group.label)}
 					<ul transition:slide={{ duration: 150 }}>
-						{#each group.items as item}
+						{#each group.items as item (item.slug)}
 							<li>
 								<a
 									href="{item.slug}/"
@@ -95,7 +98,7 @@
 		text-align: left;
 	}
 
-	[data-theme='dark'] .group-label {
+	:global([data-theme='dark'] .group-label) {
 		color: #d4cec4;
 	}
 
@@ -123,7 +126,7 @@
 		transition: color 0.15s ease;
 	}
 
-	[data-theme='dark'] li a {
+	:global([data-theme='dark'] li a) {
 		color: var(--color-gray-400);
 	}
 
@@ -131,7 +134,7 @@
 		color: var(--color-gray-900);
 	}
 
-	[data-theme='dark'] li a:hover {
+	:global([data-theme='dark'] li a:hover) {
 		color: #ede8e0;
 	}
 
@@ -141,7 +144,7 @@
 		padding-left: calc(1.25rem - 2px);
 	}
 
-	[data-theme='dark'] li a.active {
+	:global([data-theme='dark'] li a.active) {
 		color: var(--color-accent-400);
 		border-left-color: var(--color-accent-400);
 	}

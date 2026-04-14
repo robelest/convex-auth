@@ -43,7 +43,7 @@
 		<nav>
 			<p class="toc-label">On this page</p>
 			<ul>
-				{#each headings as heading}
+				{#each headings as heading (heading.id)}
 					<li class:nested={heading.level === 3}>
 						<a href="#{heading.id}" class:active={activeId === heading.id}>
 							{heading.text}
@@ -106,7 +106,7 @@
 		color: var(--color-gray-900);
 	}
 
-	[data-theme='dark'] li a:hover {
+	:global([data-theme='dark'] li a:hover) {
 		color: #ede8e0;
 	}
 
@@ -114,7 +114,7 @@
 		color: var(--color-accent-500);
 	}
 
-	[data-theme='dark'] li a.active {
+	:global([data-theme='dark'] li a.active) {
 		color: var(--color-accent-400);
 	}
 </style>

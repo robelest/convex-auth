@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { SvelteMap } from 'svelte/reactivity';
 	import { slide, fade } from 'svelte/transition';
 	import { sidebar } from '$lib/config/sidebar';
 
@@ -10,10 +11,9 @@
 	let results = $state<Array<{ url: string; title: string; excerpt: string; section: string }>>([]);
 	let activeIndex = $state(0);
 	let pagefind: any = $state(null);
-	let inputEl: HTMLInputElement | undefined = $state();
 
-	// Build a url → section label map from sidebar config
-	const sectionMap = new Map<string, string>();
+	// Build a url -> section label map from sidebar config.
+	const sectionMap = new SvelteMap<string, string>();
 	for (const group of sidebar) {
 		for (const item of group.items) {
 			sectionMap.set(item.slug, group.label);
@@ -24,6 +24,10 @@
 	function getSectionLabel(url: string): string {
 		const clean = url.replace(/\/+$/, '');
 		return sectionMap.get(clean) ?? '';
+	}
+
+	function excerptText(excerpt: string): string {
+		return excerpt.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 	}
 
 	onMount(async () => {
@@ -47,38 +51,39 @@
 		const response = await pagefind.search(q);
 		const items = await Promise.all(
 			response.results.slice(0, 6).map(async (r: any) => {
-				const data = await r.data();
-				return {
-					url: data.url,
-					title: data.meta?.title || data.url,
-					excerpt: data.excerpt,
-					section: getSectionLabel(data.url)
-				};
-			})
+			const data = await r.data();
+			return {
+				url: data.url,
+				title: data.meta?.title || data.url,
+				excerpt: excerptText(data.excerpt),
+				section: getSectionLabel(data.url)
+			};
+		})
 		);
 		results = items;
 		activeIndex = 0;
 	}
 
-	// Clear state when closing so next open starts fresh (no flicker)
-	$effect(() => {
-		if (!open) {
-			query = '';
-			results = [];
-			activeIndex = 0;
-		}
-	});
+	function resetSearchState() {
+		query = '';
+		results = [];
+		activeIndex = 0;
+	}
 
-	// Focus input when opening
-	$effect(() => {
-		if (open && inputEl) {
-			requestAnimationFrame(() => inputEl?.focus());
-		}
-	});
+	function closeDialog() {
+		open = false;
+		resetSearchState();
+	}
+
+	function autofocusWhenOpen() {
+		return (node: HTMLInputElement) => {
+			requestAnimationFrame(() => node.focus());
+		};
+	}
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
-			open = false;
+			closeDialog();
 			return;
 		}
 		if (e.key === 'ArrowDown') {
@@ -98,20 +103,36 @@
 	}
 
 	function selectResult(url: string) {
-		open = false;
+		closeDialog();
 		goto(url);
+	}
+
+	function handleBackdropKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			closeDialog();
+		}
 	}
 </script>
 
 {#if open}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="backdrop" transition:fade={{ duration: 100 }} onclick={() => (open = false)}>
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="backdrop"
+		transition:fade={{ duration: 100 }}
+		onclick={closeDialog}
+		onkeydown={handleBackdropKeydown}
+		role="button"
+		tabindex="0"
+		aria-label="Close search"
+	>
 		<div
 			class="panel"
 			transition:slide={{ duration: 150 }}
 			onclick={(e) => e.stopPropagation()}
 			onkeydown={handleKeydown}
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
 		>
 			<div class="panel-inner">
 				<div class="input-row">
@@ -119,8 +140,8 @@
 						<path d="M21.71 20.29 18 16.61A9 9 0 1 0 16.61 18l3.68 3.68a.999.999 0 0 0 1.42 0 1 1 0 0 0 0-1.39ZM11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z" />
 					</svg>
 					<input
-						bind:this={inputEl}
 						bind:value={query}
+						{@attach open && autofocusWhenOpen()}
 						oninput={() => search(query)}
 						onkeydown={handleKeydown}
 						placeholder="Search documentation..."
@@ -132,7 +153,7 @@
 
 				{#if results.length > 0}
 					<ul class="results">
-						{#each results as result, i}
+					{#each results as result, i (result.url)}
 							<li>
 								<button
 									class="result-row"
@@ -144,7 +165,7 @@
 										<span class="result-section">{result.section}</span>
 									{/if}
 									<span class="result-title">{result.title}</span>
-									<span class="result-excerpt">{@html result.excerpt}</span>
+									<span class="result-excerpt">{result.excerpt}</span>
 								</button>
 							</li>
 						{/each}
@@ -302,16 +323,6 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		margin-top: 0.0625rem;
-	}
-
-	.result-excerpt :global(mark) {
-		background: none;
-		color: var(--color-accent-600);
-		font-weight: 500;
-	}
-
-	:global([data-theme='dark']) .result-excerpt :global(mark) {
-		color: var(--color-accent-300);
 	}
 
 	.no-results {

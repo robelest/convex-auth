@@ -12,15 +12,33 @@
 	function navigate() {
 		open = false;
 	}
+
+	function handleOverlayKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			open = false;
+		}
+	}
 </script>
 
 {#if open}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="overlay" transition:fade={{ duration: 100 }} onclick={() => (open = false)}>
-		<nav
+	<div
+		class="overlay"
+		transition:fade={{ duration: 100 }}
+		onclick={() => (open = false)}
+		onkeydown={handleOverlayKeydown}
+		role="button"
+		tabindex="0"
+		aria-label="Close navigation menu"
+	>
+		<div
 			class="sheet"
 			transition:fly={{ x: -300, duration: 200 }}
 			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
+			role="dialog"
+			aria-modal="true"
+			tabindex="-1"
 		>
 			<div class="sheet-header">
 				<button class="close-btn" onclick={() => (open = false)} aria-label="Close menu">
@@ -31,11 +49,11 @@
 			</div>
 
 			<div class="sheet-content">
-				{#each sidebar as group}
+				{#each sidebar as group (group.label)}
 					<div class="group">
 						<p class="group-label">{group.label}</p>
 						<ul>
-							{#each group.items as item}
+							{#each group.items as item (item.slug)}
 								<li>
 									<a
 										href="{item.slug}/"
@@ -50,7 +68,7 @@
 					</div>
 				{/each}
 			</div>
-		</nav>
+		</div>
 	</div>
 {/if}
 
