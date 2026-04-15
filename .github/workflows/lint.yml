@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: lint-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -21,6 +25,31 @@ jobs:
           run-install: |
             args: ['--frozen-lockfile']
 
+      - name: Start self-hosted Convex backend for codegen
+        run: |
+          docker compose \
+            --env-file tests/infra/docker/test.env \
+            -f tests/infra/docker/compose.yml \
+            --profile interop \
+            up -d --wait backend
+
+          ADMIN_KEY="$({ \
+            docker compose \
+              --env-file tests/infra/docker/test.env \
+              -f tests/infra/docker/compose.yml \
+              exec -T backend /convex/generate_admin_key.sh; \
+          } | grep -o 'convex-self-hosted|[A-Za-z0-9]\+' | tail -n1)"
+
+          if [ -z "$ADMIN_KEY" ]; then
+            echo "Failed to generate self-hosted Convex admin key" >&2
+            exit 1
+          fi
+
+          {
+            echo "CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210"
+            echo "CONVEX_SELF_HOSTED_ADMIN_KEY=$ADMIN_KEY"
+          } >> "$GITHUB_ENV"
+
       - name: Build package prerequisites
         run:
           vp run '@robelest/samlify#build' && vp run
@@ -28,3 +57,11 @@ jobs:
 
       - name: Run lint
         run: vp run lint
+
+      - name: Stop self-hosted Convex backend
+        if: always()
+        run: |
+          docker compose \
+            --env-file tests/infra/docker/test.env \
+            -f tests/infra/docker/compose.yml \
+            down -v

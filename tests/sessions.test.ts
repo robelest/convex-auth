@@ -6,8 +6,25 @@ import { afterEach, expect, test, vi } from "vite-plus/test";
 import { convexTest, TestConvex } from "./convex.setup";
 import { expectSignedInResult, TEST_EMAIL, TEST_PASSWORD } from "./helpers";
 
+const savedEnv: Record<string, string | undefined> = {};
+
+function setEnv(name: string, value: string) {
+  if (!(name in savedEnv)) {
+    savedEnv[name] = process.env[name];
+  }
+  process.env[name] = value;
+}
+
 afterEach(() => {
   vi.useRealTimers();
+  for (const key of Object.keys(savedEnv)) {
+    if (savedEnv[key] === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = savedEnv[key];
+    }
+    delete savedEnv[key];
+  }
 });
 
 test("session refresh", async () => {
@@ -71,7 +88,7 @@ test("refreshed access token gets a unique jti", async () => {
 test("refresh token expiration", async () => {
   vi.useFakeTimers();
   const ONE_DAY_MS = 1000 * 60 * 60 * 24;
-  process.env.AUTH_SESSION_INACTIVE_DURATION_MS = `${ONE_DAY_MS}`;
+  setEnv("AUTH_SESSION_INACTIVE_DURATION_MS", `${ONE_DAY_MS}`);
   const t = convexTest(schema);
   const initialTokens = expectSignedInResult(
     await t.action(api.auth.signIn, {
@@ -254,7 +271,7 @@ test("refresh token invalidate subtree", async () => {
 test("session expiration", async () => {
   vi.useFakeTimers();
   const ONE_DAY_MS = 1000 * 60 * 60 * 24;
-  process.env.AUTH_SESSION_TOTAL_DURATION_MS = `${ONE_DAY_MS}`;
+  setEnv("AUTH_SESSION_TOTAL_DURATION_MS", `${ONE_DAY_MS}`);
   const t = convexTest(schema);
   const initialTokens = expectSignedInResult(
     await t.action(api.auth.signIn, {
