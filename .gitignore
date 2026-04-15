@@ -34,6 +34,7 @@ docs/node_modules/.vite/
 # misc
 .DS_Store
 *.pem
+!tests/samlify/key/**/*.pem
 
 # debug
 npm-debug.log*

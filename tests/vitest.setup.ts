@@ -6,10 +6,28 @@ const EXPECTED_ERROR_SUBSTRINGS = [
   "Too many failed attempts to verify code for this email",
   "Expired refresh token",
   "Refresh token used outside of reuse window",
+  "exchange failed",
+  "code exchange failed",
+  "signOut with expired JWT failed",
+  "proxy sign-out failed",
 ];
 
 const originalWarn = console.warn;
 const originalError = console.error;
+
+function stringifyLogArg(arg: unknown): string {
+  if (typeof arg === "string") {
+    return arg;
+  }
+  if (arg instanceof Error) {
+    return arg.message;
+  }
+  try {
+    return JSON.stringify(arg) ?? String(arg);
+  } catch {
+    return String(arg);
+  }
+}
 
 console.warn = (...args: unknown[]) => {
   const [firstArg] = args;
@@ -20,9 +38,7 @@ console.warn = (...args: unknown[]) => {
 };
 
 console.error = (...args: unknown[]) => {
-  const joined = args
-    .map((arg) => (typeof arg === "string" ? arg : ""))
-    .join(" ");
+  const joined = args.map(stringifyLogArg).join(" ");
   if (EXPECTED_ERROR_SUBSTRINGS.some((s) => joined.includes(s))) {
     return;
   }

@@ -17,6 +17,7 @@ import {
   rewriteUrlForHostAccess,
   type SimpleResponse,
   updateCookieJar,
+  groupCreateRpc,
   groupConnectionCreateRpc,
   groupOidcConfigureRpc,
   groupSamlConfigureRpc,
@@ -117,10 +118,14 @@ test("group oidc login interoperates with zitadel through api-driven flow", asyn
   expect(convexUserToken).toBeTruthy();
 
   const runId = randomSlug("zitadel-interop");
+  const { groupId } = await groupCreateRpc(convexClient, convexUserToken!, {
+    name: `Zitadel Interop ${runId}`,
+  });
   const connectionCreated = await groupConnectionCreateRpc(
     convexClient,
     convexUserToken!,
     {
+      groupId,
       name: `Zitadel Interop ${runId}`,
       slug: runId,
       protocol: "oidc",
@@ -404,11 +409,15 @@ test("group saml login interoperates with zitadel through api-driven flow", asyn
   expect(convexUserToken).toBeTruthy();
 
   const runId = randomSlug("saml-interop");
+  const { groupId } = await groupCreateRpc(convexClient, convexUserToken!, {
+    name: `SAML Interop ${runId}`,
+  });
   // Step 3: Create group connection
   const connectionCreated = await groupConnectionCreateRpc(
     convexClient,
     convexUserToken!,
     {
+      groupId,
       name: `SAML Interop ${runId}`,
       slug: runId,
       protocol: "saml",

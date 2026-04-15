@@ -50,8 +50,8 @@ current SSR response.
 ```
 
 When OAuth code exchange occurs, Convex Auth builds the redirect `Response`
-including any `Set-Cookie` headers for you. Return `response` directly from
-your framework handler.
+including any `Set-Cookie` headers for you. Return `response` directly from your
+framework handler.
 
 ### Non-redirect branch
 

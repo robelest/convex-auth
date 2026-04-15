@@ -377,11 +377,25 @@ async function groupRpc<T>(
   }
 }
 
+export async function groupCreateRpc(
+  convexClient: ConvexHttpClient,
+  userToken: string,
+  args: { name: string },
+): Promise<{ groupId: string }> {
+  convexClient.setAuth(userToken);
+  return (await convexClient.mutation(
+    (api as any).groups.createGroup,
+    args,
+  )) as {
+    groupId: string;
+  };
+}
+
 export async function groupConnectionCreateRpc(
   convexClient: ConvexHttpClient,
   userToken: string,
   args: {
-    groupId?: string;
+    groupId: string;
     name?: string;
     slug?: string;
     protocol: "oidc" | "saml";

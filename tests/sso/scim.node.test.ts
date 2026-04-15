@@ -22,6 +22,7 @@ import {
   type ConvexSessionStartResult,
   getInteropRuntime,
   groupAuditListRpc,
+  groupCreateRpc,
   groupConnectionCreateRpc,
   groupConnectionScimConfigureRpc,
   groupWebhookEndpointListRpc,
@@ -269,10 +270,14 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
   }
 
   const runId = randomSlug("scim-convex");
+  const { groupId } = await groupCreateRpc(convexClient, convexUserToken, {
+    name: `SCIM Convex ${runId}`,
+  });
   const connectionCreated = await groupConnectionCreateRpc(
     convexClient,
     convexUserToken,
     {
+      groupId,
       name: `SCIM Convex ${runId}`,
       slug: runId,
       protocol: "oidc",
@@ -567,11 +572,13 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
     },
   });
   expect(groupRes.status).toBe(201);
-  const groupId = groupRes.body.id!;
-  expect(groupId).toBeTruthy();
+  const scimGroupId = groupRes.body.id!;
+  expect(scimGroupId).toBeTruthy();
   expect(groupRes.body.meta?.resourceType).toBe("Group");
-  expect(groupRes.body.meta?.location).toBe(`${base}/Groups/${groupId}`);
-  expect(groupRes.headers.get("location")).toBe(`${base}/Groups/${groupId}`);
+  expect(groupRes.body.meta?.location).toBe(`${base}/Groups/${scimGroupId}`);
+  expect(groupRes.headers.get("location")).toBe(
+    `${base}/Groups/${scimGroupId}`,
+  );
   expect(groupRes.body.members?.map((member) => member.value)).toEqual([
     userId,
   ]);
@@ -591,7 +598,7 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
     },
   );
   expect(groupRetryRes.status).toBe(200);
-  expect(groupRetryRes.body.id).toBe(groupId);
+  expect(groupRetryRes.body.id).toBe(scimGroupId);
   expect(groupRetryRes.body.members?.map((member) => member.value)).toEqual([
     userId,
   ]);
@@ -599,13 +606,15 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
   // 11. GET /Groups/{id}
   const groupGetRes = await scimRequest<ScimGroup>(
     base,
-    `/Groups/${groupId}`,
+    `/Groups/${scimGroupId}`,
     scimToken,
   );
   expect(groupGetRes.status).toBe(200);
   expect(groupGetRes.body.meta?.resourceType).toBe("Group");
-  expect(groupGetRes.body.meta?.location).toBe(`${base}/Groups/${groupId}`);
-  expect(groupGetRes.headers.get("location")).toBe(`${base}/Groups/${groupId}`);
+  expect(groupGetRes.body.meta?.location).toBe(`${base}/Groups/${scimGroupId}`);
+  expect(groupGetRes.headers.get("location")).toBe(
+    `${base}/Groups/${scimGroupId}`,
+  );
   expect(groupGetRes.body.members?.map((member) => member.value)).toEqual([
     userId,
   ]);
@@ -613,7 +622,7 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
   // 12. PATCH /Groups/{id} — add second member
   const groupAddRes = await scimRequest<ScimGroup>(
     base,
-    `/Groups/${groupId}`,
+    `/Groups/${scimGroupId}`,
     scimToken,
     {
       method: "PATCH",
@@ -633,7 +642,7 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
   // 13. PATCH /Groups/{id} — remove first member
   const groupRemoveRes = await scimRequest<ScimGroup>(
     base,
-    `/Groups/${groupId}`,
+    `/Groups/${scimGroupId}`,
     scimToken,
     {
       method: "PATCH",
@@ -652,7 +661,7 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
   const renamedGroup = `Renamed ${runId}`;
   const groupReplaceRes = await scimRequest<ScimGroup>(
     base,
-    `/Groups/${groupId}`,
+    `/Groups/${scimGroupId}`,
     scimToken,
     {
       method: "PATCH",
@@ -682,7 +691,9 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
     "urn:ietf:params:scim:api:messages:2.0:ListResponse",
   );
   expect(
-    (groupListRes.body.Resources ?? []).some((group) => group.id === groupId),
+    (groupListRes.body.Resources ?? []).some(
+      (group) => group.id === scimGroupId,
+    ),
   ).toBe(true);
 
   const memberFilterRes = await scimRequest<ScimListResponse<ScimGroup>>(
@@ -693,7 +704,7 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
   expect(memberFilterRes.status).toBe(200);
   expect(
     (memberFilterRes.body.Resources ?? []).some(
-      (group) => group.id === groupId,
+      (group) => group.id === scimGroupId,
     ),
   ).toBe(true);
 
@@ -758,14 +769,14 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
     auditEvents.some(
       (event) =>
         event.eventType === "group.sso.scim.group.created" &&
-        event.subjectId === groupId,
+        event.subjectId === scimGroupId,
     ),
   ).toBe(true);
   expect(
     auditEvents.some(
       (event) =>
         event.eventType === "group.sso.scim.group.updated" &&
-        event.subjectId === groupId,
+        event.subjectId === scimGroupId,
     ),
   ).toBe(true);
 

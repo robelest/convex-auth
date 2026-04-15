@@ -5,6 +5,8 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 
+import { api } from "@convex/_generated/api";
+import { ConvexHttpClient } from "convex/browser";
 import { exportJWK, exportPKCS8, generateKeyPair } from "jose";
 
 const execFileAsync = promisify(execFile);
@@ -93,7 +95,13 @@ export default async function setupNodeInterop(project: {
     const pemPath = path.join(runtimeDir, "jwt-private-key.pem");
     try {
       if (!(await fileExists(buildReadyFile))) {
-        await run("vp", ["run", "cache:build"], buildEnv, {
+        await run("vp", ["run", "cache:build:samlify"], buildEnv, {
+          timeout: convexTimeoutMs,
+        });
+        await run("vp", ["run", "cache:build:convex-codegen"], buildEnv, {
+          timeout: convexTimeoutMs,
+        });
+        await run("vp", ["run", "cache:build:auth"], buildEnv, {
           timeout: convexTimeoutMs,
         });
       }
@@ -168,6 +176,7 @@ export default async function setupNodeInterop(project: {
         ["exec", "convex", "env", "set", "RESEND_API_KEY", env.RESEND_API_KEY],
         convexEnv,
       );
+      await warmUpAnonymousSignIn(env.TEST_TARGET_BASE_URL, convexTimeoutMs);
     } finally {
       await rm(pemPath, { force: true });
       await restoreEnvLocalAfterSelfHostedCommands(envLocalWasHidden);
@@ -322,6 +331,36 @@ async function generateKeys() {
     jwtPrivateKey: privateKey.trim(),
     jwks: JSON.stringify({ keys: [{ use: "sig", ...publicKey }] }),
   };
+}
+
+async function warmUpAnonymousSignIn(baseUrl: string, timeoutMs: number) {
+  const convexClient = new ConvexHttpClient(baseUrl, {
+    skipConvexDeploymentUrlCheck: true,
+    logger: false,
+  });
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown = null;
+  while (Date.now() < deadline) {
+    try {
+      const result = (await convexClient.action(api.auth.signIn, {
+        provider: "anonymous",
+      })) as { kind?: string };
+      if (result.kind === "signedIn") {
+        return;
+      }
+      lastError = new Error(
+        `Anonymous sign-in warm-up returned unexpected kind: ${String(result.kind)}`,
+      );
+    } catch (error) {
+      lastError = error;
+    }
+    await delay(500);
+  }
+  throw new Error(
+    `Timed out warming up anonymous sign-in: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  );
 }
 
 async function dumpDockerLogs() {

@@ -20,6 +20,7 @@ import {
   groupAuditListRpc,
   groupConnectionCreateRpc,
   groupOidcConfigureRpc,
+  groupCreateRpc,
   groupSamlConfigureRpc,
   groupConnectionScimConfigureRpc,
   randomSlug,
@@ -141,10 +142,14 @@ async function startGroupConnectionContext(
   }
 
   const runId = randomSlug(prefix);
+  const { groupId } = await groupCreateRpc(convexClient, convexUserToken, {
+    name: `${prefix} ${runId}`,
+  });
   const connectionCreated = await groupConnectionCreateRpc(
     convexClient,
     convexUserToken,
     {
+      groupId,
       name: `${prefix} ${runId}`,
       slug: runId,
       protocol,

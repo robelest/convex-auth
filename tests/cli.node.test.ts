@@ -9,6 +9,15 @@ import {
 import { generateKeys } from "@robelest/convex-auth/cli/keys";
 import { expect, test, vi } from "vite-plus/test";
 
+function expectProcessExitSilently(fn: () => unknown) {
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    expectProcessExit(fn);
+  } finally {
+    error.mockRestore();
+  }
+}
+
 function expectProcessExit(fn: () => unknown) {
   const exit = vi.spyOn(process, "exit").mockImplementation(((
     code?: string | number | null,
@@ -74,7 +83,7 @@ test("stripDeploymentTypePrefix strips prod: prefix", () => {
 });
 
 test("stripDeploymentTypePrefix rejects untyped deployments", () => {
-  expectProcessExit(() => stripDeploymentTypePrefix("tall-forest-1234"));
+  expectProcessExitSilently(() => stripDeploymentTypePrefix("tall-forest-1234"));
 });
 
 // ---- deploymentTypeFromAdminKey ----
@@ -92,7 +101,9 @@ test("deploymentTypeFromAdminKey extracts dev type", () => {
 });
 
 test("deploymentTypeFromAdminKey rejects untyped keys", () => {
-  expectProcessExit(() => deploymentTypeFromAdminKey("legacyKeyWithoutColons"));
+  expectProcessExitSilently(() =>
+    deploymentTypeFromAdminKey("legacyKeyWithoutColons"),
+  );
 });
 
 test("readConvexDeployment allows self-hosted admin keys with explicit url", () => {
