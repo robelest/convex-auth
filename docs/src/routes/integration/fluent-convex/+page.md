@@ -19,7 +19,7 @@ This is an optional pattern for apps that want app-side Convex middleware on top
 of the minimal auth setup. You do not need this to use `convex-auth`.
 
 If you do want custom app helpers,
-[`fluent-convex`](https://www.npmjs.com/package/fluent-convex) can keep auth
+[`fluent-convex`](https://www.npmjs.com/package/fluent-convex) keeps auth
 middleware concise and explicit.
 
 <Tabs syncKey="pkg">
@@ -58,7 +58,7 @@ import { auth } from "../auth";
 const convex = createBuilder<DataModel>();
 
 // auth.context() resolves { userId, user, groupId, role, grants }
-// and throws ConvexError if unauthenticated — no manual checks needed.
+// and throws ConvexError if unauthenticated.
 const withRequiredAuth = convex.createMiddleware(async (ctx, next) => {
   return next({ ...ctx, auth: await auth.context(ctx) });
 });
@@ -84,7 +84,7 @@ export const send = mutation
   .public();
 ```
 
-This is app-specific code. The canonical `convex-auth` setup still only needs:
+This is app-specific code. The canonical `convex-auth` setup only needs:
 
 - `convex/convex.config.ts`
 - `convex/auth.ts`

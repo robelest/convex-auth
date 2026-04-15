@@ -14,11 +14,7 @@ import { LOG_LEVELS, log } from "../log";
 import type { SignInParams } from "../payloads";
 import { payloadRecordValidator } from "../payloads";
 import { sha256 } from "../random";
-import {
-  createNewAndDeleteExistingSession,
-  getAuthSessionId,
-  maybeGenerateTokensForSession,
-} from "../sessions";
+import { getAuthSessionId, issueSession } from "../sessions";
 import { createSyntheticOAuthMaterializedConfig } from "../sso/oidc";
 import { isGroupProviderId } from "../sso/shared";
 import { MutationCtx, SessionInfo } from "../types";
@@ -183,17 +179,13 @@ export function verifyCodeAndSignInImpl(
       yield* resetSignInRateLimit(ctx, identifier, config);
     }
 
-    const sessionId = yield* Effect.promise(() =>
-      createNewAndDeleteExistingSession(ctx, config, userId),
-    );
+    const replaceSessionId = yield* Effect.promise(() => getAuthSessionId(ctx));
     return yield* Effect.promise(() =>
-      maybeGenerateTokensForSession(
-        ctx,
-        config,
+      issueSession(ctx, config, {
         userId,
-        sessionId,
+        replaceSessionId: replaceSessionId ?? undefined,
         generateTokens,
-      ),
+      }),
     );
   }).pipe(
     Effect.catchTag("VerifyFailure", (error) =>

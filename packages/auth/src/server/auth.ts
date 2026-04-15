@@ -314,14 +314,19 @@ type ResolvedOptionalAuthContext<TResolve> = OptionalAuthContext & TResolve;
 
 type AuthResolverCtx = AuthIdentityCtx & AuthQueryCtx;
 
+type PublicAuthContextConfig<
+  TResolve extends Record<string, unknown>,
+  TCtx,
+> = AuthContextConfig<TResolve, TCtx & AuthResolverCtx>;
+
 type AuthContextResolver = {
-  <TResolve extends Record<string, unknown> = Record<string, never>>(
-    ctx: AuthResolverCtx,
-    config: AuthContextConfig<TResolve> & { optional: true },
+  <TCtx, TResolve extends Record<string, unknown> = Record<string, never>>(
+    ctx: TCtx,
+    config: PublicAuthContextConfig<TResolve, TCtx> & { optional: true },
   ): Promise<ResolvedOptionalAuthContext<TResolve>>;
-  <TResolve extends Record<string, unknown> = Record<string, never>>(
-    ctx: AuthResolverCtx,
-    config?: AuthContextConfig<TResolve>,
+  <TCtx, TResolve extends Record<string, unknown> = Record<string, never>>(
+    ctx: TCtx,
+    config?: PublicAuthContextConfig<TResolve, TCtx>,
   ): Promise<ResolvedAuthContext<TResolve>>;
 };
 
@@ -457,10 +462,11 @@ export type AuthApi<
 };
 
 type PublicContextFactory = <
+  TCtx,
   TResolve extends Record<string, unknown> = Record<string, never>,
 >(
-  ctx: AuthResolverCtx,
-  config?: AuthContextConfig<TResolve, AuthResolverCtx>,
+  ctx: TCtx,
+  config?: PublicAuthContextConfig<TResolve, TCtx>,
 ) => Promise<ResolvedAuthContext<TResolve>>;
 
 type PublicContextCustomizationFactory = <
@@ -580,6 +586,29 @@ function createNotSignedInError() {
     code: "NOT_SIGNED_IN",
     message: "Authentication required.",
   });
+}
+
+function assertAuthResolverContext<TCtx>(
+  ctx: TCtx,
+): asserts ctx is TCtx & AuthResolverCtx {
+  const candidate = ctx as {
+    auth?: { getUserIdentity?: unknown };
+    runQuery?: unknown;
+  } | null;
+
+  if (
+    candidate === null ||
+    typeof candidate !== "object" ||
+    candidate.auth === undefined ||
+    candidate.auth === null ||
+    typeof candidate.auth !== "object" ||
+    typeof candidate.auth.getUserIdentity !== "function" ||
+    typeof candidate.runQuery !== "function"
+  ) {
+    throw new TypeError(
+      "auth.context(ctx) requires a Convex function context with auth.getUserIdentity() and runQuery().",
+    );
+  }
 }
 
 async function createPublicAuthContext<
@@ -799,15 +828,10 @@ export function createAuth<
     key: authResult.auth.key,
     http: authResult.auth.http,
 
-    context: ((
-      ctx: AuthResolverCtx,
-      config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>,
-    ) =>
-      createPublicAuthContext(
-        authResult.auth,
-        ctx as Parameters<typeof createPublicAuthContext>[1],
-        config,
-      )) as PublicContextFactory as AuthContextResolver,
+    context: ((ctx, config) => {
+      assertAuthResolverContext(ctx);
+      return createPublicAuthContext(authResult.auth, ctx, config);
+    }) as PublicContextFactory as AuthContextResolver,
 
     ctx: ((
       config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>,

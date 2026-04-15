@@ -235,7 +235,7 @@ function requireSignedInUser(auth: Pick<AuthApi, "context">) {
   return async (ctx: {
     auth: import("convex/server").Auth;
   }): Promise<string | null> => {
-    return (await auth.context(ctx as never, { optional: true })).userId;
+    return (await auth.context(ctx, { optional: true })).userId;
   };
 }
 

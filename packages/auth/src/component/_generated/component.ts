@@ -1715,6 +1715,19 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             } | null,
             Name
           >;
+          sessionIssue: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              refreshTokenExpirationTime?: number;
+              replaceSessionId?: string;
+              sessionExpirationTime: number;
+              sessionId?: string;
+              userId: string;
+            },
+            { refreshTokenId?: string; sessionId: string; userId: string },
+            Name
+          >;
           sessionList: FunctionReference<
             "query",
             "internal",
@@ -1765,6 +1778,23 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             "internal",
             { sessionId: string },
             null,
+            Name
+          >;
+          refreshTokenExchange: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              now: number;
+              refreshTokenExpirationTime: number;
+              refreshTokenId: string;
+              reuseWindowMs: number;
+              sessionId: string;
+            },
+            {
+              refreshTokenId: string;
+              sessionId: string;
+              userId: string;
+            } | null,
             Name
           >;
           refreshTokenGetActive: FunctionReference<
@@ -1951,7 +1981,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           verifierCreate: FunctionReference<
             "mutation",
             "internal",
-            { sessionId?: string },
+            { sessionId?: string; signature?: string },
             string,
             Name
           >;
@@ -2500,6 +2530,19 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null,
         Name
       >;
+      refreshTokenExchange: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          now: number;
+          refreshTokenExpirationTime: number;
+          refreshTokenId: string;
+          reuseWindowMs: number;
+          sessionId: string;
+        },
+        { refreshTokenId: string; sessionId: string; userId: string } | null,
+        Name
+      >;
       refreshTokenGetActive: FunctionReference<
         "query",
         "internal",
@@ -2770,6 +2813,19 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           expirationTime: number;
           userId: string;
         } | null,
+        Name
+      >;
+      sessionIssue: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          refreshTokenExpirationTime?: number;
+          replaceSessionId?: string;
+          sessionExpirationTime: number;
+          sessionId?: string;
+          userId: string;
+        },
+        { refreshTokenId?: string; sessionId: string; userId: string },
         Name
       >;
       sessionList: FunctionReference<
@@ -3654,7 +3710,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       verifierCreate: FunctionReference<
         "mutation",
         "internal",
-        { sessionId?: string },
+        { sessionId?: string; signature?: string },
         string,
         Name
       >;

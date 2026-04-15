@@ -169,9 +169,7 @@ export const refreshTokenListBySession = query({
   handler: async (ctx, { sessionId }) => {
     return await ctx.db
       .query("RefreshToken")
-      .withIndex("session_id_parent_refresh_token_id", (q) =>
-        q.eq("sessionId", sessionId as any),
-      )
+      .withIndex("session_id", (q) => q.eq("sessionId", sessionId as any))
       .collect();
   },
 });
@@ -202,13 +200,155 @@ export const refreshTokenDeleteAll = mutation({
   handler: async (ctx, { sessionId }) => {
     const tokens = await ctx.db
       .query("RefreshToken")
-      .withIndex("session_id_parent_refresh_token_id", (q) =>
-        q.eq("sessionId", sessionId as any),
-      )
+      .withIndex("session_id", (q) => q.eq("sessionId", sessionId as any))
       .collect();
     await Promise.all(
       tokens.map((token) => ctx.db.delete("RefreshToken", token._id)),
     );
+    return null;
+  },
+});
+
+const refreshSessionExchangeResult = v.union(
+  v.object({
+    userId: v.id("User"),
+    sessionId: v.id("Session"),
+    refreshTokenId: v.id("RefreshToken"),
+  }),
+  v.null(),
+);
+
+export const refreshTokenExchange = mutation({
+  args: {
+    refreshTokenId: v.id("RefreshToken"),
+    sessionId: v.id("Session"),
+    now: v.number(),
+    refreshTokenExpirationTime: v.number(),
+    reuseWindowMs: v.number(),
+  },
+  returns: refreshSessionExchangeResult,
+  handler: async (ctx, args) => {
+    const cleanupSessionArtifacts = async () => {
+      const session = await ctx.db.get("Session", args.sessionId);
+      if (session !== null) {
+        await ctx.db.delete("Session", args.sessionId);
+      }
+      const tokens = await ctx.db
+        .query("RefreshToken")
+        .withIndex("session_id", (q) => q.eq("sessionId", args.sessionId))
+        .collect();
+      await Promise.all(
+        tokens.map((token) => ctx.db.delete("RefreshToken", token._id)),
+      );
+    };
+
+    const refreshTokenDoc = await ctx.db.get(
+      "RefreshToken",
+      args.refreshTokenId,
+    );
+    if (
+      refreshTokenDoc === null ||
+      refreshTokenDoc.expirationTime < args.now ||
+      refreshTokenDoc.sessionId !== args.sessionId
+    ) {
+      await cleanupSessionArtifacts();
+      return null;
+    }
+
+    const session = await ctx.db.get("Session", args.sessionId);
+    if (session === null || session.expirationTime < args.now) {
+      await cleanupSessionArtifacts();
+      return null;
+    }
+
+    const issueRefreshToken = () =>
+      ctx.db.insert("RefreshToken", {
+        sessionId: args.sessionId,
+        expirationTime: args.refreshTokenExpirationTime,
+        parentRefreshTokenId: args.refreshTokenId,
+      });
+
+    if (refreshTokenDoc.firstUsedTime === undefined) {
+      await ctx.db.patch("RefreshToken", args.refreshTokenId, {
+        firstUsedTime: args.now,
+      });
+      const refreshTokenId = await issueRefreshToken();
+      return {
+        userId: session.userId,
+        sessionId: args.sessionId,
+        refreshTokenId,
+      };
+    }
+
+    const activeRefreshToken = await ctx.db
+      .query("RefreshToken")
+      .withIndex("session_id_first_used", (q) =>
+        q.eq("sessionId", args.sessionId).eq("firstUsedTime", undefined),
+      )
+      .order("desc")
+      .first();
+
+    if (
+      activeRefreshToken !== null &&
+      activeRefreshToken.parentRefreshTokenId === args.refreshTokenId
+    ) {
+      return {
+        userId: session.userId,
+        sessionId: args.sessionId,
+        refreshTokenId: activeRefreshToken._id,
+      };
+    }
+
+    if (refreshTokenDoc.firstUsedTime + args.reuseWindowMs > args.now) {
+      const refreshTokenId = await issueRefreshToken();
+      return {
+        userId: session.userId,
+        sessionId: args.sessionId,
+        refreshTokenId,
+      };
+    }
+
+    const tokensToInvalidate = [refreshTokenDoc];
+    const visited = new Set([refreshTokenDoc._id]);
+    let frontier = [refreshTokenDoc._id];
+
+    while (frontier.length > 0) {
+      const nextFrontier = [] as Array<typeof refreshTokenDoc._id>;
+      for (const parentRefreshTokenId of frontier) {
+        const children = await ctx.db
+          .query("RefreshToken")
+          .withIndex("session_id_parent_refresh_token_id", (q) =>
+            q
+              .eq("sessionId", args.sessionId)
+              .eq("parentRefreshTokenId", parentRefreshTokenId),
+          )
+          .collect();
+        for (const child of children) {
+          if (visited.has(child._id)) {
+            continue;
+          }
+          visited.add(child._id);
+          tokensToInvalidate.push(child);
+          nextFrontier.push(child._id);
+        }
+      }
+      frontier = nextFrontier;
+    }
+
+    await Promise.all(
+      tokensToInvalidate
+        .filter(
+          (token) =>
+            token.firstUsedTime === undefined ||
+            token.firstUsedTime > args.now - args.reuseWindowMs,
+        )
+        .map((token) =>
+          ctx.db.patch("RefreshToken", token._id, {
+            firstUsedTime: args.now - args.reuseWindowMs,
+          }),
+        ),
+    );
+
     return null;
   },
 });

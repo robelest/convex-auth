@@ -30,6 +30,7 @@ type AuthComponentApiLike = {
     accountPatch: FunctionReference<"mutation", "internal">;
     accountDelete: FunctionReference<"mutation", "internal">;
     sessionCreate: FunctionReference<"mutation", "internal">;
+    sessionIssue?: FunctionReference<"mutation", "internal">;
     sessionGetById: FunctionReference<"query", "internal">;
     sessionDelete: FunctionReference<"mutation", "internal">;
     sessionListByUser: FunctionReference<"query", "internal">;
@@ -43,6 +44,7 @@ type AuthComponentApiLike = {
     verificationCodeCreate: FunctionReference<"mutation", "internal">;
     verificationCodeDelete: FunctionReference<"mutation", "internal">;
     refreshTokenCreate: FunctionReference<"mutation", "internal">;
+    refreshTokenExchange?: FunctionReference<"mutation", "internal">;
     refreshTokenGetById: FunctionReference<"query", "internal">;
     refreshTokenPatch: FunctionReference<"mutation", "internal">;
     refreshTokenGetChildren: FunctionReference<"query", "internal">;
@@ -115,6 +117,18 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
           userId,
           expirationTime,
         }) as Promise<string>,
+      issue: (args: {
+        userId: string;
+        sessionId?: string;
+        replaceSessionId?: string;
+        sessionExpirationTime: number;
+        refreshTokenExpirationTime?: number;
+      }) =>
+        ctx.runMutation(component.public.sessionIssue!, args) as Promise<{
+          userId: string;
+          sessionId: string;
+          refreshTokenId?: string;
+        }>,
       getById: (sessionId: string) =>
         ctx.runQuery(component.public.sessionGetById, { sessionId }),
       delete: (sessionId: string) =>
@@ -123,9 +137,10 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         ctx.runQuery(component.public.sessionListByUser, { userId }),
     },
     verifiers: {
-      create: (sessionId?: string) =>
+      create: (sessionId?: string, signature?: string) =>
         ctx.runMutation(component.public.verifierCreate, {
           sessionId,
+          signature,
         }) as Promise<string>,
       getById: (verifierId: string) =>
         ctx.runQuery(component.public.verifierGetById, { verifierId }),
@@ -167,6 +182,21 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
           component.public.refreshTokenCreate,
           args,
         ) as Promise<string>,
+      exchange: (args: {
+        refreshTokenId: string;
+        sessionId: string;
+        now: number;
+        refreshTokenExpirationTime: number;
+        reuseWindowMs: number;
+      }) =>
+        ctx.runMutation(
+          component.public.refreshTokenExchange!,
+          args,
+        ) as Promise<null | {
+          userId: string;
+          sessionId: string;
+          refreshTokenId: string;
+        }>,
       getById: (refreshTokenId: string) =>
         ctx.runQuery(component.public.refreshTokenGetById, { refreshTokenId }),
       patch: (refreshTokenId: string, data: Record<string, unknown>) =>

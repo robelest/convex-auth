@@ -13,7 +13,6 @@ import {
   callRefreshSession,
   callSignIn,
   callVerifier,
-  callVerifierSignature,
   callVerifyCodeAndSignIn,
 } from "./mutations/index";
 import { handlePasskeyFx } from "./passkey";
@@ -461,22 +460,9 @@ function handleCredentialsFx(
           ),
       });
       const verifier = yield* Effect.tryPromise({
-        try: () => callVerifier(ctx),
+        try: () => callVerifier(ctx, JSON.stringify({ userId: result.userId })),
         catch: (error) =>
           asConvexError(error, "INTERNAL_ERROR", "Failed to create verifier."),
-      });
-      yield* Effect.tryPromise({
-        try: () =>
-          callVerifierSignature(ctx, {
-            verifier,
-            signature: JSON.stringify({ userId: result.userId }),
-          }),
-        catch: (error) =>
-          asConvexError(
-            error,
-            "INTERNAL_ERROR",
-            "Failed to store verifier signature.",
-          ),
       });
       return { kind: "totpRequired" as const, verifier };
     }

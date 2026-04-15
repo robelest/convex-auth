@@ -301,8 +301,8 @@ export function shouldProxyAuthAction(pathname: string, apiRoute: string) {
   return pathname === apiRoute || pathname === `${apiRoute}/`;
 }
 
-const REQUIRED_TOKEN_LIFETIME_MS = 60_000;
-const MINIMUM_REQUIRED_TOKEN_LIFETIME_MS = 10_000;
+const REQUIRED_TOKEN_LIFETIME_MS = 30_000;
+const MINIMUM_REQUIRED_TOKEN_LIFETIME_MS = 5_000;
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
 type DecodedToken = { exp?: number; iat?: number; iss?: string };

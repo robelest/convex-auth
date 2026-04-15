@@ -12,6 +12,28 @@ const TOKEN_JTI_LENGTH = 24;
 const TOKEN_JTI_ALPHABET =
   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
+let cachedPrivateKeyPromise: Promise<
+  Awaited<ReturnType<typeof importPKCS8>>
+> | null = null;
+let cachedIssuer: string | null = null;
+
+const getPrivateKey = () => {
+  if (cachedPrivateKeyPromise === null) {
+    cachedPrivateKeyPromise = importPKCS8(
+      requireEnv("JWT_PRIVATE_KEY"),
+      "RS256",
+    );
+  }
+  return cachedPrivateKeyPromise;
+};
+
+const getIssuer = () => {
+  if (cachedIssuer === null) {
+    cachedIssuer = requireEnv("CONVEX_SITE_URL");
+  }
+  return cachedIssuer;
+};
+
 /** @internal */
 export async function generateToken(
   args: {
@@ -20,7 +42,7 @@ export async function generateToken(
   },
   config: ConvexAuthConfig,
 ) {
-  const privateKey = await importPKCS8(requireEnv("JWT_PRIVATE_KEY"), "RS256");
+  const privateKey = await getPrivateKey();
   const expirationTime = new Date(
     Date.now() + (config.jwt?.durationMs ?? DEFAULT_JWT_DURATION_MS),
   );
@@ -30,7 +52,7 @@ export async function generateToken(
     .setProtectedHeader({ alg: "RS256" })
     .setIssuedAt()
     .setJti(generateRandomString(TOKEN_JTI_LENGTH, TOKEN_JTI_ALPHABET))
-    .setIssuer(requireEnv("CONVEX_SITE_URL"))
+    .setIssuer(getIssuer())
     .setAudience("convex")
     .setExpirationTime(expirationTime)
     .sign(privateKey);

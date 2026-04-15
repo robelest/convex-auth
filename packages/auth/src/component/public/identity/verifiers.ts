@@ -24,10 +24,16 @@ import { vAuthVerifierDoc } from "../../model";
  * ```
  */
 export const verifierCreate = mutation({
-  args: { sessionId: v.optional(v.id("Session")) },
+  args: {
+    sessionId: v.optional(v.id("Session")),
+    signature: v.optional(v.string()),
+  },
   returns: v.id("AuthVerifier"),
-  handler: async (ctx, { sessionId }) => {
-    return await ctx.db.insert("AuthVerifier", { sessionId: sessionId as any });
+  handler: async (ctx, { sessionId, signature }) => {
+    return await ctx.db.insert("AuthVerifier", {
+      sessionId: sessionId as any,
+      signature,
+    });
   },
 });
 

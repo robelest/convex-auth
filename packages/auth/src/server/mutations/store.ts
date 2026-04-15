@@ -21,7 +21,7 @@ import {
 import { verifierSignatureArgs, verifierSignatureImpl } from "./signature";
 import { signInArgs, signInImpl } from "./signin";
 import { signOutImpl } from "./signout";
-import { verifierImpl } from "./verifier";
+import { verifierArgs, verifierImpl } from "./verifier";
 import { verifyCodeAndSignInArgs, verifyCodeAndSignInImpl } from "./verify";
 
 export const storeArgs = v.object({
@@ -43,6 +43,7 @@ export const storeArgs = v.object({
     }),
     v.object({
       type: v.literal("verifier"),
+      ...verifierArgs.fields,
     }),
     v.object({
       type: v.literal("verifierSignature"),
@@ -83,7 +84,7 @@ export const storeImpl = async (
   const args = fnArgs.args;
   const config = services.config;
   const getProviderOrThrow = services.providerRegistry.getProviderOrThrow;
-  log(LOG_LEVELS.INFO, `\`auth:store\` type: ${args.type}`);
+  log(LOG_LEVELS.DEBUG, `\`auth:store\` type: ${args.type}`);
 
   const program = Match.value(args).pipe(
     Match.when({ type: "signIn" }, (args) =>
@@ -91,12 +92,12 @@ export const storeImpl = async (
     ),
     Match.when({ type: "signOut" }, () => signOutImpl(ctx, config)),
     Match.when({ type: "refreshSession" }, (args) =>
-      services.refresh.refresh(ctx, args, getProviderOrThrow),
+      services.refresh.refresh(ctx, args),
     ),
     Match.when({ type: "verifyCodeAndSignIn" }, (args) =>
       verifyCodeAndSignInImpl(ctx, args, getProviderOrThrow, config),
     ),
-    Match.when({ type: "verifier" }, () => verifierImpl(ctx, config)),
+    Match.when({ type: "verifier" }, (args) => verifierImpl(ctx, args, config)),
     Match.when({ type: "verifierSignature" }, (args) =>
       verifierSignatureImpl(ctx, args, config),
     ),

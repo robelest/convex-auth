@@ -107,11 +107,9 @@ const convex = createBuilder<DataModel>();
 
 // `auth.context(ctx)` resolves { userId, user, groupId, role, grants }
 // and throws before the handler runs when unauthenticated.
-const withRequiredAuth = convex.createMiddleware<any, { auth: any }>(
-  async (ctx, next) => {
-    return next({ ...ctx, auth: await auth.context(ctx) });
-  },
-);
+const withRequiredAuth = convex.createMiddleware(async (ctx, next) => {
+  return next({ ...ctx, auth: await auth.context(ctx) });
+});
 
 export const query = convex.query().use(withRequiredAuth).extend(WithZod);
 export const mutation = convex.mutation().use(withRequiredAuth).extend(WithZod);

@@ -49,7 +49,6 @@ import type { AuthErrorData } from "./errors";
 import { toConvexError } from "./errors";
 import { userIdFromIdentitySubject } from "./identity";
 import { callSignIn, callVerifier } from "./mutations/index";
-import { callVerifierSignature } from "./mutations/signature";
 import { GenericActionCtxWithAuthConfig, PasskeyProviderConfig } from "./types";
 import {
   AuthDataModel,
@@ -458,14 +457,7 @@ export function handlePasskeyFx(
           );
 
           const verifier = yield* Effect.tryPromise({
-            try: async () => {
-              const verifier = await callVerifier(ctx);
-              await callVerifierSignature(ctx, {
-                verifier,
-                signature: challengeHash,
-              });
-              return verifier;
-            },
+            try: () => callVerifier(ctx, challengeHash),
             catch: () =>
               convexError("INTERNAL_ERROR", "An unexpected error occurred."),
           });
@@ -629,14 +621,7 @@ export function handlePasskeyFx(
           );
 
           const verifier = yield* Effect.tryPromise({
-            try: async () => {
-              const verifier = await callVerifier(ctx);
-              await callVerifierSignature(ctx, {
-                verifier,
-                signature: challengeHash,
-              });
-              return verifier;
-            },
+            try: () => callVerifier(ctx, challengeHash),
             catch: () =>
               convexError("INTERNAL_ERROR", "An unexpected error occurred."),
           });

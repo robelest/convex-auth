@@ -17,7 +17,6 @@ import type { AuthErrorData } from "./errors";
 import { toConvexError } from "./errors";
 import { userIdFromIdentitySubject } from "./identity";
 import { callSignIn, callVerifier } from "./mutations/index";
-import { callVerifierSignature } from "./mutations/signature";
 import { GenericActionCtxWithAuthConfig, TotpProviderConfig } from "./types";
 import {
   AuthDataModel,
@@ -212,25 +211,16 @@ export const handleTotp = (
             const base32Secret = encodeBase32LowerCaseNoPadding(secret);
 
             const verifier = yield* Effect.tryPromise({
-              try: () => callVerifier(ctx),
-              catch: (error) =>
-                asConvexError(
-                  error,
-                  "INTERNAL_ERROR",
-                  `TOTP setup failed: ${String(error)}`,
-                ),
-            });
-            yield* Effect.tryPromise({
               try: () =>
-                callVerifierSignature(ctx, {
-                  verifier,
-                  signature: JSON.stringify({
+                callVerifier(
+                  ctx,
+                  JSON.stringify({
                     secret: Array.from(secret),
                     userId,
                     digits: provider.options.digits,
                     period: provider.options.period,
                   }),
-                }),
+                ),
               catch: (error) =>
                 asConvexError(
                   error,

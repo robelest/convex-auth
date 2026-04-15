@@ -83,7 +83,9 @@ test("stripDeploymentTypePrefix strips prod: prefix", () => {
 });
 
 test("stripDeploymentTypePrefix rejects untyped deployments", () => {
-  expectProcessExitSilently(() => stripDeploymentTypePrefix("tall-forest-1234"));
+  expectProcessExitSilently(() =>
+    stripDeploymentTypePrefix("tall-forest-1234"),
+  );
 });
 
 // ---- deploymentTypeFromAdminKey ----

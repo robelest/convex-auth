@@ -1656,6 +1656,18 @@ export declare const components: {
               userId: string;
             } | null
           >;
+          sessionIssue: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              refreshTokenExpirationTime?: number;
+              replaceSessionId?: string;
+              sessionExpirationTime: number;
+              sessionId?: string;
+              userId: string;
+            },
+            { refreshTokenId?: string; sessionId: string; userId: string }
+          >;
           sessionList: FunctionReference<
             "query",
             "internal",
@@ -1703,6 +1715,18 @@ export declare const components: {
             "internal",
             { sessionId: string },
             null
+          >;
+          refreshTokenExchange: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              now: number;
+              refreshTokenExpirationTime: number;
+              refreshTokenId: string;
+              reuseWindowMs: number;
+              sessionId: string;
+            },
+            { refreshTokenId: string; sessionId: string; userId: string } | null
           >;
           refreshTokenGetActive: FunctionReference<
             "query",
@@ -1875,7 +1899,7 @@ export declare const components: {
           verifierCreate: FunctionReference<
             "mutation",
             "internal",
-            { sessionId?: string },
+            { sessionId?: string; signature?: string },
             string
           >;
           verifierDelete: FunctionReference<
@@ -2387,6 +2411,18 @@ export declare const components: {
         { sessionId: string },
         null
       >;
+      refreshTokenExchange: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          now: number;
+          refreshTokenExpirationTime: number;
+          refreshTokenId: string;
+          reuseWindowMs: number;
+          sessionId: string;
+        },
+        { refreshTokenId: string; sessionId: string; userId: string } | null
+      >;
       refreshTokenGetActive: FunctionReference<
         "query",
         "internal",
@@ -2640,6 +2676,18 @@ export declare const components: {
           expirationTime: number;
           userId: string;
         } | null
+      >;
+      sessionIssue: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          refreshTokenExpirationTime?: number;
+          replaceSessionId?: string;
+          sessionExpirationTime: number;
+          sessionId?: string;
+          userId: string;
+        },
+        { refreshTokenId?: string; sessionId: string; userId: string }
       >;
       sessionList: FunctionReference<
         "query",
@@ -3466,7 +3514,7 @@ export declare const components: {
       verifierCreate: FunctionReference<
         "mutation",
         "internal",
-        { sessionId?: string },
+        { sessionId?: string; signature?: string },
         string
       >;
       verifierDelete: FunctionReference<

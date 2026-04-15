@@ -4,10 +4,7 @@ import { GenericId, Infer, v } from "convex/values";
 import * as Provider from "../crypto";
 import { LOG_LEVELS } from "../log";
 import { log } from "../log";
-import {
-  createNewAndDeleteExistingSession,
-  maybeGenerateTokensForSession,
-} from "../sessions";
+import { getAuthSessionId, issueSession } from "../sessions";
 import { MutationCtx, SessionInfo } from "../types";
 import { AUTH_STORE_REF } from "./store/refs";
 
@@ -27,19 +24,16 @@ export async function signInImpl(
   log(LOG_LEVELS.DEBUG, "signInImpl args:", args);
   const { userId, sessionId: existingSessionId, generateTokens } = args;
   const typedUserId = userId as GenericId<"User">;
-  const typedExistingSessionId = existingSessionId as
-    | GenericId<"Session">
-    | undefined;
-  const sessionId =
-    typedExistingSessionId ??
-    (await createNewAndDeleteExistingSession(ctx, config, typedUserId));
-  return await maybeGenerateTokensForSession(
-    ctx,
-    config,
-    typedUserId,
-    sessionId,
+  const replaceSessionId =
+    existingSessionId === undefined
+      ? ((await getAuthSessionId(ctx)) ?? undefined)
+      : undefined;
+  return await issueSession(ctx, config, {
+    userId: typedUserId,
+    existingSessionId: existingSessionId as GenericId<"Session"> | undefined,
+    replaceSessionId,
     generateTokens,
-  );
+  });
 }
 
 export const callSignIn = async <DataModel extends GenericDataModel>(

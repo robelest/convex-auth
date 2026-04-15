@@ -110,6 +110,67 @@ export const sessionCreate = mutation({
   },
 });
 
+export const sessionIssue = mutation({
+  args: {
+    userId: v.id("User"),
+    sessionId: v.optional(v.id("Session")),
+    replaceSessionId: v.optional(v.id("Session")),
+    sessionExpirationTime: v.number(),
+    refreshTokenExpirationTime: v.optional(v.number()),
+  },
+  returns: v.object({
+    userId: v.id("User"),
+    sessionId: v.id("Session"),
+    refreshTokenId: v.optional(v.id("RefreshToken")),
+  }),
+  handler: async (ctx, args) => {
+    let sessionId = args.sessionId;
+
+    if (sessionId === undefined) {
+      if (args.replaceSessionId !== undefined) {
+        const existingSession = await ctx.db.get(
+          "Session",
+          args.replaceSessionId,
+        );
+        if (existingSession !== null) {
+          await ctx.db.delete("Session", args.replaceSessionId);
+        }
+
+        const existingTokens = await ctx.db
+          .query("RefreshToken")
+          .withIndex("session_id", (q) =>
+            q.eq("sessionId", args.replaceSessionId!),
+          )
+          .collect();
+        await Promise.all(
+          existingTokens.map((token) =>
+            ctx.db.delete("RefreshToken", token._id),
+          ),
+        );
+      }
+
+      sessionId = await ctx.db.insert("Session", {
+        userId: args.userId as any,
+        expirationTime: args.sessionExpirationTime,
+      });
+    }
+
+    const refreshTokenId =
+      args.refreshTokenExpirationTime === undefined
+        ? undefined
+        : await ctx.db.insert("RefreshToken", {
+            sessionId: sessionId as any,
+            expirationTime: args.refreshTokenExpirationTime,
+          });
+
+    return {
+      userId: args.userId,
+      sessionId,
+      ...(refreshTokenId === undefined ? {} : { refreshTokenId }),
+    };
+  },
+});
+
 /**
  * Retrieve a single session by its Convex document ID.
  *

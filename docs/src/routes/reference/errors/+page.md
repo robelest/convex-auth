@@ -19,9 +19,8 @@ payload. There are no special helpers needed - catch them directly with
 export const authQuery = customQuery(query, auth.ctx());
 ```
 
-`auth.ctx()` throws `NOT_SIGNED_IN` before your handler runs. In lower-level
-middleware or custom integrations, `auth.context(ctx)` throws the same
-structured error.
+`auth.ctx()` throws `NOT_SIGNED_IN` before your handler runs. In middleware or
+custom integrations, `auth.context(ctx)` throws the same structured error.
 
 For authorization checks, `auth.member.require(...)` also throws a `ConvexError`
 on failure:
