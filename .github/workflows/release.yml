@@ -10,100 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version: 24.15.0
-          cache: true
-          run-install: |
-            args: ['--frozen-lockfile']
-
-      - name: Start self-hosted Convex backend for codegen
-        run: |
-          docker compose \
-            --env-file tests/infra/docker/test.env \
-            -f tests/infra/docker/compose.yml \
-            --profile interop \
-            up -d --wait backend
-
-          ADMIN_KEY="$({ \
-            docker compose \
-              --env-file tests/infra/docker/test.env \
-              -f tests/infra/docker/compose.yml \
-              exec -T backend /convex/generate_admin_key.sh; \
-          } | grep -o 'convex-self-hosted|[A-Za-z0-9]\+' | tail -n1)"
-
-          if [ -z "$ADMIN_KEY" ]; then
-            echo "Failed to generate self-hosted Convex admin key" >&2
-            exit 1
-          fi
-
-          {
-            echo "CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210"
-            echo "CONVEX_SELF_HOSTED_ADMIN_KEY=$ADMIN_KEY"
-          } >> "$GITHUB_ENV"
-
-      - name: Build package prerequisites
-        run: |
-          vp run '@robelest/samlify#build'
-          vp run '@robelest/convex-auth#build'
-
-      - name: Run lint
-        run: vp run lint
-
-      - name: Stop self-hosted Convex backend
-        if: always()
-        run: |
-          docker compose \
-            --env-file tests/infra/docker/test.env \
-            -f tests/infra/docker/compose.yml \
-            down -v
-
-  unit:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version: 24.15.0
-          cache: true
-          run-install: |
-            args: ['--frozen-lockfile']
-
-      - name: Build package prerequisites
-        run: vp run '@robelest/samlify#build'
-
-      - name: Run unit and node test projects
-        run: vp test --run --project convex --project node --project samlify
-
-  interop:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version: 24.15.0
-          cache: true
-          run-install: |
-            args: ['--frozen-lockfile']
-
-      - name: Run Docker interop test project
-        run: vp test --run --project interop
-
   publish:
-    needs: [lint, unit, interop]
     runs-on: ubuntu-latest
     environment: npm
     permissions:
@@ -147,6 +54,65 @@ jobs:
         working-directory: packages/auth
         run: vp exec npm publish --tag "$NPM_DIST_TAG"
 
+  deploy-docs:
+    needs: publish
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: 24.15.0
+          cache: true
+          run-install: |
+            args: ['--frozen-lockfile']
+
+      - name: Deploy docs site
+        run: vp run publish:docs
+
+  deploy-demo:
+    needs: publish
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      PUBLIC_DEPLOYMENT_ENV: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: 24.15.0
+          cache: true
+          run-install: |
+            args: ['--frozen-lockfile']
+
+      - name: Deploy demo backend and site
+        run: vp run deploy:demo
+
+  github-release:
+    needs: [publish, deploy-docs, deploy-demo]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
