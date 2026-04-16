@@ -1,6 +1,7 @@
 import { createAuthGroupSso } from "@robelest/convex-auth/server";
 
-import { auth } from "../auth";
+import { auth as Auth } from "../auth";
+import { auth } from "../auth/core";
 import { roles } from "../roles";
 
 export const {
@@ -34,7 +35,7 @@ export const {
   validateScim,
   signIn,
   metadata,
-} = createAuthGroupSso(auth, {
+} = createAuthGroupSso(Auth, {
   permissions: {
     sso: { require: [roles.orgAdmin] },
     scim: { require: [roles.orgAdmin] },

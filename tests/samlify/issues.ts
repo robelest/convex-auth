@@ -208,7 +208,11 @@ test("#31 query param for sso/slo returns error", () => {
     const request = query.SAMLRequest;
     const rawRequest = utility.inflateString(decodeURIComponent(request));
     const xml = new dom().parseFromString(rawRequest);
-    const acsUrl = xml.documentElement.attributes.getNamedItem(
+    const root = xml.documentElement;
+    if (!root) {
+      throw new Error("Expected SAML request XML to have a document element.");
+    }
+    const acsUrl = root.attributes.getNamedItem(
       "AssertionConsumerServiceURL",
     )?.value;
     expect(acsUrl).toBe("https://example.org/response");

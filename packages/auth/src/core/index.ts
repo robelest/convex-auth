@@ -12,18 +12,20 @@ import {
   assertAuthResolverContext,
   createPublicAuthContext,
   createAuthContextCustomization,
-  type AuthConfig,
-  type AuthContext,
-  type AuthContextConfig,
-  type AuthLike,
-  type OptionalAuthContext,
-  type UserDoc,
-  type _AuthContextCustomization,
-  type _AuthContextFactory,
-  type _AuthContextResolver,
-  type _AuthResolverCtx,
-  type _PublicAuthContextConfig,
-  type _ResolvedAuthContext,
+} from "../server/auth-context";
+import type {
+  AuthConfig,
+  AuthContext,
+  AuthContextConfig,
+  AuthLike,
+  OptionalAuthContext,
+  UserDoc,
+  _AuthContextCustomization,
+  _AuthContextFactory,
+  _AuthContextResolver,
+  _AuthResolverCtx,
+  _PublicAuthContextConfig,
+  _ResolvedAuthContext,
 } from "../server/auth-context";
 import { configDefaults } from "../server/config";
 import { createCoreDomains } from "../server/core";

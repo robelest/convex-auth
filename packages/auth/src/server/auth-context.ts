@@ -169,7 +169,12 @@ type AuthContextFactory = {
   ): AuthContextCustomization<RequiredAuthContextState & TResolve>;
 };
 
-/** @internal */
+/**
+ * Minimal auth helper surface required by the context resolvers.
+ *
+ * This stays exported because `auth.ts` re-exports it for compatibility with
+ * existing consumers that reference the low-level context helpers.
+ */
 export type AuthLike = {
   user: {
     get: (...args: any[]) => Promise<UserDoc>;
@@ -351,7 +356,12 @@ export function assertAuthResolverContext<TCtx>(
   }
 }
 
-/** @internal */
+/**
+ * Resolve the public auth context for a Convex handler context.
+ *
+ * This low-level helper underpins `auth.context(...)` and remains exported for
+ * compatibility with existing consumers using the server entrypoint.
+ */
 export async function createPublicAuthContext<
   TCtx extends AuthIdentityCtx & AuthQueryCtx,
   TResolve extends Record<string, unknown> = Record<string, never>,
@@ -375,7 +385,12 @@ export async function createPublicAuthContext<
   };
 }
 
-/** @internal */
+/**
+ * Create a convex-helpers customization that injects `ctx.auth`.
+ *
+ * This low-level helper underpins `auth.ctx(...)` and remains exported for
+ * compatibility with existing consumers using the server entrypoint.
+ */
 export function createAuthContextCustomization<
   TResolve extends Record<string, unknown> = Record<string, never>,
   TCtx extends AuthIdentityCtx & {

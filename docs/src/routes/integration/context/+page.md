@@ -76,6 +76,28 @@ The canonical `convex-auth` integration uses:
 - `convex/auth/core.ts` — lightweight context for queries/mutations
 - `convex/http.ts` — OAuth callbacks and JWKS routes
 
+## When to use `core` vs `auth`
+
+Use `convex/auth/core.ts` anywhere you only need auth context or helper
+lookups inside Convex functions.
+
+- Queries and mutations wrapped with `auth.ctx()`
+- Permission checks like `auth.member.require(ctx, ...)`
+- Helper lookups like `auth.user.get`, `auth.member.list`, `auth.group.get`
+- Account and key management like `auth.account.listPasskeys` and `auth.key.list`
+
+Use `convex/auth.ts` only for the full runtime surface.
+
+- Exporting `signIn`, `signOut`, and `store`
+- Registering HTTP routes with `auth.http.add(http)`
+- Calling `auth.http.context(ctx, request)`
+- Passing the full auth runtime into higher-level server helpers such as group SSO setup
+
+[In this repo](https://github.com/robelest/convex-auth/tree/main/convex), `convex/comments.ts`, `convex/projects.ts`, `convex/issues.ts`,
+`convex/groups.ts`, and `convex/account.ts` all use `core` because they only
+need `ctx.auth` and helper APIs. `convex/http.ts` stays on `auth.ts` because it
+needs the HTTP runtime methods.
+
 ## Optional auth (public routes)
 
 ```ts

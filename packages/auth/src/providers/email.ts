@@ -4,7 +4,7 @@
  * @module
  */
 
-import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import type { AnyDataModel, GenericActionCtx } from "convex/server";
 
 import { defaultMagicLinkEmail } from "../server/templates";
 import type { EmailConfig } from "../server/types";
@@ -15,7 +15,7 @@ export interface EmailProviderConfig {
   from: string;
   /** Delivery callback that actually sends the rendered verification email. */
   send: (
-    ctx: GenericActionCtx<GenericDataModel>,
+    ctx: GenericActionCtx<AnyDataModel>,
     opts: { from: string; to: string; subject: string; html: string },
   ) => Promise<void>;
   /** Optional custom token generator for OTP or magic-link flows. */
