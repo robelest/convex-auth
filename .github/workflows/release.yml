@@ -19,7 +19,7 @@ jobs:
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version: 22.14.0
+          node-version: 24.15.0
           cache: true
           run-install: |
             args: ['--frozen-lockfile']
@@ -74,7 +74,7 @@ jobs:
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version: 22.14.0
+          node-version: 24.15.0
           cache: true
           run-install: |
             args: ['--frozen-lockfile']
@@ -94,7 +94,7 @@ jobs:
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version: 22.14.0
+          node-version: 24.15.0
           cache: true
           run-install: |
             args: ['--frozen-lockfile']
@@ -116,7 +116,7 @@ jobs:
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version: 22.14.0
+          node-version: 24.15.0
           cache: true
           run-install: |
             args: ['--frozen-lockfile']
@@ -131,9 +131,21 @@ jobs:
           vp run '@robelest/convex-auth#typecheck:consumer'
           vp run '@robelest/convex-auth#check:packaging'
 
+      - name: Resolve npm dist-tag
+        working-directory: packages/auth
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" == *-* ]]; then
+            DIST_TAG=${VERSION#*-}
+            DIST_TAG=${DIST_TAG%%.*}
+          else
+            DIST_TAG=latest
+          fi
+          echo "NPM_DIST_TAG=$DIST_TAG" >> "$GITHUB_ENV"
+
       - name: Publish package
         working-directory: packages/auth
-        run: vp exec npm publish
+        run: vp exec npm publish --tag "$NPM_DIST_TAG"
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2

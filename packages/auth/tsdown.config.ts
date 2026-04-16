@@ -28,6 +28,7 @@ const serverAndProviderEntries = entryMap([
 const publicDeclarationEntries = {
   "client/index": "src/client/index.ts",
   "browser/index": "src/browser/index.ts",
+  "core/index": "src/core/index.ts",
   "authorization/index": "src/authorization/index.ts",
   otel: "src/otel.ts",
   test: "src/test.ts",
@@ -70,6 +71,7 @@ export default defineConfig([
   },
   {
     entry: {
+      "core/index": "src/core/index.ts",
       "authorization/index": "src/authorization/index.ts",
       otel: "src/otel.ts",
       test: "src/test.ts",
