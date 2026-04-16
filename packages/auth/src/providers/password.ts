@@ -28,7 +28,6 @@ import {
   WithoutSystemFields,
 } from "convex/server";
 import { Value } from "convex/values";
-import { Effect, Match } from "effect";
 
 import type {
   EmailConfig,
@@ -166,21 +165,11 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
         validateDefaultPasswordRequirements(password);
       };
 
-      await Effect.runPromise(
-        Match.value(flowDispatch).pipe(
-          Match.when({ tag: "signUp" }, () =>
-            Effect.sync(() => {
-              validatePasswordRequirements(params.password as string);
-            }),
-          ),
-          Match.when({ tag: "resetVerification" }, () =>
-            Effect.sync(() => {
-              validatePasswordRequirements(params.newPassword as string);
-            }),
-          ),
-          Match.orElse(() => Effect.void),
-        ),
-      );
+      if (flowDispatch.tag === "signUp") {
+        validatePasswordRequirements(params.password as string);
+      } else if (flowDispatch.tag === "resetVerification") {
+        validatePasswordRequirements(params.newPassword as string);
+      }
 
       const profile = config.profile?.(params, ctx) ?? defaultProfile(params);
       const { email } = profile;
@@ -207,126 +196,86 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
         return { userId: user._id };
       };
 
-      const tryPasswordFlow = <A>(try_: () => Promise<A>) =>
-        Effect.tryPromise({
-          try: try_,
-          catch: (error) =>
-            error instanceof Error ? error : new Error(String(error)),
+      if (flowDispatch.tag === "signUp") {
+        const secret = requirePasswordParam(params.password, "signUp");
+        const created = await ctx.auth.account.create(ctx, {
+          provider,
+          account: { id: email, secret },
+          profile,
+          shouldLinkViaEmail: config.verify !== undefined,
+          shouldLinkViaPhone: false,
         });
-
-      return await Effect.runPromise(
-        Match.value(flowDispatch).pipe(
-          Match.when({ tag: "signUp" }, () =>
-            tryPasswordFlow(async () => {
-              const secret = requirePasswordParam(params.password, "signUp");
-              const created = await ctx.auth.account.create(ctx, {
-                provider,
-                account: { id: email, secret },
-                profile,
-                shouldLinkViaEmail: config.verify !== undefined,
-                shouldLinkViaPhone: false,
-              });
-              return await finalizeCredentialsResult(
-                created.account,
-                created.user,
-              );
-            }),
-          ),
-          Match.when({ tag: "signIn" }, () =>
-            tryPasswordFlow(async () => {
-              const secret = requirePasswordParam(params.password, "signIn");
-              const retrieved = await ctx.auth.account.get(ctx, {
-                provider,
-                account: { id: email, secret },
-              });
-              if (retrieved === null) {
-                throw new Error("Invalid credentials");
-              }
-              return await finalizeCredentialsResult(
-                retrieved.account,
-                retrieved.user,
-              );
-            }),
-          ),
-          Match.when({ tag: "reset" }, () =>
-            tryPasswordFlow(async () => {
-              if (!resetProvider) {
-                throw new Error(
-                  `Password reset is not enabled for ${provider}`,
-                );
-              }
-              const { account } = await ctx.auth.account.get(ctx, {
-                provider,
-                account: { id: email },
-              });
-              return await ctx.auth.provider.signIn(ctx, resetProvider, {
-                accountId: account._id,
-                params,
-              });
-            }),
-          ),
-          Match.when({ tag: "resetVerification" }, () =>
-            tryPasswordFlow(async () => {
-              if (!resetProvider) {
-                throw new Error(
-                  `Password reset is not enabled for ${provider}`,
-                );
-              }
-              if (params.newPassword === undefined) {
-                throw new Error(
-                  "Missing `newPassword` param for `reset-verification` flow",
-                );
-              }
-              const result = await ctx.auth.provider.signIn(
-                ctx,
-                resetProvider,
-                { params },
-              );
-              if (result === null) {
-                throw new Error("Invalid code");
-              }
-              const { userId, sessionId } = result;
-              const secret = params.newPassword as string;
-              await ctx.auth.account.update(ctx, {
-                provider,
-                account: { id: email, secret },
-              });
-              await ctx.auth.session.invalidate(ctx, {
-                userId,
-                except: [sessionId],
-              });
-              return { userId, sessionId };
-            }),
-          ),
-          Match.when({ tag: "emailVerification" }, () =>
-            tryPasswordFlow(async () => {
-              if (!verifyProvider) {
-                throw new Error(
-                  `Email verification is not enabled for ${provider}`,
-                );
-              }
-              const { account } = await ctx.auth.account.get(ctx, {
-                provider,
-                account: { id: email },
-              });
-              return await ctx.auth.provider.signIn(ctx, verifyProvider, {
-                accountId: account._id,
-                params,
-              });
-            }),
-          ),
-          Match.when({ tag: "invalid" }, () =>
-            Effect.die(
-              new Error(
-                "Missing `flow` param, it must be one of " +
-                  '"signUp", "signIn", "reset", "reset-verification" or ' +
-                  '"email-verification"!',
-              ),
-            ),
-          ),
-          Match.exhaustive,
-        ),
-      );
+        return await finalizeCredentialsResult(created.account, created.user);
+      } else if (flowDispatch.tag === "signIn") {
+        const secret = requirePasswordParam(params.password, "signIn");
+        const retrieved = await ctx.auth.account.get(ctx, {
+          provider,
+          account: { id: email, secret },
+        });
+        if (retrieved === null) {
+          throw new Error("Invalid credentials");
+        }
+        return await finalizeCredentialsResult(
+          retrieved.account,
+          retrieved.user,
+        );
+      } else if (flowDispatch.tag === "reset") {
+        if (!resetProvider) {
+          throw new Error(`Password reset is not enabled for ${provider}`);
+        }
+        const { account } = await ctx.auth.account.get(ctx, {
+          provider,
+          account: { id: email },
+        });
+        return await ctx.auth.provider.signIn(ctx, resetProvider, {
+          accountId: account._id,
+          params,
+        });
+      } else if (flowDispatch.tag === "resetVerification") {
+        if (!resetProvider) {
+          throw new Error(`Password reset is not enabled for ${provider}`);
+        }
+        if (params.newPassword === undefined) {
+          throw new Error(
+            "Missing `newPassword` param for `reset-verification` flow",
+          );
+        }
+        const result = await ctx.auth.provider.signIn(ctx, resetProvider, {
+          params,
+        });
+        if (result === null) {
+          throw new Error("Invalid code");
+        }
+        const { userId, sessionId } = result;
+        const secret = params.newPassword as string;
+        await ctx.auth.account.update(ctx, {
+          provider,
+          account: { id: email, secret },
+        });
+        await ctx.auth.session.invalidate(ctx, {
+          userId,
+          except: [sessionId],
+        });
+        return { userId, sessionId };
+      } else if (flowDispatch.tag === "emailVerification") {
+        if (!verifyProvider) {
+          throw new Error(`Email verification is not enabled for ${provider}`);
+        }
+        const { account } = await ctx.auth.account.get(ctx, {
+          provider,
+          account: { id: email },
+        });
+        return await ctx.auth.provider.signIn(ctx, verifyProvider, {
+          accountId: account._id,
+          params,
+        });
+      } else {
+        throw new Error(
+          "Missing `flow` param, it must be one of " +
+            '"signUp", "signIn", "reset", "reset-verification" or ' +
+            '"email-verification"!',
+        );
+      }
     },
     crypto: config.crypto ?? {
       async hashSecret(password: string) {

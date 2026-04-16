@@ -1,6 +1,5 @@
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { GenericId } from "convex/values";
-import { Effect, Option, pipe } from "effect";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
@@ -13,39 +12,24 @@ type ReturnType = {
   sessionId: GenericId<"Session">;
 } | null;
 
-export function signOutImpl(
+export async function signOutImpl(
   ctx: MutationCtx,
   config: Provider.Config,
-): Effect.Effect<ReturnType> {
+): Promise<ReturnType> {
   const db = authDb(ctx, config);
-  return Effect.gen(function* () {
-    const sessionId = yield* Effect.promise(() => getAuthSessionId(ctx));
-    return yield* pipe(
-      Option.fromNullishOr(sessionId),
-      Option.match({
-        onNone: () => Effect.succeed(null),
-        onSome: (sessionId) =>
-          Effect.flatMap(
-            Effect.promise(() => db.sessions.getById(sessionId)),
-            (session) =>
-              pipe(
-                Option.fromNullishOr(session),
-                Option.match({
-                  onNone: () => Effect.succeed(null),
-                  onSome: (session) =>
-                    Effect.as(
-                      Effect.promise(() => deleteSession(ctx, session, config)),
-                      {
-                        userId: session.userId,
-                        sessionId: session._id,
-                      } satisfies Exclude<ReturnType, null>,
-                    ),
-                }),
-              ),
-          ),
-      }),
-    );
-  });
+  const sessionId = await getAuthSessionId(ctx);
+  if (sessionId == null) {
+    return null;
+  }
+  const session = await db.sessions.getById(sessionId);
+  if (session == null) {
+    return null;
+  }
+  await deleteSession(ctx, session, config);
+  return {
+    userId: session.userId,
+    sessionId: session._id,
+  };
 }
 
 export const callSignOut = async <DataModel extends GenericDataModel>(

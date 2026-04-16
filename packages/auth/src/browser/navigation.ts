@@ -1,27 +1,20 @@
-import { Effect, Layer, ServiceMap } from "effect";
+export interface BrowserNavigationService {
+  readonly get: () => URL | null;
+  readonly replace: (url: string) => void;
+  readonly redirect: (url: URL) => void;
+}
 
-export class BrowserNavigation extends ServiceMap.Service<
-  BrowserNavigation,
-  {
-    readonly get: () => URL | null;
-    readonly replace: (url: string) => Effect.Effect<void>;
-    readonly redirect: (url: URL) => Effect.Effect<void>;
-  }
->()("BrowserNavigation") {}
-
-export const BrowserNavigationLive = Layer.succeed(BrowserNavigation)({
+export const BrowserNavigationLive: BrowserNavigationService = {
   get: () =>
     typeof window === "undefined" ? null : new URL(window.location.href),
-  replace: (url: string) =>
-    Effect.sync(() => {
-      if (typeof window !== "undefined") {
-        window.history.replaceState({}, "", url);
-      }
-    }),
-  redirect: (url: URL) =>
-    Effect.sync(() => {
-      if (typeof window !== "undefined") {
-        window.location.href = url.toString();
-      }
-    }),
-});
+  replace: (url: string) => {
+    if (typeof window !== "undefined") {
+      window.history.replaceState({}, "", url);
+    }
+  },
+  redirect: (url: URL) => {
+    if (typeof window !== "undefined") {
+      window.location.href = url.toString();
+    }
+  },
+};

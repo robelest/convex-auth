@@ -1,6 +1,5 @@
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { Infer, v } from "convex/values";
-import { Effect, Match } from "effect";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
@@ -24,12 +23,12 @@ type ReturnType =
   | "InvalidSecret"
   | { account: Doc<"Account">; user: Doc<"User"> };
 
-export function retrieveAccountWithCredentialsImpl(
+export async function retrieveAccountWithCredentialsImpl(
   ctx: MutationCtx,
   args: Infer<typeof retrieveAccountWithCredentialsArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
-): Effect.Effect<ReturnType> {
+): Promise<ReturnType> {
   const { provider: providerId, account } = args;
   const db = authDb(ctx, config);
 
@@ -38,65 +37,55 @@ export function retrieveAccountWithCredentialsImpl(
     account: { id: account.id, secret: maybeRedact(account.secret ?? "") },
   });
 
-  return Effect.catch(
-    Effect.gen(function* () {
-      const existingAccount = yield* Effect.promise(
-        () =>
-          db.accounts.get(
-            providerId,
-            account.id,
-          ) as Promise<Doc<"Account"> | null>,
+  try {
+    const existingAccount = (await db.accounts.get(
+      providerId,
+      account.id,
+    )) as Doc<"Account"> | null;
+    if (existingAccount === null) {
+      return "InvalidAccountId" as const;
+    }
+
+    if (account.secret !== undefined) {
+      const accountSecret = account.secret;
+      const limited = await isSignInRateLimited(
+        ctx,
+        existingAccount._id,
+        config,
       );
-      if (existingAccount === null) {
-        return "InvalidAccountId" as const;
+      if (limited) {
+        return "TooManyFailedAttempts" as const;
       }
 
-      if (account.secret !== undefined) {
-        const accountSecret = account.secret;
-        const limited = yield* isSignInRateLimited(
-          ctx,
-          existingAccount._id,
-          config,
-        );
-        if (limited) {
-          return "TooManyFailedAttempts" as const;
-        }
-
-        const valid = yield* Provider.verify(
-          getProviderOrThrow(providerId),
-          accountSecret,
-          existingAccount.secret ?? "",
-        );
-        if (!valid) {
-          yield* recordFailedSignIn(ctx, existingAccount._id, config);
-          return "InvalidSecret" as const;
-        }
-
-        yield* resetSignInRateLimit(ctx, existingAccount._id, config);
+      const valid = await Provider.verify(
+        getProviderOrThrow(providerId),
+        accountSecret,
+        existingAccount.secret ?? "",
+      );
+      if (!valid) {
+        await recordFailedSignIn(ctx, existingAccount._id, config);
+        return "InvalidSecret" as const;
       }
 
-      const user = yield* Effect.promise(
-        () =>
-          db.users.getById(
-            existingAccount.userId,
-          ) as Promise<Doc<"User"> | null>,
-      );
+      await resetSignInRateLimit(ctx, existingAccount._id, config);
+    }
 
-      return yield* Match.value(user).pipe(
-        Match.when(null, () => {
-          log(
-            LOG_LEVELS.ERROR,
-            `Account ${existingAccount._id} is linked to missing user ${existingAccount.userId}`,
-          );
-          return Effect.succeed("InvalidAccountId" as const);
-        }),
-        Match.orElse((user) =>
-          Effect.succeed({ account: existingAccount, user } as ReturnType),
-        ),
+    const user = (await db.users.getById(
+      existingAccount.userId,
+    )) as Doc<"User"> | null;
+
+    if (user === null) {
+      log(
+        LOG_LEVELS.ERROR,
+        `Account ${existingAccount._id} is linked to missing user ${existingAccount.userId}`,
       );
-    }),
-    () => Effect.succeed("InvalidAccountId" as ReturnType),
-  );
+      return "InvalidAccountId" as const;
+    }
+
+    return { account: existingAccount, user } as ReturnType;
+  } catch {
+    return "InvalidAccountId" as ReturnType;
+  }
 }
 
 export const callRetrieveAccountWithCredentials = async <

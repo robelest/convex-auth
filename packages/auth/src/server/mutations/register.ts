@@ -1,6 +1,5 @@
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError, Infer, v } from "convex/values";
-import { Effect, Match } from "effect";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
@@ -24,12 +23,12 @@ export const createAccountFromCredentialsArgs = v.object({
 
 type ReturnType = { account: Doc<"Account">; user: Doc<"User"> };
 
-export function createAccountFromCredentialsImpl(
+export async function createAccountFromCredentialsImpl(
   ctx: MutationCtx,
   args: Infer<typeof createAccountFromCredentialsArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
-): Effect.Effect<ReturnType, ConvexError<AuthErrorData>> {
+): Promise<ReturnType> {
   log(LOG_LEVELS.DEBUG, "createAccountFromCredentialsImpl args:", {
     provider: args.provider,
     account: {
@@ -49,115 +48,83 @@ export function createAccountFromCredentialsImpl(
   const provider = getProviderOrThrow(providerId) as ConvexCredentialsConfig;
   const typedProfile = profile as AuthProfile;
 
-  return Effect.flatMap(
-    Effect.promise(
-      () =>
-        db.accounts.get(
-          provider.id,
-          account.id,
-        ) as Promise<Doc<"Account"> | null>,
-    ),
-    (existingAccount) =>
-      Match.value(existingAccount).pipe(
-        Match.when(null, () =>
-          Effect.gen(function* () {
-            const accountSecret = account.secret;
-            const secret =
-              accountSecret === undefined
-                ? undefined
-                : yield* Provider.hash(provider, accountSecret);
+  const existingAccount = (await db.accounts.get(
+    provider.id,
+    account.id,
+  )) as Doc<"Account"> | null;
 
-            const result = yield* Effect.promise(async () =>
-              upsertUserAndAccount(
-                ctx,
-                await getAuthSessionId(ctx),
-                { providerAccountId: account.id, secret },
-                {
-                  type: "credentials",
-                  provider,
-                  profile: typedProfile,
-                  shouldLinkViaEmail,
-                  shouldLinkViaPhone,
-                },
-                config,
-              ),
-            );
+  if (existingAccount === null) {
+    const accountSecret = account.secret;
+    const secret =
+      accountSecret === undefined
+        ? undefined
+        : await Provider.hash(provider, accountSecret);
 
-            const { userId, accountId } = result as {
-              userId: string;
-              accountId: string;
-            };
-            const [createdAccount, createdUser] = yield* Effect.all([
-              Effect.promise(
-                () =>
-                  db.accounts.getById(
-                    accountId,
-                  ) as Promise<Doc<"Account"> | null>,
-              ),
-              Effect.promise(
-                () => db.users.getById(userId) as Promise<Doc<"User"> | null>,
-              ),
-            ]);
+    const result = await upsertUserAndAccount(
+      ctx,
+      await getAuthSessionId(ctx),
+      { providerAccountId: account.id, secret },
+      {
+        type: "credentials",
+        provider,
+        profile: typedProfile,
+        shouldLinkViaEmail,
+        shouldLinkViaPhone,
+      },
+      config,
+    );
 
-            if (createdAccount === null) {
-              return yield* Effect.fail(
-                new ConvexError({
-                  code: "ACCOUNT_NOT_FOUND",
-                  message: "Created account was not found.",
-                }),
-              );
-            }
-            if (createdUser === null) {
-              return yield* Effect.fail(
-                new ConvexError({
-                  code: "USER_UPDATE_FAILED",
-                  message: "Created user was not found.",
-                }),
-              );
-            }
+    const { userId, accountId } = result as {
+      userId: string;
+      accountId: string;
+    };
+    const [createdAccount, createdUser] = await Promise.all([
+      db.accounts.getById(accountId) as Promise<Doc<"Account"> | null>,
+      db.users.getById(userId) as Promise<Doc<"User"> | null>,
+    ]);
 
-            return { account: createdAccount, user: createdUser };
-          }),
-        ),
-        Match.orElse((existingAccount) =>
-          Effect.gen(function* () {
-            if (account.secret !== undefined) {
-              const accountSecret = account.secret;
-              const valid = yield* Provider.verify(
-                provider,
-                accountSecret,
-                existingAccount.secret ?? "",
-              );
-              if (!valid) {
-                return yield* Effect.fail(
-                  new ConvexError({
-                    code: "INVALID_CREDENTIALS",
-                    message: "Invalid credentials.",
-                  }),
-                );
-              }
-            }
+    if (createdAccount === null) {
+      throw new ConvexError<AuthErrorData>({
+        code: "ACCOUNT_NOT_FOUND",
+        message: "Created account was not found.",
+      });
+    }
+    if (createdUser === null) {
+      throw new ConvexError<AuthErrorData>({
+        code: "USER_UPDATE_FAILED",
+        message: "Created user was not found.",
+      });
+    }
 
-            const user = yield* Effect.promise(
-              () =>
-                db.users.getById(
-                  existingAccount.userId,
-                ) as Promise<Doc<"User"> | null>,
-            );
-            if (user === null) {
-              return yield* Effect.fail(
-                new ConvexError({
-                  code: "ACCOUNT_NOT_FOUND",
-                  message: `Linked user for account ${account.id} was not found.`,
-                }),
-              );
-            }
+    return { account: createdAccount, user: createdUser };
+  } else {
+    if (account.secret !== undefined) {
+      const accountSecret = account.secret;
+      const valid = await Provider.verify(
+        provider,
+        accountSecret,
+        existingAccount.secret ?? "",
+      );
+      if (!valid) {
+        throw new ConvexError<AuthErrorData>({
+          code: "INVALID_CREDENTIALS",
+          message: "Invalid credentials.",
+        });
+      }
+    }
 
-            return { account: existingAccount, user };
-          }),
-        ),
-      ),
-  );
+    const user = (await db.users.getById(
+      existingAccount.userId,
+    )) as Doc<"User"> | null;
+    if (user === null) {
+      throw new ConvexError<AuthErrorData>({
+        code: "ACCOUNT_NOT_FOUND",
+        message: `Linked user for account ${account.id} was not found.`,
+      });
+    }
+
+    return { account: existingAccount, user };
+  }
 }
 
 export const callCreateAccountFromCredentials = async <

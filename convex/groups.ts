@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";
 import { internalMutation, query } from "./_generated/server";
-import { auth } from "./auth";
+import { auth } from "./auth/core";
 import { authAction, authMutation, authQuery } from "./functions";
 import {
   getPermissions,

@@ -23,6 +23,17 @@ need it for normal `convex-auth` installation.
 
 ## Setup
 
+Import from `@robelest/convex-auth/core` for your query and mutation wrappers.
+This keeps provider, OAuth, and crypto code out of your query bundles entirely.
+
+```ts
+// convex/auth/core.ts
+import { createAuthContext } from "@robelest/convex-auth/core";
+import { components } from "../_generated/api";
+
+export const auth = createAuthContext(components.auth);
+```
+
 ```ts
 // convex/lib/functions.ts
 import {
@@ -33,7 +44,7 @@ import {
   query as rawQuery,
   mutation as rawMutation,
 } from "../_generated/server";
-import { auth } from "../auth";
+import { auth } from "../auth/core";
 
 const authCtx = auth.ctx();
 
@@ -58,11 +69,12 @@ export const list = query({
 });
 ```
 
-The canonical `convex-auth` integration still only needs:
+The canonical `convex-auth` integration uses:
 
-- `convex/convex.config.ts`
-- `convex/auth.ts`
-- `convex/http.ts`
+- `convex/convex.config.ts` — component registration
+- `convex/auth.ts` — provider config, exports `signIn`/`signOut`/`store`
+- `convex/auth/core.ts` — lightweight context for queries/mutations
+- `convex/http.ts` — OAuth callbacks and JWKS routes
 
 ## Optional auth (public routes)
 

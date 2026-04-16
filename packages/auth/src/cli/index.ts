@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   unlinkSync,
@@ -9,15 +10,32 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
-import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import * as p from "@clack/prompts";
 import { config as loadEnvFile } from "dotenv";
-import { Effect, Option, Schema } from "effect";
-import { Command, Flag } from "effect/unstable/cli";
+import figlet from "figlet";
+import ansiShadow from "figlet/importable-fonts/ANSI Shadow.js";
+import gradientString from "gradient-string";
 
 import { generateKeys } from "./keys";
+
+// ---------------------------------------------------------------------------
+// Branding
+// ---------------------------------------------------------------------------
+
+figlet.parseFont("ANSI Shadow", ansiShadow);
+
+const convexGradient = gradientString(["purple", "pink", "orange"]);
+
+function printBanner() {
+  const banner = figlet.textSync("CONVEX-AUTH", {
+    font: "ANSI Shadow",
+    horizontalLayout: "default",
+  });
+  console.log("\n" + convexGradient(banner));
+  console.log("  \x1b[35m✦ auth, wired into your convex backend  ✦\x1b[0m\n");
+}
 
 // ---------------------------------------------------------------------------
 // Package version
@@ -25,7 +43,6 @@ import { generateKeys } from "./keys";
 
 function getPackageVersion(): string {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
-  // When bundled to dist/bin.js the package.json is one level up
   for (const relative of ["..", "../.."]) {
     try {
       const pkgPath = path.resolve(currentDir, relative, "package.json");
@@ -46,7 +63,6 @@ const version = getPackageVersion();
 type PackageRunner = { cmd: string; args: string[] };
 
 function detectPackageRunner(): PackageRunner {
-  // Walk up from cwd to find lockfiles or packageManager field
   let dir = process.cwd();
   const root = path.parse(dir).root;
 
@@ -84,13 +100,12 @@ function detectPackageRunner(): PackageRunner {
 
 const runner = detectPackageRunner();
 
-/** Build the full command + args to invoke `convex` via the detected runner. */
 function convexCmd(...subArgs: string[]): { file: string; args: string[] } {
   return { file: runner.cmd, args: [...runner.args, "convex", ...subArgs] };
 }
 
 // ---------------------------------------------------------------------------
-// Effect CLI program
+// CLI argument parsing
 // ---------------------------------------------------------------------------
 
 type CliOptions = {
@@ -106,78 +121,144 @@ type CliOptions = {
   deploymentName?: string;
 };
 
-const siteUrlOption = Flag.string("site-url").pipe(
-  Flag.optional,
-  Flag.withDescription(
-    "Your frontend app URL (e.g. 'http://localhost:5173' for dev, 'https://myapp.com' for prod)",
-  ),
-);
+const flagDefs = new Map<
+  string,
+  { type: "string" | "boolean"; description: string }
+>([
+  [
+    "site-url",
+    {
+      type: "string",
+      description:
+        "Your frontend app URL (e.g. 'http://localhost:5173' for dev, 'https://myapp.com' for prod)",
+    },
+  ],
+  [
+    "secondary-url",
+    {
+      type: "string",
+      description:
+        "Comma-separated additional frontend URLs allowed to share the same auth instance",
+    },
+  ],
+  [
+    "variables",
+    {
+      type: "string",
+      description:
+        "Configure additional variables for interactive configuration.",
+    },
+  ],
+  [
+    "skip-git-check",
+    {
+      type: "boolean",
+      description: "Don't warn when running outside a Git checkout.",
+    },
+  ],
+  [
+    "allow-dirty-git-state",
+    {
+      type: "boolean",
+      description: "Don't warn when Git state is not clean.",
+    },
+  ],
+  ["url", { type: "string", description: "Convex deployment URL." }],
+  ["admin-key", { type: "string", description: "Convex admin key." }],
+  [
+    "prod",
+    {
+      type: "boolean",
+      description:
+        "Set environment variables on this project's production deployment.",
+    },
+  ],
+  [
+    "preview-name",
+    {
+      type: "string",
+      description:
+        "Set environment variables on the preview deployment with the given name.",
+    },
+  ],
+  [
+    "deployment-name",
+    {
+      type: "string",
+      description: "Set environment variables on the specified deployment.",
+    },
+  ],
+  ["help", { type: "boolean", description: "Show this help message." }],
+  ["version", { type: "boolean", description: "Show version." }],
+]);
 
-const secondaryUrlOption = Flag.string("secondary-url").pipe(
-  Flag.optional,
-  Flag.withDescription(
-    "Comma-separated additional frontend URLs allowed to share the same auth instance",
-  ),
-);
+function printHelp() {
+  printBanner();
+  console.log(
+    "  Add code and set environment variables for @robelest/convex-auth.\n",
+  );
+  console.log("  Full docs: https://auth.estifanos.com\n");
+  console.log("  Options:\n");
+  for (const [name, def] of flagDefs) {
+    const flag = def.type === "boolean" ? `--${name}` : `--${name} <value>`;
+    console.log(`    ${flag.padEnd(32)} ${def.description}`);
+  }
+  console.log();
+}
 
-const variablesOption = Flag.string("variables").pipe(
-  Flag.optional,
-  Flag.withDescription(
-    "Configure additional variables for interactive configuration.",
-  ),
-);
+function parseArgs(argv: string[]): CliOptions {
+  const args = argv.slice(2);
 
-const skipGitCheckOption = Flag.boolean("skip-git-check").pipe(
-  Flag.withDescription("Don't warn when running outside a Git checkout."),
-);
+  const strings = new Map<string, string>();
+  const booleans = new Set<string>();
 
-const allowDirtyGitStateOption = Flag.boolean("allow-dirty-git-state").pipe(
-  Flag.withDescription("Don't warn when Git state is not clean."),
-);
+  let i = 0;
+  while (i < args.length) {
+    const arg = args[i];
+    if (!arg.startsWith("--")) {
+      i++;
+      continue;
+    }
+    const name = arg.slice(2);
+    const def = flagDefs.get(name);
+    if (def === undefined) {
+      p.log.error(`Unknown flag: ${arg}`);
+      process.exit(1);
+    }
+    if (def.type === "boolean") {
+      booleans.add(name);
+      i++;
+    } else {
+      const value = args[i + 1];
+      if (value === undefined || value.startsWith("--")) {
+        p.log.error(`Flag --${name} requires a value.`);
+        process.exit(1);
+      }
+      strings.set(name, value);
+      i += 2;
+    }
+  }
 
-const urlOption = Flag.string("url").pipe(Flag.optional);
-const adminKeyOption = Flag.string("admin-key").pipe(Flag.optional);
-const prodOption = Flag.boolean("prod").pipe(
-  Flag.withDescription(
-    "Set environment variables on this project's production deployment.",
-  ),
-);
-const previewNameOption = Flag.string("preview-name").pipe(
-  Flag.optional,
-  Flag.withDescription(
-    "Set environment variables on the preview deployment with the given name.",
-  ),
-);
-const deploymentNameOption = Flag.string("deployment-name").pipe(
-  Flag.optional,
-  Flag.withDescription(
-    "Set environment variables on the specified deployment.",
-  ),
-);
+  if (booleans.has("help")) {
+    printHelp();
+    process.exit(0);
+  }
+  if (booleans.has("version")) {
+    console.log(version);
+    process.exit(0);
+  }
 
-function normalizeCliOptions(options: {
-  siteUrl: Option.Option<string>;
-  secondaryUrl: Option.Option<string>;
-  variables: Option.Option<string>;
-  skipGitCheck: boolean;
-  allowDirtyGitState: boolean;
-  url: Option.Option<string>;
-  adminKey: Option.Option<string>;
-  prod: boolean;
-  previewName: Option.Option<string>;
-  deploymentName: Option.Option<string>;
-}): CliOptions {
   return {
-    siteUrl: Option.getOrUndefined(options.siteUrl),
-    secondaryUrl: Option.getOrUndefined(options.secondaryUrl),
-    variables: Option.getOrUndefined(options.variables),
-    skipGitCheck: options.skipGitCheck,
-    allowDirtyGitState: options.allowDirtyGitState,
-    url: Option.getOrUndefined(options.url),
-    adminKey: Option.getOrUndefined(options.adminKey),
-    prod: options.prod,
-    previewName: Option.getOrUndefined(options.previewName),
-    deploymentName: Option.getOrUndefined(options.deploymentName),
+    siteUrl: strings.get("site-url"),
+    secondaryUrl: strings.get("secondary-url"),
+    variables: strings.get("variables"),
+    skipGitCheck: booleans.has("skip-git-check"),
+    allowDirtyGitState: booleans.has("allow-dirty-git-state"),
+    url: strings.get("url"),
+    adminKey: strings.get("admin-key"),
+    prod: booleans.has("prod"),
+    previewName: strings.get("preview-name"),
+    deploymentName: strings.get("deployment-name"),
   };
 }
 
@@ -195,9 +276,20 @@ function validateDeploymentSelectionOptions(options: CliOptions) {
   }
 }
 
+function handleCancel(
+  value: unknown,
+): asserts value is Exclude<typeof value, symbol> {
+  if (p.isCancel(value)) {
+    p.cancel("Setup cancelled.");
+    process.exit(1);
+  }
+}
+
 async function runSetup(options: CliOptions) {
   validateDeploymentSelectionOptions(options);
-  p.intro("@robelest/convex-auth");
+
+  printBanner();
+  p.intro("Starting configuration wizard...");
 
   await checkSourceControl(options);
 
@@ -232,6 +324,7 @@ async function runSetup(options: CliOptions) {
   await modifyTsConfig(config);
   await configureConvexConfig(config);
   await initializeAuth(config);
+  await initializeAuthCore(config);
   await configureHttp(config);
 
   if (options.variables !== undefined) {
@@ -240,37 +333,19 @@ async function runSetup(options: CliOptions) {
     printFinalSuccessMessage(config);
   }
 
-  p.outro("Done!");
+  p.outro("Done! Happy building.");
 }
 
-const setupCommand = Command.make(
-  "convex-auth",
-  {
-    siteUrl: siteUrlOption,
-    secondaryUrl: secondaryUrlOption,
-    variables: variablesOption,
-    skipGitCheck: skipGitCheckOption,
-    allowDirtyGitState: allowDirtyGitStateOption,
-    url: urlOption,
-    adminKey: adminKeyOption,
-    prod: prodOption,
-    previewName: previewNameOption,
-    deploymentName: deploymentNameOption,
-  },
-  (options) => Effect.promise(() => runSetup(normalizeCliOptions(options))),
-).pipe(
-  Command.withDescription(
-    "Add code and set environment variables for @robelest/convex-auth.\n\nFull docs: https://deepwiki.com/robelest/convex-auth",
-  ),
-);
-
-export const runCli = Command.run(setupCommand, {
-  version,
-});
+export const runCli = async (argv = process.argv) => {
+  const options = parseArgs(argv);
+  await runSetup(options);
+};
 
 export function runCliMain(argv = process.argv) {
-  process.argv = argv;
-  return runCli.pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain);
+  runCli(argv).catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -294,7 +369,6 @@ type ProjectConfig = {
       deploymentName?: string;
     };
   };
-  // Mutated along the way
   step: number;
 };
 
@@ -313,8 +387,6 @@ async function configureSiteUrl(
     return;
   }
 
-  // Default to localhost for dev and also for local backend
-  // this is not perfect but OK since it's just the default.
   const value =
     config.deployment.type === "dev" || config.deployment.type === null
       ? config.isVite
@@ -330,10 +402,13 @@ async function configureSiteUrl(
     name: "SITE_URL",
     default: value,
     description,
-    validate: (input) => {
+    validate: (input: string | undefined) => {
+      if (!input || input.trim() === "") {
+        return "URL is required";
+      }
       try {
         new URL(input);
-        return true;
+        return undefined;
       } catch {
         return "The URL must start with http:// or https://";
       }
@@ -346,8 +421,8 @@ async function configureSiteUrl(
     description:
       "additional frontend URLs as a comma-separated list (optional)",
     validate: (input) => {
-      if (input.trim() === "") {
-        return true;
+      if (!input || input.trim() === "") {
+        return undefined;
       }
       for (const candidate of input.split(",").map((url) => url.trim())) {
         if (candidate === "") {
@@ -359,7 +434,7 @@ async function configureSiteUrl(
           return "Each URL must start with http:// or https://";
         }
       }
-      return true;
+      return undefined;
     },
     forcedValue: forcedSecondaryValue,
   });
@@ -375,34 +450,45 @@ async function configureEnvVar(
     name: string;
     default?: string;
     description: string;
-    validate?: (input: string) => true | string;
+    validate?: (input: string | undefined) => string | undefined;
     forcedValue?: string;
   },
 ) {
-  if (
-    variable.forcedValue &&
-    (variable.validate ? variable.validate(variable.forcedValue) : true)
-  ) {
+  if (variable.forcedValue) {
+    if (variable.validate) {
+      const err = variable.validate(variable.forcedValue);
+      if (err) {
+        logErrorAndExit(`Invalid value for ${variable.name}: ${err}`);
+      }
+    }
     if (variable.forcedValue.trim() === "") {
       return;
     }
     await setEnvVar(config, variable.name, variable.forcedValue);
     return;
   }
+
   const existing = backendEnvVar(config, variable.name);
   if (existing !== "") {
-    const shouldChange = await promptForConfirmation(
-      `The ${printDeployment(config)} already has ${variable.name} configured to "${existing}". Do you want to change it?`,
-      { default: false },
-    );
+    const shouldChange = await p.confirm({
+      message: `${variable.name} is already set to "${existing}" on ${printDeployment(config)}. Change it?`,
+      initialValue: false,
+    });
+    handleCancel(shouldChange);
     if (!shouldChange) {
       return;
     }
   }
-  const chosenValue = await promptForInput(`Enter ${variable.description}`, {
-    default: variable.default,
+
+  const rawValue = await p.text({
+    message: `Enter ${variable.description}`,
+    placeholder: variable.default,
+    defaultValue: variable.default,
     validate: variable.validate,
   });
+  handleCancel(rawValue);
+  const chosenValue = rawValue as string;
+
   if (chosenValue.trim() === "") {
     return;
   }
@@ -415,8 +501,12 @@ async function configureEnvVar(
 
 async function configureKeys(config: ProjectConfig) {
   logStep(config, "Configure signing and encryption keys");
+  const s = p.spinner();
+  s.start("Generating keys...");
   const { JWT_PRIVATE_KEY, JWKS, AUTH_SECRET_ENCRYPTION_KEY } =
     await generateKeys();
+  s.stop("Keys generated.");
+
   const existingPrivateKey = backendEnvVar(config, "JWT_PRIVATE_KEY");
   const existingJwks = backendEnvVar(config, "JWKS");
   const existingSecretEncryptionKey = backendEnvVar(
@@ -428,29 +518,31 @@ async function configureKeys(config: ProjectConfig) {
     existingJwks !== "" ||
     existingSecretEncryptionKey !== ""
   ) {
-    const shouldOverwrite = await promptForConfirmation(
-      `The ${printDeployment(config)} already has JWT_PRIVATE_KEY, JWKS, or AUTH_SECRET_ENCRYPTION_KEY configured. Overwrite them?`,
-      { default: false },
-    );
+    const shouldOverwrite = await p.confirm({
+      message: `${printDeployment(config)} already has auth keys configured. Overwrite them?`,
+      initialValue: false,
+    });
+    handleCancel(shouldOverwrite);
     if (!shouldOverwrite) {
       return;
     }
   }
-  // Use --from-file to avoid shell quoting issues with multiline values
+
+  const s2 = p.spinner();
+  s2.start("Setting keys on deployment...");
   await setEnvVarFromFile(config, "JWT_PRIVATE_KEY", JWT_PRIVATE_KEY);
   await setEnvVarFromFile(config, "JWKS", JWKS);
   await setEnvVar(
     config,
     "AUTH_SECRET_ENCRYPTION_KEY",
     AUTH_SECRET_ENCRYPTION_KEY,
-    {
-      hideValue: true,
-    },
+    { hideValue: true },
   );
+  s2.stop("Keys configured.");
 }
 
 // ---------------------------------------------------------------------------
-// Convex env helpers (no shell injection — argument arrays only)
+// Convex env helpers
 // ---------------------------------------------------------------------------
 
 function backendEnvVar(config: ProjectConfig, name: string): string {
@@ -484,14 +576,10 @@ async function setEnvVar(
     stdio: options?.hideValue ? "ignore" : "inherit",
   });
   if (options?.hideValue) {
-    p.log.success(`Successfully set ${name} (on ${printDeployment(config)})`);
+    p.log.success(`Set ${name} on ${printDeployment(config)}`);
   }
 }
 
-/**
- * Write value to a temp file and use `convex env set KEY --from-file tmpfile`.
- * This avoids shell-quoting issues with multiline values like private keys.
- */
 async function setEnvVarFromFile(
   config: ProjectConfig,
   name: string,
@@ -510,7 +598,7 @@ async function setEnvVarFromFile(
       tmpFile,
     );
     execFileSync(file, args, { stdio: "ignore" });
-    p.log.success(`Successfully set ${name} (on ${printDeployment(config)})`);
+    p.log.success(`Set ${name} on ${printDeployment(config)}`);
   } finally {
     try {
       unlinkSync(tmpFile);
@@ -557,10 +645,6 @@ function printDeployment(config: ProjectConfig): string {
 // Step 3: tsconfig
 // ---------------------------------------------------------------------------
 
-// Match `"compilerOptions": {"`
-// ignore comments after the bracket
-// and capture the space between the bracket/last comment
-// and the quote.
 const compilerOptionsPattern =
   /("compilerOptions"\s*:\s*\{(?:\s*(?:\/\*(?:[^*]|\*(?!\/))*\*\/))*(\s*))(?=")/;
 
@@ -603,8 +687,6 @@ async function modifyTsConfig(config: ProjectConfig) {
         p.log.success(`Added ${tsConfigPath}`);
         return;
       }
-      // else assume that the project-level tsconfig already
-      // has the right settings, which is true for Vite and Next.js
     }
     p.log.info(`No ${tsConfigPath} found. Skipping.`);
     return;
@@ -620,22 +702,21 @@ async function modifyTsConfig(config: ProjectConfig) {
     /Bundler/i.test(existingModuleResolution) &&
     existingSkipLibCheck === "true"
   ) {
-    p.log.success(`The ${tsConfigPath} is already set up.`);
+    p.log.success(`${tsConfigPath} is already set up.`);
     return;
   }
 
   if (!compilerOptionsPattern.test(existingTsConfig)) {
     p.log.info(`Modify your ${tsConfigPath} to include the following:`);
-    const source = `\
-  {
-    "compilerOptions": {
-      "moduleResolution": "Bundler",
-      "skipLibCheck": true
+    p.log.message(
+      indent(`\n"moduleResolution": "Bundler",\n"skipLibCheck": true\n`),
+    );
+    const ready = await p.confirm({ message: "Ready to continue?" });
+    handleCancel(ready);
+    if (!ready) {
+      p.cancel("Setup cancelled.");
+      process.exit(1);
     }
-  }
-    `;
-    p.log.message(indent(`\n${source}\n`));
-    await promptForConfirmationOrExit("Ready to continue?");
   }
   const changedTsConfig = addCompilerOption(
     addCompilerOption(
@@ -687,13 +768,18 @@ export default app;
   if (existingConfigPath !== null) {
     const existingConfig = readFileSync(existingConfigPath, "utf8");
     if (doesAlreadyMatchTemplate(existingConfig, sourceTemplate)) {
-      p.log.success(`The ${existingConfigPath} is already set up.`);
+      p.log.success(`${existingConfigPath} is already set up.`);
     } else {
       p.log.info(
-        `You already have a ${existingConfigPath}, make sure it registers the auth component like this:`,
+        `You already have ${existingConfigPath}. Make sure it registers the auth component:`,
       );
       p.log.message(indent(`\n${source}\n`));
-      await promptForConfirmationOrExit("Ready to continue?");
+      const ready = await p.confirm({ message: "Ready to continue?" });
+      handleCancel(ready);
+      if (!ready) {
+        p.cancel("Setup cancelled.");
+        process.exit(1);
+      }
     }
   } else {
     const newConfigPath = config.usesTypeScript
@@ -727,13 +813,18 @@ export const { signIn, signOut, store } = auth;
   if (existingAuthPath !== null) {
     const existingAuth = readFileSync(existingAuthPath, "utf8");
     if (doesAlreadyMatchTemplate(existingAuth, sourceTemplate)) {
-      p.log.success(`The ${existingAuthPath} is already set up.`);
+      p.log.success(`${existingAuthPath} is already set up.`);
     } else {
       p.log.info(
-        `You already have a ${existingAuthPath}, make sure it initializes auth with \`createAuth\` like this:`,
+        `You already have ${existingAuthPath}. Make sure it initializes auth with createAuth:`,
       );
       p.log.message(indent(`\n${source}\n`));
-      await promptForConfirmationOrExit("Ready to continue?");
+      const ready = await p.confirm({ message: "Ready to continue?" });
+      handleCancel(ready);
+      if (!ready) {
+        p.cancel("Setup cancelled.");
+        process.exit(1);
+      }
     }
   } else {
     const newAuthPath = config.usesTypeScript
@@ -745,7 +836,51 @@ export const { signIn, signOut, store } = auth;
 }
 
 // ---------------------------------------------------------------------------
-// Step 6: http.ts
+// Step 5b: auth/core.ts (lightweight context for queries/mutations)
+// ---------------------------------------------------------------------------
+
+async function initializeAuthCore(config: ProjectConfig) {
+  logStep(config, "Initialize auth/core file");
+  const sourceTemplate = `\
+import { createAuthContext } from "@robelest/convex-auth/core";
+import { components } from "../_generated/api";
+
+export const auth = createAuthContext(components.auth);
+`;
+  const source = templateToSource(sourceTemplate);
+  const authDir = path.join(config.convexFolderPath, "auth");
+  const corePath = path.join(authDir, "core");
+  const existingPath = existingNonEmptySourcePath(corePath);
+  if (existingPath !== null) {
+    const existing = readFileSync(existingPath, "utf8");
+    if (doesAlreadyMatchTemplate(existing, sourceTemplate)) {
+      p.log.success(`${existingPath} is already set up.`);
+    } else {
+      p.log.info(
+        `You already have ${existingPath}. Make sure it uses createAuthContext:`,
+      );
+      p.log.message(indent(`\n${source}\n`));
+      const ready = await p.confirm({ message: "Ready to continue?" });
+      handleCancel(ready);
+      if (!ready) {
+        p.cancel("Setup cancelled.");
+        process.exit(1);
+      }
+    }
+  } else {
+    if (!existsSync(authDir)) {
+      mkdirSync(authDir, { recursive: true });
+    }
+    const newPath = config.usesTypeScript
+      ? `${corePath}.ts`
+      : `${corePath}.js`;
+    writeFileSync(newPath, source);
+    p.log.success(`Created ${newPath}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Step 7: http.ts
 // ---------------------------------------------------------------------------
 
 async function configureHttp(config: ProjectConfig) {
@@ -766,13 +901,18 @@ export default http;
   if (existingHttpPath !== null) {
     const existingHttp = readFileSync(existingHttpPath, "utf8");
     if (doesAlreadyMatchTemplate(existingHttp, sourceTemplate)) {
-      p.log.success(`The ${existingHttpPath} is already set up.`);
+      p.log.success(`${existingHttpPath} is already set up.`);
     } else {
       p.log.info(
-        `You already have a ${existingHttpPath}, make sure it includes the call to \`auth.http.add\`:`,
+        `You already have ${existingHttpPath}. Make sure it includes auth.http.add:`,
       );
       p.log.message(indent(`\n${source}\n`));
-      await promptForConfirmationOrExit("Ready to continue?");
+      const ready = await p.confirm({ message: "Ready to continue?" });
+      handleCancel(ready);
+      if (!ready) {
+        p.cancel("Setup cancelled.");
+        process.exit(1);
+      }
     }
   } else {
     const newHttpPath = config.usesTypeScript
@@ -787,22 +927,84 @@ export default http;
 // Extra: --variables
 // ---------------------------------------------------------------------------
 
-const VariablesSchema = Schema.Struct({
-  help: Schema.optional(Schema.String),
-  providers: Schema.Array(
-    Schema.Struct({
-      name: Schema.String,
-      help: Schema.optional(Schema.String),
-      variables: Schema.Array(
-        Schema.Struct({
-          name: Schema.String,
-          description: Schema.String,
-        }),
-      ),
-    }),
-  ),
-  success: Schema.optional(Schema.String),
-});
+type VariableEntry = {
+  name: string;
+  description: string;
+};
+
+type ProviderEntry = {
+  name: string;
+  help?: string;
+  variables: VariableEntry[];
+};
+
+type VariablesConfig = {
+  help?: string;
+  providers: ProviderEntry[];
+  success?: string;
+};
+
+function validateVariablesConfig(value: unknown): VariablesConfig {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Expected an object at the top level.");
+  }
+  const obj = value as Record<string, unknown>;
+
+  if (obj.help !== undefined && typeof obj.help !== "string") {
+    throw new Error("'help' must be a string if present.");
+  }
+  if (obj.success !== undefined && typeof obj.success !== "string") {
+    throw new Error("'success' must be a string if present.");
+  }
+  if (!Array.isArray(obj.providers)) {
+    throw new Error("'providers' must be an array.");
+  }
+
+  const providers: ProviderEntry[] = [];
+  for (const provider of obj.providers) {
+    if (typeof provider !== "object" || provider === null) {
+      throw new Error("Each provider must be an object.");
+    }
+    const prov = provider as Record<string, unknown>;
+    if (typeof prov.name !== "string") {
+      throw new Error("Each provider must have a 'name' string.");
+    }
+    if (prov.help !== undefined && typeof prov.help !== "string") {
+      throw new Error("Provider 'help' must be a string if present.");
+    }
+    if (!Array.isArray(prov.variables)) {
+      throw new Error("Each provider must have a 'variables' array.");
+    }
+    const variables: VariableEntry[] = [];
+    for (const v of prov.variables) {
+      if (typeof v !== "object" || v === null) {
+        throw new Error("Each variable must be an object.");
+      }
+      const variable = v as Record<string, unknown>;
+      if (typeof variable.name !== "string") {
+        throw new Error("Each variable must have a 'name' string.");
+      }
+      if (typeof variable.description !== "string") {
+        throw new Error("Each variable must have a 'description' string.");
+      }
+      variables.push({
+        name: variable.name,
+        description: variable.description,
+      });
+    }
+    providers.push({
+      name: prov.name,
+      help: prov.help as string | undefined,
+      variables,
+    });
+  }
+
+  return {
+    help: obj.help as string | undefined,
+    providers,
+    success: obj.success as string | undefined,
+  };
+}
 
 async function configureOtherVariables(config: ProjectConfig, json: string) {
   let parsed: unknown;
@@ -815,9 +1017,9 @@ async function configureOtherVariables(config: ProjectConfig, json: string) {
     );
   }
 
-  let variables: Schema.Schema.Type<typeof VariablesSchema>;
+  let variables: VariablesConfig;
   try {
-    variables = Schema.decodeUnknownSync(VariablesSchema)(parsed);
+    variables = validateVariablesConfig(parsed);
   } catch (err) {
     logErrorAndExit(
       "The --variables flag has an invalid shape.",
@@ -829,9 +1031,10 @@ async function configureOtherVariables(config: ProjectConfig, json: string) {
     p.log.message(variables.help);
   }
   for (const provider of variables.providers) {
-    const shouldConfigure = await promptForConfirmation(
-      `Do you want to configure ${provider.name}?`,
-    );
+    const shouldConfigure = await p.confirm({
+      message: `Configure ${provider.name}?`,
+    });
+    handleCancel(shouldConfigure);
     if (!shouldConfigure) {
       continue;
     }
@@ -908,7 +1111,6 @@ async function checkSourceControl(options: {
         encoding: "utf-8",
       });
     } catch {
-      // git not available — skip check
       return;
     }
     const changedFiles = gitStatus
@@ -920,20 +1122,32 @@ async function checkSourceControl(options: {
           line.length > 0,
       );
     if (changedFiles.length > 0) {
-      p.log.error(
-        "There are unstaged or uncommitted changes in the working directory. " +
-          "Please commit or stash them before proceeding.",
+      p.log.warn(
+        "There are unstaged or uncommitted changes in the working directory.",
       );
-      await promptForConfirmationOrExit("Continue anyway?", { default: false });
+      const cont = await p.confirm({
+        message: "Continue anyway?",
+        initialValue: false,
+      });
+      handleCancel(cont);
+      if (!cont) {
+        p.cancel("Setup cancelled.");
+        process.exit(1);
+      }
     }
   } else {
     if (options.skipGitCheck) {
       return;
     }
     p.log.warn(
-      "No source control detected. We strongly recommend committing the current state of your code before proceeding.",
+      "No source control detected. We recommend committing your current state first.",
     );
-    await promptForConfirmationOrExit("Continue anyway?");
+    const cont = await p.confirm({ message: "Continue anyway?" });
+    handleCancel(cont);
+    if (!cont) {
+      p.cancel("Setup cancelled.");
+      process.exit(1);
+    }
   }
 }
 
@@ -998,11 +1212,7 @@ export function readConvexDeployment(options: {
   const { adminKey, url, prod, previewName, deploymentName } = options;
 
   if (url) {
-    return {
-      name: url,
-      type: null,
-      options,
-    };
+    return { name: url, type: null, options };
   }
 
   const adminKeyName = adminKey ? deploymentNameFromAdminKey(adminKey) : null;
@@ -1043,9 +1253,6 @@ export function readConvexDeployment(options: {
   );
 }
 
-// NOTE: CONVEX CLI DEP
-// Given a deployment string like "dev:tall-forest-1234"
-// returns only the slug "tall-forest-1234".
 export function stripDeploymentTypePrefix(deployment: string) {
   const [type, name] = deployment.split(":");
   if ((type !== "prod" && type !== "dev" && type !== "preview") || !name) {
@@ -1057,7 +1264,6 @@ export function stripDeploymentTypePrefix(deployment: string) {
   return name;
 }
 
-// NOTE: CONVEX CLI DEP
 function getDeploymentTypeFromConfiguredDeployment(raw: string) {
   const typeRaw = raw.split(":")[0];
   if (typeRaw === "prod" || typeRaw === "dev" || typeRaw === "preview") {
@@ -1069,7 +1275,6 @@ function getDeploymentTypeFromConfiguredDeployment(raw: string) {
   );
 }
 
-// NOTE: CONVEX CLI DEP
 function deploymentNameFromAdminKey(adminKey: string) {
   const parts = adminKey.split("|");
   const hasDeployment = parts.length > 1;
@@ -1078,11 +1283,6 @@ function deploymentNameFromAdminKey(adminKey: string) {
     : null;
 }
 
-// NOTE: CONVEX CLI DEP
-// Examples:
-//  "prod:deploymentName|key" -> "prod"
-//  "preview:deploymentName|key" -> "preview"
-//  "dev:deploymentName|key" -> "dev"
 export function deploymentTypeFromAdminKey(adminKey: string) {
   const type = adminKey.split(":")[0];
   if (type === "prod" || type === "dev" || type === "preview") {
@@ -1094,11 +1294,6 @@ export function deploymentTypeFromAdminKey(adminKey: string) {
   );
 }
 
-// NOTE: CONVEX CLI DEP
-// Needed to differentiate a preview deploy key
-// from a concrete preview deployment's deploy key.
-// preview deploy key: `preview:team:project|key`
-// preview deployment's deploy key: `preview:deploymentName|key`
 export function isPreviewDeployKey(adminKey: string) {
   const parts = adminKey.split("|");
   if (parts.length === 1) {
@@ -1107,144 +1302,6 @@ export function isPreviewDeployKey(adminKey: string) {
   const [prefix] = parts;
   const prefixParts = prefix.split(":");
   return prefixParts[0] === "preview" && prefixParts.length === 3;
-}
-
-// ---------------------------------------------------------------------------
-// Terminal UI helpers
-// ---------------------------------------------------------------------------
-
-const ANSI = {
-  reset: "\u001b[0m",
-  blue: "\u001b[34m",
-  cyan: "\u001b[36m",
-  green: "\u001b[32m",
-  red: "\u001b[31m",
-  yellow: "\u001b[33m",
-} as const;
-
-function formatLabel(label: string, color: string) {
-  return `${color}${label}${ANSI.reset}`;
-}
-
-const p = {
-  intro(message: string) {
-    Effect.runSync(Effect.logInfo(message));
-  },
-  outro(message: string) {
-    Effect.runSync(Effect.logInfo(message));
-  },
-  cancel(message: string) {
-    Effect.runSync(Effect.logError(message));
-  },
-  log: {
-    info(message: string) {
-      Effect.runSync(
-        Effect.logInfo(`${formatLabel("info", ANSI.blue)} ${message}`),
-      );
-    },
-    success(message: string) {
-      Effect.runSync(
-        Effect.logInfo(`${formatLabel("success", ANSI.green)} ${message}`),
-      );
-    },
-    warn(message: string) {
-      Effect.runSync(
-        Effect.logWarning(`${formatLabel("warn", ANSI.yellow)} ${message}`),
-      );
-    },
-    error(message: string) {
-      Effect.runSync(
-        Effect.logError(`${formatLabel("error", ANSI.red)} ${message}`),
-      );
-    },
-    step(message: string) {
-      Effect.runSync(
-        Effect.logInfo(`${formatLabel("step", ANSI.cyan)} ${message}`),
-      );
-    },
-    message(message: string) {
-      Effect.runSync(Effect.logInfo(message));
-    },
-  },
-};
-
-function prompt(question: string) {
-  const readline = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-  return readline.question(question).finally(() => readline.close());
-}
-
-async function promptForConfirmationOrExit(
-  message: string,
-  options: { default?: boolean } = {},
-) {
-  if (!(await promptForConfirmation(message, options))) {
-    p.cancel("Setup cancelled.");
-    process.exit(1);
-  }
-}
-
-async function promptForConfirmation(
-  message: string,
-  options: { default?: boolean } = {},
-): Promise<boolean> {
-  if (process.stdin.isTTY) {
-    const defaultValue = options.default ?? true;
-    const suffix = defaultValue ? " [Y/n] " : " [y/N] ";
-    while (true) {
-      const result = (await prompt(`${message}${suffix}`)).trim().toLowerCase();
-      if (result === "") {
-        return defaultValue;
-      }
-      if (result === "y" || result === "yes") {
-        return true;
-      }
-      if (result === "n" || result === "no") {
-        return false;
-      }
-      p.log.error("Please enter yes or no.");
-    }
-  } else {
-    return options.default ?? true;
-  }
-}
-
-async function promptForInput(
-  message: string,
-  options: {
-    default?: string;
-    validate?: (input: string) => true | string;
-  },
-): Promise<string> {
-  if (process.stdin.isTTY) {
-    const suffix =
-      options.default !== undefined ? ` (${options.default}) ` : " ";
-    while (true) {
-      const result = await prompt(`${message}${suffix}`);
-      const value =
-        result === "" && options.default !== undefined
-          ? options.default
-          : result;
-      if (options.validate) {
-        const check = options.validate(value);
-        if (check !== true) {
-          p.log.error(check);
-          continue;
-        }
-      }
-      return value;
-    }
-  } else {
-    if (options.default !== undefined) {
-      return options.default;
-    } else {
-      logErrorAndExit(
-        "Run this command in an interactive terminal to provide input.",
-      );
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1257,22 +1314,22 @@ function printFinalSuccessMessage(config: ProjectConfig) {
 
   if (isProd) {
     p.log.success(`Production setup complete for ${deploymentName}.`);
-    p.log.message("  Full docs: https://deepwiki.com/robelest/convex-auth");
+    p.note("Full docs: https://auth.estifanos.com");
   } else {
     p.log.success(`Setup complete for ${deploymentName}.`);
-    p.log.message("");
-    p.log.message(
-      "  To set up production, run this command with your production URL:",
+    p.note(
+      [
+        "To set up production, run:",
+        '  npx @robelest/convex-auth --prod --site-url "https://myapp.com"',
+        "",
+        "Don't forget to set provider secrets on production too:",
+        '  npx convex env set --prod AUTH_GITHUB_ID "..."',
+        '  npx convex env set --prod AUTH_GITHUB_SECRET "..."',
+        "",
+        "Full docs: https://auth.estifanos.com",
+      ].join("\n"),
+      "Next steps",
     );
-    p.log.message(
-      '    npx @robelest/convex-auth --prod --site-url "https://myapp.com"',
-    );
-    p.log.message("");
-    p.log.message("  Don't forget to set provider secrets on production too:");
-    p.log.message('    npx convex env set --prod AUTH_GITHUB_ID "..."');
-    p.log.message('    npx convex env set --prod AUTH_GITHUB_SECRET "..."');
-    p.log.message("");
-    p.log.message("  Full docs: https://deepwiki.com/robelest/convex-auth");
   }
 }
 
@@ -1281,7 +1338,7 @@ function printFinalSuccessMessage(config: ProjectConfig) {
 // ---------------------------------------------------------------------------
 
 function logErrorAndExit(message: string, error?: string): never {
-  p.log.error(`${message}${error !== undefined ? `\n  Error: ${error}` : ""}`);
+  p.log.error(`${message}${error !== undefined ? `\n  ${error}` : ""}`);
   process.exit(1);
 }
 

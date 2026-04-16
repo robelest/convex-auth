@@ -1,6 +1,5 @@
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { Infer, v } from "convex/values";
-import { Data, Effect } from "effect";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
@@ -32,24 +31,15 @@ export const verifyCodeAndSignInArgs = v.object({
 type ReturnType = null | SessionInfo;
 
 // ============================================================================
-// Small validators for the verification pipeline
-// ============================================================================
-
-/** A soft verification failure — logged and collapsed to null at the boundary. */
-class VerifyFailure extends Data.TaggedError("VerifyFailure")<{
-  readonly reason: string;
-}> {}
-
-// ============================================================================
 // Main exported function
 // ============================================================================
 
-export function verifyCodeAndSignInImpl(
+export async function verifyCodeAndSignInImpl(
   ctx: MutationCtx,
   args: Infer<typeof verifyCodeAndSignInArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
-): Effect.Effect<ReturnType> {
+): Promise<ReturnType> {
   const params = args.params as SignInParams;
   const { generateTokens, provider, allowExtraProviders } = args;
   const identifier: string | undefined =
@@ -59,29 +49,25 @@ export function verifyCodeAndSignInImpl(
         ? params.phone
         : undefined;
 
-  return Effect.gen(function* () {
-    yield* Effect.sync(() => {
-      log(LOG_LEVELS.DEBUG, "verifyCodeAndSignInImpl args:", {
-        params: { email: params.email, phone: params.phone },
-        provider: args.provider,
-        verifier: args.verifier,
-        generateTokens: args.generateTokens,
-        allowExtraProviders: args.allowExtraProviders,
-      });
-      if (generateTokens) {
-        requireEnv("JWT_PRIVATE_KEY");
-        requireEnv("JWKS");
-        requireEnv("CONVEX_SITE_URL");
-      }
+  try {
+    log(LOG_LEVELS.DEBUG, "verifyCodeAndSignInImpl args:", {
+      params: { email: params.email, phone: params.phone },
+      provider: args.provider,
+      verifier: args.verifier,
+      generateTokens: args.generateTokens,
+      allowExtraProviders: args.allowExtraProviders,
     });
+    if (generateTokens) {
+      requireEnv("JWT_PRIVATE_KEY");
+      requireEnv("JWKS");
+      requireEnv("CONVEX_SITE_URL");
+    }
 
     if (identifier !== undefined) {
-      const limited = yield* isSignInRateLimited(ctx, identifier, config);
+      const limited = await isSignInRateLimited(ctx, identifier, config);
       if (limited) {
-        return yield* Effect.fail(
-          new VerifyFailure({
-            reason: "Too many failed attempts to verify code for this email",
-          }),
+        throw new VerifyFailure(
+          "Too many failed attempts to verify code for this email",
         );
       }
     }
@@ -90,48 +76,32 @@ export function verifyCodeAndSignInImpl(
     const verifier = args.verifier;
     const codeValue = params.code;
     if (typeof codeValue !== "string") {
-      return yield* Effect.fail(
-        new VerifyFailure({ reason: "Invalid verification code" }),
-      );
+      throw new VerifyFailure("Invalid verification code");
     }
-    const hash = yield* Effect.promise(() => sha256(codeValue));
-    const code = yield* Effect.promise(() =>
-      db.verificationCodes.getByCode(hash),
-    );
+    const hash = await sha256(codeValue);
+    const code = await db.verificationCodes.getByCode(hash);
     if (code === null) {
-      return yield* Effect.fail(
-        new VerifyFailure({ reason: "Invalid verification code" }),
-      );
+      throw new VerifyFailure("Invalid verification code");
     }
 
-    yield* Effect.promise(() => db.verificationCodes.delete(code._id));
+    await db.verificationCodes.delete(code._id);
 
     if (code.verifier !== verifier) {
-      return yield* Effect.fail(
-        new VerifyFailure({ reason: "Invalid verifier" }),
-      );
+      throw new VerifyFailure("Invalid verifier");
     }
     if (code.expirationTime < Date.now()) {
-      return yield* Effect.fail(
-        new VerifyFailure({ reason: "Expired verification code" }),
-      );
+      throw new VerifyFailure("Expired verification code");
     }
     if (provider !== undefined && code.provider !== provider) {
-      return yield* Effect.fail(
-        new VerifyFailure({
-          reason: `Invalid provider "${provider}" for given \`code\``,
-        }),
+      throw new VerifyFailure(
+        `Invalid provider "${provider}" for given \`code\``,
       );
     }
 
-    const account = yield* Effect.promise(() =>
-      db.accounts.getById(code.accountId),
-    );
+    const account = await db.accounts.getById(code.accountId);
     if (account === null) {
-      return yield* Effect.fail(
-        new VerifyFailure({
-          reason: "Account associated with this email has been deleted",
-        }),
+      throw new VerifyFailure(
+        "Account associated with this email has been deleted",
       );
     }
 
@@ -144,7 +114,7 @@ export function verifyCodeAndSignInImpl(
       (codeProvider.type === "email" || codeProvider.type === "phone") &&
       codeProvider.authorize !== undefined
     ) {
-      yield* Effect.promise(() => codeProvider.authorize!(params, account));
+      await codeProvider.authorize(params, account);
     }
 
     const methodProvider = isGroupProviderId(account.provider)
@@ -154,8 +124,8 @@ export function verifyCodeAndSignInImpl(
     const userId =
       methodProvider.type === "oauth"
         ? account.userId
-        : (yield* Effect.promise(async () =>
-            upsertUserAndAccount(
+        : (
+            await upsertUserAndAccount(
               ctx,
               await getAuthSessionId(ctx),
               { existingAccount: account },
@@ -172,38 +142,45 @@ export function verifyCodeAndSignInImpl(
                 },
               },
               config,
-            ),
-          )).userId;
+            )
+          ).userId;
 
     if (identifier !== undefined) {
-      yield* resetSignInRateLimit(ctx, identifier, config);
+      await resetSignInRateLimit(ctx, identifier, config);
     }
 
-    const replaceSessionId = yield* Effect.promise(() => getAuthSessionId(ctx));
-    return yield* Effect.promise(() =>
-      issueSession(ctx, config, {
-        userId,
-        replaceSessionId: replaceSessionId ?? undefined,
-        generateTokens,
-      }),
-    );
-  }).pipe(
-    Effect.catchTag("VerifyFailure", (error) =>
-      Effect.gen(function* () {
-        yield* Effect.sync(() => {
-          log(LOG_LEVELS.ERROR, error.reason);
-        });
-        if (identifier !== undefined) {
-          yield* recordFailedSignIn(ctx, identifier, config);
-        }
-        return null;
-      }),
-    ),
-  );
+    const replaceSessionId = await getAuthSessionId(ctx);
+    return await issueSession(ctx, config, {
+      userId,
+      replaceSessionId: replaceSessionId ?? undefined,
+      generateTokens,
+    });
+  } catch (error) {
+    if (error instanceof VerifyFailure) {
+      log(LOG_LEVELS.ERROR, error.reason);
+      if (identifier !== undefined) {
+        await recordFailedSignIn(ctx, identifier, config);
+      }
+      return null;
+    }
+    throw error;
+  }
+}
+
+/** A soft verification failure -- logged and collapsed to null at the boundary. */
+class VerifyFailure extends Error {
+  readonly _tag = "VerifyFailure";
+  readonly reason: string;
+
+  constructor(reason: string) {
+    super(reason);
+    this.reason = reason;
+    this.name = "VerifyFailure";
+  }
 }
 
 // ============================================================================
-// Action-level caller (unchanged — just forwards to mutation)
+// Action-level caller (unchanged -- just forwards to mutation)
 // ============================================================================
 
 export const callVerifyCodeAndSignIn = async <

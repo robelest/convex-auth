@@ -1,5 +1,3 @@
-import { Cause, Effect, Match } from "effect";
-
 export const LOG_LEVELS = {
   ERROR: "ERROR",
   WARN: "WARN",
@@ -30,49 +28,45 @@ export function logMessage(
   configuredLogLevel: LogLevel = "INFO",
 ) {
   const message = args.map(serialize).join(" ");
+  const meta = { module, level };
 
-  return Match.value(level).pipe(
-    Match.when("ERROR", () =>
-      Effect.runSync(
-        Effect.logError(message).pipe(Effect.annotateLogs({ module, level })),
-      ),
-    ),
-    Match.when("WARN", () => {
+  const levelHandlers: Record<LogLevel, () => void> = {
+    ERROR: () => {
+      console.error(`[${meta.module}] [${meta.level}]`, message);
+    },
+    WARN: () => {
       if (configuredLogLevel === "ERROR") {
         return;
       }
-      return Effect.runSync(
-        Effect.logWarning(message).pipe(Effect.annotateLogs({ module, level })),
-      );
-    }),
-    Match.when("INFO", () => {
+      console.warn(`[${meta.module}] [${meta.level}]`, message);
+    },
+    INFO: () => {
       if (configuredLogLevel !== "INFO" && configuredLogLevel !== "DEBUG") {
         return;
       }
-      return Effect.runSync(
-        Effect.logInfo(message).pipe(Effect.annotateLogs({ module, level })),
-      );
-    }),
-    Match.when("DEBUG", () => {
+      console.info(`[${meta.module}] [${meta.level}]`, message);
+    },
+    DEBUG: () => {
       if (configuredLogLevel !== "DEBUG") {
         return;
       }
-      return Effect.runSync(
-        Effect.logDebug(message).pipe(Effect.annotateLogs({ module, level })),
-      );
-    }),
-    Match.exhaustive,
-  );
+      console.debug(`[${meta.module}] [${meta.level}]`, message);
+    },
+  };
+
+  const handler = levelHandlers[level];
+  if (handler) {
+    handler();
+  }
 }
 
 export function logErrorCause(
   module: string,
   message: string,
-  cause: Cause.Cause<unknown>,
+  cause: unknown,
 ) {
-  return Effect.runSync(
-    Effect.logError(`${message} ${serialize(Cause.squash(cause))}`).pipe(
-      Effect.annotateLogs({ module, level: LOG_LEVELS.ERROR }),
-    ),
-  );
+  const causeMessage = cause instanceof Error
+    ? `${cause.message}${cause.stack ? `\n${cause.stack}` : ""}`
+    : serialize(cause);
+  console.error(`[${module}] [${LOG_LEVELS.ERROR}]`, `${message} ${causeMessage}`);
 }

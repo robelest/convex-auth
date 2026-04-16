@@ -1,5 +1,4 @@
 import { ConvexError } from "convex/values";
-import { Effect, Match, Option, pipe } from "effect";
 
 import type {
   AuthProviderMaterializedConfig,
@@ -20,85 +19,70 @@ type CredentialsProviderLike = Extract<
   { type: "credentials" }
 >;
 
-const asCredentialsProvider = (
+function asCredentialsProvider(
   provider: AuthProviderMaterializedConfig,
-): Effect.Effect<CredentialsProviderLike, AuthError> =>
-  Match.value(provider).pipe(
-    Match.when({ type: "credentials" }, (provider) => Effect.succeed(provider)),
-    Match.orElse((provider) =>
-      Effect.fail(
-        credentialsError(
-          "INVALID_CREDENTIALS_PROVIDER",
-          `Provider ${provider.id} is not a credentials provider`,
-        ),
-      ),
-    ),
-  );
+): CredentialsProviderLike {
+  if (provider.type !== "credentials") {
+    throw credentialsError(
+      "INVALID_CREDENTIALS_PROVIDER",
+      `Provider ${provider.id} is not a credentials provider`,
+    );
+  }
+  return provider;
+}
 
 /**
  * Hash a secret using the provider's `crypto.hashSecret` function.
+ * @internal
  */
-/** @internal */
-export const hash = (
+export async function hash(
   provider: AuthProviderMaterializedConfig,
   secret: string,
-): Effect.Effect<string, AuthError> =>
-  Effect.flatMap(asCredentialsProvider(provider), (provider) =>
-    pipe(
-      Option.fromNullishOr(provider.crypto?.hashSecret),
-      Option.match({
-        onNone: () =>
-          Effect.fail(
-            credentialsError(
-              "MISSING_CRYPTO_FUNCTION",
-              `Provider ${provider.id} does not have a \`crypto.hashSecret\` function`,
-            ),
-          ),
-        onSome: (hashSecret) =>
-          Effect.tryPromise({
-            try: () => hashSecret(secret),
-            catch: (error) =>
-              credentialsError(
-                "INTERNAL_ERROR",
-                `Hash failed: ${errorMessage(error)}`,
-              ),
-          }),
-      }),
-    ),
-  );
+): Promise<string> {
+  const credProvider = asCredentialsProvider(provider);
+  const hashSecret = credProvider.crypto?.hashSecret;
+  if (!hashSecret) {
+    throw credentialsError(
+      "MISSING_CRYPTO_FUNCTION",
+      `Provider ${credProvider.id} does not have a \`crypto.hashSecret\` function`,
+    );
+  }
+  try {
+    return await hashSecret(secret);
+  } catch (error) {
+    throw credentialsError(
+      "INTERNAL_ERROR",
+      `Hash failed: ${errorMessage(error)}`,
+    );
+  }
+}
 
 /**
  * Verify a secret against a hash using the provider's `crypto.verifySecret` function.
+ * @internal
  */
-/** @internal */
-export const verify = (
+export async function verify(
   provider: AuthProviderMaterializedConfig,
   secret: string,
   hashValue: string,
-): Effect.Effect<boolean, AuthError> =>
-  Effect.flatMap(asCredentialsProvider(provider), (provider) =>
-    pipe(
-      Option.fromNullishOr(provider.crypto?.verifySecret),
-      Option.match({
-        onNone: () =>
-          Effect.fail(
-            credentialsError(
-              "MISSING_CRYPTO_FUNCTION",
-              `Provider ${provider.id} does not have a \`crypto.verifySecret\` function`,
-            ),
-          ),
-        onSome: (verifySecret) =>
-          Effect.tryPromise({
-            try: () => verifySecret(secret, hashValue),
-            catch: (error) =>
-              credentialsError(
-                "INTERNAL_ERROR",
-                `Verify failed: ${errorMessage(error)}`,
-              ),
-          }),
-      }),
-    ),
-  );
+): Promise<boolean> {
+  const credProvider = asCredentialsProvider(provider);
+  const verifySecret = credProvider.crypto?.verifySecret;
+  if (!verifySecret) {
+    throw credentialsError(
+      "MISSING_CRYPTO_FUNCTION",
+      `Provider ${credProvider.id} does not have a \`crypto.verifySecret\` function`,
+    );
+  }
+  try {
+    return await verifySecret(secret, hashValue);
+  } catch (error) {
+    throw credentialsError(
+      "INTERNAL_ERROR",
+      `Verify failed: ${errorMessage(error)}`,
+    );
+  }
+}
 
 export type GetProviderOrThrowFunc = (
   provider: string,

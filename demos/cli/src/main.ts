@@ -3,11 +3,12 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import * as p from "@clack/prompts";
 import { ConvexHttpClient } from "convex/browser";
 import { config as loadEnvFile } from "dotenv";
-import { Effect, Option } from "effect";
-import { Argument, Command } from "effect/unstable/cli";
+import figlet from "figlet";
+import ansiShadow from "figlet/importable-fonts/ANSI Shadow.js";
+import gradientString from "gradient-string";
 
 import { api } from "../../../convex/_generated/api.js";
 import {
@@ -15,6 +16,29 @@ import {
   readStoredSession,
   writeStoredSession,
 } from "./storage";
+
+// ---------------------------------------------------------------------------
+// Branding
+// ---------------------------------------------------------------------------
+
+figlet.parseFont("ANSI Shadow", ansiShadow);
+
+const gradient = gradientString("purple", "pink", "orange");
+
+function printBanner() {
+  const banner = figlet.textSync("CONVEX-AUTH", {
+    font: "ANSI Shadow",
+    horizontalLayout: "default",
+  });
+  console.log("\n" + gradient(banner));
+  console.log(
+    "  \x1b[35m✦  cli demo — device login & direct convex calls  ✦\x1b[0m\n",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 type DeviceCodeResult = {
   deviceCode: string;
@@ -32,6 +56,10 @@ type SignedInResult = {
     refreshToken?: string;
   } | null;
 };
+
+// ---------------------------------------------------------------------------
+// Env + client setup
+// ---------------------------------------------------------------------------
 
 function loadCliEnv() {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -56,9 +84,10 @@ loadCliEnv();
 function requireConvexUrl() {
   const url = process.env.VITE_CONVEX_URL ?? process.env.CONVEX_URL;
   if (!url) {
-    throw new Error(
+    p.log.error(
       "Set VITE_CONVEX_URL or CONVEX_URL before running the CLI demo.",
     );
+    process.exit(1);
   }
   return url;
 }
@@ -103,64 +132,12 @@ async function applyStoredSession(client: ConvexHttpClient) {
   }
 }
 
-async function startDeviceLogin(client: ConvexHttpClient) {
-  const result = await client.action(api.auth.signIn, {
-    provider: "device",
-  });
-  if (
-    !isRecord(result) ||
-    result.kind !== "deviceCode" ||
-    !isDeviceCodeResult(result.deviceCode)
-  ) {
-    throw new Error("Device sign-in did not return a device code.");
-  }
-  return result.deviceCode;
-}
-
-async function pollDeviceLogin(
-  client: ConvexHttpClient,
-  code: DeviceCodeResult,
-) {
-  const deadline = Date.now() + code.expiresIn * 1000;
-  while (Date.now() < deadline) {
-    await sleep(code.interval * 1000);
-    try {
-      const result = await client.action(api.auth.signIn, {
-        provider: "device",
-        params: {
-          flow: "poll",
-          deviceCode: code.deviceCode,
-        },
-      });
-      if (isSignedInResult(result) && result.tokens) {
-        await writeStoredSession(result.tokens);
-        return;
-      }
-    } catch (error) {
-      if (
-        isRecord(error) &&
-        isRecord(error.data) &&
-        (error.data.code === "DEVICE_AUTHORIZATION_PENDING" ||
-          error.data.code === "DEVICE_SLOW_DOWN")
-      ) {
-        continue;
-      }
-      throw error;
-    }
-  }
-  throw new Error("Device code expired before approval completed.");
-}
-
-async function requireSession() {
+async function refreshSessionIfNeeded(client: ConvexHttpClient) {
   const session = await readStoredSession();
   if (!session) {
-    throw new Error("Not signed in. Run `auth login` first.");
+    p.log.error("Not signed in. Run the login command first.");
+    process.exit(1);
   }
-  return session;
-}
-
-async function refreshSessionIfNeeded(client: ConvexHttpClient) {
-  const session = await requireSession();
   client.setAuth(session.token);
   if (!session.refreshToken) {
     return session;
@@ -176,203 +153,221 @@ async function refreshSessionIfNeeded(client: ConvexHttpClient) {
   return session;
 }
 
-async function doAuthLogin() {
-  const client = createClient();
-  const code = await startDeviceLogin(client);
-  console.log("Open this URL in your browser:");
-  console.log(code.verificationUri);
-  console.log("");
-  console.log("Or use the prefilled URL:");
-  console.log(code.verificationUriComplete);
-  console.log("");
-  console.log(`Enter code: ${code.userCode}`);
-  console.log("Waiting for approval...");
-  await pollDeviceLogin(client, code);
-  console.log("Login complete.");
-}
-
-async function doAuthStatus() {
+async function authedClient() {
   const client = createClient();
   await applyStoredSession(client);
   await refreshSessionIfNeeded(client);
+  return client;
+}
+
+// ---------------------------------------------------------------------------
+// Auth commands
+// ---------------------------------------------------------------------------
+
+async function doAuthLogin() {
+  const client = createClient();
+
+  const s = p.spinner();
+  s.start("Starting device login...");
+  const result = await client.action(api.auth.signIn, {
+    provider: "device",
+  });
+  if (
+    !isRecord(result) ||
+    result.kind !== "deviceCode" ||
+    !isDeviceCodeResult(result.deviceCode)
+  ) {
+    s.stop("Failed.");
+    p.log.error("Device sign-in did not return a device code.");
+    process.exit(1);
+  }
+  const code = result.deviceCode;
+  s.stop("Device code received.");
+
+  p.note(
+    [
+      `Code: ${code.userCode}`,
+      "",
+      `URL:  ${code.verificationUri}`,
+      `Full: ${code.verificationUriComplete}`,
+    ].join("\n"),
+    "Open in your browser",
+  );
+
+  const s2 = p.spinner();
+  s2.start("Waiting for approval...");
+
+  const deadline = Date.now() + code.expiresIn * 1000;
+  while (Date.now() < deadline) {
+    await sleep(code.interval * 1000);
+    try {
+      const pollResult = await client.action(api.auth.signIn, {
+        provider: "device",
+        params: { flow: "poll", deviceCode: code.deviceCode },
+      });
+      if (isSignedInResult(pollResult) && pollResult.tokens) {
+        await writeStoredSession(pollResult.tokens);
+        s2.stop("Approved!");
+        p.log.success("Login complete. Session stored locally.");
+        return;
+      }
+    } catch (error) {
+      if (
+        isRecord(error) &&
+        isRecord(error.data) &&
+        (error.data.code === "DEVICE_AUTHORIZATION_PENDING" ||
+          error.data.code === "DEVICE_SLOW_DOWN")
+      ) {
+        continue;
+      }
+      s2.stop("Failed.");
+      throw error;
+    }
+  }
+  s2.stop("Expired.");
+  p.log.error("Device code expired before approval completed.");
+  process.exit(1);
+}
+
+async function doAuthStatus() {
+  const client = await authedClient();
   const groups = await client.query(api.groups.listMyGroups, {});
-  console.log(JSON.stringify(groups, null, 2));
+  p.log.success(`Signed in. ${groups.length} group(s) visible.`);
+  if (groups.length > 0) {
+    console.log(JSON.stringify(groups, null, 2));
+  }
 }
 
 async function doAuthLogout() {
   await clearStoredSession();
-  console.log("Stored credentials cleared.");
+  p.log.success("Stored credentials cleared.");
 }
 
+// ---------------------------------------------------------------------------
+// Resource commands
+// ---------------------------------------------------------------------------
+
 async function doGroupsList() {
-  const client = createClient();
-  await applyStoredSession(client);
-  await refreshSessionIfNeeded(client);
+  const client = await authedClient();
   const groups = await client.query(api.groups.listMyGroups, {});
   console.log(JSON.stringify(groups, null, 2));
 }
 
-async function doProjectsList(groupId: string) {
-  const client = createClient();
-  await applyStoredSession(client);
-  await refreshSessionIfNeeded(client);
-  const result = await client.query(api.projects.listProjects, {
-    groupId,
+async function doProjectsList() {
+  const client = await authedClient();
+  const groupId = await p.text({
+    message: "Group ID",
+    placeholder: "paste group ID here",
   });
+  if (p.isCancel(groupId)) process.exit(0);
+  const result = await client.query(api.projects.listProjects, { groupId });
   console.log(JSON.stringify(result, null, 2));
 }
 
-async function doProjectsCreate(
-  groupId: string,
-  name: string,
-  identifier: string,
-  description?: string,
-) {
-  const client = createClient();
-  await applyStoredSession(client);
-  await refreshSessionIfNeeded(client);
+async function doProjectsCreate() {
+  const client = await authedClient();
+  const group = await p.group({
+    groupId: () => p.text({ message: "Group ID" }),
+    name: () => p.text({ message: "Project name" }),
+    identifier: () => p.text({ message: "Project identifier" }),
+    description: () =>
+      p.text({ message: "Description (optional)", defaultValue: "" }),
+  });
+  if (p.isCancel(group)) process.exit(0);
   const result = await client.mutation(api.projects.createProjectByString, {
-    groupId,
-    name,
-    identifier,
-    ...(description ? { description } : {}),
+    groupId: group.groupId,
+    name: group.name,
+    identifier: group.identifier,
+    ...(group.description ? { description: group.description } : {}),
   });
+  p.log.success("Project created.");
   console.log(JSON.stringify(result, null, 2));
 }
 
-async function doIssuesList(projectId: string) {
-  const client = createClient();
-  await applyStoredSession(client);
-  await refreshSessionIfNeeded(client);
+async function doIssuesList() {
+  const client = await authedClient();
+  const projectId = await p.text({
+    message: "Project ID",
+    placeholder: "paste project ID here",
+  });
+  if (p.isCancel(projectId)) process.exit(0);
   const result = await client.query(api.issues.projectIssuesByString, {
     projectId,
   });
   console.log(JSON.stringify(result, null, 2));
 }
 
-async function doIssuesCreate(
-  projectId: string,
-  title: string,
-  description?: string,
-) {
-  const client = createClient();
-  await applyStoredSession(client);
-  await refreshSessionIfNeeded(client);
-  const result = await client.mutation(api.issues.createIssueByString, {
-    projectId,
-    title,
-    ...(description ? { description } : {}),
+async function doIssuesCreate() {
+  const client = await authedClient();
+  const issue = await p.group({
+    projectId: () => p.text({ message: "Project ID" }),
+    title: () => p.text({ message: "Issue title" }),
+    description: () =>
+      p.text({ message: "Description (optional)", defaultValue: "" }),
   });
+  if (p.isCancel(issue)) process.exit(0);
+  const result = await client.mutation(api.issues.createIssueByString, {
+    projectId: issue.projectId,
+    title: issue.title,
+    ...(issue.description ? { description: issue.description } : {}),
+  });
+  p.log.success("Issue created.");
   console.log(JSON.stringify(result, null, 2));
 }
 
-const authLogin = Command.make("login", {}, () =>
-  Effect.tryPromise(doAuthLogin),
-).pipe(
-  Command.withDescription(
-    "Authenticate with device flow and store session tokens locally.",
-  ),
-);
+// ---------------------------------------------------------------------------
+// Interactive menu
+// ---------------------------------------------------------------------------
 
-const authStatus = Command.make("status", {}, () =>
-  Effect.tryPromise(doAuthStatus),
-).pipe(Command.withDescription("Show groups visible to the current session."));
+async function run() {
+  printBanner();
+  p.intro("convex-auth demo cli");
 
-const authLogout = Command.make("logout", {}, () =>
-  Effect.tryPromise(doAuthLogout),
-).pipe(Command.withDescription("Remove locally stored session tokens."));
+  const action = await p.select({
+    message: "What would you like to do?",
+    options: [
+      { value: "auth:login", label: "Login", hint: "device code flow" },
+      { value: "auth:status", label: "Status", hint: "check current session" },
+      { value: "auth:logout", label: "Logout", hint: "clear stored tokens" },
+      { value: "groups:list", label: "List groups" },
+      { value: "projects:list", label: "List projects" },
+      { value: "projects:create", label: "Create project" },
+      { value: "issues:list", label: "List issues" },
+      { value: "issues:create", label: "Create issue" },
+    ],
+  });
 
-const authCommand = Command.make("auth").pipe(
-  Command.withSubcommands([authLogin, authStatus, authLogout]),
-  Command.withDescription("Authentication commands."),
-);
+  if (p.isCancel(action)) {
+    p.cancel("Bye!");
+    process.exit(0);
+  }
 
-const groupsList = Command.make("list", {}, () =>
-  Effect.tryPromise(doGroupsList),
-).pipe(
-  Command.withDescription("List groups available to the current session."),
-);
+  const handlers = new Map<string, () => Promise<void>>([
+    ["auth:login", doAuthLogin],
+    ["auth:status", doAuthStatus],
+    ["auth:logout", doAuthLogout],
+    ["groups:list", doGroupsList],
+    ["projects:list", doProjectsList],
+    ["projects:create", doProjectsCreate],
+    ["issues:list", doIssuesList],
+    ["issues:create", doIssuesCreate],
+  ]);
 
-const groupsCommand = Command.make("groups").pipe(
-  Command.withSubcommands([groupsList]),
-  Command.withDescription("Group discovery commands."),
-);
+  const handler = handlers.get(action);
+  if (!handler) {
+    p.log.error(`Unknown action: ${action}`);
+    process.exit(1);
+  }
+  await handler();
 
-const projectsList = Command.make(
-  "list",
-  { group: Argument.string("group") },
-  ({ group }) => Effect.tryPromise(() => doProjectsList(group)),
-).pipe(Command.withDescription("List projects for a group ID."));
+  p.outro("Done!");
+}
 
-const projectsCreate = Command.make(
-  "create",
-  {
-    group: Argument.string("group"),
-    name: Argument.string("name"),
-    identifier: Argument.string("identifier"),
-    description: Argument.string("description").pipe(Argument.optional),
-  },
-  ({ group, name, identifier, description }) =>
-    Effect.tryPromise(() =>
-      doProjectsCreate(
-        group,
-        name,
-        identifier,
-        Option.isSome(description) ? description.value : undefined,
-      ),
-    ),
-).pipe(Command.withDescription("Create a project in a group."));
-
-const projectsCommand = Command.make("projects").pipe(
-  Command.withSubcommands([projectsList, projectsCreate]),
-  Command.withDescription("Project commands."),
-);
-
-const issuesList = Command.make(
-  "list",
-  { project: Argument.string("project") },
-  ({ project }) => Effect.tryPromise(() => doIssuesList(project)),
-).pipe(Command.withDescription("List issues for a project ID."));
-
-const issuesCreate = Command.make(
-  "create",
-  {
-    project: Argument.string("project"),
-    title: Argument.string("title"),
-    description: Argument.string("description").pipe(Argument.optional),
-  },
-  ({ project, title, description }) =>
-    Effect.tryPromise(() =>
-      doIssuesCreate(
-        project,
-        title,
-        Option.isSome(description) ? description.value : undefined,
-      ),
-    ),
-).pipe(Command.withDescription("Create an issue in a project."));
-
-const issuesCommand = Command.make("issues").pipe(
-  Command.withSubcommands([issuesList, issuesCreate]),
-  Command.withDescription("Issue commands using direct Convex functions."),
-);
-
-const rootCommand = Command.make("convex-auth-demo").pipe(
-  Command.withSubcommands([
-    authCommand,
-    groupsCommand,
-    projectsCommand,
-    issuesCommand,
-  ]),
-  Command.withDescription(
-    "CLI demo for convex-auth using device login and direct Convex calls.",
-  ),
-);
-
-const runCli = Command.run(rootCommand, { version: "0.0.1" });
-
-export function runCliMain(argv = process.argv) {
-  process.argv = argv;
-  return runCli.pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain);
+export function runCliMain() {
+  run().catch((err) => {
+    p.log.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
 }
 
 runCliMain();

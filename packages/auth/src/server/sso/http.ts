@@ -5,7 +5,6 @@ import type {
 } from "convex/server";
 import { ConvexError } from "convex/values";
 import { serialize as serializeCookie } from "cookie";
-import { Effect, Match } from "effect";
 
 import { configDefaults } from "../config";
 import {
@@ -636,165 +635,147 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
     ctx: GenericActionCtx<GenericDataModel>,
     request: Request,
     runtimeRoute: SSORuntimeRoute,
-  ) =>
-    Effect.runPromise(
-      Effect.gen(function* () {
-        if (
-          runtimeRoute.protocol !== "saml" ||
-          runtimeRoute.rest.length !== 1 ||
-          runtimeRoute.rest[0] !== "acs"
-        ) {
-          return yield* Effect.fail(
-            convexError(
-              "INVALID_PARAMETERS",
-              "Invalid connection runtime path.",
-            ),
-          );
+  ) => {
+    if (
+      runtimeRoute.protocol !== "saml" ||
+      runtimeRoute.rest.length !== 1 ||
+      runtimeRoute.rest[0] !== "acs"
+    ) {
+      throw convexError(
+        "INVALID_PARAMETERS",
+        "Invalid connection runtime path.",
+      );
+    }
+
+    const connectionId = runtimeRoute.connectionId;
+    const loadedConnection = await loadActiveConnectionSamlOrThrow(ctx, connectionId);
+    const { loaded, connection, saml } = loadedConnection;
+
+    let parsedResponse;
+    try {
+      parsedResponse = await parseGroupConnectionSamlLoginResponse({
+        request,
+        rootUrl: requireEnv("CONVEX_SITE_URL"),
+        source: { kind: "connection", id: connection._id },
+        config: loaded.config,
+      });
+    } catch (error) {
+      throw convexError(
+        "OAUTH_PROVIDER_ERROR",
+        `SAML response parse failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    try {
+      enforceGroupConnectionSamlSecurity({
+        extract: parsedResponse.parsed.extract,
+        config: loaded.config,
+      });
+    } catch (error) {
+      throw convexError(
+        "OAUTH_PROVIDER_ERROR",
+        error instanceof Error
+          ? error.message
+          : "SAML assertion failed security validation.",
+      );
+    }
+
+    try {
+      validateGroupConnectionSamlLoginRelayState({
+        relayState: parsedResponse.relayState,
+        source: { kind: "connection", id: connection._id },
+        inResponseTo:
+          parsedResponse.parsed.extract?.response?.inResponseTo,
+      });
+    } catch {
+      throw convexError(
+        "OAUTH_INVALID_STATE",
+        "SAML RelayState did not match the pending login request.",
+      );
+    }
+
+    const { samlAttributes, samlSessionIndex, ...userProfile } =
+      profileFromSamlExtract(
+        parsedResponse.parsed.extract,
+        ((saml.profile as Record<string, unknown> | undefined)?.mapping ??
+          {}) as Record<string, string> | undefined,
+      );
+    const profile = userProfile as Record<string, unknown> & {
+      id: string;
+    };
+    const extraFields =
+      typeof saml.profile === "object" && saml.profile !== null
+        ? ((saml.profile as Record<string, unknown>).extraFields as
+            | Record<string, string>
+            | undefined)
+        : undefined;
+    if (extraFields) {
+      const extend: Record<string, unknown> = {};
+      for (const [fieldName, attributeName] of Object.entries(
+        extraFields,
+      )) {
+        const value = samlAttributes[attributeName];
+        if (value !== undefined) {
+          extend[fieldName] = value;
         }
+      }
+      if (Object.keys(extend).length > 0) {
+        profile.extend = extend;
+      }
+    }
 
-        const connectionId = runtimeRoute.connectionId;
-        const loadedConnection = (yield* Effect.tryPromise({
-          try: () => loadActiveConnectionSamlOrThrow(ctx, connectionId),
-          catch: (error) => error,
-        })) as Awaited<ReturnType<typeof loadActiveConnectionSamlOrThrow>>;
-        const { loaded, connection, saml } = loadedConnection;
-
-        const parsedResponse = yield* Effect.tryPromise({
-          try: () =>
-            parseGroupConnectionSamlLoginResponse({
-              request,
-              rootUrl: requireEnv("CONVEX_SITE_URL"),
-              source: { kind: "connection", id: connection._id },
-              config: loaded.config,
-            }),
-          catch: (error) =>
-            convexError(
-              "OAUTH_PROVIDER_ERROR",
-              `SAML response parse failed: ${error instanceof Error ? error.message : String(error)}`,
-            ),
-        });
-
-        yield* Effect.try({
-          try: () =>
-            enforceGroupConnectionSamlSecurity({
-              extract: parsedResponse.parsed.extract,
-              config: loaded.config,
-            }),
-          catch: (error) =>
-            convexError(
-              "OAUTH_PROVIDER_ERROR",
-              error instanceof Error
-                ? error.message
-                : "SAML assertion failed security validation.",
-            ),
-        });
-
-        yield* Effect.try({
-          try: () =>
-            validateGroupConnectionSamlLoginRelayState({
-              relayState: parsedResponse.relayState,
-              source: { kind: "connection", id: connection._id },
-              inResponseTo:
-                parsedResponse.parsed.extract?.response?.inResponseTo,
-            }),
-          catch: () =>
-            convexError(
-              "OAUTH_INVALID_STATE",
-              "SAML RelayState did not match the pending login request.",
-            ),
-        });
-
-        const { samlAttributes, samlSessionIndex, ...userProfile } =
-          profileFromSamlExtract(
-            parsedResponse.parsed.extract,
-            ((saml.profile as Record<string, unknown> | undefined)?.mapping ??
-              {}) as Record<string, string> | undefined,
-          );
-        const profile = userProfile as Record<string, unknown> & {
-          id: string;
-        };
-        const extraFields =
-          typeof saml.profile === "object" && saml.profile !== null
-            ? ((saml.profile as Record<string, unknown>).extraFields as
-                | Record<string, string>
-                | undefined)
-            : undefined;
-        if (extraFields) {
-          const extend: Record<string, unknown> = {};
-          for (const [fieldName, attributeName] of Object.entries(
-            extraFields,
-          )) {
-            const value = samlAttributes[attributeName];
-            if (value !== undefined) {
-              extend[fieldName] = value;
-            }
-          }
-          if (Object.keys(extend).length > 0) {
-            profile.extend = extend;
-          }
-        }
-
-        const maybeRedirectTo = useRedirectToParam(
-          groupSamlProviderId(connection._id),
-          getCookies(request),
-        );
-
-        const verificationCode = (yield* Effect.tryPromise({
-          try: () =>
-            callUserOAuth(ctx, {
-              provider: groupSamlProviderId(connection._id),
-              providerAccountId: profile.id,
-              profile: profile as AuthProfile,
-              signature: parsedResponse.relayState.signature,
-              accountExtend: {
-                identity: {
-                  protocol: "saml",
-                  connectionId: connection._id,
-                  subject: profile.id,
-                  entityId:
-                    typeof saml.entityId === "string"
-                      ? saml.entityId
-                      : undefined,
-                },
-                saml: {
-                  attributes: samlAttributes as Record<
-                    string,
-                    string | string[]
-                  >,
-                  sessionIndex: samlSessionIndex,
-                },
-              },
-            }),
-          catch: (error) => error,
-        })) as string;
-
-        const destinationUrl = (yield* Effect.tryPromise({
-          try: () =>
-            redirectAbsoluteUrl(config, {
-              redirectTo:
-                maybeRedirectTo?.redirectTo ??
-                (typeof parsedResponse.relayState.redirectTo === "string"
-                  ? parsedResponse.relayState.redirectTo
-                  : undefined),
-            }),
-          catch: (error) => error,
-        })) as string;
-
-        const vurl = setURLSearchParam(
-          destinationUrl,
-          "code",
-          verificationCode,
-        );
-        const vheaders = new Headers({ Location: vurl });
-        vheaders.set("Cache-Control", "must-revalidate");
-        for (const { name, value, options } of maybeRedirectTo !== null
-          ? [maybeRedirectTo.updatedCookie]
-          : []) {
-          vheaders.append("Set-Cookie", serializeCookie(name, value, options));
-        }
-        return new Response(null, { status: 302, headers: vheaders });
-      }),
+    const maybeRedirectTo = useRedirectToParam(
+      groupSamlProviderId(connection._id),
+      getCookies(request),
     );
+
+    const verificationCode = await callUserOAuth(ctx, {
+      provider: groupSamlProviderId(connection._id),
+      providerAccountId: profile.id,
+      profile: profile as AuthProfile,
+      signature: parsedResponse.relayState.signature,
+      accountExtend: {
+        identity: {
+          protocol: "saml",
+          connectionId: connection._id,
+          subject: profile.id,
+          entityId:
+            typeof saml.entityId === "string"
+              ? saml.entityId
+              : undefined,
+        },
+        saml: {
+          attributes: samlAttributes as Record<
+            string,
+            string | string[]
+          >,
+          sessionIndex: samlSessionIndex,
+        },
+      },
+    });
+
+    const destinationUrl = await redirectAbsoluteUrl(config, {
+      redirectTo:
+        maybeRedirectTo?.redirectTo ??
+        (typeof parsedResponse.relayState.redirectTo === "string"
+          ? parsedResponse.relayState.redirectTo
+          : undefined),
+    });
+
+    const vurl = setURLSearchParam(
+      destinationUrl,
+      "code",
+      verificationCode,
+    );
+    const vheaders = new Headers({ Location: vurl });
+    vheaders.set("Cache-Control", "must-revalidate");
+    for (const { name, value, options } of maybeRedirectTo !== null
+      ? [maybeRedirectTo.updatedCookie]
+      : []) {
+      vheaders.append("Set-Cookie", serializeCookie(name, value, options));
+    }
+    return new Response(null, { status: 302, headers: vheaders });
+  };
 
   const handleSamlSlo = async (
     ctx: GenericActionCtx<GenericDataModel>,
@@ -822,40 +803,36 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
       source: { kind: "connection", id: connection._id },
       config: loaded.config,
     });
-    return Match.value(parsedMessage).pipe(
-      Match.when({ hasSamlRequest: true }, (parsedMessage) => {
-        if (!parsedMessage.parsedRequest) {
-          throw convexError(
-            "INVALID_PARAMETERS",
-            "Missing SAML logout payload.",
-          );
-        }
-        const responseContext = parsedMessage.runtime.sp.createLogoutResponse(
-          parsedMessage.runtime.idp,
-          parsedMessage.parsedRequest.extract,
-          parsedMessage.binding,
-          parsedMessage.relayState ?? "",
-        ) as unknown as LogoutResponseContext;
-        return parsedMessage.binding === "redirect"
-          ? new Response(null, {
-              status: 302,
-              headers: { Location: responseContext.context },
-            })
-          : createSamlPostBindingResponse({
-              endpoint: responseContext.entityEndpoint,
-              parameter: "SAMLResponse",
-              value: responseContext.context,
-              relayState: parsedMessage.relayState,
-            });
-      }),
-      Match.when(
-        { hasSamlResponse: true },
-        () => new Response(null, { status: 204 }),
-      ),
-      Match.orElse(() => {
-        throw convexError("INVALID_PARAMETERS", "Missing SAML logout payload.");
-      }),
-    );
+    if (parsedMessage.hasSamlRequest) {
+      if (!parsedMessage.parsedRequest) {
+        throw convexError(
+          "INVALID_PARAMETERS",
+          "Missing SAML logout payload.",
+        );
+      }
+      const responseContext = parsedMessage.runtime.sp.createLogoutResponse(
+        parsedMessage.runtime.idp,
+        parsedMessage.parsedRequest.extract,
+        parsedMessage.binding,
+        parsedMessage.relayState ?? "",
+      ) as unknown as LogoutResponseContext;
+      if (parsedMessage.binding === "redirect") {
+        return new Response(null, {
+          status: 302,
+          headers: { Location: responseContext.context },
+        });
+      }
+      return createSamlPostBindingResponse({
+        endpoint: responseContext.entityEndpoint,
+        parameter: "SAMLResponse",
+        value: responseContext.context,
+        relayState: parsedMessage.relayState,
+      });
+    } else if (parsedMessage.hasSamlResponse) {
+      return new Response(null, { status: 204 });
+    } else {
+      throw convexError("INVALID_PARAMETERS", "Missing SAML logout payload.");
+    }
   };
 
   const handleScimRequest = async (
@@ -1867,13 +1844,11 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
     const destinationUrl = await redirectAbsoluteUrl(config, {
       redirectTo: maybeRedirectTo?.redirectTo,
     });
-    const result = await Effect.runPromise(
-      handleOAuthCallback(
-        providerId,
-        { ...oauthConfig, provider },
-        Object.fromEntries(url.searchParams.entries()),
-        cookies,
-      ),
+    const result = await handleOAuthCallback(
+      providerId,
+      { ...oauthConfig, provider },
+      Object.fromEntries(url.searchParams.entries()),
+      cookies,
     );
     const extraFields =
       typeof oidc.profile === "object" && oidc.profile !== null

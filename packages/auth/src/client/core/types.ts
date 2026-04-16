@@ -1,6 +1,5 @@
 import type { FunctionReference } from "convex/server";
 import type { ConvexError, Value } from "convex/values";
-import type * as Deferred from "effect/Deferred";
 
 /**
  * Structural interface for any Convex client.
@@ -556,9 +555,28 @@ export type AuthFlowContext = {
   flow: string;
 };
 
+/**
+ * A simple deferred promise that can be resolved or rejected externally.
+ */
+export interface SimpleDeferred<T, E = unknown> {
+  readonly promise: Promise<T>;
+  resolve(value: T): void;
+  reject(error: E): void;
+}
+
+export function createDeferred<T, E = unknown>(): SimpleDeferred<T, E> {
+  let resolve!: (value: T) => void;
+  let reject!: (error: E) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej as (error: E) => void;
+  });
+  return { promise, resolve, reject };
+}
+
 export type HandshakeWaiter = {
   epoch: number;
   context: AuthFlowContext;
-  deferred: Deferred.Deferred<void, ConvexError<Value>>;
+  deferred: SimpleDeferred<void, ConvexError<Value>>;
   timeoutId: ReturnType<typeof setTimeout>;
 };

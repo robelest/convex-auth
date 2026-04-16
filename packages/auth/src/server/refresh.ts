@@ -1,8 +1,6 @@
 import { ConvexError, GenericId } from "convex/values";
-import { Effect } from "effect";
 
 import { envOptionalNumber, readConfigSync } from "./env";
-import type { AuthErrorData } from "./errors";
 import { maybeRedact } from "./log";
 import type { ConvexAuthConfig } from "./types";
 
@@ -24,22 +22,17 @@ export const refreshTokenExpirationTime = (
 /** @internal */
 export const parseRefreshToken = (
   refreshToken: string,
-): Effect.Effect<
-  {
-    refreshTokenId: GenericId<"RefreshToken">;
-    sessionId: GenericId<"Session">;
-  },
-  ConvexError<AuthErrorData>
-> => {
+): {
+  refreshTokenId: GenericId<"RefreshToken">;
+  sessionId: GenericId<"Session">;
+} => {
   const [refreshTokenId, sessionId] = refreshToken.split(REFRESH_TOKEN_DIVIDER);
   const message = `Can't parse refresh token: ${maybeRedact(refreshToken)}`;
   if (refreshTokenId == null || sessionId == null) {
-    return Effect.fail(
-      new ConvexError({ code: "INVALID_REFRESH_TOKEN", message }),
-    );
+    throw new ConvexError({ code: "INVALID_REFRESH_TOKEN", message });
   }
-  return Effect.succeed({
+  return {
     refreshTokenId: refreshTokenId as GenericId<"RefreshToken">,
     sessionId: sessionId as GenericId<"Session">,
-  });
+  };
 };

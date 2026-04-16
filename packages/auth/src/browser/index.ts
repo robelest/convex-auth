@@ -9,7 +9,6 @@
  */
 
 import { ConvexHttpClient } from "convex/browser";
-import { Layer } from "effect";
 
 import {
   client as createClient,
@@ -64,23 +63,21 @@ export function client<
       : undefined;
   const runtime = mergeBrowserRuntime(options.runtime);
 
-  const services = resolveClientServices(
-    Layer.mergeAll(
-      ClientRuntimeLive(runtime),
-      ClientAdaptersLive(options.adapters ?? {}),
-      ClientAdapterFactoriesLive({
-        ...options.adapterFactories,
-        passkey:
-          options.adapterFactories?.passkey ??
-          ((deps) => createPasskeyClient(deps)),
-      }),
-      ClientHttpLive(
-        options.proxyPath !== undefined
-          ? null
-          : (options.httpClient ?? (url ? new ConvexHttpClient(url) : null)),
-      ),
+  const services = resolveClientServices({
+    runtime: ClientRuntimeLive(runtime),
+    adapters: ClientAdaptersLive(options.adapters ?? {}),
+    adapterFactories: ClientAdapterFactoriesLive({
+      ...options.adapterFactories,
+      passkey:
+        options.adapterFactories?.passkey ??
+        ((deps) => createPasskeyClient(deps)),
+    }),
+    http: ClientHttpLive(
+      options.proxyPath !== undefined
+        ? null
+        : (options.httpClient ?? (url ? new ConvexHttpClient(url) : null)),
     ),
-  );
+  });
 
   return createClient({
     ...options,

@@ -5,7 +5,6 @@ import {
 } from "@robelest/convex-auth/server";
 import { ConvexHttpClient } from "convex/browser";
 import { ConvexError } from "convex/values";
-import { Effect } from "effect";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
 import {
@@ -180,15 +179,13 @@ test("OAuth callback rejects PKCE provider when verifier cookie is missing", asy
   expect(stateCookie).toBeDefined();
 
   await expect(
-    Effect.runPromise(
-      handleOAuthCallback(
-        "google",
-        { provider },
-        { state: stateCookie!.value, code: "oauth-code" },
-        {
-          [stateCookie!.name]: stateCookie!.value,
-        },
-      ),
+    handleOAuthCallback(
+      "google",
+      { provider },
+      { state: stateCookie!.value, code: "oauth-code" },
+      {
+        [stateCookie!.name]: stateCookie!.value,
+      },
     ),
   ).rejects.toSatisfy((error: unknown) => {
     return (

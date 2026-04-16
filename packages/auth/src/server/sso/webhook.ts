@@ -1,6 +1,6 @@
-import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError } from "convex/values";
 
+import type { ComponentCtx, ComponentReadCtx } from "../componentContext";
 import {
   createWebhookEndpoint,
   getWebhookEndpoint,
@@ -11,13 +11,6 @@ import {
   updateWebhookEndpoint,
 } from "../contract";
 import type { ConvexAuthMaterializedConfig } from "../types";
-
-type ComponentCtx = Pick<
-  GenericActionCtx<GenericDataModel>,
-  "runQuery" | "runMutation"
->;
-
-type ComponentReadCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
 
 type WebhookDeps = {
   config: ConvexAuthMaterializedConfig;

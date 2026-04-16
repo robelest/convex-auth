@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { auth } from "./auth";
+import { auth } from "./auth/core";
 import { roles } from "./roles";
 
 export const userSummary = v.object({

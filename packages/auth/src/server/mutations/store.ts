@@ -1,5 +1,4 @@
 import { Infer, v } from "convex/values";
-import { Cause, Effect, Exit, Match } from "effect";
 
 import { LOG_LEVELS } from "../log";
 import { log } from "../log";
@@ -86,49 +85,66 @@ export const storeImpl = async (
   const getProviderOrThrow = services.providerRegistry.getProviderOrThrow;
   log(LOG_LEVELS.DEBUG, `\`auth:store\` type: ${args.type}`);
 
-  const program = Match.value(args).pipe(
-    Match.when({ type: "signIn" }, (args) =>
-      Effect.promise(() => signInImpl(ctx, args, config)),
-    ),
-    Match.when({ type: "signOut" }, () => signOutImpl(ctx, config)),
-    Match.when({ type: "refreshSession" }, (args) =>
-      services.refresh.refresh(ctx, args),
-    ),
-    Match.when({ type: "verifyCodeAndSignIn" }, (args) =>
-      verifyCodeAndSignInImpl(ctx, args, getProviderOrThrow, config),
-    ),
-    Match.when({ type: "verifier" }, (args) => verifierImpl(ctx, args, config)),
-    Match.when({ type: "verifierSignature" }, (args) =>
-      verifierSignatureImpl(ctx, args, config),
-    ),
-    Match.when({ type: "userOAuth" }, (args) =>
-      userOAuthImpl(ctx, args, getProviderOrThrow, config),
-    ),
-    Match.when({ type: "createVerificationCode" }, (args) =>
-      Effect.promise(() =>
-        createVerificationCodeImpl(ctx, args, getProviderOrThrow, config),
+  const handlers: Record<string, (a: typeof args) => Promise<unknown>> = {
+    signIn: (a) => signInImpl(ctx, a as Infer<typeof signInArgs> & { type: string }, config),
+    signOut: () => signOutImpl(ctx, config),
+    refreshSession: (a) => services.refresh.refresh(ctx, a as Infer<typeof refreshSessionArgs> & { type: string }),
+    verifyCodeAndSignIn: (a) =>
+      verifyCodeAndSignInImpl(
+        ctx,
+        a as Infer<typeof verifyCodeAndSignInArgs> & { type: string },
+        getProviderOrThrow,
+        config,
       ),
-    ),
-    Match.when({ type: "createAccountFromCredentials" }, (args) =>
-      createAccountFromCredentialsImpl(ctx, args, getProviderOrThrow, config),
-    ),
-    Match.when({ type: "retrieveAccountWithCredentials" }, (args) =>
-      retrieveAccountWithCredentialsImpl(ctx, args, getProviderOrThrow, config),
-    ),
-    Match.when({ type: "modifyAccount" }, (args) =>
-      modifyAccountImpl(ctx, args, getProviderOrThrow, config),
-    ),
-    Match.when({ type: "invalidateSessions" }, (args) =>
-      invalidateSessionsImpl(ctx, args, config),
-    ),
-    Match.exhaustive,
-  );
+    verifier: (a) => verifierImpl(ctx, a as Infer<typeof verifierArgs> & { type: string }, config),
+    verifierSignature: (a) =>
+      verifierSignatureImpl(ctx, a as Infer<typeof verifierSignatureArgs> & { type: string }, config),
+    userOAuth: (a) =>
+      userOAuthImpl(
+        ctx,
+        a as Infer<typeof userOAuthArgs> & { type: string },
+        getProviderOrThrow,
+        config,
+      ),
+    createVerificationCode: (a) =>
+      createVerificationCodeImpl(
+        ctx,
+        a as Infer<typeof createVerificationCodeArgs> & { type: string },
+        getProviderOrThrow,
+        config,
+      ),
+    createAccountFromCredentials: (a) =>
+      createAccountFromCredentialsImpl(
+        ctx,
+        a as Infer<typeof createAccountFromCredentialsArgs> & { type: string },
+        getProviderOrThrow,
+        config,
+      ),
+    retrieveAccountWithCredentials: (a) =>
+      retrieveAccountWithCredentialsImpl(
+        ctx,
+        a as Infer<typeof retrieveAccountWithCredentialsArgs> & { type: string },
+        getProviderOrThrow,
+        config,
+      ),
+    modifyAccount: (a) =>
+      modifyAccountImpl(
+        ctx,
+        a as Infer<typeof modifyAccountArgs> & { type: string },
+        getProviderOrThrow,
+        config,
+      ),
+    invalidateSessions: (a) =>
+      invalidateSessionsImpl(
+        ctx,
+        a as Infer<typeof invalidateSessionsArgs> & { type: string },
+        config,
+      ),
+  };
 
-  const exit = await Effect.runPromiseExit(program);
-  return Exit.match(exit, {
-    onSuccess: (value) => value,
-    onFailure: (cause) => {
-      throw Cause.squash(cause);
-    },
-  });
+  const handler = handlers[args.type];
+  if (!handler) {
+    throw new Error(`Unknown store type: "${args.type}"`);
+  }
+  return await handler(args);
 };

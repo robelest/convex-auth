@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: 22.14.0
+          cache: true
+          run-install: |
+            args: ['--frozen-lockfile']
+
+      - name: Start self-hosted Convex backend for codegen
+        run: |
+          docker compose \
+            --env-file tests/infra/docker/test.env \
+            -f tests/infra/docker/compose.yml \
+            --profile interop \
+            up -d --wait backend
+
+          ADMIN_KEY="$({ \
+            docker compose \
+              --env-file tests/infra/docker/test.env \
+              -f tests/infra/docker/compose.yml \
+              exec -T backend /convex/generate_admin_key.sh; \
+          } | grep -o 'convex-self-hosted|[A-Za-z0-9]\+' | tail -n1)"
+
+          if [ -z "$ADMIN_KEY" ]; then
+            echo "Failed to generate self-hosted Convex admin key" >&2
+            exit 1
+          fi
+
+          {
+            echo "CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210"
+            echo "CONVEX_SELF_HOSTED_ADMIN_KEY=$ADMIN_KEY"
+          } >> "$GITHUB_ENV"
+
+      - name: Build package prerequisites
+        run: |
+          vp run '@robelest/samlify#build'
+          vp run '@robelest/convex-auth#build'
+
+      - name: Run lint
+        run: vp run lint
+
+      - name: Stop self-hosted Convex backend
+        if: always()
+        run: |
+          docker compose \
+            --env-file tests/infra/docker/test.env \
+            -f tests/infra/docker/compose.yml \
+            down -v
+
+  unit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: 22.14.0
+          cache: true
+          run-install: |
+            args: ['--frozen-lockfile']
+
+      - name: Build package prerequisites
+        run: vp run '@robelest/samlify#build'
+
+      - name: Run unit and node test projects
+        run: vp test --run --project convex --project node --project samlify
+
+  interop:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: 22.14.0
+          cache: true
+          run-install: |
+            args: ['--frozen-lockfile']
+
+      - name: Run Docker interop test project
+        run: vp test --run --project interop
+
+  publish:
+    needs: [lint, unit, interop]
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: 22.14.0
+          cache: true
+          run-install: |
+            args: ['--frozen-lockfile']
+
+      - name: Build package prerequisites
+        run: |
+          vp run '@robelest/samlify#build'
+          vp run '@robelest/convex-auth#build'
+
+      - name: Run package publish checks
+        run: |
+          vp run '@robelest/convex-auth#typecheck:consumer'
+          vp run '@robelest/convex-auth#check:packaging'
+
+      - name: Publish package
+        working-directory: packages/auth
+        run: vp exec npm publish
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

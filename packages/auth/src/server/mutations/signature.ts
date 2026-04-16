@@ -1,6 +1,5 @@
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError, GenericId, Infer, v } from "convex/values";
-import { Effect, Option, pipe } from "effect";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
@@ -14,33 +13,30 @@ export const verifierSignatureArgs = v.object({
 
 type ReturnType = void;
 
-export function verifierSignatureImpl(
+export async function verifierSignatureImpl(
   ctx: MutationCtx,
   args: Infer<typeof verifierSignatureArgs>,
   config: Provider.Config,
-): Effect.Effect<ReturnType, ConvexError<{ code: string; message: string }>> {
+): Promise<ReturnType> {
   const { verifier, signature } = args;
   const db = authDb(ctx, config);
   const invalidVerifierError = new ConvexError({
     code: "INVALID_VERIFIER",
     message: "Invalid or expired verifier.",
   });
-  return Effect.gen(function* () {
-    const verifierDoc = yield* Effect.tryPromise({
-      try: () => db.verifiers.getById(verifier as GenericId<"AuthVerifier">),
-      catch: () => invalidVerifierError,
-    });
-    const existingVerifier = yield* pipe(
-      Option.fromNullishOr(verifierDoc),
-      Option.match({
-        onNone: () => Effect.fail(invalidVerifierError),
-        onSome: (verifierDoc) => Effect.succeed(verifierDoc),
-      }),
-    );
-    yield* Effect.promise(() =>
-      db.verifiers.patch(existingVerifier._id, { signature }),
-    );
-  });
+
+  let verifierDoc;
+  try {
+    verifierDoc = await db.verifiers.getById(verifier as GenericId<"AuthVerifier">);
+  } catch {
+    throw invalidVerifierError;
+  }
+
+  if (verifierDoc == null) {
+    throw invalidVerifierError;
+  }
+
+  await db.verifiers.patch(verifierDoc._id, { signature });
 }
 
 export const callVerifierSignature = async <DataModel extends GenericDataModel>(

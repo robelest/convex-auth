@@ -1,9 +1,13 @@
-import { Data } from "effect";
-
-export class AuthFlowError extends Data.TaggedError("AuthFlowError")<{
+export class AuthFlowError extends Error {
+  readonly _tag = "AuthFlowError";
   readonly code: string;
-  readonly message: string;
-}> {}
+
+  constructor({ code, message }: { readonly code: string; readonly message: string }) {
+    super(message);
+    this.code = code;
+    this.name = "AuthFlowError";
+  }
+}
 
 /** @internal */
 export const authFlowError = (code: string, message: string) =>

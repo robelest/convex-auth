@@ -1,12 +1,9 @@
-import type { GenericActionCtx, GenericDataModel } from "convex/server";
-
+import type {
+  ComponentCtx as ComponentWriteCtx,
+  ComponentReadCtx,
+} from "./componentContext";
 import type { ConvexAuthMaterializedConfig } from "./types";
 
-type ComponentReadCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
-type ComponentWriteCtx = Pick<
-  GenericActionCtx<GenericDataModel>,
-  "runQuery" | "runMutation"
->;
 type ComponentPublic = ConvexAuthMaterializedConfig["component"]["public"];
 type UntypedRunQuery = <TArgs extends Record<string, unknown>, TResult>(
   ref: unknown,

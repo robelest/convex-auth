@@ -9,7 +9,6 @@ import { ConvexError } from "convex/values";
 import type { Value } from "convex/values";
 import { v } from "convex/values";
 import { serialize as serializeCookie } from "cookie";
-import { Effect, Match } from "effect";
 
 import { redirectToParamCookie, useRedirectToParam } from "./cookies";
 import { createCoreDomains } from "./core";
@@ -335,81 +334,70 @@ export function Auth(config_: ConvexAuthConfig) {
               });
             }
 
-            return Effect.runPromise(
-              Effect.gen(function* () {
-                const oauthConfig = provider as OAuthMaterializedConfig;
-                const result = yield* handleOAuthCallback(
-                  providerId,
-                  oauthConfig,
-                  Object.fromEntries(params.entries()),
-                  cookies,
-                );
-                const oauthCookies = result.cookies;
-                const { id: profileId, ...profileData } = result.profile;
-                const { signature } = result;
+            try {
+              const oauthConfig = provider as OAuthMaterializedConfig;
+              const result = await handleOAuthCallback(
+                providerId,
+                oauthConfig,
+                Object.fromEntries(params.entries()),
+                cookies,
+              );
+              const oauthCookies = result.cookies;
+              const { id: profileId, ...profileData } = result.profile;
+              const { signature } = result;
 
-                const verificationCode = yield* Effect.promise(() =>
-                  callUserOAuth(ctx, {
-                    provider: providerId,
-                    providerAccountId: profileId,
-                    profile: profileData as AuthProfile,
-                    signature,
-                  }),
-                );
+              const verificationCode = await callUserOAuth(ctx, {
+                provider: providerId,
+                providerAccountId: profileId,
+                profile: profileData as AuthProfile,
+                signature,
+              });
 
-                return Effect.sync(() => {
-                  const redirUrl = setURLSearchParam(
-                    destinationUrl,
-                    "code",
-                    verificationCode,
-                  );
-                  const redirHeaders = new Headers({ Location: redirUrl });
-                  redirHeaders.set("Cache-Control", "must-revalidate");
-                  for (const { name, value, options } of [
-                    ...oauthCookies,
-                    ...(maybeRedirectTo !== null
-                      ? [maybeRedirectTo.updatedCookie]
-                      : []),
-                  ] as Array<{
-                    name: string;
-                    value: string;
-                    options: Parameters<typeof serializeCookie>[2];
-                  }>) {
-                    redirHeaders.append(
-                      "Set-Cookie",
-                      serializeCookie(name, value, options),
-                    );
-                  }
-                  return new Response(null, {
-                    status: 302,
-                    headers: redirHeaders,
-                  });
-                });
-              }).pipe(
-                Effect.flatten,
-                Effect.catch((error) =>
-                  Effect.sync(() => {
-                    logError(error);
-                    const respHeaders = new Headers({
-                      Location: destinationUrl,
-                    });
-                    for (const { name, value, options } of maybeRedirectTo !==
-                    null
-                      ? [maybeRedirectTo.updatedCookie]
-                      : []) {
-                      respHeaders.append(
-                        "Set-Cookie",
-                        serializeCookie(name, value, options),
-                      );
-                    }
-                    return new Response(null, {
-                      status: 302,
-                      headers: respHeaders,
-                    });
-                  }),
-                ),
-              ),
-            );
+              const redirUrl = setURLSearchParam(
+                destinationUrl,
+                "code",
+                verificationCode,
+              );
+              const redirHeaders = new Headers({ Location: redirUrl });
+              redirHeaders.set("Cache-Control", "must-revalidate");
+              for (const { name, value, options } of [
+                ...oauthCookies,
+                ...(maybeRedirectTo !== null
+                  ? [maybeRedirectTo.updatedCookie]
+                  : []),
+              ] as Array<{
+                name: string;
+                value: string;
+                options: Parameters<typeof serializeCookie>[2];
+              }>) {
+                redirHeaders.append(
+                  "Set-Cookie",
+                  serializeCookie(name, value, options),
+                );
+              }
+              return new Response(null, {
+                status: 302,
+                headers: redirHeaders,
+              });
+            } catch (error) {
+              logError(error);
+              const respHeaders = new Headers({
+                Location: destinationUrl,
+              });
+              for (const { name, value, options } of maybeRedirectTo !==
+              null
+                ? [maybeRedirectTo.updatedCookie]
+                : []) {
+                respHeaders.append(
+                  "Set-Cookie",
+                  serializeCookie(name, value, options),
+                );
+              }
+              return new Response(null, {
+                status: 302,
+                headers: respHeaders,
+              });
+            }
           },
         });
       }
@@ -560,31 +548,31 @@ export function Auth(config_: ConvexAuthConfig) {
             resolveSsoProtocol: group.resolveGroupConnectionSsoProtocolOrThrow,
           },
         );
-        return Match.value(result).pipe(
-          Match.when({ kind: "redirect" }, (r) => ({
+        const resultMap: Record<string, (r: any) => SignInActionResult> = {
+          redirect: (r) => ({
             kind: "redirect" as const,
             redirect: r.redirect,
             verifier: r.verifier,
-          })),
-          Match.when({ kind: "signedIn" }, (r) => ({
+          }),
+          signedIn: (r) => ({
             kind: "signedIn" as const,
             tokens: r.signedIn?.tokens ?? null,
-          })),
-          Match.when({ kind: "refreshTokens" }, (r) => ({
+          }),
+          refreshTokens: (r) => ({
             kind: "signedIn" as const,
             tokens: r.signedIn?.tokens ?? null,
-          })),
-          Match.when({ kind: "started" }, () => ({ kind: "started" as const })),
-          Match.when({ kind: "passkeyOptions" }, (r) => ({
+          }),
+          started: () => ({ kind: "started" as const }),
+          passkeyOptions: (r) => ({
             kind: "passkeyOptions" as const,
             options: r.options,
             verifier: r.verifier,
-          })),
-          Match.when({ kind: "totpRequired" }, (r) => ({
+          }),
+          totpRequired: (r) => ({
             kind: "totpRequired" as const,
             verifier: r.verifier,
-          })),
-          Match.when({ kind: "totpSetup" }, (r) => ({
+          }),
+          totpSetup: (r) => ({
             kind: "totpSetup" as const,
             totpSetup: {
               uri: r.uri,
@@ -592,8 +580,8 @@ export function Auth(config_: ConvexAuthConfig) {
               totpId: r.totpId,
             },
             verifier: r.verifier,
-          })),
-          Match.when({ kind: "deviceCode" }, (r) => ({
+          }),
+          deviceCode: (r) => ({
             kind: "deviceCode" as const,
             deviceCode: {
               deviceCode: r.deviceCode,
@@ -603,9 +591,13 @@ export function Auth(config_: ConvexAuthConfig) {
               expiresIn: r.expiresIn,
               interval: r.interval,
             },
-          })),
-          Match.exhaustive,
-        );
+          }),
+        };
+        const handler = resultMap[result.kind];
+        if (!handler) {
+          throw new Error(`Unexpected sign-in result kind: ${result.kind}`);
+        }
+        return handler(result);
       },
     }),
     /**

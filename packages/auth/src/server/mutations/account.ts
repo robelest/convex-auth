@@ -1,6 +1,5 @@
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError, Infer, v } from "convex/values";
-import { Effect, Match } from "effect";
 
 import { GetProviderOrThrowFunc, hash } from "../crypto";
 import * as Provider from "../crypto";
@@ -15,12 +14,12 @@ export const modifyAccountArgs = v.object({
   account: v.object({ id: v.string(), secret: v.string() }),
 });
 
-export function modifyAccountImpl(
+export async function modifyAccountImpl(
   ctx: MutationCtx,
   args: Infer<typeof modifyAccountArgs>,
   getProviderOrThrow: GetProviderOrThrowFunc,
   config: Provider.Config,
-): Effect.Effect<void, ConvexError<AuthErrorData>> {
+): Promise<void> {
   const { provider, account } = args;
   const db = authDb(ctx, config);
 
@@ -29,31 +28,19 @@ export function modifyAccountImpl(
     account: { id: account.id, secret: maybeRedact(account.secret ?? "") },
   });
 
-  return Effect.flatMap(
-    Effect.promise(() => db.accounts.get(provider, account.id)),
-    (existingAccount) =>
-      Match.value(existingAccount).pipe(
-        Match.when(null, () =>
-          Effect.fail(
-            new ConvexError({
-              code: "ACCOUNT_NOT_FOUND",
-              message: `Cannot modify account with ID ${account.id} because it does not exist`,
-            }),
-          ),
-        ),
-        Match.orElse((existingAccount) =>
-          Effect.flatMap(
-            hash(getProviderOrThrow(provider), account.secret),
-            (hashedSecret) =>
-              Effect.promise(() =>
-                db.accounts.patch(existingAccount._id, {
-                  secret: hashedSecret,
-                }),
-              ),
-          ),
-        ),
-      ),
-  );
+  const existingAccount = await db.accounts.get(provider, account.id);
+
+  if (existingAccount === null) {
+    throw new ConvexError<AuthErrorData>({
+      code: "ACCOUNT_NOT_FOUND",
+      message: `Cannot modify account with ID ${account.id} because it does not exist`,
+    });
+  }
+
+  const hashedSecret = await hash(getProviderOrThrow(provider), account.secret);
+  await db.accounts.patch(existingAccount._id, {
+    secret: hashedSecret,
+  });
 }
 
 export const callModifyAccount = async <DataModel extends GenericDataModel>(

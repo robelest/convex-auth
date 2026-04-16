@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 
-import { auth } from "./auth";
+import { auth } from "./auth/core";
 import { authMutation, authQuery } from "./functions";
 import { commentSummary, getUserSummary } from "./shared";
 

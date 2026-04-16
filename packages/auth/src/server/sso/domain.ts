@@ -1,6 +1,8 @@
 import { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError } from "convex/values";
-import { Effect, Schedule } from "effect";
+
+import type { ComponentCtx, ComponentReadCtx } from "../componentContext";
+import { retryWithBackoff } from "../utils/retry";
 
 import {
   addConnectionDomain,
@@ -117,12 +119,6 @@ type DomainSamlConfig = {
   };
 };
 
-type ComponentCtx = Pick<
-  GenericActionCtx<GenericDataModel>,
-  "runQuery" | "runMutation"
->;
-type ComponentReadCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
-
 type DomainDeps = {
   config: ConvexAuthMaterializedConfig & { extraProviders?: unknown[] };
   connectionNotFoundError: string;
@@ -184,34 +180,7 @@ type DomainDeps = {
 
 type SsoErrorData = { code: string; message: string };
 
-const NETWORK_RETRY_SCHEDULE = Schedule.both(
-  Schedule.jittered(Schedule.exponential("200 millis")),
-  Schedule.recurs(2),
-);
-
 const convexError = (data: SsoErrorData) => new ConvexError(data);
-
-const toSsoError = (error: unknown): unknown =>
-  error instanceof ConvexError
-    ? error
-    : typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        "message" in error
-      ? convexError(error as SsoErrorData)
-      : error;
-
-const tryPromise = <A>(options: {
-  try: () => Promise<A> | A;
-  catch: (error: unknown) => SsoErrorData | ConvexError<SsoErrorData>;
-}) =>
-  Effect.tryPromise({
-    try: async () => options.try(),
-    catch: (error) => toSsoError(options.catch(error)),
-  });
-
-const runSsoBoundary = <A, E>(effect: Effect.Effect<A, E, never>) =>
-  Effect.runPromise(effect);
 
 /**
  * Build the connection and SSO management domain.
@@ -907,7 +876,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(
       },
     },
     saml: {
-      configure: <DataModel extends GenericDataModel>(
+      configure: async <DataModel extends GenericDataModel>(
         ctx: GenericActionCtx<DataModel>,
         data: {
           connectionId: string;
@@ -956,354 +925,330 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(
           };
         },
       ) => {
-        return runSsoBoundary(
-          Effect.gen(function* () {
-            const connection = yield* tryPromise({
-              try: () =>
-                getGroupConnection(
-                  ctx,
-                  config.component.public,
-                  data.connectionId,
-                ),
-              catch: () => ({
-                code: "INTERNAL_ERROR",
-                message: "Failed to load connection.",
-              }),
-            }).pipe(
-              Effect.flatMap((connection) =>
-                connection === null
-                  ? Effect.fail(
-                      convexError({
-                        code: "INVALID_PARAMETERS",
-                        message: connectionNotFoundError,
-                      }),
-                    )
-                  : Effect.succeed(connection),
-              ),
-            );
-            if (connection.protocol !== "saml") {
-              return yield* Effect.fail(
-                convexError({
-                  code: "INVALID_PARAMETERS",
-                  message: "This connection is not a SAML connection.",
-                }),
-              );
-            }
-            const metadataUrl =
-              typeof data.metadata.url === "string" &&
-              data.metadata.url.length > 0
-                ? data.metadata.url
-                : undefined;
-            const metadataXml = metadataUrl
-              ? yield* tryPromise({
-                  try: async () => {
-                    const response = await fetch(metadataUrl, {
-                      signal: AbortSignal.timeout(10_000),
-                    });
-                    if (!response.ok) {
-                      throw new Error(
-                        `Failed to fetch SAML metadata: ${response.status}`,
-                      );
-                    }
-                    return await response.text();
-                  },
-                  catch: (error) => ({
-                    code: "INVALID_PARAMETERS",
-                    message:
-                      error instanceof Error
-                        ? error.message
-                        : "Failed to fetch SAML metadata",
-                  }),
-                }).pipe(Effect.retry({ schedule: NETWORK_RETRY_SCHEDULE }))
-              : data.metadata.xml
-                ? data.metadata.xml
-                : yield* Effect.fail(
-                    convexError({
-                      code: "INVALID_PARAMETERS",
-                      message:
-                        "SAML registration requires metadataXml or metadataUrl.",
-                    }),
-                  );
-
-            const parsed = yield* tryPromise({
-              try: () =>
-                parseSamlIdpMetadataChecked({
-                  metadataXml,
-                  config: { protocols: { saml: { security: data.security } } },
-                }),
-              catch: (error) => ({
-                code: "INVALID_PARAMETERS",
-                message:
-                  error instanceof Error
-                    ? `Failed to parse SAML metadata: ${error.message}`
-                    : "Failed to parse SAML metadata.",
-              }),
-            });
-            log("DEBUG", "[group-sso] saml:configure:parsed", {
-              connectionId: data.connectionId,
-              metadataUrl,
-              entityId: parsed.entityId,
-              issuer: parsed.issuer,
-            });
-
-            const baseConfig = upsertProtocolConfig(connection.config, "saml", {
-              enabled: true,
-              idp: {
-                metadataUrl,
-                metadataXml,
-                ...parsed,
-              },
-              serviceProvider: data.serviceProvider,
-              request: {
-                signAuthnRequests:
-                  data.request?.signAuthnRequests ??
-                  parsed.wantsSignedAuthnRequests,
-                nameIdFormat: data.request?.nameIdFormat,
-                forceAuthn: data.request?.forceAuthn,
-                authnContextClassRefs: data.request?.authnContextClassRefs,
-              },
-              profile: {
-                mapping: data.profile?.mapping,
-                extraFields: data.profile?.extraFields,
-              },
-              security: data.security,
-            });
-            const normalizedDomains = data.domains?.map(normalizeDomain);
-            const nextConfig = normalizedDomains
-              ? { ...baseConfig, domains: normalizedDomains }
-              : baseConfig;
-            const nextSamlConfig =
-              (nextConfig.protocols?.saml as DomainSamlConfig | undefined) ??
-              undefined;
-            log("DEBUG", "[group-sso] saml:configure:nextConfig", {
-              connectionId: data.connectionId,
-              entityId: nextSamlConfig?.idp?.entityId ?? null,
-              issuer: nextSamlConfig?.idp?.issuer ?? null,
-              metadataUrl: nextSamlConfig?.idp?.metadataUrl ?? null,
-              hasMetadataXml:
-                typeof nextSamlConfig?.idp?.metadataXml === "string",
-            });
-
-            yield* tryPromise({
-              try: () =>
-                updateGroupConnection(ctx, config.component.public, {
-                  connectionId: connection._id,
-                  data: {
-                    status: "active",
-                    config: nextConfig,
-                  },
-                }),
-              catch: () => ({
-                code: "INTERNAL_ERROR",
-                message: "Failed to persist SAML registration.",
-              }),
-            });
-
-            if (normalizedDomains) {
-              for (const [index, domain] of normalizedDomains.entries()) {
-                yield* tryPromise({
-                  try: () =>
-                    addConnectionDomain(ctx, config.component.public, {
-                      connectionId: connection._id,
-                      groupId: connection.groupId,
-                      domain,
-                      isPrimary: index === 0,
-                    }),
-                  catch: () => ({
-                    code: "INTERNAL_ERROR",
-                    message: "Failed to persist connection domain.",
-                  }),
-                });
+        let connection;
+        try {
+          connection = await getGroupConnection(
+            ctx,
+            config.component.public,
+            data.connectionId,
+          );
+        } catch {
+          throw convexError({
+            code: "INTERNAL_ERROR",
+            message: "Failed to load connection.",
+          });
+        }
+        if (connection === null) {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message: connectionNotFoundError,
+          });
+        }
+        if (connection.protocol !== "saml") {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message: "This connection is not a SAML connection.",
+          });
+        }
+        const metadataUrl =
+          typeof data.metadata.url === "string" &&
+          data.metadata.url.length > 0
+            ? data.metadata.url
+            : undefined;
+        let metadataXml: string;
+        if (metadataUrl) {
+          try {
+            metadataXml = await retryWithBackoff(async () => {
+              const response = await fetch(metadataUrl, {
+                signal: AbortSignal.timeout(10_000),
+              });
+              if (!response.ok) {
+                throw new Error(
+                  `Failed to fetch SAML metadata: ${response.status}`,
+                );
               }
-            }
-
-            yield* tryPromise({
-              try: () =>
-                recordGroupAuditEvent(ctx, {
-                  connectionId: connection._id,
-                  groupId: connection.groupId,
-                  eventType: "group.sso.saml.registered",
-                  actorType: "system",
-                  subjectType: "group_connection_saml",
-                  subjectId: connection._id,
-                  ok: true,
-                  metadata: {
-                    metadataUrl: metadataUrl,
-                    domains: normalizedDomains,
-                  },
-                }),
-              catch: () => ({
-                code: "INTERNAL_ERROR",
-                message: "Failed to record SAML registration audit event.",
-              }),
+              return await response.text();
             });
+          } catch (error) {
+            throw convexError({
+              code: "INVALID_PARAMETERS",
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Failed to fetch SAML metadata",
+            });
+          }
+        } else if (data.metadata.xml) {
+          metadataXml = data.metadata.xml;
+        } else {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message:
+              "SAML registration requires metadataXml or metadataUrl.",
+          });
+        }
 
-            return {
-              connectionId: connection._id,
-              groupId: connection.groupId,
-            };
-          }),
-        );
-      },
-      refresh: (ctx: ComponentCtx, data: { connectionId: string }) => {
-        return runSsoBoundary(
-          Effect.gen(function* () {
-            const connection = yield* tryPromise({
-              try: () =>
-                getGroupConnection(
-                  ctx,
-                  config.component.public,
-                  data.connectionId,
-                ),
-              catch: () => ({
+        let parsed;
+        try {
+          parsed = parseSamlIdpMetadataChecked({
+            metadataXml,
+            config: { protocols: { saml: { security: data.security } } },
+          });
+        } catch (error) {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message:
+              error instanceof Error
+                ? `Failed to parse SAML metadata: ${error.message}`
+                : "Failed to parse SAML metadata.",
+          });
+        }
+        log("DEBUG", "[group-sso] saml:configure:parsed", {
+          connectionId: data.connectionId,
+          metadataUrl,
+          entityId: parsed.entityId,
+          issuer: parsed.issuer,
+        });
+
+        const baseConfig = upsertProtocolConfig(connection.config, "saml", {
+          enabled: true,
+          idp: {
+            metadataUrl,
+            metadataXml,
+            ...parsed,
+          },
+          serviceProvider: data.serviceProvider,
+          request: {
+            signAuthnRequests:
+              data.request?.signAuthnRequests ??
+              parsed.wantsSignedAuthnRequests,
+            nameIdFormat: data.request?.nameIdFormat,
+            forceAuthn: data.request?.forceAuthn,
+            authnContextClassRefs: data.request?.authnContextClassRefs,
+          },
+          profile: {
+            mapping: data.profile?.mapping,
+            extraFields: data.profile?.extraFields,
+          },
+          security: data.security,
+        });
+        const normalizedDomains = data.domains?.map(normalizeDomain);
+        const nextConfig = normalizedDomains
+          ? { ...baseConfig, domains: normalizedDomains }
+          : baseConfig;
+        const nextSamlConfig =
+          (nextConfig.protocols?.saml as DomainSamlConfig | undefined) ??
+          undefined;
+        log("DEBUG", "[group-sso] saml:configure:nextConfig", {
+          connectionId: data.connectionId,
+          entityId: nextSamlConfig?.idp?.entityId ?? null,
+          issuer: nextSamlConfig?.idp?.issuer ?? null,
+          metadataUrl: nextSamlConfig?.idp?.metadataUrl ?? null,
+          hasMetadataXml:
+            typeof nextSamlConfig?.idp?.metadataXml === "string",
+        });
+
+        try {
+          await updateGroupConnection(ctx, config.component.public, {
+            connectionId: connection._id,
+            data: {
+              status: "active",
+              config: nextConfig,
+            },
+          });
+        } catch {
+          throw convexError({
+            code: "INTERNAL_ERROR",
+            message: "Failed to persist SAML registration.",
+          });
+        }
+
+        if (normalizedDomains) {
+          for (const [index, domain] of normalizedDomains.entries()) {
+            try {
+              await addConnectionDomain(ctx, config.component.public, {
+                connectionId: connection._id,
+                groupId: connection.groupId,
+                domain,
+                isPrimary: index === 0,
+              });
+            } catch {
+              throw convexError({
                 code: "INTERNAL_ERROR",
-                message: "Failed to load connection.",
-              }),
-            }).pipe(
-              Effect.flatMap((connection) =>
-                connection === null
-                  ? Effect.fail(
-                      convexError({
-                        code: "INVALID_PARAMETERS",
-                        message: connectionNotFoundError,
-                      }),
-                    )
-                  : Effect.succeed(connection),
-              ),
-            );
-            const samlConfig = (
-              connection.config as { protocols?: { saml?: DomainSamlConfig } }
-            )?.protocols?.saml;
-            if (connection.protocol !== "saml") {
-              return yield* Effect.fail(
-                convexError({
-                  code: "INVALID_PARAMETERS",
-                  message: "This connection is not a SAML connection.",
-                }),
+                message: "Failed to persist connection domain.",
+              });
+            }
+          }
+        }
+
+        try {
+          await recordGroupAuditEvent(ctx, {
+            connectionId: connection._id,
+            groupId: connection.groupId,
+            eventType: "group.sso.saml.registered",
+            actorType: "system",
+            subjectType: "group_connection_saml",
+            subjectId: connection._id,
+            ok: true,
+            metadata: {
+              metadataUrl: metadataUrl,
+              domains: normalizedDomains,
+            },
+          });
+        } catch {
+          throw convexError({
+            code: "INTERNAL_ERROR",
+            message: "Failed to record SAML registration audit event.",
+          });
+        }
+
+        return {
+          connectionId: connection._id,
+          groupId: connection.groupId,
+        };
+      },
+      refresh: async (ctx: ComponentCtx, data: { connectionId: string }) => {
+        let connection;
+        try {
+          connection = await getGroupConnection(
+            ctx,
+            config.component.public,
+            data.connectionId,
+          );
+        } catch {
+          throw convexError({
+            code: "INTERNAL_ERROR",
+            message: "Failed to load connection.",
+          });
+        }
+        if (connection === null) {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message: connectionNotFoundError,
+          });
+        }
+        const samlConfig = (
+          connection.config as { protocols?: { saml?: DomainSamlConfig } }
+        )?.protocols?.saml;
+        if (connection.protocol !== "saml") {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message: "This connection is not a SAML connection.",
+          });
+        }
+        if (typeof samlConfig?.idp?.metadataUrl !== "string") {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message: "SAML metadataUrl is not configured.",
+          });
+        }
+        const metadataUrl = samlConfig.idp.metadataUrl;
+        let metadataXml: string;
+        try {
+          metadataXml = await retryWithBackoff(async () => {
+            const response = await fetch(metadataUrl, {
+              signal: AbortSignal.timeout(10_000),
+            });
+            if (!response.ok) {
+              throw new Error(
+                `Failed to fetch SAML metadata: ${response.status}`,
               );
             }
-            if (typeof samlConfig?.idp?.metadataUrl !== "string") {
-              return yield* Effect.fail(
-                convexError({
-                  code: "INVALID_PARAMETERS",
-                  message: "SAML metadataUrl is not configured.",
-                }),
-              );
-            }
-            const metadataUrl = samlConfig.idp.metadataUrl;
-            const response = yield* tryPromise({
-              try: async () => {
-                const response = await fetch(metadataUrl, {
-                  signal: AbortSignal.timeout(10_000),
-                });
-                if (!response.ok) {
-                  throw new Error(
-                    `Failed to fetch SAML metadata: ${response.status}`,
-                  );
-                }
-                return await response.text();
-              },
-              catch: (error) => ({
-                code: "INVALID_PARAMETERS",
-                message:
-                  error instanceof Error
-                    ? error.message
-                    : "Failed to fetch SAML metadata",
-              }),
-            }).pipe(Effect.retry({ schedule: NETWORK_RETRY_SCHEDULE }));
-            const parsed = yield* tryPromise({
-              try: () =>
-                parseSamlIdpMetadataChecked({
-                  metadataXml: response,
-                  config: connection.config,
-                }),
-              catch: (error) => ({
-                code: "INVALID_PARAMETERS",
-                message:
-                  error instanceof Error
-                    ? `Failed to parse SAML metadata: ${error.message}`
-                    : "Failed to parse SAML metadata.",
-              }),
-            });
-            const nextConfig = upsertProtocolConfig(connection.config, "saml", {
-              enabled: true,
-              idp: {
-                metadataUrl,
-                metadataXml: response,
-                ...parsed,
-              },
-              serviceProvider: (
-                samlConfig as { serviceProvider?: Record<string, unknown> }
-              ).serviceProvider,
-              request: samlConfig.request,
-              profile: samlConfig.profile,
-              security: samlConfig.security,
-            });
-            yield* tryPromise({
-              try: () =>
-                updateGroupConnection(ctx, config.component.public, {
-                  connectionId: connection._id,
-                  data: {
-                    status: connection.status,
-                    config: nextConfig,
-                  },
-                }),
-              catch: () => ({
-                code: "INTERNAL_ERROR",
-                message: "Failed to persist refreshed SAML metadata.",
-              }),
-            });
-            yield* tryPromise({
-              try: () =>
-                recordGroupAuditEvent(ctx, {
-                  connectionId: connection._id,
-                  groupId: connection.groupId,
-                  eventType: "group.sso.saml.refreshed",
-                  actorType: "system",
-                  subjectType: "group_connection_saml",
-                  subjectId: connection._id,
-                  ok: true,
-                  metadata: {
-                    metadataUrl,
-                  },
-                }),
-              catch: () => ({
-                code: "INTERNAL_ERROR",
-                message: "Failed to record SAML refresh audit event.",
-              }),
-            });
-            return {
-              connectionId: connection._id,
-              groupId: connection.groupId,
-            };
-          }),
-        );
+            return await response.text();
+          });
+        } catch (error) {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Failed to fetch SAML metadata",
+          });
+        }
+        let parsed;
+        try {
+          parsed = parseSamlIdpMetadataChecked({
+            metadataXml,
+            config: connection.config,
+          });
+        } catch (error) {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message:
+              error instanceof Error
+                ? `Failed to parse SAML metadata: ${error.message}`
+                : "Failed to parse SAML metadata.",
+          });
+        }
+        const nextConfig = upsertProtocolConfig(connection.config, "saml", {
+          enabled: true,
+          idp: {
+            metadataUrl,
+            metadataXml,
+            ...parsed,
+          },
+          serviceProvider: (
+            samlConfig as { serviceProvider?: Record<string, unknown> }
+          ).serviceProvider,
+          request: samlConfig.request,
+          profile: samlConfig.profile,
+          security: samlConfig.security,
+        });
+        try {
+          await updateGroupConnection(ctx, config.component.public, {
+            connectionId: connection._id,
+            data: {
+              status: connection.status,
+              config: nextConfig,
+            },
+          });
+        } catch {
+          throw convexError({
+            code: "INTERNAL_ERROR",
+            message: "Failed to persist refreshed SAML metadata.",
+          });
+        }
+        try {
+          await recordGroupAuditEvent(ctx, {
+            connectionId: connection._id,
+            groupId: connection.groupId,
+            eventType: "group.sso.saml.refreshed",
+            actorType: "system",
+            subjectType: "group_connection_saml",
+            subjectId: connection._id,
+            ok: true,
+            metadata: {
+              metadataUrl,
+            },
+          });
+        } catch {
+          throw convexError({
+            code: "INTERNAL_ERROR",
+            message: "Failed to record SAML refresh audit event.",
+          });
+        }
+        return {
+          connectionId: connection._id,
+          groupId: connection.groupId,
+        };
       },
-      get: (ctx: ComponentReadCtx, connectionId: string) => {
-        return runSsoBoundary(
-          Effect.gen(function* () {
-            const connection = yield* tryPromise({
-              try: () =>
-                getGroupConnection(ctx, config.component.public, connectionId),
-              catch: () => ({
-                code: "INTERNAL_ERROR",
-                message: "Failed to load connection.",
-              }),
-            }).pipe(
-              Effect.flatMap((connection) =>
-                connection === null
-                  ? Effect.fail(
-                      convexError({
-                        code: "INVALID_PARAMETERS",
-                        message: connectionNotFoundError,
-                      }),
-                    )
-                  : Effect.succeed(connection),
-              ),
-            );
-            return getSamlConfig(connection.config);
-          }),
-        );
+      get: async (ctx: ComponentReadCtx, connectionId: string) => {
+        let connection;
+        try {
+          connection = await getGroupConnection(ctx, config.component.public, connectionId);
+        } catch {
+          throw convexError({
+            code: "INTERNAL_ERROR",
+            message: "Failed to load connection.",
+          });
+        }
+        if (connection === null) {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message: connectionNotFoundError,
+          });
+        }
+        return getSamlConfig(connection.config);
       },
       status: (ctx: ComponentReadCtx, connectionId: string) => {
         return getGroupConnection(
@@ -1548,7 +1493,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(
        * Persists protocol config under `connection.config.protocols.oidc` and
        * records a `group.sso.oidc.registered` audit event.
        */
-      configure: (
+      configure: async (
         ctx: ComponentCtx,
         data: {
           connectionId: string;
@@ -1578,202 +1523,186 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(
           };
         },
       ) => {
-        return runSsoBoundary(
-          Effect.gen(function* () {
-            if (
-              data.discovery.issuer === undefined &&
-              data.discovery.discoveryUrl === undefined
-            ) {
-              return yield* Effect.fail(
-                convexError({
-                  code: "INVALID_PARAMETERS",
-                  message: "OIDC registration requires issuer or discoveryUrl.",
-                }),
-              );
-            }
+        if (
+          data.discovery.issuer === undefined &&
+          data.discovery.discoveryUrl === undefined
+        ) {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message: "OIDC registration requires issuer or discoveryUrl.",
+          });
+        }
 
-            const connection = yield* tryPromise({
-              try: () =>
-                getGroupConnection(
-                  ctx,
-                  config.component.public,
-                  data.connectionId,
-                ),
-              catch: () => ({
-                code: "INTERNAL_ERROR",
-                message: "Failed to load connection.",
-              }),
-            }).pipe(
-              Effect.flatMap((connection) =>
-                connection === null
-                  ? Effect.fail(
-                      convexError({
-                        code: "INVALID_PARAMETERS",
-                        message: connectionNotFoundError,
-                      }),
-                    )
-                  : Effect.succeed(connection),
-              ),
-            );
-            if (connection.protocol !== "oidc") {
-              return yield* Effect.fail(
-                convexError({
-                  code: "INVALID_PARAMETERS",
-                  message: "This connection is not an OIDC connection.",
-                }),
-              );
-            }
-            const nextConfig = upsertProtocolConfig(connection.config, "oidc", {
-              enabled: true,
-              discovery: {
-                issuer: data.discovery.issuer,
-                discoveryUrl: data.discovery.discoveryUrl,
-                jwksUri: data.discovery.jwksUri,
-                audience: data.discovery.audience,
-              },
-              client: {
-                id: data.client.id,
-                authMethod: data.client.authMethod,
-              },
-              request: {
-                scopes: data.request?.scopes ?? ["openid", "profile", "email"],
-                loginHint: data.request?.loginHint,
-                authorizationParams: data.request?.authorizationParams,
-              },
-              security: {
-                clockToleranceSeconds: data.security?.clockToleranceSeconds,
-                strictIssuer: data.security?.strictIssuer,
-              },
-              profile: {
-                mapping: data.profile?.mapping,
-                extraFields: data.profile?.extraFields,
-              },
+        let connection;
+        try {
+          connection = await getGroupConnection(
+            ctx,
+            config.component.public,
+            data.connectionId,
+          );
+        } catch {
+          throw convexError({
+            code: "INTERNAL_ERROR",
+            message: "Failed to load connection.",
+          });
+        }
+        if (connection === null) {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message: connectionNotFoundError,
+          });
+        }
+        if (connection.protocol !== "oidc") {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message: "This connection is not an OIDC connection.",
+          });
+        }
+        const nextConfig = upsertProtocolConfig(connection.config, "oidc", {
+          enabled: true,
+          discovery: {
+            issuer: data.discovery.issuer,
+            discoveryUrl: data.discovery.discoveryUrl,
+            jwksUri: data.discovery.jwksUri,
+            audience: data.discovery.audience,
+          },
+          client: {
+            id: data.client.id,
+            authMethod: data.client.authMethod,
+          },
+          request: {
+            scopes: data.request?.scopes ?? ["openid", "profile", "email"],
+            loginHint: data.request?.loginHint,
+            authorizationParams: data.request?.authorizationParams,
+          },
+          security: {
+            clockToleranceSeconds: data.security?.clockToleranceSeconds,
+            strictIssuer: data.security?.strictIssuer,
+          },
+          profile: {
+            mapping: data.profile?.mapping,
+            extraFields: data.profile?.extraFields,
+          },
+        });
+
+        try {
+          await updateGroupConnection(ctx, config.component.public, {
+            connectionId: data.connectionId,
+            data: { config: nextConfig },
+          });
+        } catch {
+          throw convexError({
+            code: "INTERNAL_ERROR",
+            message: "Failed to persist OIDC registration.",
+          });
+        }
+
+        if (data.client.secret !== undefined) {
+          let ciphertext: string;
+          try {
+            ciphertext = await encryptSecret(data.client.secret!);
+          } catch {
+            throw convexError({
+              code: "INTERNAL_ERROR",
+              message: "Failed to encrypt OIDC client secret.",
             });
-
-            yield* tryPromise({
-              try: () =>
-                updateGroupConnection(ctx, config.component.public, {
-                  connectionId: data.connectionId,
-                  data: { config: nextConfig },
-                }),
-              catch: () => ({
-                code: "INTERNAL_ERROR",
-                message: "Failed to persist OIDC registration.",
-              }),
+          }
+          try {
+            await upsertGroupConnectionSecret(ctx, config.component.public, {
+              connectionId: data.connectionId,
+              groupId: connection.groupId,
+              kind: GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
+              ciphertext,
+              updatedAt: Date.now(),
             });
-
-            if (data.client.secret !== undefined) {
-              const ciphertext = yield* tryPromise({
-                try: () => encryptSecret(data.client.secret!),
-                catch: () => ({
-                  code: "INTERNAL_ERROR",
-                  message: "Failed to encrypt OIDC client secret.",
-                }),
-              });
-              yield* tryPromise({
-                try: () =>
-                  upsertGroupConnectionSecret(ctx, config.component.public, {
-                    connectionId: data.connectionId,
-                    groupId: connection.groupId,
-                    kind: GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
-                    ciphertext,
-                    updatedAt: Date.now(),
-                  }),
-                catch: () => ({
-                  code: "INTERNAL_ERROR",
-                  message: "Failed to persist OIDC client secret.",
-                }),
-              });
-            }
-
-            yield* tryPromise({
-              try: () =>
-                recordGroupAuditEvent(ctx, {
-                  connectionId: data.connectionId,
-                  groupId: connection.groupId,
-                  eventType: "group.sso.oidc.registered",
-                  actorType: "system",
-                  subjectType: "group_connection_oidc",
-                  subjectId: data.connectionId,
-                  ok: true,
-                  metadata: {
-                    issuer: data.discovery.issuer,
-                    discoveryUrl: data.discovery.discoveryUrl,
-                    jwksUri: data.discovery.jwksUri,
-                    audience: data.discovery.audience,
-                    tokenEndpointAuthMethod: data.client.authMethod,
-                  },
-                }),
-              catch: () => ({
-                code: "INTERNAL_ERROR",
-                message: "Failed to record OIDC registration audit event.",
-              }),
+          } catch {
+            throw convexError({
+              code: "INTERNAL_ERROR",
+              message: "Failed to persist OIDC client secret.",
             });
+          }
+        }
 
-            const secret = yield* tryPromise({
-              try: () =>
-                getGroupConnectionSecret(
-                  ctx,
-                  data.connectionId,
-                  GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
-                ),
-              catch: () => ({
-                code: "INTERNAL_ERROR",
-                message: "Failed to load OIDC secret metadata.",
-              }),
-            });
+        try {
+          await recordGroupAuditEvent(ctx, {
+            connectionId: data.connectionId,
+            groupId: connection.groupId,
+            eventType: "group.sso.oidc.registered",
+            actorType: "system",
+            subjectType: "group_connection_oidc",
+            subjectId: data.connectionId,
+            ok: true,
+            metadata: {
+              issuer: data.discovery.issuer,
+              discoveryUrl: data.discovery.discoveryUrl,
+              jwksUri: data.discovery.jwksUri,
+              audience: data.discovery.audience,
+              tokenEndpointAuthMethod: data.client.authMethod,
+            },
+          });
+        } catch {
+          throw convexError({
+            code: "INTERNAL_ERROR",
+            message: "Failed to record OIDC registration audit event.",
+          });
+        }
 
-            return withOidcSecretState(
-              getPublicOidcConfig(nextConfig),
-              secret !== null,
-            );
-          }),
+        let secret;
+        try {
+          secret = await getGroupConnectionSecret(
+            ctx,
+            data.connectionId,
+            GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
+          );
+        } catch {
+          throw convexError({
+            code: "INTERNAL_ERROR",
+            message: "Failed to load OIDC secret metadata.",
+          });
+        }
+
+        return withOidcSecretState(
+          getPublicOidcConfig(nextConfig),
+          secret !== null,
         );
       },
       /**
        * Fetch the stored OIDC config for an connection.
        */
-      get: (ctx: ComponentReadCtx, connectionId: string) => {
-        return runSsoBoundary(
-          Effect.gen(function* () {
-            const connection = yield* tryPromise({
-              try: () =>
-                getGroupConnection(ctx, config.component.public, connectionId),
-              catch: () => ({
-                code: "INTERNAL_ERROR",
-                message: "Failed to load connection.",
-              }),
-            }).pipe(
-              Effect.flatMap((connection) =>
-                connection === null
-                  ? Effect.fail(
-                      convexError({
-                        code: "INVALID_PARAMETERS",
-                        message: connectionNotFoundError,
-                      }),
-                    )
-                  : Effect.succeed(connection),
-              ),
-            );
+      get: async (ctx: ComponentReadCtx, connectionId: string) => {
+        let connection;
+        try {
+          connection = await getGroupConnection(ctx, config.component.public, connectionId);
+        } catch {
+          throw convexError({
+            code: "INTERNAL_ERROR",
+            message: "Failed to load connection.",
+          });
+        }
+        if (connection === null) {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message: connectionNotFoundError,
+          });
+        }
 
-            const secret = yield* tryPromise({
-              try: () =>
-                getGroupConnectionSecret(
-                  ctx,
-                  connection._id,
-                  GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
-                ),
-              catch: () => ({
-                code: "INTERNAL_ERROR",
-                message: "Failed to load OIDC secret metadata.",
-              }),
-            });
+        let secret;
+        try {
+          secret = await getGroupConnectionSecret(
+            ctx,
+            connection._id,
+            GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
+          );
+        } catch {
+          throw convexError({
+            code: "INTERNAL_ERROR",
+            message: "Failed to load OIDC secret metadata.",
+          });
+        }
 
-            return withOidcSecretState(
-              getPublicOidcConfig(connection.config),
-              secret !== null,
-            );
-          }),
+        return withOidcSecretState(
+          getPublicOidcConfig(connection.config),
+          secret !== null,
         );
       },
       status: (ctx: ComponentReadCtx, connectionId: string) => {
@@ -1828,7 +1757,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(
        * Resolve group SSO sign-in route from connection id, domain, or
        * user email domain.
        */
-      signIn: (
+      signIn: async (
         ctx: ComponentReadCtx,
         data: {
           connectionId?: string;
@@ -1844,142 +1773,128 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(
           domain: data.domain,
           redirectTo: data.redirectTo,
         });
-        return runSsoBoundary(
-          Effect.gen(function* () {
-            const connection =
-              data.connectionId !== undefined
-                ? yield* tryPromise({
-                    try: () =>
-                      getGroupConnection(
-                        ctx,
-                        config.component.public,
-                        data.connectionId!,
-                      ),
-                    catch: () => ({
-                      code: "INTERNAL_ERROR",
-                      message: "Failed to load connection.",
-                    }),
-                  }).pipe(
-                    Effect.flatMap((connection) =>
-                      connection === null
-                        ? Effect.fail(
-                            convexError({
-                              code: "INVALID_PARAMETERS",
-                              message: connectionNotFoundError,
-                            }),
-                          )
-                        : Effect.succeed(connection),
-                    ),
-                  )
-                : data.domain !== undefined || data.email !== undefined
-                  ? yield* tryPromise({
-                      try: () =>
-                        getGroupConnectionByDomain(
-                          ctx,
-                          config.component.public,
-                          normalizeDomain(
-                            data.domain ??
-                              String(data.email).split("@").pop() ??
-                              "",
-                          ),
-                        ),
-                      catch: () => ({
-                        code: "INTERNAL_ERROR",
-                        message: "Failed to resolve connection by domain.",
-                      }),
-                    }).pipe(
-                      Effect.tap((result) =>
-                        Effect.sync(() => {
-                          log(
-                            "DEBUG",
-                            "[group-sso] resolver:domainLookup",
-                            result,
-                          );
-                        }),
-                      ),
-                      Effect.flatMap((result) =>
-                        result?.connection &&
-                        result.domain?.verifiedAt !== undefined
-                          ? Effect.succeed(result.connection)
-                          : Effect.fail(
-                              convexError({
-                                code: "INVALID_PARAMETERS",
-                                message:
-                                  "No group connection matched the provided input.",
-                              }),
-                            ),
-                      ),
-                    )
-                  : yield* Effect.fail(
-                      convexError({
-                        code: "INVALID_PARAMETERS",
-                        message:
-                          "No group connection matched the provided input.",
-                      }),
-                    );
 
-            if (connection.status !== "active") {
-              return yield* Effect.fail(
-                convexError({
-                  code: "INVALID_PARAMETERS",
-                  message: "Group connection is not active.",
-                }),
-              );
-            }
+        let connection;
+        if (data.connectionId !== undefined) {
+          try {
+            connection = await getGroupConnection(
+              ctx,
+              config.component.public,
+              data.connectionId!,
+            );
+          } catch {
+            throw convexError({
+              code: "INTERNAL_ERROR",
+              message: "Failed to load connection.",
+            });
+          }
+          if (connection === null) {
+            throw convexError({
+              code: "INVALID_PARAMETERS",
+              message: connectionNotFoundError,
+            });
+          }
+        } else if (data.domain !== undefined || data.email !== undefined) {
+          let result;
+          try {
+            result = await getGroupConnectionByDomain(
+              ctx,
+              config.component.public,
+              normalizeDomain(
+                data.domain ??
+                  String(data.email).split("@").pop() ??
+                  "",
+              ),
+            );
+          } catch {
+            throw convexError({
+              code: "INTERNAL_ERROR",
+              message: "Failed to resolve connection by domain.",
+            });
+          }
+          log(
+            "DEBUG",
+            "[group-sso] resolver:domainLookup",
+            result,
+          );
+          if (
+            result?.connection &&
+            result.domain?.verifiedAt !== undefined
+          ) {
+            connection = result.connection;
+          } else {
+            throw convexError({
+              code: "INVALID_PARAMETERS",
+              message:
+                "No group connection matched the provided input.",
+            });
+          }
+        } else {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message:
+              "No group connection matched the provided input.",
+          });
+        }
 
-            const protocol = resolveGroupConnectionProtocol(connection);
-            log("DEBUG", "[group-sso] resolver:connection", {
-              connectionId: connection._id,
-              status: connection.status,
-              protocol,
-            });
-            const { signInPath, callbackPath, providerId } =
-              protocol === "oidc"
-                ? (() => {
-                    const urls = getGroupOidcUrls({
-                      rootUrl: requireEnv("CONVEX_SITE_URL"),
-                      connectionId: connection._id,
-                      sharedRedirectURI: deps.sharedOidcRedirectURI,
-                    });
-                    return {
-                      signInPath: urls.signInUrl,
-                      callbackPath: urls.callbackUrl,
-                      providerId: groupOidcProviderId(connection._id),
-                    };
-                  })()
-                : (() => {
-                    const urls = getGroupSamlUrls({
-                      rootUrl: requireEnv("CONVEX_SITE_URL"),
-                      source: { kind: "connection", id: connection._id },
-                    });
-                    return {
-                      signInPath: `${requireEnv("CONVEX_SITE_URL")}/api/auth/connections/${connection._id}/saml/signin`,
-                      callbackPath: urls.acsUrl,
-                      providerId: groupSamlProviderId(connection._id),
-                    };
-                  })();
-            log("DEBUG", "[group-sso] resolver:paths", {
-              connectionId: connection._id,
-              signInPath,
-              callbackPath,
-            });
-            return {
-              connectionId: connection._id,
-              protocol,
-              providerId,
-              signInPath:
-                protocol === "oidc" && typeof data.loginHint === "string"
-                  ? (() => {
-                      const signInUrl = new URL(signInPath);
-                      signInUrl.searchParams.set("loginHint", data.loginHint);
-                      return signInUrl.toString();
-                    })()
-                  : signInPath,
-              callbackPath,
-              redirectTo: data.redirectTo,
-            };
-          }),
-        );
+        if (connection.status !== "active") {
+          throw convexError({
+            code: "INVALID_PARAMETERS",
+            message: "Group connection is not active.",
+          });
+        }
+
+        const protocol = resolveGroupConnectionProtocol(connection);
+        log("DEBUG", "[group-sso] resolver:connection", {
+          connectionId: connection._id,
+          status: connection.status,
+          protocol,
+        });
+        const { signInPath, callbackPath, providerId } =
+          protocol === "oidc"
+            ? (() => {
+                const urls = getGroupOidcUrls({
+                  rootUrl: requireEnv("CONVEX_SITE_URL"),
+                  connectionId: connection._id,
+                  sharedRedirectURI: deps.sharedOidcRedirectURI,
+                });
+                return {
+                  signInPath: urls.signInUrl,
+                  callbackPath: urls.callbackUrl,
+                  providerId: groupOidcProviderId(connection._id),
+                };
+              })()
+            : (() => {
+                const urls = getGroupSamlUrls({
+                  rootUrl: requireEnv("CONVEX_SITE_URL"),
+                  source: { kind: "connection", id: connection._id },
+                });
+                return {
+                  signInPath: `${requireEnv("CONVEX_SITE_URL")}/api/auth/connections/${connection._id}/saml/signin`,
+                  callbackPath: urls.acsUrl,
+                  providerId: groupSamlProviderId(connection._id),
+                };
+              })();
+        log("DEBUG", "[group-sso] resolver:paths", {
+          connectionId: connection._id,
+          signInPath,
+          callbackPath,
+        });
+        return {
+          connectionId: connection._id,
+          protocol,
+          providerId,
+          signInPath:
+            protocol === "oidc" && typeof data.loginHint === "string"
+              ? (() => {
+                  const signInUrl = new URL(signInPath);
+                  signInUrl.searchParams.set("loginHint", data.loginHint);
+                  return signInUrl.toString();
+                })()
+              : signInPath,
+          callbackPath,
+          redirectTo: data.redirectTo,
+        };
       },
       /**
        * Validate the stored OIDC config for an group connection.

@@ -1,28 +1,20 @@
-import { Effect, Layer, ServiceMap } from "effect";
+import type { ClientAdapterFactoriesService } from "./adapters";
+import type { ClientAdaptersService } from "./adapters";
+import type { ClientHttpService } from "./http";
+import type { ClientRuntimeService } from "./runtime";
 
-import {
-  ClientAdaptersService,
-  ClientAdapterFactoriesService,
-} from "./adapters";
-import { ClientHttpService } from "./http";
-import { ClientRuntimeService } from "./runtime";
+export interface ClientServicesInput {
+  runtime: ClientRuntimeService;
+  adapters: ClientAdaptersService;
+  adapterFactories: ClientAdapterFactoriesService;
+  http: ClientHttpService;
+}
 
-type ClientServicesLayer = Layer.Layer<
-  | ClientRuntimeService
-  | ClientAdaptersService
-  | ClientAdapterFactoriesService
-  | ClientHttpService
->;
-
-export function resolveClientServices(layer: ClientServicesLayer) {
-  const context = Effect.runSync(Effect.scoped(Layer.build(layer)));
+export function resolveClientServices(input: ClientServicesInput) {
   return {
-    runtime: ServiceMap.getUnsafe(context, ClientRuntimeService),
-    adapters: ServiceMap.getUnsafe(context, ClientAdaptersService),
-    adapterFactories: ServiceMap.getUnsafe(
-      context,
-      ClientAdapterFactoriesService,
-    ),
-    httpClient: ServiceMap.getUnsafe(context, ClientHttpService).httpClient,
+    runtime: input.runtime,
+    adapters: input.adapters,
+    adapterFactories: input.adapterFactories,
+    httpClient: input.http.httpClient,
   };
 }

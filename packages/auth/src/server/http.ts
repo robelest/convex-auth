@@ -7,9 +7,9 @@ import {
 } from "convex/server";
 import { ConvexError } from "convex/values";
 import { parse as parseCookies } from "cookie";
-import { Cause, Effect, Exit } from "effect";
 
 import type { AuthContext, OptionalAuthContext, UserDoc } from "./auth";
+import type { ComponentReadCtx as HttpQueryCtx } from "./componentContext";
 import {
   createUnauthenticatedAuthContext,
   getAuthContextForUser,
@@ -18,7 +18,6 @@ import {
 import { logError } from "./log";
 import type { CorsConfig, HttpKeyContext } from "./types";
 
-type HttpQueryCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
 type HttpIdentityCtx = {
   auth: {
     getUserIdentity: () => Promise<UserIdentity | null>;
@@ -195,15 +194,6 @@ function buildCorsHeaders(
   };
 }
 
-function runBoundary<A, E>(effect: Effect.Effect<A, E, never>): Promise<A> {
-  return Effect.runPromiseExit(effect).then(
-    Exit.match({
-      onSuccess: (value) => value,
-      onFailure: (cause) => Promise.reject(Cause.squash(cause)),
-    }),
-  );
-}
-
 async function getHttpKeyContext(
   auth: HttpContextAuthLike,
   ctx: HttpContextCtx,
@@ -359,135 +349,131 @@ export function createHttpAction(
         defaultOrigins,
       );
 
-      return runBoundary(
-        Effect.tryPromise({
-          try: async () => {
-            const authHeader = request.headers.get("Authorization");
-            if (!authHeader?.startsWith("Bearer ")) {
-              return new Response(
-                JSON.stringify({
-                  error: "Missing or malformed Authorization: Bearer header.",
-                  code: "MISSING_BEARER_TOKEN",
-                }),
-                {
-                  status: 401,
-                  headers: {
-                    ...corsHeaders,
-                    "Content-Type": "application/json",
-                  },
-                },
-              );
+      try {
+        const authHeader = request.headers.get("Authorization");
+        if (!authHeader?.startsWith("Bearer ")) {
+          return new Response(
+            JSON.stringify({
+              error: "Missing or malformed Authorization: Bearer header.",
+              code: "MISSING_BEARER_TOKEN",
+            }),
+            {
+              status: 401,
+              headers: {
+                ...corsHeaders,
+                "Content-Type": "application/json",
+              },
+            },
+          );
+        }
+
+        const rawKey = authHeader.slice(7);
+        let keyResult:
+          | {
+              ok: true;
+              value: {
+                userId: string;
+                keyId: string;
+                scopes: HttpKeyContext["key"]["scopes"];
+              };
             }
+          | { ok: false; error: unknown };
+        try {
+          const value = await auth.key.verify(genericCtx, rawKey);
+          keyResult = { ok: true, value };
+        } catch (error) {
+          keyResult = { ok: false, error };
+        }
 
-            const rawKey = authHeader.slice(7);
-            const keyResult = await Effect.runPromise(
-              Effect.tryPromise({
-                try: () => auth.key.verify(genericCtx, rawKey),
-                catch: (error) => error,
-              }).pipe(
-                Effect.match({
-                  onFailure: (error) => ({ ok: false as const, error }),
-                  onSuccess: (value) => ({ ok: true as const, value }),
-                }),
-              ),
-            );
-
-            if (!keyResult.ok) {
-              if (
-                keyResult.error instanceof ConvexError &&
-                typeof keyResult.error.data === "object" &&
-                keyResult.error.data !== null &&
-                "code" in keyResult.error.data &&
-                "message" in keyResult.error.data
-              ) {
-                const { code, message } = keyResult.error.data as {
-                  code: string;
-                  message: string;
-                };
-                return new Response(JSON.stringify({ error: message, code }), {
-                  status: 403,
-                  headers: {
-                    ...corsHeaders,
-                    "Content-Type": "application/json",
-                  },
-                });
-              }
-              throw keyResult.error;
-            }
-
-            if (
-              options?.scope &&
-              !keyResult.value.scopes.can(
-                options.scope.resource,
-                options.scope.action,
-              )
-            ) {
-              return new Response(
-                JSON.stringify({
-                  error: "This API key does not have the required permissions.",
-                  code: "SCOPE_CHECK_FAILED",
-                }),
-                {
-                  status: 403,
-                  headers: {
-                    ...corsHeaders,
-                    "Content-Type": "application/json",
-                  },
-                },
-              );
-            }
-
-            const enrichedCtx = Object.assign(genericCtx, {
-              key: {
-                userId: keyResult.value.userId,
-                keyId: keyResult.value.keyId,
-                scopes: keyResult.value.scopes,
+        if (!keyResult.ok) {
+          if (
+            keyResult.error instanceof ConvexError &&
+            typeof keyResult.error.data === "object" &&
+            keyResult.error.data !== null &&
+            "code" in keyResult.error.data &&
+            "message" in keyResult.error.data
+          ) {
+            const { code, message } = keyResult.error.data as {
+              code: string;
+              message: string;
+            };
+            return new Response(JSON.stringify({ error: message, code }), {
+              status: 403,
+              headers: {
+                ...corsHeaders,
+                "Content-Type": "application/json",
               },
             });
-            const result = await handler(enrichedCtx, request);
+          }
+          throw keyResult.error;
+        }
 
-            return result instanceof Response
-              ? (() => {
-                  const headers = new Headers(result.headers);
-                  for (const [k, val] of Object.entries(corsHeaders)) {
-                    if (!headers.has(k)) headers.set(k, val);
-                  }
-                  return new Response(result.body, {
-                    status: result.status,
-                    statusText: result.statusText,
-                    headers,
-                  });
-                })()
-              : new Response(JSON.stringify(result), {
-                  status: 200,
-                  headers: {
-                    ...corsHeaders,
-                    "Content-Type": "application/json",
-                  },
-                });
-          },
-          catch: (error) => error,
-        }).pipe(
-          Effect.catch((error) =>
-            Effect.sync(() => {
-              logError(error);
-              return new Response(
-                JSON.stringify({
-                  error: "An unexpected error occurred.",
-                  code: "INTERNAL_ERROR",
-                }),
-                {
-                  status: 500,
-                  headers: {
-                    ...corsHeaders,
-                    "Content-Type": "application/json",
-                  },
-                },
-              );
+        if (
+          options?.scope &&
+          !keyResult.value.scopes.can(
+            options.scope.resource,
+            options.scope.action,
+          )
+        ) {
+          return new Response(
+            JSON.stringify({
+              error: "This API key does not have the required permissions.",
+              code: "SCOPE_CHECK_FAILED",
             }),
-          ),
-        ),
-      );
+            {
+              status: 403,
+              headers: {
+                ...corsHeaders,
+                "Content-Type": "application/json",
+              },
+            },
+          );
+        }
+
+        const enrichedCtx = Object.assign(genericCtx, {
+          key: {
+            userId: keyResult.value.userId,
+            keyId: keyResult.value.keyId,
+            scopes: keyResult.value.scopes,
+          },
+        });
+        const result = await handler(enrichedCtx, request);
+
+        return result instanceof Response
+          ? (() => {
+              const headers = new Headers(result.headers);
+              for (const [k, val] of Object.entries(corsHeaders)) {
+                if (!headers.has(k)) headers.set(k, val);
+              }
+              return new Response(result.body, {
+                status: result.status,
+                statusText: result.statusText,
+                headers,
+              });
+            })()
+          : new Response(JSON.stringify(result), {
+              status: 200,
+              headers: {
+                ...corsHeaders,
+                "Content-Type": "application/json",
+              },
+            });
+      } catch (error) {
+        logError(error);
+        return new Response(
+          JSON.stringify({
+            error: "An unexpected error occurred.",
+            code: "INTERNAL_ERROR",
+          }),
+          {
+            status: 500,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+            },
+          },
+        );
+      }
     });
   };
 }
@@ -541,47 +527,39 @@ export function convertErrorsToResponse(
   ) => Promise<Response>,
 ) {
   return async (ctx: GenericActionCtx<GenericDataModel>, request: Request) => {
-    return runBoundary(
-      Effect.tryPromise({
-        try: () => action(ctx, request),
-        catch: (error) => error,
-      }).pipe(
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            if (
-              error instanceof ConvexError &&
-              typeof error.data === "object" &&
-              error.data !== null &&
-              "code" in error.data &&
-              "message" in error.data
-            ) {
-              return new Response(
-                JSON.stringify({
-                  code: error.data.code,
-                  message: error.data.message,
-                }),
-                {
-                  status: errorStatusCode,
-                  headers: { "Content-Type": "application/json" },
-                },
-              );
-            }
-            if (error instanceof ConvexError) {
-              return new Response(null, {
-                status: errorStatusCode,
-                statusText:
-                  typeof error.data === "string" ? error.data : "Error",
-              });
-            }
-            logError(error);
-            return new Response(null, {
-              status: 500,
-              statusText: "Internal Server Error",
-            });
+    try {
+      return await action(ctx, request);
+    } catch (error) {
+      if (
+        error instanceof ConvexError &&
+        typeof error.data === "object" &&
+        error.data !== null &&
+        "code" in error.data &&
+        "message" in error.data
+      ) {
+        return new Response(
+          JSON.stringify({
+            code: error.data.code,
+            message: error.data.message,
           }),
-        ),
-      ),
-    );
+          {
+            status: errorStatusCode,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+      if (error instanceof ConvexError) {
+        return new Response(null, {
+          status: errorStatusCode,
+          statusText: typeof error.data === "string" ? error.data : "Error",
+        });
+      }
+      logError(error);
+      return new Response(null, {
+        status: 500,
+        statusText: "Internal Server Error",
+      });
+    }
   };
 }
 

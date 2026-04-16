@@ -17,7 +17,7 @@ description: How convex-auth works as a Convex component.
 
 ## Component model
 
-Your app registers the auth component and wires three files:
+Your app registers the auth component and wires four files:
 
 <CardGrid>
   <Card title="convex.config.ts">
@@ -25,11 +25,15 @@ Your app registers the auth component and wires three files:
   </Card>
   <Card title="auth.ts">
     <code>createAuth(components.auth, {'{'}providers{'}'})</code> — configures providers and
-    returns the <code>auth</code> helper object.
+    exports <code>signIn</code>, <code>signOut</code>, <code>store</code>.
+  </Card>
+  <Card title="auth/core.ts">
+    <code>createAuthContext(components.auth)</code> — lightweight auth context for
+    queries and mutations. No providers or crypto loaded.
   </Card>
   <Card title="http.ts">
     <code>auth.http.add(http)</code> — registers OAuth callbacks, JWKS, and SSO protocol
-    routes.
+    routes. Imports from <code>auth.ts</code>.
   </Card>
 </CardGrid>
 
@@ -87,11 +91,58 @@ For subsequent requests:
 - **SCIM** (conditional): `auth.group.sso.scim.*` — provisioning helpers when
   `sso()` is in providers
 
+## Entry point split: `server` vs `core`
+
+`createAuth` from `@robelest/convex-auth/server` loads provider implementations,
+OAuth, crypto, and HTTP route handling. Queries and mutations never use any of
+that. To keep your function bundles fast, use the split pattern:
+
+```ts
+// convex/auth.ts — heavyweight, only evaluated for signIn/signOut
+import { createAuth } from "@robelest/convex-auth/server";
+import { google, password } from "@robelest/convex-auth/providers";
+
+export const { signIn, signOut, store } = createAuth(components.auth, {
+  providers: [google({ clientId, clientSecret }), password()],
+});
+```
+
+```ts
+// convex/auth/core.ts — lightweight, imported by all queries
+import { createAuthContext } from "@robelest/convex-auth/core";
+import { components } from "../_generated/api";
+
+export const auth = createAuthContext(components.auth, {
+  authorization: { roles },
+});
+```
+
+```ts
+// convex/functions.ts
+import { customQuery, customMutation } from "convex-helpers/server/customFunctions";
+import { query, mutation } from "./_generated/server";
+import { auth } from "./auth/core";
+
+export const authQuery = customQuery(query, auth.ctx());
+export const authMutation = customMutation(mutation, auth.ctx());
+```
+
+`createAuthContext` returns the same `user`, `session`, `member`, `group`,
+`account`, `invite`, `key`, `context`, and `ctx` APIs as `createAuth` — but
+without `signIn`, `signOut`, `store`, `http`, or provider logic. Queries that
+import from `auth/core.ts` never load provider, OAuth, or crypto code.
+
+| Entry point | What it loads | Use for |
+| --- | --- | --- |
+| `@robelest/convex-auth/server` | Everything (providers, OAuth, crypto, HTTP) | `convex/auth.ts` — signIn/signOut exports |
+| `@robelest/convex-auth/core` | Context resolution only (~2KB) | `convex/functions.ts` — query/mutation wrappers |
+| `@robelest/convex-auth/providers/*` | Individual provider | Only in `convex/auth.ts` |
+
 ## Where `ctx.auth` comes from
 
-`createAuth(...)` does not mutate every Convex handler automatically. App code
-typically wires `auth.ctx()` into custom builders once, then uses those builders
-everywhere auth is required.
+Neither `createAuth` nor `createAuthContext` mutate every Convex handler
+automatically. App code wires `auth.ctx()` into custom builders once, then uses
+those builders everywhere auth is required.
 
 ```ts
 // convex/functions.ts
@@ -101,7 +152,7 @@ import {
   customQuery,
 } from "convex-helpers/server/customFunctions";
 import { action, mutation, query } from "./_generated/server";
-import { auth } from "./auth";
+import { auth } from "./auth/core";
 
 export const authQuery = customQuery(query, auth.ctx());
 export const authMutation = customMutation(mutation, auth.ctx());

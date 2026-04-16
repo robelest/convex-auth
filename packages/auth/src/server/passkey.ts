@@ -41,7 +41,6 @@ import {
   parseClientDataJSON,
 } from "@oslojs/webauthn";
 import { ConvexError } from "convex/values";
-import { Effect, Match } from "effect";
 
 import { authFlowError } from "../shared/errors";
 import { authDb } from "./db";
@@ -142,10 +141,10 @@ const asConvexError = (
       ? toConvexError(authFlowError(code, error.message || message))
       : convexError(code, message);
 
-const resolveRpOptionsFx = (
+function resolveRpOptions(
   provider: PasskeyProviderConfig,
-): Effect.Effect<RpOptions, ConvexError<AuthErrorData>> =>
-  Effect.sync(() => {
+): RpOptions {
+  try {
     const configuredSiteUrls =
       process.env.SITE_URL === undefined ? null : siteUrlsFromEnv();
     const siteUrl = configuredSiteUrls?.primaryUrl;
@@ -175,212 +174,187 @@ const resolveRpOptionsFx = (
       ],
       challengeExpirationMs: provider.options.challengeExpirationMs ?? 300_000,
     };
-  }).pipe(
-    Effect.catch((error) =>
-      Effect.fail(
-        asConvexError(
-          error,
-          "PASSKEY_MISSING_CONFIG",
-          "Passkey relying party configuration is invalid.",
-        ),
-      ),
-    ),
-  );
-
-const verifyClientDataType =
-  <T extends { type: ClientDataType }>(
-    expectedType: ClientDataType,
-    label: string,
-  ) =>
-  (clientData: T): Effect.Effect<T, ConvexError<AuthErrorData>> =>
-    clientData.type === expectedType
-      ? Effect.succeed(clientData)
-      : Effect.fail(
-          convexError(
-            "PASSKEY_INVALID_CLIENT_DATA",
-            `Invalid client data type: expected ${label}`,
-          ),
-        );
-
-const verifyOrigin =
-  (rp: RpOptions) =>
-  <T extends { origin: string }>(
-    clientData: T,
-  ): Effect.Effect<T, ConvexError<AuthErrorData>> => {
-    const allowed = Array.isArray(rp.origin) ? rp.origin : [rp.origin];
-    return allowed.includes(clientData.origin)
-      ? Effect.succeed(clientData)
-      : Effect.fail(
-          convexError(
-            "PASSKEY_INVALID_ORIGIN",
-            `Invalid origin: ${clientData.origin}, expected one of: ${allowed.join(", ")}`,
-          ),
-        );
-  };
-
-const verifyAndConsumeChallenge =
-  (ctx: EnrichedActionCtx, verifierValue: string) =>
-  <T extends { challenge: Uint8Array }>(
-    clientData: T,
-  ): Effect.Effect<T, ConvexError<AuthErrorData>> => {
-    const challengeHash = encodeBase64urlNoPadding(
-      new Uint8Array(sha256(clientData.challenge)),
+  } catch (error) {
+    throw asConvexError(
+      error,
+      "PASSKEY_MISSING_CONFIG",
+      "Passkey relying party configuration is invalid.",
     );
-    return Effect.gen(function* () {
-      const doc = yield* Effect.tryPromise({
-        try: () => queryVerifierById(ctx, verifierValue),
-        catch: () =>
-          convexError(
-            "PASSKEY_INVALID_CHALLENGE",
-            "Invalid or expired passkey challenge.",
-          ),
-      });
-      if (!doc || doc.signature !== challengeHash) {
-        return yield* Effect.fail(
-          convexError(
-            "PASSKEY_INVALID_CHALLENGE",
-            "Invalid or expired passkey challenge.",
-          ),
-        );
-      }
-      yield* Effect.tryPromise({
-        try: () => mutateVerifierDelete(ctx, verifierValue),
-        catch: () =>
-          convexError(
-            "PASSKEY_INVALID_CHALLENGE",
-            "Invalid or expired passkey challenge.",
-          ),
-      });
-      return clientData;
-    });
-  };
+  }
+}
 
-const verifyRpId =
-  (rpId: string) =>
-  <T extends { verifyRelyingPartyIdHash: (id: string) => boolean }>(
-    authData: T,
-  ): Effect.Effect<T, ConvexError<AuthErrorData>> =>
-    authData.verifyRelyingPartyIdHash(rpId)
-      ? Effect.succeed(authData)
-      : Effect.fail(
-          convexError("PASSKEY_RP_MISMATCH", "Relying party ID mismatch."),
-        );
+function verifyClientDataType<T extends { type: ClientDataType }>(
+  clientData: T,
+  expectedType: ClientDataType,
+  label: string,
+): T {
+  if (clientData.type !== expectedType) {
+    throw convexError(
+      "PASSKEY_INVALID_CLIENT_DATA",
+      `Invalid client data type: expected ${label}`,
+    );
+  }
+  return clientData;
+}
 
-const verifyUserFlags =
-  (rp: RpOptions) =>
-  <T extends { userPresent: boolean; userVerified: boolean }>(
-    authData: T,
-  ): Effect.Effect<T, ConvexError<AuthErrorData>> =>
-    !authData.userPresent
-      ? Effect.fail(
-          convexError("PASSKEY_USER_PRESENCE", "User presence flag not set."),
-        )
-      : rp.userVerification === "required" && !authData.userVerified
-        ? Effect.fail(
-            convexError(
-              "PASSKEY_USER_VERIFICATION",
-              "User verification required but not performed.",
-            ),
-          )
-        : Effect.succeed(authData);
+function verifyOrigin<T extends { origin: string }>(
+  clientData: T,
+  rp: RpOptions,
+): T {
+  const allowed = Array.isArray(rp.origin) ? rp.origin : [rp.origin];
+  if (!allowed.includes(clientData.origin)) {
+    throw convexError(
+      "PASSKEY_INVALID_ORIGIN",
+      `Invalid origin: ${clientData.origin}, expected one of: ${allowed.join(", ")}`,
+    );
+  }
+  return clientData;
+}
 
-const resolvePasskeyDispatchFx = (
-  params: Record<string, unknown>,
-): Effect.Effect<PasskeyDispatch, ConvexError<AuthErrorData>> => {
-  const flow = params.flow;
-  return typeof flow === "string" && PASSKEY_FLOWS.includes(flow as never)
-    ? Effect.succeed({ flow: flow as (typeof PASSKEY_FLOWS)[number] })
-    : Effect.fail(
-        convexError(
-          "PASSKEY_MISSING_FLOW",
-          "Missing `flow` parameter. Expected one of: registerOptions, registerVerify, authOptions, authVerify",
-        ),
-      );
-};
-
-const requirePasskeyVerifierFx = (
-  verifier: string | undefined,
-): Effect.Effect<string, ConvexError<AuthErrorData>> =>
-  verifier != null
-    ? Effect.succeed(verifier)
-    : Effect.fail(
-        convexError(
-          "PASSKEY_MISSING_VERIFIER",
-          "Missing verifier for passkey operation.",
-        ),
-      );
-
-const requireAuthenticatedUserId = (
+async function verifyAndConsumeChallenge<T extends { challenge: Uint8Array }>(
+  clientData: T,
   ctx: EnrichedActionCtx,
-): Effect.Effect<string, ConvexError<AuthErrorData>> =>
-  Effect.flatMap(
-    Effect.tryPromise({
-      try: () => ctx.auth.getUserIdentity(),
-      catch: () =>
-        convexError(
-          "PASSKEY_AUTH_REQUIRED",
-          "Sign in first, then add a passkey to your account.",
-        ),
-    }),
-    (identity) =>
-      Match.value(identity).pipe(
-        Match.when(null, () =>
-          Effect.fail(
-            convexError(
-              "PASSKEY_AUTH_REQUIRED",
-              "Sign in first, then add a passkey to your account.",
-            ),
-          ),
-        ),
-        Match.orElse((identity) =>
-          Effect.succeed(userIdFromIdentitySubject(identity.subject)),
-        ),
-      ),
+  verifierValue: string,
+): Promise<T> {
+  const challengeHash = encodeBase64urlNoPadding(
+    new Uint8Array(sha256(clientData.challenge)),
   );
+  let doc;
+  try {
+    doc = await queryVerifierById(ctx, verifierValue);
+  } catch {
+    throw convexError(
+      "PASSKEY_INVALID_CHALLENGE",
+      "Invalid or expired passkey challenge.",
+    );
+  }
+  if (!doc || doc.signature !== challengeHash) {
+    throw convexError(
+      "PASSKEY_INVALID_CHALLENGE",
+      "Invalid or expired passkey challenge.",
+    );
+  }
+  try {
+    await mutateVerifierDelete(ctx, verifierValue);
+  } catch {
+    throw convexError(
+      "PASSKEY_INVALID_CHALLENGE",
+      "Invalid or expired passkey challenge.",
+    );
+  }
+  return clientData;
+}
 
-const resolveRegistrationPublicKeyBytes = (
+function verifyRpId<T extends { verifyRelyingPartyIdHash: (id: string) => boolean }>(
+  authData: T,
+  rpId: string,
+): T {
+  if (!authData.verifyRelyingPartyIdHash(rpId)) {
+    throw convexError("PASSKEY_RP_MISMATCH", "Relying party ID mismatch.");
+  }
+  return authData;
+}
+
+function verifyUserFlags<T extends { userPresent: boolean; userVerified: boolean }>(
+  authData: T,
+  rp: RpOptions,
+): T {
+  if (!authData.userPresent) {
+    throw convexError("PASSKEY_USER_PRESENCE", "User presence flag not set.");
+  }
+  if (rp.userVerification === "required" && !authData.userVerified) {
+    throw convexError(
+      "PASSKEY_USER_VERIFICATION",
+      "User verification required but not performed.",
+    );
+  }
+  return authData;
+}
+
+function resolvePasskeyDispatch(
+  params: Record<string, unknown>,
+): PasskeyDispatch {
+  const flow = params.flow;
+  if (typeof flow === "string" && PASSKEY_FLOWS.includes(flow as never)) {
+    return { flow: flow as (typeof PASSKEY_FLOWS)[number] };
+  }
+  throw convexError(
+    "PASSKEY_MISSING_FLOW",
+    "Missing `flow` parameter. Expected one of: registerOptions, registerVerify, authOptions, authVerify",
+  );
+}
+
+function requirePasskeyVerifier(
+  verifier: string | undefined,
+): string {
+  if (verifier != null) {
+    return verifier;
+  }
+  throw convexError(
+    "PASSKEY_MISSING_VERIFIER",
+    "Missing verifier for passkey operation.",
+  );
+}
+
+async function requireAuthenticatedUserId(
+  ctx: EnrichedActionCtx,
+): Promise<string> {
+  let identity;
+  try {
+    identity = await ctx.auth.getUserIdentity();
+  } catch {
+    throw convexError(
+      "PASSKEY_AUTH_REQUIRED",
+      "Sign in first, then add a passkey to your account.",
+    );
+  }
+  if (identity === null) {
+    throw convexError(
+      "PASSKEY_AUTH_REQUIRED",
+      "Sign in first, then add a passkey to your account.",
+    );
+  }
+  return userIdFromIdentitySubject(identity.subject);
+}
+
+function resolveRegistrationPublicKeyBytes(
   publicKey: NonNullable<
     ReturnType<typeof parseAttestationObject>["authenticatorData"]["credential"]
   >["publicKey"],
   algorithm: number,
-): Effect.Effect<Uint8Array, ConvexError<AuthErrorData>> =>
-  Match.value(algorithm).pipe(
-    Match.when(coseAlgorithmES256, () => {
-      const ec2 = publicKey.ec2();
-      const xBytes = new Uint8Array(32);
-      let vx = ec2.x;
-      for (let i = 31; i >= 0; i--) {
-        xBytes[i] = Number(vx & 0xffn);
-        vx >>= 8n;
-      }
-      const yBytes = new Uint8Array(32);
-      let vy = ec2.y;
-      for (let i = 31; i >= 0; i--) {
-        yBytes[i] = Number(vy & 0xffn);
-        vy >>= 8n;
-      }
-      const bytes = new Uint8Array(65);
-      bytes[0] = 0x04;
-      bytes.set(xBytes, 1);
-      bytes.set(yBytes, 33);
-      return Effect.succeed(bytes);
-    }),
-    Match.when(coseAlgorithmRS256, () => {
-      const rsa = publicKey.rsa();
-      const rsaPubKey = new RSAPublicKey(rsa.n, rsa.e);
-      return Effect.succeed(rsaPubKey.encodePKCS1());
-    }),
-    Match.orElse((algorithm) =>
-      Effect.fail(
-        convexError(
-          "PASSKEY_UNSUPPORTED_ALGORITHM",
-          `Unsupported algorithm: ${algorithm}`,
-        ),
-      ),
-    ),
+): Uint8Array {
+  if (algorithm === coseAlgorithmES256) {
+    const ec2 = publicKey.ec2();
+    const xBytes = new Uint8Array(32);
+    let vx = ec2.x;
+    for (let i = 31; i >= 0; i--) {
+      xBytes[i] = Number(vx & 0xffn);
+      vx >>= 8n;
+    }
+    const yBytes = new Uint8Array(32);
+    let vy = ec2.y;
+    for (let i = 31; i >= 0; i--) {
+      yBytes[i] = Number(vy & 0xffn);
+      vy >>= 8n;
+    }
+    const bytes = new Uint8Array(65);
+    bytes[0] = 0x04;
+    bytes.set(xBytes, 1);
+    bytes.set(yBytes, 33);
+    return bytes;
+  }
+  if (algorithm === coseAlgorithmRS256) {
+    const rsa = publicKey.rsa();
+    const rsaPubKey = new RSAPublicKey(rsa.n, rsa.e);
+    return rsaPubKey.encodePKCS1();
+  }
+  throw convexError(
+    "PASSKEY_UNSUPPORTED_ALGORITHM",
+    `Unsupported algorithm: ${algorithm}`,
   );
+}
 
-const verifyAssertionSignature = (
+function verifyAssertionSignature(
   passkey: Awaited<
     ReturnType<typeof queryPasskeyByCredentialId>
   > extends infer T
@@ -388,409 +362,388 @@ const verifyAssertionSignature = (
     : never,
   signature: Uint8Array,
   messageHash: Uint8Array,
-): Effect.Effect<void, ConvexError<AuthErrorData>> =>
-  Match.value(passkey.algorithm).pipe(
-    Match.when(coseAlgorithmES256, () => {
-      const ecPublicKey = decodeSEC1PublicKey(
-        p256,
-        new Uint8Array(passkey.publicKey),
+): void {
+  if (passkey.algorithm === coseAlgorithmES256) {
+    const ecPublicKey = decodeSEC1PublicKey(
+      p256,
+      new Uint8Array(passkey.publicKey),
+    );
+    const ecdsaSignature = decodePKIXECDSASignature(signature);
+    if (!verifyECDSASignature(ecPublicKey, messageHash, ecdsaSignature)) {
+      throw convexError(
+        "PASSKEY_INVALID_SIGNATURE",
+        "Invalid passkey signature.",
       );
-      const ecdsaSignature = decodePKIXECDSASignature(signature);
-      return verifyECDSASignature(ecPublicKey, messageHash, ecdsaSignature)
-        ? Effect.void
-        : Effect.fail(
-            convexError(
-              "PASSKEY_INVALID_SIGNATURE",
-              "Invalid passkey signature.",
-            ),
-          );
-    }),
-    Match.when(coseAlgorithmRS256, () => {
-      const rsaPublicKey = decodePKCS1RSAPublicKey(
-        new Uint8Array(passkey.publicKey),
+    }
+    return;
+  }
+  if (passkey.algorithm === coseAlgorithmRS256) {
+    const rsaPublicKey = decodePKCS1RSAPublicKey(
+      new Uint8Array(passkey.publicKey),
+    );
+    if (!verifyRSASSAPKCS1v15Signature(
+      rsaPublicKey,
+      sha256ObjectIdentifier,
+      messageHash,
+      signature,
+    )) {
+      throw convexError(
+        "PASSKEY_INVALID_SIGNATURE",
+        "Invalid passkey signature.",
       );
-      return verifyRSASSAPKCS1v15Signature(
-        rsaPublicKey,
-        sha256ObjectIdentifier,
-        messageHash,
-        signature,
-      )
-        ? Effect.void
-        : Effect.fail(
-            convexError(
-              "PASSKEY_INVALID_SIGNATURE",
-              "Invalid passkey signature.",
-            ),
-          );
-    }),
-    Match.orElse((algorithm) =>
-      Effect.fail(
-        convexError(
-          "PASSKEY_UNSUPPORTED_ALGORITHM",
-          `Unsupported algorithm: ${algorithm}`,
-        ),
-      ),
-    ),
+    }
+    return;
+  }
+  throw convexError(
+    "PASSKEY_UNSUPPORTED_ALGORITHM",
+    `Unsupported algorithm: ${passkey.algorithm}`,
   );
+}
 
-export function handlePasskeyFx(
+export async function handlePasskeyFx(
   ctx: EnrichedActionCtx,
   provider: PasskeyProviderConfig,
   args: {
     params?: Record<string, unknown>;
     verifier?: string;
   },
-): Effect.Effect<PasskeyResult, ConvexError<AuthErrorData>> {
+): Promise<PasskeyResult> {
   const params = (args.params ?? {}) as PasskeyParams;
+  const dispatch = resolvePasskeyDispatch(params);
 
-  return Effect.flatMap(resolvePasskeyDispatchFx(params), (dispatch) =>
-    Match.value(dispatch).pipe(
-      Match.when({ flow: "registerOptions" }, () =>
-        Effect.gen(function* () {
-          const userId = yield* requireAuthenticatedUserId(ctx);
-          const rp = yield* resolveRpOptionsFx(provider);
+  const flowHandlers: Record<string, () => Promise<PasskeyResult>> = {
+    registerOptions: async () => {
+      const userId = await requireAuthenticatedUserId(ctx);
+      const rp = resolveRpOptions(provider);
 
-          const challenge = new Uint8Array(32);
-          crypto.getRandomValues(challenge);
-          const challengeHash = encodeBase64urlNoPadding(
-            new Uint8Array(sha256(challenge)),
-          );
+      const challenge = new Uint8Array(32);
+      crypto.getRandomValues(challenge);
+      const challengeHash = encodeBase64urlNoPadding(
+        new Uint8Array(sha256(challenge)),
+      );
 
-          const verifier = yield* Effect.tryPromise({
-            try: () => callVerifier(ctx, challengeHash),
-            catch: () =>
-              convexError("INTERNAL_ERROR", "An unexpected error occurred."),
-          });
+      let verifier: string;
+      try {
+        verifier = await callVerifier(ctx, challengeHash);
+      } catch {
+        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+      }
 
-          const user = yield* Effect.tryPromise({
-            try: () => queryUserById(ctx, userId),
-            catch: () =>
-              convexError("INTERNAL_ERROR", "An unexpected error occurred."),
-          });
-          const userName = params.userName ?? user?.email ?? "user";
-          const userDisplayName =
-            params.userDisplayName ?? user?.name ?? userName;
+      let user;
+      try {
+        user = await queryUserById(ctx, userId);
+      } catch {
+        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+      }
+      const userName = params.userName ?? user?.email ?? "user";
+      const userDisplayName =
+        params.userDisplayName ?? user?.name ?? userName;
 
-          const existing = yield* Effect.tryPromise({
-            try: () => queryPasskeysByUserId(ctx, userId),
-            catch: () =>
-              convexError("INTERNAL_ERROR", "An unexpected error occurred."),
-          });
-          const excludeCredentials = existing.map((pk) => ({
-            id: pk.credentialId,
-            transports: pk.transports,
-          }));
+      let existing;
+      try {
+        existing = await queryPasskeysByUserId(ctx, userId);
+      } catch {
+        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+      }
+      const excludeCredentials = existing.map((pk) => ({
+        id: pk.credentialId,
+        transports: pk.transports,
+      }));
 
-          const userHandle = encodeBase64urlNoPadding(
-            new TextEncoder().encode(userId),
-          );
+      const userHandle = encodeBase64urlNoPadding(
+        new TextEncoder().encode(userId),
+      );
 
-          return {
-            kind: "passkeyOptions" as const,
-            options: {
-              rp: { name: rp.rpName, id: rp.rpId },
-              user: {
-                id: userHandle,
-                name: userName,
-                displayName: userDisplayName,
-              },
-              challenge: encodeBase64urlNoPadding(challenge),
-              pubKeyCredParams: rp.algorithms.map((alg) => ({
-                type: "public-key" as const,
-                alg,
-              })),
-              timeout: rp.challengeExpirationMs,
-              attestation: rp.attestation,
-              authenticatorSelection: {
-                residentKey: rp.residentKey,
-                requireResidentKey: rp.residentKey === "required",
-                userVerification: rp.userVerification,
-                ...(rp.authenticatorAttachment
-                  ? {
-                      authenticatorAttachment: rp.authenticatorAttachment,
-                    }
-                  : {}),
-              },
-              excludeCredentials,
-            },
-            verifier,
-          };
-        }),
-      ),
-      Match.when({ flow: "registerVerify" }, () =>
-        Effect.gen(function* () {
-          const userId = yield* requireAuthenticatedUserId(ctx);
-          const rp = yield* resolveRpOptionsFx(provider);
-          const verifier = yield* requirePasskeyVerifierFx(args.verifier);
-
-          const clientDataJSON = decodeBase64urlIgnorePadding(
-            requireStringParam(params.clientDataJSON, "clientDataJSON"),
-          );
-          const clientData = parseClientDataJSON(clientDataJSON);
-          yield* verifyClientDataType(
-            ClientDataType.Create,
-            "webauthn.create",
-          )(clientData);
-          yield* verifyOrigin(rp)(clientData);
-          yield* verifyAndConsumeChallenge(ctx, verifier)(clientData);
-
-          const attestationObjectBytes = decodeBase64urlIgnorePadding(
-            requireStringParam(params.attestationObject, "attestationObject"),
-          );
-          const attestation = parseAttestationObject(attestationObjectBytes);
-          const authData = attestation.authenticatorData;
-          yield* verifyRpId(rp.rpId)(authData);
-          yield* verifyUserFlags(rp)(authData);
-
-          if (authData.credential == null) {
-            return yield* Effect.fail(
-              convexError(
-                "PASSKEY_NO_CREDENTIAL",
-                "No credential in attestation.",
-              ),
-            );
-          }
-
-          const credential = authData.credential;
-          const credentialId = encodeBase64urlNoPadding(credential.id);
-          const publicKey = credential.publicKey;
-          const algorithm = publicKey.isAlgorithmDefined()
-            ? publicKey.algorithm()
-            : Match.value(publicKey.type()).pipe(
-                Match.when(COSEKeyType.EC2, () => coseAlgorithmES256),
-                Match.when(COSEKeyType.RSA, () => coseAlgorithmRS256),
-                Match.orElse(() => coseAlgorithmES256),
-              );
-          const publicKeyBytes = yield* resolveRegistrationPublicKeyBytes(
-            publicKey,
-            algorithm,
-          );
-
-          yield* Effect.tryPromise({
-            try: async () => {
-              const deviceType = params.deviceType ?? "single-device";
-              const backedUp = params.backedUp ?? false;
-              const db = authDb(ctx, ctx.auth.config);
-
-              await db.accounts.create({
-                userId,
-                provider: provider.id,
-                providerAccountId: credentialId,
-              });
-
-              await mutatePasskeyInsert(ctx, {
-                userId,
-                credentialId,
-                publicKey: publicKeyBytes.buffer.slice(
-                  publicKeyBytes.byteOffset,
-                  publicKeyBytes.byteOffset + publicKeyBytes.byteLength,
-                ),
-                algorithm,
-                counter: authData.signatureCounter,
-                transports: params.transports,
-                deviceType,
-                backedUp,
-                name: params.passkeyName,
-                createdAt: Date.now(),
-              });
-            },
-            catch: () =>
-              convexError("INTERNAL_ERROR", "An unexpected error occurred."),
-          });
-
-          const signInResult = yield* Effect.tryPromise({
-            try: () =>
-              callSignIn(ctx, {
-                userId,
-                generateTokens: true,
-              }),
-            catch: () =>
-              convexError("INTERNAL_ERROR", "An unexpected error occurred."),
-          });
-          return { kind: "signedIn" as const, signedIn: signInResult };
-        }),
-      ),
-      Match.when({ flow: "authOptions" }, () =>
-        Effect.gen(function* () {
-          const rp = yield* resolveRpOptionsFx(provider);
-
-          const challenge = new Uint8Array(32);
-          crypto.getRandomValues(challenge);
-          const challengeHash = encodeBase64urlNoPadding(
-            new Uint8Array(sha256(challenge)),
-          );
-
-          const verifier = yield* Effect.tryPromise({
-            try: () => callVerifier(ctx, challengeHash),
-            catch: () =>
-              convexError("INTERNAL_ERROR", "An unexpected error occurred."),
-          });
-
-          let allowCredentials:
-            | Array<{ type: "public-key"; id: string; transports?: string[] }>
-            | undefined;
-
-          if (params.email) {
-            const email = requireStringParam(params.email, "email");
-            const user = yield* Effect.tryPromise({
-              try: () => queryUserByVerifiedEmail(ctx, email),
-              catch: () =>
-                convexError("INTERNAL_ERROR", "An unexpected error occurred."),
-            });
-            if (user) {
-              const passkeys = yield* Effect.tryPromise({
-                try: () => queryPasskeysByUserId(ctx, user._id),
-                catch: () =>
-                  convexError(
-                    "INTERNAL_ERROR",
-                    "An unexpected error occurred.",
-                  ),
-              });
-              if (passkeys.length > 0) {
-                allowCredentials = passkeys.map((pk) => ({
-                  type: "public-key" as const,
-                  id: pk.credentialId,
-                  transports: pk.transports,
-                }));
-              }
-            }
-          }
-
-          const options: {
-            challenge: string;
-            timeout: number;
-            rpId: string;
-            userVerification: string;
-            allowCredentials?: Array<{
-              type: "public-key";
-              id: string;
-              transports?: string[];
-            }>;
-          } = {
-            challenge: encodeBase64urlNoPadding(challenge),
-            timeout: rp.challengeExpirationMs,
-            rpId: rp.rpId,
+      return {
+        kind: "passkeyOptions" as const,
+        options: {
+          rp: { name: rp.rpName, id: rp.rpId },
+          user: {
+            id: userHandle,
+            name: userName,
+            displayName: userDisplayName,
+          },
+          challenge: encodeBase64urlNoPadding(challenge),
+          pubKeyCredParams: rp.algorithms.map((alg) => ({
+            type: "public-key" as const,
+            alg,
+          })),
+          timeout: rp.challengeExpirationMs,
+          attestation: rp.attestation,
+          authenticatorSelection: {
+            residentKey: rp.residentKey,
+            requireResidentKey: rp.residentKey === "required",
             userVerification: rp.userVerification,
-          };
+            ...(rp.authenticatorAttachment
+              ? {
+                  authenticatorAttachment: rp.authenticatorAttachment,
+                }
+              : {}),
+          },
+          excludeCredentials,
+        },
+        verifier,
+      };
+    },
 
-          if (allowCredentials) {
-            options.allowCredentials = allowCredentials;
-          }
+    registerVerify: async () => {
+      const userId = await requireAuthenticatedUserId(ctx);
+      const rp = resolveRpOptions(provider);
+      const verifier = requirePasskeyVerifier(args.verifier);
 
-          return {
-            kind: "passkeyOptions" as const,
-            options,
-            verifier,
-          };
-        }),
-      ),
-      Match.when({ flow: "authVerify" }, () =>
-        Effect.gen(function* () {
-          const rp = yield* resolveRpOptionsFx(provider);
-          const verifier = yield* requirePasskeyVerifierFx(args.verifier);
+      const clientDataJSON = decodeBase64urlIgnorePadding(
+        requireStringParam(params.clientDataJSON, "clientDataJSON"),
+      );
+      const clientData = parseClientDataJSON(clientDataJSON);
+      verifyClientDataType(clientData, ClientDataType.Create, "webauthn.create");
+      verifyOrigin(clientData, rp);
+      await verifyAndConsumeChallenge(clientData, ctx, verifier);
 
-          const clientDataJSON = decodeBase64urlIgnorePadding(
-            requireStringParam(params.clientDataJSON, "clientDataJSON"),
-          );
-          const clientData = parseClientDataJSON(clientDataJSON);
-          yield* verifyClientDataType(
-            ClientDataType.Get,
-            "webauthn.get",
-          )(clientData);
-          yield* verifyOrigin(rp)(clientData);
-          yield* verifyAndConsumeChallenge(ctx, verifier)(clientData);
+      const attestationObjectBytes = decodeBase64urlIgnorePadding(
+        requireStringParam(params.attestationObject, "attestationObject"),
+      );
+      const attestation = parseAttestationObject(attestationObjectBytes);
+      const authData = attestation.authenticatorData;
+      verifyRpId(authData, rp.rpId);
+      verifyUserFlags(authData, rp);
 
-          const credentialId = params.credentialId;
-          if (credentialId == null) {
-            return yield* Effect.fail(
-              convexError(
-                "PASSKEY_UNKNOWN_CREDENTIAL",
-                "Missing credential ID",
-              ),
+      if (authData.credential == null) {
+        throw convexError(
+          "PASSKEY_NO_CREDENTIAL",
+          "No credential in attestation.",
+        );
+      }
+
+      const credential = authData.credential;
+      const credentialId = encodeBase64urlNoPadding(credential.id);
+      const publicKey = credential.publicKey;
+      const algorithm = publicKey.isAlgorithmDefined()
+        ? publicKey.algorithm()
+        : publicKey.type() === COSEKeyType.EC2
+          ? coseAlgorithmES256
+          : publicKey.type() === COSEKeyType.RSA
+            ? coseAlgorithmRS256
+            : coseAlgorithmES256;
+      const publicKeyBytes = resolveRegistrationPublicKeyBytes(
+        publicKey,
+        algorithm,
+      );
+
+      try {
+        const deviceType = params.deviceType ?? "single-device";
+        const backedUp = params.backedUp ?? false;
+        const db = authDb(ctx, ctx.auth.config);
+
+        await db.accounts.create({
+          userId,
+          provider: provider.id,
+          providerAccountId: credentialId,
+        });
+
+        await mutatePasskeyInsert(ctx, {
+          userId,
+          credentialId,
+          publicKey: publicKeyBytes.buffer.slice(
+            publicKeyBytes.byteOffset,
+            publicKeyBytes.byteOffset + publicKeyBytes.byteLength,
+          ),
+          algorithm,
+          counter: authData.signatureCounter,
+          transports: params.transports,
+          deviceType,
+          backedUp,
+          name: params.passkeyName,
+          createdAt: Date.now(),
+        });
+      } catch {
+        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+      }
+
+      let signInResult;
+      try {
+        signInResult = await callSignIn(ctx, {
+          userId,
+          generateTokens: true,
+        });
+      } catch {
+        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+      }
+      return { kind: "signedIn" as const, signedIn: signInResult };
+    },
+
+    authOptions: async () => {
+      const rp = resolveRpOptions(provider);
+
+      const challenge = new Uint8Array(32);
+      crypto.getRandomValues(challenge);
+      const challengeHash = encodeBase64urlNoPadding(
+        new Uint8Array(sha256(challenge)),
+      );
+
+      let verifier: string;
+      try {
+        verifier = await callVerifier(ctx, challengeHash);
+      } catch {
+        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+      }
+
+      let allowCredentials:
+        | Array<{ type: "public-key"; id: string; transports?: string[] }>
+        | undefined;
+
+      if (params.email) {
+        const email = requireStringParam(params.email, "email");
+        let user;
+        try {
+          user = await queryUserByVerifiedEmail(ctx, email);
+        } catch {
+          throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+        }
+        if (user) {
+          let passkeys;
+          try {
+            passkeys = await queryPasskeysByUserId(ctx, user._id);
+          } catch {
+            throw convexError(
+              "INTERNAL_ERROR",
+              "An unexpected error occurred.",
             );
           }
-
-          const passkey = yield* Effect.flatMap(
-            Effect.tryPromise({
-              try: () => queryPasskeyByCredentialId(ctx, credentialId),
-              catch: () =>
-                convexError(
-                  "PASSKEY_UNKNOWN_CREDENTIAL",
-                  "Unknown passkey credential.",
-                ),
-            }),
-            (passkey) =>
-              Match.value(passkey).pipe(
-                Match.when(null, () =>
-                  Effect.fail(
-                    convexError(
-                      "PASSKEY_UNKNOWN_CREDENTIAL",
-                      "Unknown credential",
-                    ),
-                  ),
-                ),
-                Match.orElse((passkey) => Effect.succeed(passkey)),
-              ),
-          );
-
-          const authenticatorDataBytes = decodeBase64urlIgnorePadding(
-            requireStringParam(params.authenticatorData, "authenticatorData"),
-          );
-          const authenticatorData = parseAuthenticatorData(
-            authenticatorDataBytes,
-          );
-          const signature = decodeBase64urlIgnorePadding(
-            requireStringParam(params.signature, "signature"),
-          );
-          const signatureMessage = createAssertionSignatureMessage(
-            authenticatorDataBytes,
-            clientDataJSON,
-          );
-          const messageHash = sha256(signatureMessage);
-
-          yield* verifyRpId(rp.rpId)(authenticatorData);
-          yield* verifyUserFlags(rp)(authenticatorData);
-          yield* verifyAssertionSignature(passkey, signature, messageHash);
-
-          if (
-            passkey.counter !== 0 &&
-            authenticatorData.signatureCounter !== 0 &&
-            authenticatorData.signatureCounter <= passkey.counter
-          ) {
-            return yield* Effect.fail(
-              convexError(
-                "PASSKEY_COUNTER_ERROR",
-                "Authenticator counter did not increase — possible credential cloning detected.",
-              ),
-            );
+          if (passkeys.length > 0) {
+            allowCredentials = passkeys.map((pk) => ({
+              type: "public-key" as const,
+              id: pk.credentialId,
+              transports: pk.transports,
+            }));
           }
+        }
+      }
 
-          yield* Effect.tryPromise({
-            try: () =>
-              mutatePasskeyUpdateCounter(
-                ctx,
-                passkey._id,
-                authenticatorData.signatureCounter,
-                Date.now(),
-              ),
-            catch: () =>
-              convexError("INTERNAL_ERROR", "An unexpected error occurred."),
-          });
+      const options: {
+        challenge: string;
+        timeout: number;
+        rpId: string;
+        userVerification: string;
+        allowCredentials?: Array<{
+          type: "public-key";
+          id: string;
+          transports?: string[];
+        }>;
+      } = {
+        challenge: encodeBase64urlNoPadding(challenge),
+        timeout: rp.challengeExpirationMs,
+        rpId: rp.rpId,
+        userVerification: rp.userVerification,
+      };
 
-          const signInResult = yield* Effect.tryPromise({
-            try: () =>
-              callSignIn(ctx, {
-                userId: passkey.userId,
-                generateTokens: true,
-              }),
-            catch: () =>
-              convexError("INTERNAL_ERROR", "An unexpected error occurred."),
-          });
+      if (allowCredentials) {
+        options.allowCredentials = allowCredentials;
+      }
 
-          return { kind: "signedIn" as const, signedIn: signInResult };
-        }),
-      ),
-      Match.exhaustive,
-    ),
-  );
+      return {
+        kind: "passkeyOptions" as const,
+        options,
+        verifier,
+      };
+    },
+
+    authVerify: async () => {
+      const rp = resolveRpOptions(provider);
+      const verifier = requirePasskeyVerifier(args.verifier);
+
+      const clientDataJSON = decodeBase64urlIgnorePadding(
+        requireStringParam(params.clientDataJSON, "clientDataJSON"),
+      );
+      const clientData = parseClientDataJSON(clientDataJSON);
+      verifyClientDataType(clientData, ClientDataType.Get, "webauthn.get");
+      verifyOrigin(clientData, rp);
+      await verifyAndConsumeChallenge(clientData, ctx, verifier);
+
+      const credentialId = params.credentialId;
+      if (credentialId == null) {
+        throw convexError(
+          "PASSKEY_UNKNOWN_CREDENTIAL",
+          "Missing credential ID",
+        );
+      }
+
+      let passkey;
+      try {
+        passkey = await queryPasskeyByCredentialId(ctx, credentialId);
+      } catch {
+        throw convexError(
+          "PASSKEY_UNKNOWN_CREDENTIAL",
+          "Unknown passkey credential.",
+        );
+      }
+      if (passkey === null) {
+        throw convexError(
+          "PASSKEY_UNKNOWN_CREDENTIAL",
+          "Unknown credential",
+        );
+      }
+
+      const authenticatorDataBytes = decodeBase64urlIgnorePadding(
+        requireStringParam(params.authenticatorData, "authenticatorData"),
+      );
+      const authenticatorData = parseAuthenticatorData(
+        authenticatorDataBytes,
+      );
+      const signatureBytes = decodeBase64urlIgnorePadding(
+        requireStringParam(params.signature, "signature"),
+      );
+      const signatureMessage = createAssertionSignatureMessage(
+        authenticatorDataBytes,
+        clientDataJSON,
+      );
+      const messageHash = sha256(signatureMessage);
+
+      verifyRpId(authenticatorData, rp.rpId);
+      verifyUserFlags(authenticatorData, rp);
+      verifyAssertionSignature(passkey, signatureBytes, messageHash);
+
+      if (
+        passkey.counter !== 0 &&
+        authenticatorData.signatureCounter !== 0 &&
+        authenticatorData.signatureCounter <= passkey.counter
+      ) {
+        throw convexError(
+          "PASSKEY_COUNTER_ERROR",
+          "Authenticator counter did not increase — possible credential cloning detected.",
+        );
+      }
+
+      try {
+        await mutatePasskeyUpdateCounter(
+          ctx,
+          passkey._id,
+          authenticatorData.signatureCounter,
+          Date.now(),
+        );
+      } catch {
+        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+      }
+
+      let signInResult;
+      try {
+        signInResult = await callSignIn(ctx, {
+          userId: passkey.userId,
+          generateTokens: true,
+        });
+      } catch {
+        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+      }
+
+      return { kind: "signedIn" as const, signedIn: signInResult };
+    },
+  };
+
+  const handler = flowHandlers[dispatch.flow];
+  if (!handler) {
+    throw convexError(
+      "PASSKEY_MISSING_FLOW",
+      `Unknown passkey flow: ${dispatch.flow}`,
+    );
+  }
+  return handler();
 }

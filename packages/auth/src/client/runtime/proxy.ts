@@ -1,14 +1,11 @@
 import { ConvexError, type Value } from "convex/values";
-import { Schema } from "effect";
 
 const NETWORK_ERROR_PATTERN = /(network|fetch|load failed|failed to fetch)/i;
 
-const ProxyErrorBodySchema = Schema.Struct({
-  error: Schema.optional(Schema.String),
-  authError: Schema.optional(Schema.Unknown),
-});
-
-type ProxyErrorBody = Schema.Schema.Type<typeof ProxyErrorBodySchema>;
+type ProxyErrorBody = {
+  error?: string;
+  authError?: unknown;
+};
 
 /** @internal */
 export function isTransientNetworkError(error: unknown): boolean {
@@ -36,7 +33,14 @@ export function isRetriableProxyRefreshError(error: unknown): boolean {
 
 /** @internal */
 export function parseProxyErrorBody(value: unknown): ProxyErrorBody {
-  return Schema.decodeUnknownSync(ProxyErrorBodySchema)(value);
+  if (typeof value !== "object" || value === null) {
+    return {};
+  }
+  const obj = value as Record<string, unknown>;
+  return {
+    error: typeof obj.error === "string" ? obj.error : undefined,
+    authError: obj.authError,
+  };
 }
 
 /** @internal */

@@ -1,7 +1,6 @@
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError } from "convex/values";
 import { Infer, v } from "convex/values";
-import { Effect } from "effect";
 
 import { getGroup, getGroupConnection } from "../contract";
 import * as Provider from "../crypto";
@@ -70,12 +69,12 @@ function normalizeAccountExtend(
 
 type ReturnType = string;
 
-export function userOAuthImpl(
+export async function userOAuthImpl(
   ctx: MutationCtx,
   args: Infer<typeof userOAuthArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
-): Effect.Effect<ReturnType, unknown> {
+): Promise<ReturnType> {
   log("DEBUG", "userOAuthImpl args:", args);
   const { profile, provider, providerAccountId, signature, accountExtend } =
     args;
@@ -91,211 +90,176 @@ export function userOAuthImpl(
     : provider.startsWith(GROUP_SAML_PROVIDER_PREFIX)
       ? "saml"
       : null;
-  return Effect.gen(function* () {
-    const existingAccount = yield* Effect.promise(() =>
-      db.accounts.get(provider, providerAccountId),
-    );
-    const connection =
-      connectionId !== null
-        ? yield* Effect.promise(() =>
-            getGroupConnection(ctx, config.component.public, connectionId),
-          )
-        : null;
-    const group =
-      connection !== null
-        ? yield* Effect.promise(() =>
-            getGroup(ctx, config.component.public, connection.groupId),
-          )
-        : null;
-    const connectionPolicy = connection
-      ? normalizeGroupConnectionPolicy(group?.policy)
+
+  const existingAccount = await db.accounts.get(provider, providerAccountId);
+  const connection =
+    connectionId !== null
+      ? await getGroupConnection(ctx, config.component.public, connectionId)
+      : null;
+  const group =
+    connection !== null
+      ? await getGroup(ctx, config.component.public, connection.groupId)
+      : null;
+  const connectionPolicy = connection
+    ? normalizeGroupConnectionPolicy(group?.policy)
+    : null;
+
+  const existingScimIdentity =
+    connectionId !== null &&
+    existingAccount === null &&
+    connectionPolicy?.provisioning.scimReuse.user === "externalId"
+      ? await ctx.runQuery(
+          config.component.public.groupConnectionScimIdentityGet,
+          {
+            connectionId,
+            resourceType: "user",
+            externalId: providerAccountId,
+          },
+        )
       : null;
 
-    const existingScimIdentity =
-      connectionId !== null &&
-      existingAccount === null &&
-      connectionPolicy?.provisioning.scimReuse.user === "externalId"
-        ? yield* Effect.promise(() =>
-            ctx.runQuery(
-              config.component.public.groupConnectionScimIdentityGet,
-              {
-                connectionId,
-                resourceType: "user",
-                externalId: providerAccountId,
-              },
-            ),
+  let verifier;
+  try {
+    verifier = await db.verifiers.getBySignature(signature);
+  } catch {
+    throw new ConvexError({
+      code: "OAUTH_INVALID_STATE",
+      message: "Invalid OAuth state. Please try signing in again.",
+    });
+  }
+  if (verifier === null) {
+    throw new ConvexError({
+      code: "OAUTH_INVALID_STATE",
+      message: "Invalid OAuth state. Please try signing in again.",
+    });
+  }
+
+  const profileResolved =
+    (config.sso?.hooks?.profileResolved
+      ? await config.sso.hooks.profileResolved({
+          protocol: connectionProtocol ?? "oidc",
+          connectionId: connectionId ?? undefined,
+          profile: typedProfile,
+        })
+      : undefined) ?? typedProfile;
+  const profileForProvisioning =
+    (config.sso?.hooks?.beforeProvision
+      ? await config.sso.hooks.beforeProvision({
+          protocol: connectionProtocol ?? "oidc",
+          connectionId: connectionId ?? undefined,
+          profile: profileResolved as Record<string, unknown>,
+        })
+      : undefined) ?? profileResolved;
+
+  const { accountId } = await upsertUserAndAccount(
+    ctx,
+    verifier.sessionId ?? null,
+    existingAccount !== null ? { existingAccount } : { providerAccountId },
+    {
+      type: "oauth",
+      provider: (isGroupProviderId(provider)
+        ? createSyntheticOAuthMaterializedConfig(provider, {
+            accountLinking:
+              connectionProtocol === "oidc"
+                ? connectionPolicy?.identity.accountLinking.oidc
+                : connectionProtocol === "saml"
+                  ? connectionPolicy?.identity.accountLinking.saml
+                  : undefined,
+          })
+        : getProviderOrThrow(provider)) as AuthProviderMaterializedConfig,
+      profile: profileForProvisioning as AuthProfile,
+      accountExtend: normalizeAccountExtend(
+        provider,
+        providerAccountId,
+        accountExtend,
+      ),
+    },
+    config,
+    connectionPolicy?.provisioning.user
+      ? {
+          existingUserId: existingScimIdentity?.userId,
+          provisioningUser: connectionPolicy.provisioning.user,
+          source: "login",
+        }
+      : existingScimIdentity?.userId
+        ? { existingUserId: existingScimIdentity.userId }
+        : undefined,
+  );
+
+  if (
+    connectionId !== null &&
+    connectionPolicy?.provisioning.jit.mode === "createUserAndMembership"
+  ) {
+    const account = await db.accounts.getById(accountId);
+    const userId = account?.userId;
+    if (userId) {
+      const groupId = connection?.groupId;
+      if (groupId) {
+        const provisionedRoleIds = resolveProvisionedRoleIds({
+          policy: connectionPolicy,
+          groups: Array.isArray(
+            (typedProfile as Record<string, unknown>).groups,
           )
-        : null;
-
-    const verifier = yield* Effect.tryPromise({
-      try: () => db.verifiers.getBySignature(signature),
-      catch: () =>
-        new ConvexError({
-          code: "OAUTH_INVALID_STATE",
-          message: "Invalid OAuth state. Please try signing in again.",
-        }),
-    }).pipe(
-      Effect.flatMap((verifier) =>
-        verifier === null
-          ? Effect.fail(
-              new ConvexError({
-                code: "OAUTH_INVALID_STATE",
-                message: "Invalid OAuth state. Please try signing in again.",
-              }),
-            )
-          : Effect.succeed(verifier),
-      ),
-    );
-
-    const profileResolved =
-      (yield* Effect.promise(async () =>
-        config.sso?.hooks?.profileResolved
-          ? await config.sso.hooks.profileResolved({
-              protocol: connectionProtocol ?? "oidc",
-              connectionId: connectionId ?? undefined,
-              profile: typedProfile,
-            })
-          : undefined,
-      )) ?? typedProfile;
-    const profileForProvisioning =
-      (yield* Effect.promise(async () =>
-        config.sso?.hooks?.beforeProvision
-          ? await config.sso.hooks.beforeProvision({
-              protocol: connectionProtocol ?? "oidc",
-              connectionId: connectionId ?? undefined,
-              profile: profileResolved as Record<string, unknown>,
-            })
-          : undefined,
-      )) ?? profileResolved;
-
-    const { accountId } = yield* Effect.promise(() =>
-      upsertUserAndAccount(
-        ctx,
-        verifier.sessionId ?? null,
-        existingAccount !== null ? { existingAccount } : { providerAccountId },
-        {
-          type: "oauth",
-          provider: (isGroupProviderId(provider)
-            ? createSyntheticOAuthMaterializedConfig(provider, {
-                accountLinking:
-                  connectionProtocol === "oidc"
-                    ? connectionPolicy?.identity.accountLinking.oidc
-                    : connectionProtocol === "saml"
-                      ? connectionPolicy?.identity.accountLinking.saml
-                      : undefined,
-              })
-            : getProviderOrThrow(provider)) as AuthProviderMaterializedConfig,
-          profile: profileForProvisioning as AuthProfile,
-          accountExtend: normalizeAccountExtend(
-            provider,
-            providerAccountId,
-            accountExtend,
-          ),
-        },
-        config,
-        connectionPolicy?.provisioning.user
-          ? {
-              existingUserId: existingScimIdentity?.userId,
-              provisioningUser: connectionPolicy.provisioning.user,
-              source: "login",
-            }
-          : existingScimIdentity?.userId
-            ? { existingUserId: existingScimIdentity.userId }
+            ? ((typedProfile as Record<string, unknown>).groups as string[])
             : undefined,
-      ),
-    );
-
-    if (
-      connectionId !== null &&
-      connectionPolicy?.provisioning.jit.mode === "createUserAndMembership"
-    ) {
-      const account = yield* Effect.promise(() =>
-        db.accounts.getById(accountId),
-      );
-      const userId = account?.userId;
-      if (userId) {
-        const groupId = connection?.groupId;
-        if (groupId) {
-          const provisionedRoleIds = resolveProvisionedRoleIds({
-            policy: connectionPolicy,
-            groups: Array.isArray(
-              (typedProfile as Record<string, unknown>).groups,
-            )
-              ? ((typedProfile as Record<string, unknown>).groups as string[])
-              : undefined,
-            roles: Array.isArray(
-              (typedProfile as Record<string, unknown>).roles,
-            )
-              ? ((typedProfile as Record<string, unknown>).roles as string[])
-              : undefined,
+          roles: Array.isArray((typedProfile as Record<string, unknown>).roles)
+            ? ((typedProfile as Record<string, unknown>).roles as string[])
+            : undefined,
+        });
+        const existingMembership = await ctx.runQuery(
+          config.component.public.memberGetByGroupAndUser,
+          {
+            userId,
+            groupId,
+          },
+        );
+        if (existingMembership === null) {
+          await ctx.runMutation(config.component.public.memberAdd, {
+            groupId,
+            userId,
+            roleIds: provisionedRoleIds,
+            status: "active",
           });
-          const existingMembership = yield* Effect.promise(() =>
-            ctx.runQuery(config.component.public.memberGetByGroupAndUser, {
-              userId,
-              groupId,
-            }),
-          );
-          if (existingMembership === null) {
-            yield* Effect.promise(() =>
-              ctx.runMutation(config.component.public.memberAdd, {
-                groupId,
-                userId,
-                roleIds: provisionedRoleIds,
-                status: "active",
-              }),
-            );
-          } else if (provisionedRoleIds.length > 0) {
-            yield* Effect.promise(() =>
-              ctx.runMutation(config.component.public.memberUpdate, {
-                memberId: existingMembership._id,
-                data: { roleIds: provisionedRoleIds },
-              }),
-            );
-          }
+        } else if (provisionedRoleIds.length > 0) {
+          await ctx.runMutation(config.component.public.memberUpdate, {
+            memberId: existingMembership._id,
+            data: { roleIds: provisionedRoleIds },
+          });
         }
       }
     }
+  }
 
-    if (connectionId !== null) {
-      const account = yield* Effect.promise(() =>
-        db.accounts.getById(accountId),
-      );
-      const userId = account?.userId;
-      if (userId) {
-        yield* Effect.promise(async () => {
-          if (config.sso?.hooks?.afterProvision) {
-            await config.sso.hooks.afterProvision({
-              protocol: connectionProtocol ?? "oidc",
-              connectionId,
-              profile: profileForProvisioning as Record<string, unknown>,
-              userId,
-            });
-          }
+  if (connectionId !== null) {
+    const account = await db.accounts.getById(accountId);
+    const userId = account?.userId;
+    if (userId) {
+      if (config.sso?.hooks?.afterProvision) {
+        await config.sso.hooks.afterProvision({
+          protocol: connectionProtocol ?? "oidc",
+          connectionId,
+          profile: profileForProvisioning as Record<string, unknown>,
+          userId,
         });
       }
     }
+  }
 
-    const code = generateRandomString(8, "0123456789");
-    yield* Effect.promise(() => db.verifiers.delete(verifier._id));
-    const existingVerificationCode = yield* Effect.promise(() =>
-      db.verificationCodes.getByAccountId(accountId),
-    );
-    if (existingVerificationCode !== null) {
-      yield* Effect.promise(() =>
-        db.verificationCodes.delete(existingVerificationCode._id),
-      );
-    }
-    yield* Effect.promise(async () => {
-      await db.verificationCodes.create({
-        code: await sha256(code),
-        accountId,
-        provider,
-        expirationTime: Date.now() + OAUTH_SIGN_IN_EXPIRATION_MS,
-        verifier: verifier._id,
-      });
-    });
-    return code;
+  const code = generateRandomString(8, "0123456789");
+  await db.verifiers.delete(verifier._id);
+  const existingVerificationCode =
+    await db.verificationCodes.getByAccountId(accountId);
+  if (existingVerificationCode !== null) {
+    await db.verificationCodes.delete(existingVerificationCode._id);
+  }
+  await db.verificationCodes.create({
+    code: await sha256(code),
+    accountId,
+    provider,
+    expirationTime: Date.now() + OAUTH_SIGN_IN_EXPIRATION_MS,
+    verifier: verifier._id,
   });
+  return code;
 }
 
 export const callUserOAuth = async <DataModel extends GenericDataModel>(

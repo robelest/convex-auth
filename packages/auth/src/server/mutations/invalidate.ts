@@ -1,6 +1,5 @@
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { GenericId, Infer, v } from "convex/values";
-import { Effect } from "effect";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
@@ -29,26 +28,23 @@ export const callInvalidateSessions = async <
   }) as Promise<void>;
 };
 
-export function invalidateSessionsImpl(
+export async function invalidateSessionsImpl(
   ctx: MutationCtx,
   args: Infer<typeof invalidateSessionsArgs>,
   config: Provider.Config,
-): Effect.Effect<void> {
+): Promise<void> {
   log(LOG_LEVELS.DEBUG, "invalidateSessionsImpl args:", args);
   const { userId, except } = args;
   const exceptSet = new Set(except ?? []);
   const typedUserId = userId as GenericId<"User">;
-  return Effect.gen(function* () {
-    const sessions = (yield* Effect.promise(() =>
-      authDb(ctx, config).sessions.listByUser(typedUserId),
-    )) as Doc<"Session">[];
-    yield* Effect.forEach(
-      sessions,
-      (session) =>
-        exceptSet.has(session._id)
-          ? Effect.void
-          : Effect.promise(() => deleteSession(ctx, session, config)),
-      { discard: true },
-    );
-  });
+  const sessions = (await authDb(ctx, config).sessions.listByUser(
+    typedUserId,
+  )) as Doc<"Session">[];
+  await Promise.all(
+    sessions.map((session) =>
+      exceptSet.has(session._id)
+        ? Promise.resolve()
+        : deleteSession(ctx, session, config),
+    ),
+  );
 }

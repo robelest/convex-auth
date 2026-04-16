@@ -10,15 +10,14 @@
 import * as arctic from "arctic";
 import {
   ConvexError as ConvexErrorCtor,
-  type ConvexError,
 } from "convex/values";
-import { Effect } from "effect";
 
 import { SHARED_COOKIE_OPTIONS } from "../cookies";
 import { envOptionalString, readConfigSync } from "../env";
 import { log } from "../log";
 import type { OAuthProfile, OAuthRuntimeClient, OAuthTokens } from "../types";
 import { isLocalHost } from "../url";
+import { withSpan } from "../utils/span";
 
 type OAuthErrorData = {
   code: string;
@@ -39,18 +38,19 @@ type OAuthProviderConfigLike = {
 
 function failConvex(
   data: OAuthErrorData,
-): Effect.Effect<never, ConvexError<OAuthErrorData>> {
-  return Effect.fail(new ConvexErrorCtor(data));
+): never {
+  throw new ConvexErrorCtor(data);
 }
 
-function tryConvex<A>(options: {
+async function tryConvex<A>(options: {
   try: () => Promise<A> | A;
   catch: (error: unknown) => OAuthErrorData;
-}): Effect.Effect<A, ConvexError<OAuthErrorData>> {
-  return Effect.tryPromise({
-    try: async () => options.try(),
-    catch: (error) => new ConvexErrorCtor(options.catch(error)),
-  });
+}): Promise<A> {
+  try {
+    return await options.try();
+  } catch (error) {
+    throw new ConvexErrorCtor(options.catch(error));
+  }
 }
 
 // ============================================================================
@@ -162,11 +162,11 @@ function requiresPKCE(provider: OAuthRuntimeClient) {
 // Token exchange
 // ============================================================================
 
-function exchangeCode(
+async function exchangeCode(
   provider: OAuthRuntimeClient,
   code: string,
   codeVerifier: string | undefined,
-): Effect.Effect<OAuthTokens, ConvexError<OAuthErrorData>> {
+): Promise<OAuthTokens> {
   return tryConvex({
     try: () => provider.validateAuthorizationCode({ code, codeVerifier }),
     catch: (error) => {
@@ -190,11 +190,11 @@ function exchangeCode(
   });
 }
 
-function extractProfile(
+async function extractProfile(
   providerId: string,
   oauthConfig: OAuthProviderConfigLike,
   tokens: OAuthTokens,
-): Effect.Effect<OAuthProfile, ConvexError<OAuthErrorData>> {
+): Promise<OAuthProfile> {
   if (oauthConfig.profile) {
     return tryConvex({
       try: () => oauthConfig.profile!(tokens),
@@ -210,12 +210,12 @@ function extractProfile(
       string,
       unknown
     >;
-    return Effect.succeed({
+    return {
       id: (claims.sub as string) ?? crypto.randomUUID(),
       name: (claims.name as string) ?? undefined,
       email: (claims.email as string) ?? undefined,
       image: (claims.picture as string) ?? undefined,
-    });
+    };
   }
 
   return failConvex({
@@ -229,13 +229,14 @@ function extractProfile(
 function validateProfileId(
   providerId: string,
   profile: OAuthProfile,
-): Effect.Effect<OAuthProfile, ConvexError<OAuthErrorData>> {
-  return typeof profile.id === "string" && profile.id
-    ? Effect.succeed(profile)
-    : failConvex({
-        code: "OAUTH_INVALID_PROFILE",
-        message: `The profile callback for "${providerId}" must return an object with a string \`id\` field.`,
-      });
+): OAuthProfile {
+  if (typeof profile.id === "string" && profile.id) {
+    return profile;
+  }
+  return failConvex({
+    code: "OAUTH_INVALID_PROFILE",
+    message: `The profile callback for "${providerId}" must return an object with a string \`id\` field.`,
+  });
 }
 
 // ============================================================================
@@ -308,15 +309,15 @@ export async function createOAuthAuthorizationURL(
  * Handle the OAuth callback: validate state, exchange code for tokens,
  * extract profile.
  */
-export function handleOAuthCallback(
+export async function handleOAuthCallback(
   providerId: string,
   oauthConfig: OAuthProviderConfigLike,
   params: Record<string, string>,
   cookies: Record<string, string | undefined>,
-): Effect.Effect<CallbackResult, ConvexError<OAuthErrorData>> {
-  return Effect.gen(function* () {
+): Promise<CallbackResult> {
+  return withSpan("convex-auth.oauth.callback", { providerId }, async () => {
     if (oauthConfig.provider === null) {
-      return yield* failConvex({
+      return failConvex({
         code: "OAUTH_PROVIDER_ERROR",
         message: `OAuth provider "${providerId}" is missing a runtime client.`,
       });
@@ -332,7 +333,7 @@ export function handleOAuthCallback(
       !returnedState ||
       !constantTimeEqual(storedState, returnedState)
     ) {
-      return yield* failConvex({
+      return failConvex({
         code: "OAUTH_INVALID_STATE",
         message: "Invalid OAuth state. Please try signing in again.",
       });
@@ -346,7 +347,7 @@ export function handleOAuthCallback(
         error_description: params.error_description,
       };
       log("DEBUG", "OAuthCallbackError", cause);
-      return yield* failConvex({
+      return failConvex({
         code: "OAUTH_PROVIDER_ERROR",
         message: "OAuth provider returned an error",
         cause: JSON.stringify(cause),
@@ -355,7 +356,7 @@ export function handleOAuthCallback(
 
     const code = params.code;
     if (code == null) {
-      return yield* failConvex({
+      return failConvex({
         code: "OAUTH_PROVIDER_ERROR",
         message: "Missing authorization code in callback",
       });
@@ -366,7 +367,7 @@ export function handleOAuthCallback(
       const pkceCookieName = oauthCookieName("pkce", providerId);
       const storedVerifier = cookies[pkceCookieName];
       if (storedVerifier == null) {
-        return yield* failConvex({
+        return failConvex({
           code: "OAUTH_MISSING_VERIFIER",
           message: "Missing PKCE verifier cookie for OAuth callback",
         });
@@ -380,7 +381,7 @@ export function handleOAuthCallback(
       const nonceCookieName = oauthCookieName("nonce", providerId);
       const storedNonce = cookies[nonceCookieName];
       if (storedNonce == null) {
-        return yield* failConvex({
+        return failConvex({
           code: "OAUTH_PROVIDER_ERROR",
           message: "Missing nonce cookie for OAuth callback",
         });
@@ -389,14 +390,14 @@ export function handleOAuthCallback(
       responseCookies.push(clearCookie("nonce", providerId));
     }
 
-    const tokens = yield* exchangeCode(
+    const tokens = await exchangeCode(
       oauthConfig.provider,
       code,
       codeVerifier,
     );
 
     if (oauthConfig.validateTokens !== undefined) {
-      yield* tryConvex({
+      await tryConvex({
         try: () => oauthConfig.validateTokens!(tokens, { nonce }),
         catch: (error) => ({
           code: "OAUTH_PROVIDER_ERROR",
@@ -405,8 +406,8 @@ export function handleOAuthCallback(
       });
     }
 
-    const rawProfile = yield* extractProfile(providerId, oauthConfig, tokens);
-    const profile = yield* validateProfileId(providerId, rawProfile);
+    const rawProfile = await extractProfile(providerId, oauthConfig, tokens);
+    const profile = validateProfileId(providerId, rawProfile);
 
     log("DEBUG", "OAuth callback profile extracted", {
       providerId,
@@ -424,9 +425,5 @@ export function handleOAuthCallback(
       cookies: responseCookies,
       signature,
     };
-  }).pipe(
-    Effect.withSpan("convex-auth.oauth.callback", {
-      attributes: { providerId },
-    }),
-  );
+  });
 }

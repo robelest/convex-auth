@@ -1,7 +1,6 @@
 import { sha256 } from "@oslojs/crypto/sha2";
 import { encodeBase64urlNoPadding } from "@oslojs/encoding";
 import { decodeIdToken } from "arctic";
-import { Cache, Duration, Effect, Match, Schedule, Schema } from "effect";
 import {
   createRemoteJWKSet,
   customFetch,
@@ -17,63 +16,97 @@ import type {
   OAuthProfile,
   OAuthTokens,
 } from "../types";
+import { createCache } from "../utils/cache";
+import { retryWithBackoff } from "../utils/retry";
+import { withSpan } from "../utils/span";
 import { finalizeNormalizedProfile, normalizeStringArray } from "./profile";
 import { groupOidcProviderId, getGroupOidcUrls } from "./shared";
 
-const OIDC_JWKS_CACHE = Effect.runSync(
-  Cache.make<string, ReturnType<typeof createRemoteJWKSet>>({
-    capacity: 128,
-    timeToLive: Duration.hours(1),
-    lookup: (cacheKey) =>
-      Effect.sync(() => {
-        const key = JSON.parse(cacheKey) as {
-          url: string;
-          runtimeOrigin?: string;
-          externalHost?: string;
-        };
-        const fetchImpl =
-          key.runtimeOrigin !== undefined || key.externalHost !== undefined
-            ? createGroupConnectionOidcFetchFromParts(
-                key.runtimeOrigin,
-                key.externalHost,
-              )
-            : undefined;
-        return fetchImpl
-          ? createRemoteJWKSet(new URL(key.url), { [customFetch]: fetchImpl })
-          : createRemoteJWKSet(new URL(key.url));
-      }),
-  }),
-);
-
-const NETWORK_RETRY_SCHEDULE = Schedule.both(
-  Schedule.jittered(Schedule.exponential("200 millis")),
-  Schedule.recurs(2),
-);
-
-const OidcDiscoverySchema = Schema.Struct({
-  issuer: Schema.String,
-  authorization_endpoint: Schema.String,
-  token_endpoint: Schema.String,
-  jwks_uri: Schema.String,
-  userinfo_endpoint: Schema.optional(Schema.String),
-  token_endpoint_auth_methods_supported: Schema.optional(
-    Schema.Array(Schema.String),
-  ),
-  id_token_signing_alg_values_supported: Schema.optional(
-    Schema.Array(Schema.String),
-  ),
+const OIDC_JWKS_CACHE = createCache<string, ReturnType<typeof createRemoteJWKSet>>({
+  capacity: 128,
+  timeToLiveMs: 60 * 60 * 1000, // 1 hour
+  lookup: (cacheKey) => {
+    const key = JSON.parse(cacheKey) as {
+      url: string;
+      runtimeOrigin?: string;
+      externalHost?: string;
+    };
+    const fetchImpl =
+      key.runtimeOrigin !== undefined || key.externalHost !== undefined
+        ? createGroupConnectionOidcFetchFromParts(
+            key.runtimeOrigin,
+            key.externalHost,
+          )
+        : undefined;
+    return fetchImpl
+      ? createRemoteJWKSet(new URL(key.url), { [customFetch]: fetchImpl })
+      : createRemoteJWKSet(new URL(key.url));
+  },
 });
 
-const OidcUserInfoSchema = Schema.Struct({
-  sub: Schema.optional(Schema.String),
-  email: Schema.optional(Schema.String),
-  email_verified: Schema.optional(Schema.Boolean),
-  name: Schema.optional(Schema.String),
-  picture: Schema.optional(Schema.String),
-});
+type OidcDiscovery = {
+  issuer: string;
+  authorization_endpoint: string;
+  token_endpoint: string;
+  jwks_uri: string;
+  userinfo_endpoint?: string;
+  token_endpoint_auth_methods_supported?: string[];
+  id_token_signing_alg_values_supported?: string[];
+};
 
-type OidcDiscovery = Schema.Schema.Type<typeof OidcDiscoverySchema>;
-type OidcUserInfo = Schema.Schema.Type<typeof OidcUserInfoSchema>;
+type OidcUserInfo = {
+  sub?: string;
+  email?: string;
+  email_verified?: boolean;
+  name?: string;
+  picture?: string;
+};
+
+function validateOidcDiscovery(data: unknown): OidcDiscovery {
+  if (typeof data !== "object" || data === null) {
+    throw new Error("OIDC discovery response is not an object.");
+  }
+  const obj = data as Record<string, unknown>;
+  if (typeof obj.issuer !== "string") {
+    throw new Error("OIDC discovery is missing 'issuer'.");
+  }
+  if (typeof obj.authorization_endpoint !== "string") {
+    throw new Error("OIDC discovery is missing 'authorization_endpoint'.");
+  }
+  if (typeof obj.token_endpoint !== "string") {
+    throw new Error("OIDC discovery is missing 'token_endpoint'.");
+  }
+  if (typeof obj.jwks_uri !== "string") {
+    throw new Error("OIDC discovery is missing 'jwks_uri'.");
+  }
+  return {
+    issuer: obj.issuer,
+    authorization_endpoint: obj.authorization_endpoint,
+    token_endpoint: obj.token_endpoint,
+    jwks_uri: obj.jwks_uri,
+    userinfo_endpoint: typeof obj.userinfo_endpoint === "string" ? obj.userinfo_endpoint : undefined,
+    token_endpoint_auth_methods_supported: Array.isArray(obj.token_endpoint_auth_methods_supported)
+      ? obj.token_endpoint_auth_methods_supported.filter((v: unknown): v is string => typeof v === "string")
+      : undefined,
+    id_token_signing_alg_values_supported: Array.isArray(obj.id_token_signing_alg_values_supported)
+      ? obj.id_token_signing_alg_values_supported.filter((v: unknown): v is string => typeof v === "string")
+      : undefined,
+  };
+}
+
+function validateOidcUserInfo(data: unknown): OidcUserInfo {
+  if (typeof data !== "object" || data === null) {
+    return {};
+  }
+  const obj = data as Record<string, unknown>;
+  return {
+    sub: typeof obj.sub === "string" ? obj.sub : undefined,
+    email: typeof obj.email === "string" ? obj.email : undefined,
+    email_verified: typeof obj.email_verified === "boolean" ? obj.email_verified : undefined,
+    name: typeof obj.name === "string" ? obj.name : undefined,
+    picture: typeof obj.picture === "string" ? obj.picture : undefined,
+  };
+}
 
 const asError = (error: unknown) =>
   error instanceof Error ? error : new Error(String(error));
@@ -103,7 +136,7 @@ function getOidcSections(config: Record<string, unknown>) {
   };
 }
 
-function discoverOidcConfiguration(config: Record<string, unknown>) {
+async function discoverOidcConfiguration(config: Record<string, unknown>): Promise<OidcDiscovery> {
   const { discovery } = getOidcSections(config);
   const discoveryUrl =
     typeof discovery.discoveryUrl === "string"
@@ -123,8 +156,8 @@ function discoverOidcConfiguration(config: Record<string, unknown>) {
     typeof discovery.issuer === "string" ? discovery.issuer : undefined,
   );
 
-  return Effect.tryPromise({
-    try: async () => {
+  return withSpan("convex-auth.sso.oidc.discovery", {}, async () => {
+    return retryWithBackoff(async () => {
       const response = await oidcFetch(discoveryUrl, {
         signal: AbortSignal.timeout(10_000),
       });
@@ -133,15 +166,9 @@ function discoverOidcConfiguration(config: Record<string, unknown>) {
           `Failed to discover OIDC configuration: ${response.status}`,
         );
       }
-      return Schema.decodeUnknownSync(OidcDiscoverySchema)(
-        await response.json(),
-      );
-    },
-    catch: asError,
-  }).pipe(
-    Effect.retry({ schedule: NETWORK_RETRY_SCHEDULE }),
-    Effect.withSpan("convex-auth.sso.oidc.discovery"),
-  );
+      return validateOidcDiscovery(await response.json());
+    }, { maxRetries: 2, baseMs: 200 });
+  });
 }
 
 function createGroupConnectionOidcFetch(
@@ -231,82 +258,69 @@ function getOidcJwks(
     runtimeOrigin: fetchImpl ? runtimeOrigin : undefined,
     externalHost: fetchImpl ? externalHost : undefined,
   });
-  return Effect.runSync(Cache.get(OIDC_JWKS_CACHE, cacheKey));
+  return OIDC_JWKS_CACHE.get(cacheKey);
 }
 
-type UserInfoFetchFailure =
-  | { kind: "transport"; error: unknown }
-  | { kind: "subject-mismatch" };
-
-function userInfoProfileFx(opts: {
+async function userInfoProfileFx(opts: {
   endpoint: string;
   accessToken: string;
   verifiedClaims: Record<string, unknown>;
   verifiedProfile: OAuthProfile & { emailVerified?: boolean };
   fetchImpl?: ReturnType<typeof createGroupConnectionOidcFetch>;
-}) {
-  return Effect.tryPromise({
-    try: async () => {
+}): Promise<(OAuthProfile & { emailVerified?: boolean }) | null> {
+  return withSpan("convex-auth.sso.oidc.userinfo", {}, async () => {
+    let userInfo: OidcUserInfo;
+    try {
       const response = await (opts.fetchImpl ?? fetch)(opts.endpoint, {
         headers: { Authorization: `Bearer ${opts.accessToken}` },
       });
       if (!response.ok) {
         throw new Error(`OIDC userinfo request failed: ${response.status}`);
       }
-      return Schema.decodeUnknownSync(OidcUserInfoSchema)(
-        await response.json(),
-      );
-    },
-    catch: (error): UserInfoFetchFailure => ({ kind: "transport", error }),
-  }).pipe(
-    Effect.flatMap((userInfo: OidcUserInfo) => {
-      const userInfoSubject =
-        typeof userInfo.sub === "string" ? userInfo.sub : undefined;
-      const tokenSubject =
-        typeof opts.verifiedClaims.sub === "string"
+      userInfo = validateOidcUserInfo(await response.json());
+    } catch {
+      return null;
+    }
+
+    const userInfoSubject =
+      typeof userInfo.sub === "string" ? userInfo.sub : undefined;
+    const tokenSubject =
+      typeof opts.verifiedClaims.sub === "string"
+        ? opts.verifiedClaims.sub
+        : undefined;
+    if (
+      userInfoSubject !== undefined &&
+      tokenSubject !== undefined &&
+      userInfoSubject !== tokenSubject
+    ) {
+      throw new Error("OIDC userinfo subject does not match ID token subject.");
+    }
+
+    return {
+      id:
+        userInfoSubject ??
+        (typeof opts.verifiedClaims.sub === "string"
           ? opts.verifiedClaims.sub
-          : undefined;
-      return userInfoSubject !== undefined &&
-        tokenSubject !== undefined &&
-        userInfoSubject !== tokenSubject
-        ? Effect.fail({ kind: "subject-mismatch" } as const)
-        : Effect.succeed({
-            id:
-              userInfoSubject ??
-              (typeof opts.verifiedClaims.sub === "string"
-                ? opts.verifiedClaims.sub
-                : undefined) ??
-              crypto.randomUUID(),
-            email:
-              typeof userInfo.email === "string"
-                ? userInfo.email
-                : opts.verifiedProfile.email,
-            emailVerified:
-              typeof userInfo.email_verified === "boolean"
-                ? userInfo.email_verified
-                : opts.verifiedProfile.emailVerified,
-            name:
-              typeof userInfo.name === "string"
-                ? userInfo.name
-                : opts.verifiedProfile.name,
-            image:
-              typeof userInfo.picture === "string"
-                ? userInfo.picture
-                : opts.verifiedProfile.image,
-          } as OAuthProfile & { emailVerified?: boolean });
-    }),
-    Effect.catch((failure) =>
-      Match.value(failure).pipe(
-        Match.when({ kind: "transport" }, () => Effect.succeed(null)),
-        Match.orElse(() =>
-          Effect.fail(
-            new Error("OIDC userinfo subject does not match ID token subject."),
-          ),
-        ),
-      ),
-    ),
-    Effect.withSpan("convex-auth.sso.oidc.userinfo"),
-  );
+          : undefined) ??
+        crypto.randomUUID(),
+      email:
+        typeof userInfo.email === "string"
+          ? userInfo.email
+          : opts.verifiedProfile.email,
+      emailVerified:
+        typeof userInfo.email_verified === "boolean"
+          ? userInfo.email_verified
+          : opts.verifiedProfile.emailVerified,
+      name:
+        typeof userInfo.name === "string"
+          ? userInfo.name
+          : opts.verifiedProfile.name,
+      image:
+        typeof userInfo.picture === "string"
+          ? userInfo.picture
+          : opts.verifiedProfile.image,
+    } as OAuthProfile & { emailVerified?: boolean };
+  });
 }
 
 /** @internal */
@@ -321,9 +335,7 @@ export async function createGroupConnectionOidcProvider(
     security,
     profile,
   } = getOidcSections(config);
-  const discovery: OidcDiscovery = await Effect.runPromise(
-    discoverOidcConfiguration(config),
-  );
+  const discovery: OidcDiscovery = await discoverOidcConfiguration(config);
   const discoveredIssuer =
     typeof discovery.issuer === "string"
       ? discovery.issuer.replace(/\/$/, "")
@@ -569,93 +581,82 @@ export async function createGroupConnectionOidcProvider(
     scopes,
     nonce: true,
     validateTokens: async (tokens: OAuthTokens, ctx: { nonce?: string }) => {
-      const verified = await Effect.runPromise(
-        Effect.gen(function* () {
-          if (ctx.nonce === undefined) {
-            return yield* Effect.fail(new Error("OIDC nonce is required."));
-          }
+      if (ctx.nonce === undefined) {
+        throw new Error("OIDC nonce is required.");
+      }
 
-          const idToken = tokens.idToken;
-          if (idToken === undefined) {
-            return yield* Effect.fail(
-              new Error("OIDC response is missing id_token."),
-            );
-          }
-          const verifiedIdToken = idToken;
-          const protectedHeader = decodeProtectedHeader(verifiedIdToken);
-          const tokenAlg = protectedHeader.alg;
-          const useSymmetricValidation =
-            typeof tokenAlg === "string" &&
-            (tokenAlg === "HS256" ||
-              tokenAlg === "HS384" ||
-              tokenAlg === "HS512") &&
-            supportedIdTokenSigningAlgs.includes(tokenAlg);
+      const idToken = tokens.idToken;
+      if (idToken === undefined) {
+        throw new Error("OIDC response is missing id_token.");
+      }
+      const verifiedIdToken = idToken;
+      const protectedHeader = decodeProtectedHeader(verifiedIdToken);
+      const tokenAlg = protectedHeader.alg;
+      const useSymmetricValidation =
+        typeof tokenAlg === "string" &&
+        (tokenAlg === "HS256" ||
+          tokenAlg === "HS384" ||
+          tokenAlg === "HS512") &&
+        supportedIdTokenSigningAlgs.includes(tokenAlg);
 
-          const verificationOptions: JWTVerifyOptions = {
-            audience: expectedAudience,
-            requiredClaims: ["iss", "sub", "aud", "exp", "iat"],
-            clockTolerance: clockToleranceSeconds,
-          };
+      const verificationOptions: JWTVerifyOptions = {
+        audience: expectedAudience,
+        requiredClaims: ["iss", "sub", "aud", "exp", "iat"],
+        clockTolerance: clockToleranceSeconds,
+      };
 
-          const verification = yield* Effect.tryPromise({
-            try: () =>
-              useSymmetricValidation
-                ? jwtVerify(
-                    verifiedIdToken,
-                    (() => {
-                      if (typeof client.secret !== "string") {
-                        throw new Error(
-                          "OIDC provider uses symmetric ID token signatures but clientSecret is missing.",
-                        );
-                      }
-                      return new TextEncoder().encode(client.secret);
-                    })(),
-                    verificationOptions,
-                  )
-                : jwtVerify(
-                    verifiedIdToken,
-                    jwks as JWTVerifyGetKey,
-                    verificationOptions,
-                  ),
-            catch: asError,
-          });
+      let verification;
+      try {
+        verification = await (useSymmetricValidation
+          ? jwtVerify(
+              verifiedIdToken,
+              (() => {
+                if (typeof client.secret !== "string") {
+                  throw new Error(
+                    "OIDC provider uses symmetric ID token signatures but clientSecret is missing.",
+                  );
+                }
+                return new TextEncoder().encode(client.secret);
+              })(),
+              verificationOptions,
+            )
+          : jwtVerify(
+              verifiedIdToken,
+              jwks as JWTVerifyGetKey,
+              verificationOptions,
+            ));
+      } catch (error) {
+        throw asError(error);
+      }
 
-          const payload = verification.payload as Record<string, unknown>;
-          const tokenIssuerRaw =
-            typeof payload.iss === "string" ? payload.iss : undefined;
-          const tokenIssuer =
-            typeof tokenIssuerRaw === "string"
-              ? tokenIssuerRaw.replace(/\/$/, "")
-              : undefined;
+      const payload = verification.payload as Record<string, unknown>;
+      const tokenIssuerRaw =
+        typeof payload.iss === "string" ? payload.iss : undefined;
+      const tokenIssuer =
+        typeof tokenIssuerRaw === "string"
+          ? tokenIssuerRaw.replace(/\/$/, "")
+          : undefined;
 
-          if (!tokenIssuer || !expectedIssuers.includes(tokenIssuer)) {
-            return yield* Effect.fail(
-              new Error(
-                `OIDC token issuer mismatch. Received: ${tokenIssuer ?? "<missing>"}. Expected one of: ${expectedIssuers.join(", ")}`,
-              ),
-            );
-          }
+      if (!tokenIssuer || !expectedIssuers.includes(tokenIssuer)) {
+        throw new Error(
+          `OIDC token issuer mismatch. Received: ${tokenIssuer ?? "<missing>"}. Expected one of: ${expectedIssuers.join(", ")}`,
+        );
+      }
 
-          if (payload.nonce !== ctx.nonce) {
-            return yield* Effect.fail(new Error("OIDC nonce mismatch."));
-          }
+      if (payload.nonce !== ctx.nonce) {
+        throw new Error("OIDC nonce mismatch.");
+      }
 
-          if (
-            Array.isArray(payload.aud) &&
-            payload.aud.length > 1 &&
-            payload.azp !== String(client.id)
-          ) {
-            return yield* Effect.fail(
-              new Error("OIDC authorized party does not match client ID."),
-            );
-          }
+      if (
+        Array.isArray(payload.aud) &&
+        payload.aud.length > 1 &&
+        payload.azp !== String(client.id)
+      ) {
+        throw new Error("OIDC authorized party does not match client ID.");
+      }
 
-          return payload;
-        }),
-      );
-
-      verifiedClaims = verified;
-      verifiedProfile = normalizeProfile(verified);
+      verifiedClaims = payload;
+      verifiedProfile = normalizeProfile(payload);
     },
     accountLinking: config.accountLinking,
     profile: async (tokens: OAuthTokens): Promise<OAuthProfile> => {
@@ -668,15 +669,13 @@ export async function createGroupConnectionOidcProvider(
         verifiedProfile = normalizeProfile(claims);
       }
       if (userinfoEndpoint && typeof tokens.accessToken === "string") {
-        const userInfoProfile = await Effect.runPromise(
-          userInfoProfileFx({
-            endpoint: userinfoEndpoint,
-            accessToken: tokens.accessToken,
-            verifiedClaims,
-            verifiedProfile,
-            fetchImpl: oidcFetch,
-          }),
-        );
+        const userInfoProfile = await userInfoProfileFx({
+          endpoint: userinfoEndpoint,
+          accessToken: tokens.accessToken,
+          verifiedClaims,
+          verifiedProfile,
+          fetchImpl: oidcFetch,
+        });
         if (userInfoProfile !== null) {
           return userInfoProfile;
         }

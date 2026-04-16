@@ -1,37 +1,24 @@
 import { ConvexError, Value } from "convex/values";
-import {
-  Cause,
-  Deferred,
-  Effect,
-  Exit,
-  Layer,
-  Match,
-  Ref,
-  Schedule,
-} from "effect";
 
 import { LOG_LEVELS, logMessage } from "../shared/log";
-import type {
-  AuthApiRefs,
-  AuthClient,
-  AuthFlowContext,
-  AuthSession,
-  AuthState,
-  ClientAdapterDeps,
-  ActionTransport,
-  ClientAdapters,
-  ClientRuntime,
-  ClientOptions,
-  ConvexTransport,
-  DeviceClient,
-  DeviceCodeResult,
-  HandshakeWaiter,
-  PasskeyClient,
-  PendingInvite,
-  SignInActionResult,
-  SignInResult,
-  Storage,
-  TotpClient,
+import {
+  createDeferred,
+  type AuthApiRefs,
+  type AuthClient,
+  type AuthFlowContext,
+  type AuthSession,
+  type AuthState,
+  type ClientAdapterDeps,
+  type ActionTransport,
+  type ClientAdapters,
+  type ClientRuntime,
+  type ClientOptions,
+  type ConvexTransport,
+  type DeviceCodeResult,
+  type HandshakeWaiter,
+  type PendingInvite,
+  type SignInActionResult,
+  type SignInResult,
 } from "./core/types";
 import { createHandshakeError } from "./errors";
 import { createDeviceClient } from "./factors/device";
@@ -78,40 +65,24 @@ const RETRY_BASE_MS = 500;
 const RETRY_MAX_RETRIES = 2;
 const AUTH_HANDSHAKE_TIMEOUT_MS = 5000;
 
-const RETRY_SCHEDULE = Schedule.both(
-  Schedule.jittered(Schedule.exponential(`${RETRY_BASE_MS} millis`)),
-  Schedule.recurs(RETRY_MAX_RETRIES),
-);
-
-function logClientErrorCause(message: string, cause: Cause.Cause<unknown>) {
-  logMessage("convex-auth/client", LOG_LEVELS.ERROR, [
-    message,
-    Cause.squash(cause),
-  ]);
-}
-
-function runPromiseBoundary<A, E>(
-  program: Effect.Effect<A, E, never>,
-): Promise<A> {
-  return Effect.runPromiseExit(program).then(
-    Exit.match({
-      onSuccess: (value) => value,
-      onFailure: (cause) => Promise.reject(Cause.squash(cause)),
-    }),
-  );
-}
-
-function runDetached<A, E>(
-  program: Effect.Effect<A, E, never>,
-  message: string,
-): void {
-  Effect.runFork(
-    program.pipe(
-      Effect.catchCause((cause) =>
-        Effect.sync(() => logClientErrorCause(message, cause)),
-      ),
-    ),
-  );
+async function retryWithJitteredBackoff<T>(
+  fn: () => Promise<T>,
+  shouldRetry: (error: unknown) => boolean,
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt >= RETRY_MAX_RETRIES || !shouldRetry(error)) {
+        throw error;
+      }
+      const baseDelay = RETRY_BASE_MS * Math.pow(2, attempt);
+      const jitter = baseDelay * (0.5 + Math.random());
+      await new Promise((resolve) => setTimeout(resolve, jitter));
+      attempt++;
+    }
+  }
 }
 
 /**
@@ -210,14 +181,14 @@ export function client<
 >(options: ClientOptions<Api>): AuthClient<Api> {
   const { convex, proxyPath, api: apiRefs } = options;
   const proxy = proxyPath;
-  const services = resolveClientServices(
-    Layer.mergeAll(
-      ClientRuntimeLive(options.runtime ?? {}),
-      ClientAdaptersLive(options.adapters ?? {}),
-      ClientAdapterFactoriesLive(options.adapterFactories ?? {}),
-      ClientHttpLive(proxy ? null : (options.httpClient ?? null)),
+  const services = resolveClientServices({
+    runtime: ClientRuntimeLive(options.runtime ?? {}),
+    adapters: ClientAdaptersLive(options.adapters ?? {}),
+    adapterFactories: ClientAdapterFactoriesLive(
+      options.adapterFactories ?? {},
     ),
-  );
+    http: ClientHttpLive(proxy ? null : (options.httpClient ?? null)),
+  });
   const runtime: ClientRuntime = services.runtime;
   const adapters: ClientAdapters = services.adapters;
 
@@ -361,7 +332,6 @@ export function client<
     }
   };
   const subscribers = new Set<() => void>();
-  const subscribersRef = Ref.makeUnsafe(subscribers);
   let disposeStorageListener: (() => void) | null = null;
 
   // Unauthenticated HTTP client for code verification & OAuth exchange.
@@ -391,7 +361,7 @@ export function client<
     promise: Promise<SignInResult>;
   } | null = null;
   const handshakeWaiters = new Set<HandshakeWaiter>();
-  const snapshotRef = Ref.makeUnsafe<AuthState>({
+  let snapshot: AuthState = {
     phase: hasServerToken
       ? "authenticated"
       : isLoading
@@ -400,7 +370,7 @@ export function client<
     isLoading,
     isAuthenticated: hasServerToken,
     token,
-  });
+  };
   let handlingCodeFlow = false;
 
   const settleHandshakeWaiters = (
@@ -416,9 +386,9 @@ export function client<
       clearTimeout(waiter.timeoutId);
       handshakeWaiters.delete(waiter);
       if (outcome.type === "resolve") {
-        Effect.runSync(Deferred.succeed(waiter.deferred, undefined));
+        waiter.deferred.resolve(undefined);
       } else {
-        Effect.runSync(Deferred.fail(waiter.deferred, outcome.error));
+        waiter.deferred.reject(outcome.error);
       }
     }
   };
@@ -430,14 +400,11 @@ export function client<
       }
       clearTimeout(waiter.timeoutId);
       handshakeWaiters.delete(waiter);
-      Effect.runSync(
-        Deferred.fail(
-          waiter.deferred,
-          createHandshakeError("AUTH_HANDSHAKE_REJECTED", {
-            ...waiter.context,
-            reason: "token_changed",
-          }),
-        ),
+      waiter.deferred.reject(
+        createHandshakeError("AUTH_HANDSHAKE_REJECTED", {
+          ...waiter.context,
+          reason: "token_changed",
+        }),
       );
     }
   };
@@ -457,27 +424,24 @@ export function client<
     }
 
     const epoch = authEpoch;
-    const deferred = Deferred.makeUnsafe<void, ConvexError<Value>>();
+    const deferred = createDeferred<void, ConvexError<Value>>();
     const waiter: HandshakeWaiter = {
       epoch,
       context,
       deferred,
       timeoutId: setTimeout(() => {
         handshakeWaiters.delete(waiter);
-        Effect.runSync(
-          Deferred.fail(
-            deferred,
-            createHandshakeError("AUTH_HANDSHAKE_TIMEOUT", {
-              ...context,
-              timeoutMs: AUTH_HANDSHAKE_TIMEOUT_MS,
-            }),
-          ),
+        deferred.reject(
+          createHandshakeError("AUTH_HANDSHAKE_TIMEOUT", {
+            ...context,
+            timeoutMs: AUTH_HANDSHAKE_TIMEOUT_MS,
+          }),
         );
       }, AUTH_HANDSHAKE_TIMEOUT_MS),
     };
     handshakeWaiters.add(waiter);
     try {
-      await Effect.runPromise(Deferred.await(deferred));
+      await deferred.promise;
     } finally {
       clearTimeout(waiter.timeoutId);
       handshakeWaiters.delete(waiter);
@@ -506,27 +470,20 @@ export function client<
   };
 
   const notify = () => {
-    for (const cb of Ref.getUnsafe(subscribersRef)) cb();
+    for (const cb of subscribers) cb();
   };
 
   const updateSnapshot = () => {
-    const phaseDispatch = {
-      tag:
-        token !== null && handshakePending
-          ? "handshake"
-          : isLoading
-            ? "loading"
-            : token !== null && authConfirmed
-              ? "authenticated"
-              : "unauthenticated",
-    } as const;
+    const tag =
+      token !== null && handshakePending
+        ? "handshake"
+        : isLoading
+          ? "loading"
+          : token !== null && authConfirmed
+            ? "authenticated"
+            : "unauthenticated";
 
-    const phase = {
-      handshake: "handshake",
-      loading: "loading",
-      authenticated: "authenticated",
-      unauthenticated: "unauthenticated",
-    }[phaseDispatch.tag] as AuthState["phase"];
+    const phase = tag as AuthState["phase"];
 
     const next: AuthState = {
       phase,
@@ -534,7 +491,6 @@ export function client<
       isAuthenticated: phase === "authenticated",
       token,
     };
-    const snapshot = Ref.getUnsafe(snapshotRef);
     if (
       snapshot.phase === next.phase &&
       snapshot.isLoading === next.isLoading &&
@@ -543,7 +499,7 @@ export function client<
     ) {
       return false;
     }
-    Effect.runSync(Ref.set(snapshotRef, next));
+    snapshot = next;
     return true;
   };
 
@@ -693,23 +649,15 @@ export function client<
   const verifyCode = async (
     args: { code: string; verifier?: string } | { refreshToken: string },
   ) => {
-    return runPromiseBoundary(
-      Effect.tryPromise({
-        try: () =>
-          requireHttpClient().action(
-            requireApiRefs().signIn,
-            "code" in args
-              ? { params: { code: args.code }, verifier: args.verifier }
-              : args,
-          ),
-        catch: (error) => error,
-      }).pipe(
-        Effect.map((result) => result as SignInActionResult),
-        Effect.retry({
-          schedule: RETRY_SCHEDULE,
-          while: isTransientNetworkError,
-        }),
-      ),
+    return retryWithJitteredBackoff(
+      () =>
+        requireHttpClient().action(
+          requireApiRefs().signIn,
+          "code" in args
+            ? { params: { code: args.code }, verifier: args.verifier }
+            : args,
+        ) as Promise<SignInActionResult>,
+      isTransientNetworkError,
     );
   };
 
@@ -819,83 +767,64 @@ export function client<
 
     const handleSignInActionResult = async (
       result: SignInActionResult,
-      options: { shouldStore: boolean; persistVerifier: boolean },
-    ): Promise<SignInResult> =>
-      runPromiseBoundary(
-        Match.value(result).pipe(
-          Match.when({ kind: "redirect" }, (redirectResult) =>
-            Effect.gen(function* () {
-              const redirectUrl = new URL(redirectResult.redirect);
-              if (options.persistVerifier) {
-                yield* Effect.promise(() =>
-                  storageSet(VERIFIER_STORAGE_KEY, redirectResult.verifier),
-                );
+      resultOptions: { shouldStore: boolean; persistVerifier: boolean },
+    ): Promise<SignInResult> => {
+      if (result.kind === "redirect") {
+        const redirectUrl = new URL(result.redirect);
+        if (resultOptions.persistVerifier) {
+          await storageSet(VERIFIER_STORAGE_KEY, result.verifier);
+        }
+        if (runtime.location) {
+          await runtime.location.redirect(redirectUrl);
+        }
+        return {
+          kind: "redirect" as const,
+          redirect: redirectUrl,
+          verifier: result.verifier,
+        } satisfies SignInResult;
+      }
+
+      if (result.kind === "totpRequired") {
+        return {
+          kind: "totpRequired" as const,
+          verifier: result.verifier,
+        } satisfies SignInResult;
+      }
+
+      if (result.kind === "deviceCode") {
+        return {
+          kind: "deviceCode" as const,
+          deviceCode: normalizeDeviceCodeResult(result.deviceCode),
+        } satisfies SignInResult;
+      }
+
+      if (result.kind === "signedIn") {
+        const signingIn = await setTokenAndMaybeWait(
+          resultOptions.shouldStore
+            ? {
+                shouldStore: true as const,
+                tokens: result.tokens,
+                waitForHandshake: true,
+                context: { provider, flow },
               }
-              if (runtime.location) {
-                yield* Effect.promise(async () => {
-                  await runtime.location!.redirect(redirectUrl);
-                });
-              }
-              return {
-                kind: "redirect" as const,
-                redirect: redirectUrl,
-                verifier: redirectResult.verifier,
-              } satisfies SignInResult;
-            }),
-          ),
-          Match.when({ kind: "totpRequired" }, (totpRequiredResult) =>
-            Effect.succeed({
-              kind: "totpRequired" as const,
-              verifier: totpRequiredResult.verifier,
-            } satisfies SignInResult),
-          ),
-          Match.when({ kind: "deviceCode" }, (deviceCodeResult) =>
-            Effect.succeed({
-              kind: "deviceCode" as const,
-              deviceCode: normalizeDeviceCodeResult(
-                deviceCodeResult.deviceCode,
-              ),
-            } satisfies SignInResult),
-          ),
-          Match.when({ kind: "signedIn" }, (signedInResult) =>
-            Effect.gen(function* () {
-              const signingIn = yield* Effect.promise(() =>
-                setTokenAndMaybeWait(
-                  options.shouldStore
-                    ? {
-                        shouldStore: true as const,
-                        tokens: signedInResult.tokens,
-                        waitForHandshake: true,
-                        context: { provider, flow },
-                      }
-                    : {
-                        shouldStore: false as const,
-                        tokens:
-                          signedInResult.tokens === null
-                            ? null
-                            : { token: signedInResult.tokens.token },
-                        waitForHandshake: true,
-                        context: { provider, flow },
-                      },
-                ),
-              );
-              return signingIn
-                ? ({ kind: "signedIn" as const } satisfies SignInResult)
-                : ({ kind: "started" as const } satisfies SignInResult);
-            }),
-          ),
-          Match.when({ kind: "started" }, () =>
-            Effect.succeed({ kind: "started" as const } satisfies SignInResult),
-          ),
-          Match.when({ kind: "passkeyOptions" }, () =>
-            Effect.succeed({ kind: "started" as const } satisfies SignInResult),
-          ),
-          Match.when({ kind: "totpSetup" }, () =>
-            Effect.succeed({ kind: "started" as const } satisfies SignInResult),
-          ),
-          Match.exhaustive,
-        ),
-      );
+            : {
+                shouldStore: false as const,
+                tokens:
+                  result.tokens === null
+                    ? null
+                    : { token: result.tokens.token },
+                waitForHandshake: true,
+                context: { provider, flow },
+              },
+        );
+        return signingIn
+          ? ({ kind: "signedIn" as const } satisfies SignInResult)
+          : ({ kind: "started" as const } satisfies SignInResult);
+      }
+
+      // "started", "passkeyOptions", "totpSetup"
+      return { kind: "started" as const } satisfies SignInResult;
+    };
 
     if (activeSignIn !== null) {
       if (activeSignIn.key === signInKey) {
@@ -904,43 +833,30 @@ export function client<
       throw new Error("Another sign-in flow is already in progress.");
     }
 
-    const signInPromise = runPromiseBoundary(
-      Effect.tryPromise({
-        try: async () => {
-          if (proxy) {
-            const result = (await proxyFetch({
-              action: "auth:signIn",
-              args: { provider, params },
-            })) as SignInActionResult;
-            return await handleSignInActionResult(result, {
-              shouldStore: false,
-              persistVerifier: false,
-            });
-          }
+    const signInPromise = (async () => {
+      if (proxy) {
+        const result = (await proxyFetch({
+          action: "auth:signIn",
+          args: { provider, params },
+        })) as SignInActionResult;
+        return await handleSignInActionResult(result, {
+          shouldStore: false,
+          persistVerifier: false,
+        });
+      }
 
-          const verifier =
-            (await storageGet(VERIFIER_STORAGE_KEY)) ?? undefined;
-          await storageRemove(VERIFIER_STORAGE_KEY);
-          const result = (await convex.action(requireApiRefs().signIn, {
-            provider,
-            params,
-            verifier,
-          })) as SignInActionResult;
-          return await handleSignInActionResult(result, {
-            shouldStore: true,
-            persistVerifier: true,
-          });
-        },
-        catch: (error) => error,
-      }).pipe(
-        Effect.withSpan("convex-auth.client.signIn", {
-          attributes: {
-            provider: provider ?? "code",
-            proxy: proxy !== undefined,
-          },
-        }),
-      ),
-    );
+      const verifier = (await storageGet(VERIFIER_STORAGE_KEY)) ?? undefined;
+      await storageRemove(VERIFIER_STORAGE_KEY);
+      const result = (await convex.action(requireApiRefs().signIn, {
+        provider,
+        params,
+        verifier,
+      })) as SignInActionResult;
+      return await handleSignInActionResult(result, {
+        shouldStore: true,
+        persistVerifier: true,
+      });
+    })();
 
     activeSignIn = { key: signInKey, promise: signInPromise };
     try {
@@ -964,30 +880,24 @@ export function client<
    * signed-out user is a no-op.
    */
   const signOut = async () => {
-    await runPromiseBoundary(
-      Effect.gen(function* () {
-        if (proxy) {
-          yield* Effect.tryPromise({
-            try: () => proxyFetch({ action: "auth:signOut", args: {} }),
-            catch: () => undefined,
-          }).pipe(Effect.catch(() => Effect.succeed(undefined)));
-          yield* Effect.promise(() =>
-            setToken({ shouldStore: false, tokens: null }),
-          );
-          if (convex.clearAuth) convex.clearAuth();
-          return;
-        }
+    if (proxy) {
+      try {
+        await proxyFetch({ action: "auth:signOut", args: {} });
+      } catch {
+        // Ignore sign-out errors
+      }
+      await setToken({ shouldStore: false, tokens: null });
+      if (convex.clearAuth) convex.clearAuth();
+      return;
+    }
 
-        yield* Effect.tryPromise({
-          try: () => convex.action(requireApiRefs().signOut, {}),
-          catch: () => undefined,
-        }).pipe(Effect.catch(() => Effect.succeed(undefined)));
-        yield* Effect.promise(() =>
-          setToken({ shouldStore: true, tokens: null }),
-        );
-        if (convex.clearAuth) convex.clearAuth();
-      }).pipe(Effect.withSpan("convex-auth.client.signOut")),
-    );
+    try {
+      await convex.action(requireApiRefs().signOut, {});
+    } catch {
+      // Ignore sign-out errors
+    }
+    await setToken({ shouldStore: true, tokens: null });
+    if (convex.clearAuth) convex.clearAuth();
   };
 
   // ---------------------------------------------------------------------------
@@ -1013,49 +923,37 @@ export function client<
         // Another tab/call may have already refreshed.
         if (token !== tokenBeforeRefresh) return token;
 
-        await runPromiseBoundary(
-          Effect.tryPromise({
-            try: () =>
+        try {
+          const result = await retryWithJitteredBackoff(
+            () =>
               proxyFetch({
                 action: "auth:signIn",
                 args: { refreshToken: true },
-              }),
-            catch: (error) => error,
-          })
-            .pipe(
-              Effect.retry({
-                schedule: RETRY_SCHEDULE,
-                while: isRetriableProxyRefreshError,
-              }),
-              Effect.flatMap((result: SignInActionResult) =>
-                Effect.promise(() =>
-                  isSignedInResult(result) && result.tokens
-                    ? setToken({
-                        shouldStore: false,
-                        tokens: { token: result.tokens.token },
-                        resyncConvexAuth: false,
-                      })
-                    : setToken({
-                        shouldStore: false,
-                        tokens: null,
-                        resyncConvexAuth: false,
-                      }),
-                ),
-              ),
-              Effect.catch((error) =>
-                Effect.sync(() => {
-                  logMessage("convex-auth/client", LOG_LEVELS.ERROR, [
-                    "[convex-auth] Proxy refresh failed:",
-                    error,
-                  ]);
-                  if (token === null) {
-                    finalizeLoadingState();
-                  }
-                }),
-              ),
-            )
-            .pipe(Effect.withSpan("convex-auth.client.refresh.proxy")),
-        );
+              }) as Promise<SignInActionResult>,
+            isRetriableProxyRefreshError,
+          );
+          if (isSignedInResult(result) && result.tokens) {
+            await setToken({
+              shouldStore: false,
+              tokens: { token: result.tokens.token },
+              resyncConvexAuth: false,
+            });
+          } else {
+            await setToken({
+              shouldStore: false,
+              tokens: null,
+              resyncConvexAuth: false,
+            });
+          }
+        } catch (error) {
+          logMessage("convex-auth/client", LOG_LEVELS.ERROR, [
+            "[convex-auth] Proxy refresh failed:",
+            error,
+          ]);
+          if (token === null) {
+            finalizeLoadingState();
+          }
+        }
         return token;
       });
     }
@@ -1073,10 +971,9 @@ export function client<
         finalizeLoadingState();
         return null;
       }
-      await runPromiseBoundary(
-        Effect.promise(() =>
-          verifyCodeAndSetToken({ refreshToken }, { resyncConvexAuth: false }),
-        ).pipe(Effect.withSpan("convex-auth.client.refresh.local")),
+      await verifyCodeAndSetToken(
+        { refreshToken },
+        { resyncConvexAuth: false },
       );
       return token;
     });
@@ -1093,27 +990,16 @@ export function client<
     const code = location.searchParams.get("code");
     if (!code) return;
     handlingCodeFlow = true;
-    await runPromiseBoundary(
-      Effect.tryPromise({
-        try: async () => {
-          await signIn(undefined, { code });
-          const codeUrl = new URL(location.toString());
-          codeUrl.searchParams.delete("code");
-          await replaceUrl(codeUrl.pathname + codeUrl.search + codeUrl.hash);
-        },
-        catch: () => undefined,
-      }).pipe(
-        Effect.catch(() => Effect.succeed(undefined)),
-        Effect.ensuring(
-          Effect.sync(() => {
-            handlingCodeFlow = false;
-          }),
-        ),
-      ),
-    );
-    // The flag is always reset by the Effect finalizer above,
-    // but reset defensively here too.
-    handlingCodeFlow = false;
+    try {
+      await signIn(undefined, { code });
+      const codeUrl = new URL(location.toString());
+      codeUrl.searchParams.delete("code");
+      await replaceUrl(codeUrl.pathname + codeUrl.search + codeUrl.hash);
+    } catch {
+      // Ignore code flow errors
+    } finally {
+      handlingCodeFlow = false;
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -1144,11 +1030,11 @@ export function client<
    * @returns An unsubscribe function.
    */
   const onChange = (cb: (state: AuthState) => void): (() => void) => {
-    cb(Ref.getUnsafe(snapshotRef));
-    const wrapped = () => cb(Ref.getUnsafe(snapshotRef));
-    Ref.getUnsafe(subscribersRef).add(wrapped);
+    cb(snapshot);
+    const wrapped = () => cb(snapshot);
+    subscribers.add(wrapped);
     return () => {
-      Ref.getUnsafe(subscribersRef).delete(wrapped);
+      subscribers.delete(wrapped);
     };
   };
 
@@ -1160,15 +1046,15 @@ export function client<
   if (!proxy && runtime.sync) {
     disposeStorageListener =
       runtime.sync.subscribe(key(JWT_STORAGE_KEY), (value) => {
-        runDetached(
-          Effect.promise(() =>
-            setToken({
-              shouldStore: false,
-              tokens: value === null ? null : { token: value },
-            }),
-          ),
-          "[convex-auth] Storage event handler failed:",
-        );
+        void setToken({
+          shouldStore: false,
+          tokens: value === null ? null : { token: value },
+        }).catch((error) => {
+          logMessage("convex-auth/client", LOG_LEVELS.ERROR, [
+            "[convex-auth] Storage event handler failed:",
+            error,
+          ]);
+        });
       }) ?? null;
   }
 
@@ -1182,26 +1068,32 @@ export function client<
     // read auth state (and do not issue Convex queries yet) don't stay in
     // the initial loading phase.
     if (!hasServerToken && runtime.environment !== "server") {
-      runDetached(
-        Effect.promise(() => fetchAccessToken({ forceRefreshToken: true })),
-        "[convex-auth] Proxy token refresh failed:",
-      );
+      void fetchAccessToken({ forceRefreshToken: true }).catch((error) => {
+        logMessage("convex-auth/client", LOG_LEVELS.ERROR, [
+          "[convex-auth] Proxy token refresh failed:",
+          error,
+        ]);
+      });
     }
   } else {
     // Direct mode: hydrate from storage, then handle OAuth code flow.
-    runDetached(
-      Effect.promise(async () => {
+    void (async () => {
+      try {
         await hydrateFromStorage();
         await handleCodeFlow();
-      }).pipe(
-        Effect.catch(() =>
-          Effect.promise(() =>
-            setToken({ shouldStore: false, tokens: null }),
-          ).pipe(Effect.catch(() => Effect.succeed(undefined))),
-        ),
-      ),
-      "[convex-auth] SPA initialization failed:",
-    );
+      } catch {
+        try {
+          await setToken({ shouldStore: false, tokens: null });
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+    })().catch((error) => {
+      logMessage("convex-auth/client", LOG_LEVELS.ERROR, [
+        "[convex-auth] SPA initialization failed:",
+        error,
+      ]);
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -1231,7 +1123,7 @@ export function client<
   return {
     /** Current auth state snapshot. */
     get state(): AuthState {
-      return Ref.getUnsafe(snapshotRef);
+      return snapshot;
     },
     /** SSR-safe URL param reader. */
     param,
@@ -1290,7 +1182,7 @@ export function client<
         }),
       });
       disposeStorageListener?.();
-      Ref.getUnsafe(subscribersRef).clear();
+      subscribers.clear();
     },
     ...(passkeyAdapter ? { passkey: passkeyAdapter } : {}),
   } as AuthClient<Api>;

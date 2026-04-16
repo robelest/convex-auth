@@ -1,5 +1,4 @@
-import { ConvexError, Value } from "convex/values";
-import { Effect } from "effect";
+import { ConvexError } from "convex/values";
 
 import type {
   AuthSession,
@@ -43,20 +42,21 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
   const { proxy, convex, requireApiRefs, proxyFetch, setTokenAndMaybeWait } =
     deps;
 
-  const requestDeviceSignIn = (params: Record<string, unknown>) =>
-    Effect.tryPromise({
-      try: async () =>
-        (proxy
-          ? await proxyFetch({
-              action: "auth:signIn",
-              args: { provider: "device", params },
-            })
-          : await convex.action(requireApiRefs().signIn, {
-              provider: "device",
-              params,
-            })) as SignInActionResult,
-      catch: (error) => error,
-    });
+  const requestDeviceSignIn = async (
+    params: Record<string, unknown>,
+  ): Promise<SignInActionResult> => {
+    return (
+      proxy
+        ? await proxyFetch({
+            action: "auth:signIn",
+            args: { provider: "device", params },
+          })
+        : await convex.action(requireApiRefs().signIn, {
+            provider: "device",
+            params,
+          })
+    ) as SignInActionResult;
+  };
 
   return {
     poll: async (opts: { code: DeviceCodeResult }): Promise<void> => {
@@ -72,30 +72,25 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
           deviceCode: code.deviceCode,
         };
 
-        const pollResult = await Effect.runPromise(
-          requestDeviceSignIn(params).pipe(
-            Effect.catchIf(
-              (error): error is ConvexError<Value> =>
-                error instanceof ConvexError,
-              (error) => {
-                const code = (error.data as Record<string, unknown> | undefined)
-                  ?.code;
-                if (code === "DEVICE_AUTHORIZATION_PENDING") {
-                  return Effect.succeed<SignInActionResult | null>(null);
-                }
-                if (code === "DEVICE_SLOW_DOWN") {
-                  return Effect.promise(async () => {
-                    await new Promise((resolve) =>
-                      setTimeout(resolve, intervalMs),
-                    );
-                    return null;
-                  });
-                }
-                return Effect.fail(error);
-              },
-            ),
-          ),
-        );
+        let pollResult: SignInActionResult | null;
+        try {
+          pollResult = await requestDeviceSignIn(params);
+        } catch (error) {
+          if (error instanceof ConvexError) {
+            const errorCode = (
+              error.data as Record<string, unknown> | undefined
+            )?.code;
+            if (errorCode === "DEVICE_AUTHORIZATION_PENDING") {
+              continue;
+            }
+            if (errorCode === "DEVICE_SLOW_DOWN") {
+              await new Promise((resolve) => setTimeout(resolve, intervalMs));
+              continue;
+            }
+          }
+          throw error;
+        }
+
         if (pollResult === null) {
           continue;
         }
@@ -135,21 +130,15 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
         userCode: opts.code,
       };
 
-      await Effect.runPromise(
-        requestDeviceSignIn(params).pipe(
-          Effect.asVoid,
-          Effect.mapError(
-            (error) =>
-              new ConvexError({
-                code: "DEVICE_AUTHORIZATION_FAILED",
-                message:
-                  error instanceof Error
-                    ? error.message
-                    : "Invalid or expired code.",
-              }),
-          ),
-        ),
-      );
+      try {
+        await requestDeviceSignIn(params);
+      } catch (error) {
+        throw new ConvexError({
+          code: "DEVICE_AUTHORIZATION_FAILED",
+          message:
+            error instanceof Error ? error.message : "Invalid or expired code.",
+        });
+      }
     },
   };
 }

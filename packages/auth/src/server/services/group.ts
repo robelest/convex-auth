@@ -1,6 +1,6 @@
-import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError } from "convex/values";
 
+import type { ComponentCtx, ComponentReadCtx } from "../componentContext";
 import { configDefaults } from "../config";
 import {
   getGroupConnectionSecret as queryGroupConnectionSecret,
@@ -14,12 +14,6 @@ import { getSamlConfig, getOidcConfig } from "../sso/config";
 import { normalizeGroupConnectionPolicy } from "../sso/policy";
 import { parseScimPath } from "../sso/scim";
 import { isGroupSamlSourceActive } from "../sso/shared";
-type ComponentCtx = Pick<
-  GenericActionCtx<GenericDataModel>,
-  "runQuery" | "runMutation"
->;
-
-type ComponentReadCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
 
 type RuntimeSamlConfig = {
   idp?: { metadataXml?: string };

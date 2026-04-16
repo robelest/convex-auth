@@ -1,37 +1,28 @@
-import * as BrowserHttpClient from "@effect/platform-browser/BrowserHttpClient";
-import * as BrowserKeyValueStore from "@effect/platform-browser/BrowserKeyValueStore";
-import * as BrowserStream from "@effect/platform-browser/BrowserStream";
-import { Effect, Fiber, Stream } from "effect";
-import * as KeyValueStore from "effect/unstable/persistence/KeyValueStore";
-
 import type { ClientRuntime } from "../client/core/types";
-import { BrowserLocks, BrowserLocksLive } from "./locks";
-import { BrowserNavigation, BrowserNavigationLive } from "./navigation";
+import { BrowserLocksLive } from "./locks";
+import { BrowserNavigationLive } from "./navigation";
 
 const browserStorage = {
-  async getItem(key: string) {
-    return Effect.runPromise(
-      Effect.gen(function* () {
-        const store = yield* KeyValueStore.KeyValueStore;
-        return yield* store.get(key);
-      }).pipe(Effect.provide(BrowserKeyValueStore.layerLocalStorage)),
-    );
+  async getItem(key: string): Promise<string | null> {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
   },
-  async setItem(key: string, value: string) {
-    return Effect.runPromise(
-      Effect.gen(function* () {
-        const store = yield* KeyValueStore.KeyValueStore;
-        yield* store.set(key, value);
-      }).pipe(Effect.provide(BrowserKeyValueStore.layerLocalStorage)),
-    );
+  async setItem(key: string, value: string): Promise<void> {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // Storage may be full or unavailable
+    }
   },
-  async removeItem(key: string) {
-    return Effect.runPromise(
-      Effect.gen(function* () {
-        const store = yield* KeyValueStore.KeyValueStore;
-        yield* store.remove(key);
-      }).pipe(Effect.provide(BrowserKeyValueStore.layerLocalStorage)),
-    );
+  async removeItem(key: string): Promise<void> {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // Storage may be unavailable
+    }
   },
 };
 
@@ -78,48 +69,27 @@ export function createBrowserRuntime(): ClientRuntime {
     environment: typeof window === "undefined" ? "server" : "client",
     storage: typeof window === "undefined" ? null : browserStorage,
     location: {
-      get: () =>
-        Effect.runSync(
-          BrowserNavigation.useSync((navigation) => navigation.get()).pipe(
-            Effect.provide(BrowserNavigationLive),
-          ),
-        ),
-      replace: (url) =>
-        Effect.runPromise(
-          BrowserNavigation.use((navigation) => navigation.replace(url)).pipe(
-            Effect.provide(BrowserNavigationLive),
-          ),
-        ),
-      redirect: (url) =>
-        Effect.runPromise(
-          BrowserNavigation.use((navigation) => navigation.redirect(url)).pipe(
-            Effect.provide(BrowserNavigationLive),
-          ),
-        ),
+      get: () => BrowserNavigationLive.get(),
+      replace: (url) => {
+        BrowserNavigationLive.replace(url);
+        return Promise.resolve();
+      },
+      redirect: (url) => {
+        BrowserNavigationLive.redirect(url);
+        return Promise.resolve();
+      },
     },
     mutex: {
-      withKey: (key, callback) =>
-        Effect.runPromise(
-          BrowserLocks.use((locks) => locks.withKey(key, callback)).pipe(
-            Effect.provide(BrowserLocksLive),
-          ),
-        ),
+      withKey: (key, callback) => BrowserLocksLive.withKey(key, callback),
     },
     proxy: {
       fetch: async (body, proxyPath) => {
-        return Effect.runPromise(
-          Effect.gen(function* () {
-            const fetch = yield* BrowserHttpClient.Fetch;
-            return yield* Effect.promise(() =>
-              fetch(new URL(proxyPath, window.location.origin), {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify(body),
-              }),
-            );
-          }).pipe(Effect.provide(BrowserHttpClient.layerFetch)),
-        );
+        return fetch(new URL(proxyPath, window.location.origin), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(body),
+        });
       },
     },
     sync: {
@@ -132,22 +102,22 @@ export function createBrowserRuntime(): ClientRuntime {
         if (existingSubscription !== undefined) {
           existingSubscription();
         }
-        const fiber = Effect.runFork(
-          BrowserStream.fromEventListenerWindow("storage").pipe(
-            Stream.runForEach((event: StorageEvent) =>
-              event.key !== key
-                ? Effect.void
-                : Effect.promise(async () => {
-                    await callback(event.newValue ?? null);
-                  }),
-            ),
-          ),
+
+        const controller = new AbortController();
+        window.addEventListener(
+          "storage",
+          (event: StorageEvent) => {
+            if (event.key !== key) return;
+            void callback(event.newValue ?? null);
+          },
+          { signal: controller.signal },
         );
+
         const unsubscribe = () => {
           if (registry[key] === unsubscribe) {
             delete registry[key];
           }
-          Effect.runFork(Fiber.interrupt(fiber));
+          controller.abort();
         };
         registry[key] = unsubscribe;
         return unsubscribe;

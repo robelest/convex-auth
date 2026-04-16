@@ -79,7 +79,8 @@ The wizard handles everything:
 
 - key generation
 - `convex.config.ts`
-- `auth.ts`
+- `auth.ts` — provider config + sign-in actions
+- `auth/core.ts` — lightweight context for queries and mutations
 - `http.ts`
 
 ## API layers
@@ -111,7 +112,7 @@ app.use(auth);
 export default app;
 ```
 
-### 2. Configure auth
+### 2. Configure providers
 
 ```ts
 // convex/auth.ts
@@ -132,7 +133,20 @@ export { auth };
 export const { signIn, signOut, store } = auth;
 ```
 
-### 3. Wire up HTTP routes
+### 3. Create the auth context
+
+```ts
+// convex/auth/core.ts
+import { createAuthContext } from "@robelest/convex-auth/core";
+import { components } from "../_generated/api";
+
+export const auth = createAuthContext(components.auth);
+```
+
+Queries and mutations import `auth` from `./auth/core` — this keeps provider
+and crypto code out of your query bundles entirely.
+
+### 4. Wire up HTTP routes
 
 ```ts
 // convex/http.ts

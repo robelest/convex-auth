@@ -4,8 +4,6 @@
  * @module
  */
 
-import { Effect, Match } from "effect";
-
 import type { PhoneConfig } from "../server/types";
 
 /** Configuration for the {@link phone} provider. */
@@ -41,34 +39,17 @@ export function phone(config: PhoneProviderConfig): PhoneConfig {
     type: "phone",
     maxAge: config.maxAge ?? 60 * 20,
     authorize: async (params, account) => {
-      const dispatch =
-        typeof params.phone !== "string"
-          ? ({ tag: "missingPhone" } as const)
-          : account.providerAccountId !== params.phone
-            ? ({ tag: "mismatch" } as const)
-            : ({ tag: "ok" } as const);
-
-      return await Effect.runPromise(
-        Match.value(dispatch).pipe(
-          Match.when({ tag: "missingPhone" }, () =>
-            Effect.die(
-              new Error(
-                "Token verification requires a `phone` in params of `signIn`.",
-              ),
-            ),
-          ),
-          Match.when({ tag: "mismatch" }, () =>
-            Effect.die(
-              new Error(
-                "Short verification code requires a matching `phone` " +
-                  "in params of `signIn`.",
-              ),
-            ),
-          ),
-          Match.when({ tag: "ok" }, () => Effect.succeed(undefined)),
-          Match.exhaustive,
-        ),
-      );
+      if (typeof params.phone !== "string") {
+        throw new Error(
+          "Token verification requires a `phone` in params of `signIn`.",
+        );
+      }
+      if (account.providerAccountId !== params.phone) {
+        throw new Error(
+          "Short verification code requires a matching `phone` " +
+            "in params of `signIn`.",
+        );
+      }
     },
     sendVerificationRequest: config.send,
     options: {},

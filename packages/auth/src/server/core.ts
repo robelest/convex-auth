@@ -1,7 +1,8 @@
 import { Auth, GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError, GenericId } from "convex/values";
 
-import { configDefaults, materializeProvider } from "./config";
+import type { ComponentCtx, ComponentReadCtx } from "./componentContext";
+import { configDefaults } from "./config";
 import { getSessionUserId } from "./context";
 import {
   buildScopeChecker,
@@ -11,8 +12,7 @@ import {
 } from "./keys";
 import type { AuthProfile, SignInParams } from "./payloads";
 import { generateRandomString, sha256 } from "./random";
-import { signInImpl } from "./signin";
-import { TOKEN_SUB_CLAIM_DIVIDER } from "./tokens";
+import { TOKEN_SUB_CLAIM_DIVIDER } from "./constants";
 import type {
   AuthProviderConfig,
   KeyDoc,
@@ -22,11 +22,6 @@ import type {
   UserWhere,
 } from "./types";
 
-type ComponentCtx = Pick<
-  GenericActionCtx<GenericDataModel>,
-  "runQuery" | "runMutation"
->;
-type ComponentReadCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
 type ComponentAuthReadCtx = ComponentReadCtx & { auth: Auth };
 type UntypedRunQuery = <TArgs extends Record<string, unknown>, TResult>(
   ref: unknown,
@@ -100,6 +95,14 @@ type CoreDeps = {
   ) => GenericActionCtx<DataModel>;
   inviteTokenAlphabet: string;
   inviteTokenLength: number;
+  signInForProvider?: <DataModel extends GenericDataModel>(
+    ctx: GenericActionCtx<DataModel>,
+    providerConfig: AuthProviderConfig,
+    args: {
+      accountId?: GenericId<"Account">;
+      params?: SignInParams;
+    },
+  ) => Promise<{ userId: string; sessionId: string } | null>;
 };
 
 /**
@@ -122,7 +125,6 @@ export function createCoreDomains(deps: CoreDeps) {
     callCreateAccountFromCredentials,
     callRetrieveAccountWithCredentials,
     callModifyAccount,
-    getEnrichCtx,
     inviteTokenAlphabet,
     inviteTokenLength,
   } = deps;
@@ -892,29 +894,18 @@ export function createCoreDomains(deps: CoreDeps) {
      * }
      * ```
      */
-    signIn: async <DataModel extends GenericDataModel>(
-      ctx: GenericActionCtx<DataModel>,
-      providerConfig: AuthProviderConfig,
-      args: {
-        accountId?: GenericId<"Account">;
-        params?: SignInParams;
-      },
-    ) => {
-      const result = await signInImpl(
-        getEnrichCtx()(ctx) as Parameters<typeof signInImpl>[0],
-        materializeProvider(providerConfig),
-        args,
-        { generateTokens: false, allowExtraProviders: true },
-      );
-      return result.kind === "signedIn"
-        ? result.signedIn !== null
-          ? {
-              userId: result.signedIn.userId,
-              sessionId: result.signedIn.sessionId,
-            }
-          : null
-        : null;
-    },
+    signIn: deps.signInForProvider
+      ? async <DataModel extends GenericDataModel>(
+          ctx: GenericActionCtx<DataModel>,
+          providerConfig: AuthProviderConfig,
+          args: {
+            accountId?: GenericId<"Account">;
+            params?: SignInParams;
+          },
+        ) => {
+          return deps.signInForProvider!(ctx, providerConfig, args);
+        }
+      : undefined,
   };
 
   const group = {

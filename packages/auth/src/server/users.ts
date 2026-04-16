@@ -1,5 +1,4 @@
 import { ConvexError, GenericId } from "convex/values";
-import { Effect, Match } from "effect";
 
 import { authDb } from "./db";
 import { LOG_LEVELS } from "./log";
@@ -186,66 +185,35 @@ async function defaultCreateOrUpdateUser(
         ? ((await uniqueUserWithVerifiedPhone(ctx, profile.phone, config))
             ?._id ?? null)
         : null;
-    const linkDispatch = {
-      tag:
-        existingUserWithVerifiedEmailId !== null &&
-        existingUserWithVerifiedPhoneId !== null
-          ? "both"
-          : existingUserWithVerifiedEmailId !== null
-            ? "email"
-            : existingUserWithVerifiedPhoneId !== null
-              ? "phone"
-              : "none",
-      existingUserWithVerifiedEmailId,
-      existingUserWithVerifiedPhoneId,
-    } as const;
 
-    userId = await Effect.runPromise(
-      Match.value(linkDispatch).pipe(
-        Match.when(
-          { tag: "both" },
-          ({
-            existingUserWithVerifiedEmailId,
-            existingUserWithVerifiedPhoneId,
-          }) =>
-            Effect.sync(() => {
-              log(
-                LOG_LEVELS.DEBUG,
-                `Found existing email and phone verified users, so not linking: email: ${existingUserWithVerifiedEmailId}, phone: ${existingUserWithVerifiedPhoneId}`,
-              );
-              return null;
-            }),
-        ),
-        Match.when({ tag: "email" }, ({ existingUserWithVerifiedEmailId }) =>
-          Effect.sync(() => {
-            log(
-              LOG_LEVELS.DEBUG,
-              `Found existing email verified user, linking: ${existingUserWithVerifiedEmailId}`,
-            );
-            return existingUserWithVerifiedEmailId;
-          }),
-        ),
-        Match.when({ tag: "phone" }, ({ existingUserWithVerifiedPhoneId }) =>
-          Effect.sync(() => {
-            log(
-              LOG_LEVELS.DEBUG,
-              `Found existing phone verified user, linking: ${existingUserWithVerifiedPhoneId}`,
-            );
-            return existingUserWithVerifiedPhoneId;
-          }),
-        ),
-        Match.when({ tag: "none" }, () =>
-          Effect.sync(() => {
-            log(
-              LOG_LEVELS.DEBUG,
-              "No existing verified users found, creating new user",
-            );
-            return null;
-          }),
-        ),
-        Match.exhaustive,
-      ),
-    );
+    if (
+      existingUserWithVerifiedEmailId !== null &&
+      existingUserWithVerifiedPhoneId !== null
+    ) {
+      log(
+        LOG_LEVELS.DEBUG,
+        `Found existing email and phone verified users, so not linking: email: ${existingUserWithVerifiedEmailId}, phone: ${existingUserWithVerifiedPhoneId}`,
+      );
+      userId = null;
+    } else if (existingUserWithVerifiedEmailId !== null) {
+      log(
+        LOG_LEVELS.DEBUG,
+        `Found existing email verified user, linking: ${existingUserWithVerifiedEmailId}`,
+      );
+      userId = existingUserWithVerifiedEmailId;
+    } else if (existingUserWithVerifiedPhoneId !== null) {
+      log(
+        LOG_LEVELS.DEBUG,
+        `Found existing phone verified user, linking: ${existingUserWithVerifiedPhoneId}`,
+      );
+      userId = existingUserWithVerifiedPhoneId;
+    } else {
+      log(
+        LOG_LEVELS.DEBUG,
+        "No existing verified users found, creating new user",
+      );
+      userId = null;
+    }
 
     if (
       userId !== null &&
@@ -292,20 +260,18 @@ async function defaultCreateOrUpdateUser(
     if (Object.keys(patchData).length === 0) {
       return userId;
     }
-    await Effect.runPromise(
-      Effect.tryPromise({
-        try: () => db.users.patch(currentUserId, patchData),
-        catch: (error) =>
-          new ConvexError({
-            code: "USER_UPDATE_FAILED",
-            message:
-              `Could not update user document with ID \`${currentUserId}\`, ` +
-              `either the user has been deleted but their account has not, ` +
-              `or the profile data doesn't match the \`users\` table schema: ` +
-              `${error instanceof Error ? error.message : String(error)}`,
-          }),
-      }),
-    );
+    try {
+      await db.users.patch(currentUserId, patchData);
+    } catch (error) {
+      throw new ConvexError({
+        code: "USER_UPDATE_FAILED",
+        message:
+          `Could not update user document with ID \`${currentUserId}\`, ` +
+          `either the user has been deleted but their account has not, ` +
+          `or the profile data doesn't match the \`users\` table schema: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
   } else {
     if (source === "login" && provisioningUser?.createOnSignIn === false) {
       throw new ConvexError({

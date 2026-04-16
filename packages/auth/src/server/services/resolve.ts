@@ -1,34 +1,25 @@
-import { Effect, Layer, ServiceMap } from "effect";
-
 import { configDefaults } from "../config";
 import type { ConvexAuthConfig } from "../types";
-import { AuthConfigService } from "./config";
-import { AuthLoggerLive, AuthLoggerService } from "./logger";
-import { ProviderRegistryLive, ProviderRegistryService } from "./providers";
-import { AuthRefreshLive, AuthRefreshService } from "./refresh";
-import { AuthSignInLive, AuthSignInService } from "./signin";
+import { createAuthConfig } from "./config";
+import { createAuthLogger } from "./logger";
+import { createProviderRegistry } from "./providers";
+import { createAuthRefresh } from "./refresh";
+import { createAuthSignIn } from "./signin";
 
 export function resolveServerServices(config: ConvexAuthConfig) {
   const configValue = configDefaults(config);
-  const loggerValue = Effect.runSync(
-    Effect.map(Effect.scoped(Layer.build(AuthLoggerLive)), (context) =>
-      ServiceMap.getUnsafe(context, AuthLoggerService),
-    ),
-  );
-  const layer = Layer.mergeAll(
-    Layer.succeed(AuthLoggerService)(loggerValue),
-    Layer.succeed(AuthConfigService)({ config: configValue }),
-    ProviderRegistryLive(configValue, loggerValue),
-    AuthSignInLive(configValue),
-    AuthRefreshLive(configValue),
-  );
-  const context = Effect.runSync(Effect.scoped(Layer.build(layer)));
+  const logger = createAuthLogger();
+  const authConfig = createAuthConfig(config);
+  const providerRegistry = createProviderRegistry(configValue, logger);
+  const signIn = createAuthSignIn(configValue);
+  const refresh = createAuthRefresh(configValue);
+
   return {
-    config: ServiceMap.getUnsafe(context, AuthConfigService).config,
-    logger: ServiceMap.getUnsafe(context, AuthLoggerService),
-    providerRegistry: ServiceMap.getUnsafe(context, ProviderRegistryService),
-    signIn: ServiceMap.getUnsafe(context, AuthSignInService),
-    refresh: ServiceMap.getUnsafe(context, AuthRefreshService),
+    config: authConfig.config,
+    logger,
+    providerRegistry,
+    signIn,
+    refresh,
   };
 }
 

@@ -4,17 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vp exec tsdown src/main.ts --format esm --out-dir dist",
-    "auth": "vp exec tsx src/main.ts auth",
-    "groups": "vp exec tsx src/main.ts groups",
-    "issues": "vp exec tsx src/main.ts issues"
+    "dev": "vp exec tsx src/main.ts",
+    "build": "vp exec tsdown src/main.ts --format esm --out-dir dist"
   },
   "dependencies": {
-    "@effect/platform-node": "beta",
+    "@clack/prompts": "^1.2.0",
     "@robelest/convex-auth": "workspace:*",
     "convex": "catalog:",
     "dotenv": "^17.2.4",
-    "effect": "beta"
+    "figlet": "^1.11.0",
+    "gradient-string": "^3.0.0"
   },
   "devDependencies": {
     "tsdown": "catalog:",

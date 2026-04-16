@@ -1,6 +1,6 @@
-import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError } from "convex/values";
 
+import type { ComponentCtx, ComponentReadCtx } from "../componentContext";
 import {
   getGroupConnection,
   getScimConfigByConnection,
@@ -42,12 +42,6 @@ function getScimConfigShape(
     ? (scimConfig.extend as DomainScimConfig)
     : {};
 }
-
-type ComponentCtx = Pick<
-  GenericActionCtx<GenericDataModel>,
-  "runQuery" | "runMutation"
->;
-type ComponentReadCtx = Pick<GenericActionCtx<GenericDataModel>, "runQuery">;
 
 const convexError = (data: { code: string; message: string }) =>
   new ConvexError(data);

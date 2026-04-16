@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 
 import { internalMutation, internalQuery } from "./_generated/server";
-import { auth } from "./auth";
+import { auth } from "./auth/core";
 import { authMutation, authQuery } from "./functions";
 import {
   issuePriority as issuePriorityValidator,
