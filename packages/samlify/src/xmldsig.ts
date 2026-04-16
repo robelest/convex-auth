@@ -72,11 +72,7 @@ export interface ConstructSamlSignatureOptions {
 
 interface XmlSignatureAlgorithm {
   getSignature: (signedInfo: string, privateKey: string) => string;
-  verifySignature: (
-    material: string,
-    key: string,
-    signatureValue: string,
-  ) => boolean;
+  verifySignature: (material: string, key: string, signatureValue: string) => boolean;
   getAlgorithmName: () => string;
 }
 
@@ -179,11 +175,7 @@ function findChildren(node: any, localName: string): Element[] {
   return res;
 }
 
-function findAttr(
-  element: Element,
-  localName: string,
-  namespace?: string,
-): Attr | null {
+function findAttr(element: Element, localName: string, namespace?: string): Attr | null {
   for (let i = 0; i < element.attributes.length; i++) {
     const attr = element.attributes[i];
     if (
@@ -305,11 +297,7 @@ class RsaSha1 implements XmlSignatureAlgorithm {
     return hextob64(signer.sign());
   }
 
-  verifySignature(
-    material: string,
-    key: string,
-    signatureValue: string,
-  ): boolean {
+  verifySignature(material: string, key: string, signatureValue: string): boolean {
     const verifier = new Signature({ alg: "SHA1withRSA" });
     verifier.init(key);
     verifier.updateString(material);
@@ -329,11 +317,7 @@ class RsaSha256 implements XmlSignatureAlgorithm {
     return hextob64(signer.sign());
   }
 
-  verifySignature(
-    material: string,
-    key: string,
-    signatureValue: string,
-  ): boolean {
+  verifySignature(material: string, key: string, signatureValue: string): boolean {
     const verifier = new Signature({ alg: "SHA256withRSA" });
     verifier.init(key);
     verifier.updateString(material);
@@ -353,11 +337,7 @@ class RsaSha512 implements XmlSignatureAlgorithm {
     return hextob64(signer.sign());
   }
 
-  verifySignature(
-    material: string,
-    key: string,
-    signatureValue: string,
-  ): boolean {
+  verifySignature(material: string, key: string, signatureValue: string): boolean {
     const verifier = new Signature({ alg: "SHA512withRSA" });
     verifier.init(key);
     verifier.updateString(material);
@@ -431,10 +411,7 @@ export class SignedXml {
     if (!keyInfo) {
       return null;
     }
-    const certNode = selectNodes(
-      ".//*[local-name(.)='X509Certificate']",
-      keyInfo,
-    )[0] as any;
+    const certNode = selectNodes(".//*[local-name(.)='X509Certificate']", keyInfo)[0] as any;
     if (certNode && typeof certNode.textContent === "string") {
       return derToPem(certNode.textContent, "CERTIFICATE");
     }
@@ -462,9 +439,7 @@ export class SignedXml {
       throw new Error("digestAlgorithm is required");
     }
     if (!isArrayHasLength(transforms)) {
-      throw new Error(
-        "transforms must contain at least one transform algorithm",
-      );
+      throw new Error("transforms must contain at least one transform algorithm");
     }
 
     this.references.push({
@@ -501,13 +476,8 @@ export class SignedXml {
     return new Algo();
   }
 
-  private getCanonXml(
-    transforms: string[],
-    node: Node,
-    options: C14nProcessOptions = {},
-  ): string {
-    options.defaultNsForPrefix =
-      options.defaultNsForPrefix || SignedXml.defaultNsForPrefix;
+  private getCanonXml(transforms: string[], node: Node, options: C14nProcessOptions = {}): string {
+    options.defaultNsForPrefix = options.defaultNsForPrefix || SignedXml.defaultNsForPrefix;
     options.signatureNode = this.signatureNode as any;
 
     const canonXml = node.cloneNode(true) as C14nNode;
@@ -535,11 +505,7 @@ export class SignedXml {
     return id;
   }
 
-  private getCanonReferenceXml(
-    doc: Document,
-    ref: XmlReference,
-    node: Node,
-  ): string {
+  private getCanonReferenceXml(doc: Document, ref: XmlReference, node: Node): string {
     if (Array.isArray(ref.transforms)) {
       ref.ancestorNamespaces = findAncestorNs(doc, ref.xpath);
     }
@@ -557,9 +523,7 @@ export class SignedXml {
       throw new Error("No signature found.");
     }
     if (typeof this.canonicalizationAlgorithm !== "string") {
-      throw new Error(
-        "Missing canonicalizationAlgorithm when trying to get signed info for XML",
-      );
+      throw new Error("Missing canonicalizationAlgorithm when trying to get signed info for XML");
     }
     const signedInfo = findChildren(this.signatureNode, "SignedInfo");
     if (signedInfo.length === 0) {
@@ -571,10 +535,7 @@ export class SignedXml {
       );
     }
 
-    const ancestorNamespaces = findAncestorNs(
-      doc,
-      "//*[local-name()='SignedInfo']",
-    );
+    const ancestorNamespaces = findAncestorNs(doc, "//*[local-name()='SignedInfo']");
     return this.getCanonXml([this.canonicalizationAlgorithm], signedInfo[0], {
       ancestorNamespaces,
     });
@@ -634,9 +595,7 @@ export class SignedXml {
       );
     }
 
-    const transform = getTransformByAlgorithm(
-      this.canonicalizationAlgorithm,
-    ) as any;
+    const transform = getTransformByAlgorithm(this.canonicalizationAlgorithm) as any;
     const algo = this.findSignatureAlgorithm(this.signatureAlgorithm);
     const currentPrefix = prefix ? `${prefix}:` : "";
 
@@ -665,7 +624,7 @@ export class SignedXml {
 
     const signatureValueXml = `<${currentPrefix}SignatureValue>${this.signatureValue}</${currentPrefix}SignatureValue>`;
     const wrapper = `<${currentPrefix}Signature ${xmlNsAttr}="http://www.w3.org/2000/09/xmldsig#">${signatureValueXml}</${currentPrefix}Signature>`;
-    const doc = new DOMParser().parseFromString(wrapper);
+    const doc = new DOMParser().parseFromString(wrapper, "text/xml");
     return doc.documentElement.firstChild as Node;
   }
 
@@ -698,7 +657,7 @@ export class SignedXml {
 
   computeSignature(xml: string, options?: ComputeSignatureOptions) {
     options = options || {};
-    const doc = new DOMParser().parseFromString(xml);
+    const doc = new DOMParser().parseFromString(xml, "text/xml");
 
     let xmlNsAttr = "xmlns";
     const signatureAttrs: string[] = [];
@@ -744,7 +703,7 @@ export class SignedXml {
     });
 
     const dummySignatureWrapper = `<Dummy ${existingPrefixesString}>${signatureXml}</Dummy>`;
-    const nodeXml = new DOMParser().parseFromString(dummySignatureWrapper);
+    const nodeXml = new DOMParser().parseFromString(dummySignatureWrapper, "text/xml");
     const signatureDoc = nodeXml.documentElement.firstChild as Node;
 
     const referenceNode = selectNodes(location.reference, doc)[0];
@@ -771,10 +730,7 @@ export class SignedXml {
           "`location.reference` refers to the root node (by default), so we cannot insert `after`",
         );
       }
-      referenceNode.parentNode.insertBefore(
-        signatureDoc,
-        referenceNode.nextSibling,
-      );
+      referenceNode.parentNode.insertBefore(signatureDoc, referenceNode.nextSibling);
     }
 
     this.signatureNode = signatureDoc;
@@ -785,10 +741,7 @@ export class SignedXml {
     }
 
     this.calculateSignatureValue(doc);
-    signatureDoc.insertBefore(
-      this.createSignature(prefix),
-      signedInfoNodes[0].nextSibling,
-    );
+    signatureDoc.insertBefore(this.createSignature(prefix), signedInfoNodes[0].nextSibling);
     this.signatureXml = signatureDoc.toString();
     this.signedXml = doc.toString();
   }
@@ -796,24 +749,18 @@ export class SignedXml {
   loadReference(refNode: Node) {
     let nodes = findChildren(refNode, "DigestMethod");
     if (nodes.length === 0) {
-      throw new Error(
-        `could not find DigestMethod in reference ${refNode.toString()}`,
-      );
+      throw new Error(`could not find DigestMethod in reference ${refNode.toString()}`);
     }
     const digestAlgoNode = nodes[0];
     const digestAttr = findAttr(digestAlgoNode, "Algorithm");
     if (!digestAttr) {
-      throw new Error(
-        `could not find Algorithm attribute in node ${digestAlgoNode.toString()}`,
-      );
+      throw new Error(`could not find Algorithm attribute in node ${digestAlgoNode.toString()}`);
     }
     const digestAlgo = digestAttr.value;
 
     nodes = findChildren(refNode, "DigestValue");
     if (nodes.length === 0) {
-      throw new Error(
-        `could not find DigestValue node in reference ${refNode.toString()}`,
-      );
+      throw new Error(`could not find DigestValue node in reference ${refNode.toString()}`);
     }
     if (nodes.length > 1) {
       throw new Error(
@@ -823,9 +770,7 @@ export class SignedXml {
 
     const digestValue = nodes[0].textContent || "";
     if (!digestValue) {
-      throw new Error(
-        `could not find the value of DigestValue in ${refNode.toString()}`,
-      );
+      throw new Error(`could not find the value of DigestValue in ${refNode.toString()}`);
     }
 
     const transforms: string[] = [];
@@ -844,10 +789,7 @@ export class SignedXml {
 
       const lastTransform = transformsAll[transformsAll.length - 1];
       if (lastTransform) {
-        const inclusiveNamespaces = findChildren(
-          lastTransform,
-          "InclusiveNamespaces",
-        );
+        const inclusiveNamespaces = findChildren(lastTransform, "InclusiveNamespaces");
         if (isArrayHasLength(inclusiveNamespaces)) {
           const values: string[] = [];
           inclusiveNamespaces.forEach((namespaceNode) => {
@@ -865,8 +807,7 @@ export class SignedXml {
 
     if (
       transforms.length === 0 ||
-      transforms[transforms.length - 1] ===
-        "http://www.w3.org/2000/09/xmldsig#enveloped-signature"
+      transforms[transforms.length - 1] === "http://www.w3.org/2000/09/xmldsig#enveloped-signature"
     ) {
       transforms.push("http://www.w3.org/2001/10/xml-exc-c14n#");
     }
@@ -884,7 +825,7 @@ export class SignedXml {
 
   loadSignature(signatureNode: string | Node) {
     if (typeof signatureNode === "string") {
-      this.signatureNode = new DOMParser().parseFromString(signatureNode);
+      this.signatureNode = new DOMParser().parseFromString(signatureNode, "text/xml");
     } else {
       this.signatureNode = signatureNode;
     }
@@ -896,9 +837,7 @@ export class SignedXml {
       this.signatureNode,
     )[0];
     if (!canonicalizationAlgorithmNode) {
-      throw new Error(
-        "could not find CanonicalizationMethod/@Algorithm element",
-      );
+      throw new Error("could not find CanonicalizationMethod/@Algorithm element");
     }
     if (isAttributeNode(canonicalizationAlgorithmNode)) {
       this.canonicalizationAlgorithm = canonicalizationAlgorithmNode.value;
@@ -917,15 +856,12 @@ export class SignedXml {
       throw new Error("no signed info node found");
     }
     if (signedInfoNodes.length > 1) {
-      throw new Error(
-        "could not load signature that contains multiple SignedInfo nodes",
-      );
+      throw new Error("could not load signature that contains multiple SignedInfo nodes");
     }
 
     let canonicalizationAlgorithmForSignedInfo = this.canonicalizationAlgorithm;
     if (!canonicalizationAlgorithmForSignedInfo) {
-      canonicalizationAlgorithmForSignedInfo =
-        "http://www.w3.org/2001/10/xml-exc-c14n#";
+      canonicalizationAlgorithmForSignedInfo = "http://www.w3.org/2001/10/xml-exc-c14n#";
     }
 
     const temporaryCanonSignedInfo = this.getCanonXml(
@@ -956,10 +892,7 @@ export class SignedXml {
       this.signatureValue = signatureValueNode.data.replace(/\r?\n/g, "");
     }
 
-    const keyInfoNode = selectNodes(
-      ".//*[local-name(.)='KeyInfo']",
-      this.signatureNode,
-    )[0];
+    const keyInfoNode = selectNodes(".//*[local-name(.)='KeyInfo']", this.signatureNode)[0];
     if (keyInfoNode) {
       this.keyInfo = keyInfoNode;
     }
@@ -1016,7 +949,7 @@ export class SignedXml {
 
   checkSignature(xml: string): boolean {
     this.signedXml = xml;
-    const doc = new DOMParser().parseFromString(xml);
+    const doc = new DOMParser().parseFromString(xml, "text/xml");
 
     this.references = [];
     const unverifiedSignedInfoCanon = this.getCanonSignedInfoXml(doc);
@@ -1030,9 +963,7 @@ export class SignedXml {
     );
     const unverifiedSignedInfoDoc = parsedUnverifiedSignedInfo.documentElement;
     if (!unverifiedSignedInfoDoc) {
-      throw new Error(
-        "Could not parse unverifiedSignedInfoCanon into a document",
-      );
+      throw new Error("Could not parse unverifiedSignedInfoCanon into a document");
     }
 
     const references = findChildren(unverifiedSignedInfoDoc, "Reference");
@@ -1053,21 +984,12 @@ export class SignedXml {
     }
 
     const signer = this.findSignatureAlgorithm(this.signatureAlgorithm);
-    const key =
-      this.publicCert ||
-      this.getCertFromKeyInfo(this.keyInfo) ||
-      this.privateKey;
+    const key = this.publicCert || this.getCertFromKeyInfo(this.keyInfo) || this.privateKey;
     if (key == null) {
-      throw new Error(
-        "KeyInfo or publicCert or privateKey is required to validate signature",
-      );
+      throw new Error("KeyInfo or publicCert or privateKey is required to validate signature");
     }
 
-    const result = signer.verifySignature(
-      unverifiedSignedInfoCanon,
-      key,
-      this.signatureValue,
-    );
+    const result = signer.verifySignature(unverifiedSignedInfoCanon, key, this.signatureValue);
     if (!result) {
       this.signedReferences = [];
       this.references.forEach((ref) => {
@@ -1116,9 +1038,7 @@ function getSigningScheme(
   return nrsaAliasMapping[defaultSignatureAlgorithm];
 }
 
-export function constructMessageSignature(
-  opts: ConstructMessageSignatureOptions,
-): string {
+export function constructMessageSignature(opts: ConstructMessageSignatureOptions): string {
   const {
     octetString,
     key,
@@ -1134,21 +1054,13 @@ export function constructMessageSignature(
   const signature = signMessage({
     octetString,
     privateKey: readPrivateKey(key, passphrase),
-    signingScheme: getSigningScheme(
-      signingAlgorithm,
-      nrsaAliasMapping,
-      defaultSignatureAlgorithm,
-    ),
+    signingScheme: getSigningScheme(signingAlgorithm, nrsaAliasMapping, defaultSignatureAlgorithm),
     isBase64Output: isBase64 !== false,
   });
-  return isBase64 !== false
-    ? String(signature)
-    : (signature as unknown as string);
+  return isBase64 !== false ? String(signature) : (signature as unknown as string);
 }
 
-export function verifyMessageSignature(
-  opts: VerifyMessageSignatureOptions,
-): boolean {
+export function verifyMessageSignature(opts: VerifyMessageSignatureOptions): boolean {
   const {
     octetString,
     signature,
@@ -1173,9 +1085,7 @@ export function verifyMessageSignature(
   });
 }
 
-export function constructSamlSignature(
-  opts: ConstructSamlSignatureOptions,
-): string {
+export function constructSamlSignature(opts: ConstructSamlSignatureOptions): string {
   const {
     rawSamlMessage,
     referenceTagXPath,
@@ -1222,11 +1132,8 @@ export function constructSamlSignature(
 
   sig.signatureAlgorithm = signatureAlgorithm;
   sig.setPublicCert(getKeyInfo(signingCertString, signatureConfig).getKey());
-  sig.getKeyInfoContent = getKeyInfo(signingCertString, signatureConfig)
-    .getKeyInfo as any;
-  sig.setPrivateKey(
-    readPrivateKey(privateKey, privateKeyPass, true) as BinaryLike,
-  );
+  sig.getKeyInfoContent = getKeyInfo(signingCertString, signatureConfig).getKeyInfo as any;
+  sig.setPrivateKey(readPrivateKey(privateKey, privateKeyPass, true) as BinaryLike);
   sig.canonicalizationAlgorithm = "http://www.w3.org/2001/10/xml-exc-c14n#";
 
   if (signatureConfig) {
@@ -1235,9 +1142,7 @@ export function constructSamlSignature(
     sig.computeSignature(rawSamlMessage);
   }
 
-  return isBase64Output !== false
-    ? base64Encode(sig.getSignedXml())
-    : sig.getSignedXml();
+  return isBase64Output !== false ? base64Encode(sig.getSignedXml()) : sig.getSignedXml();
 }
 
 export function signStringWithScheme(

@@ -39,7 +39,10 @@ function loadDomParserCtor(): any {
 
 function createDOMParser(options: DOMParserOptions = {}): DOMParserLike {
   const DOMParserCtor = loadDomParserCtor();
-  return new DOMParserCtor(options);
+  const parser = new DOMParserCtor(options);
+  return {
+    parseFromString: (xml: string, mimeType = "text/xml") => parser.parseFromString(xml, mimeType),
+  };
 }
 
 const context: Context = {
@@ -58,9 +61,7 @@ export function getContext() {
 
 export function setSchemaValidator(params: ValidatorContext) {
   if (typeof params.validate !== "function") {
-    throw new Error(
-      "validate must be a callback function having one argument as xml input",
-    );
+    throw new Error("validate must be a callback function having one argument as xml input");
   }
 
   context.validate = params.validate;
@@ -75,10 +76,7 @@ export function setFileIO(params: FileIOContext) {
     throw new Error("readFile must be a callback function");
   }
 
-  if (
-    params.writeFile !== undefined &&
-    typeof params.writeFile !== "function"
-  ) {
+  if (params.writeFile !== undefined && typeof params.writeFile !== "function") {
     throw new Error("writeFile must be a callback function");
   }
 

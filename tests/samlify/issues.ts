@@ -9,15 +9,14 @@ import { test, expect } from "vite-plus/test";
 process.chdir(path.resolve(import.meta.dirname, "../../packages/samlify"));
 
 const FIXTURE_ROOT = path.resolve(import.meta.dirname);
-const fixturePath = (relativePath: string) =>
-  path.join(FIXTURE_ROOT, relativePath);
-const fixtureRead = (relativePath: string) =>
-  readFileSync(fixturePath(relativePath));
+const fixturePath = (relativePath: string) => path.join(FIXTURE_ROOT, relativePath);
+const fixtureRead = (relativePath: string) => readFileSync(fixturePath(relativePath));
 
 const parseUrlQueryObject = (value: string) =>
-  Object.fromEntries(
-    new URL(value, "https://example.com").searchParams.entries(),
-  ) as Record<string, string>;
+  Object.fromEntries(new URL(value, "https://example.com").searchParams.entries()) as Record<
+    string,
+    string
+  >;
 
 const {
   IdentityProvider: identityProvider,
@@ -33,20 +32,12 @@ const getQueryParamByType = libsaml.getQueryParamByType;
 const wording = ref.wording;
 
 test("#31 query param for sso/slo is SamlRequest", () => {
-  expect(getQueryParamByType("SAMLRequest")).toBe(
-    wording.urlParams.samlRequest,
-  );
-  expect(getQueryParamByType("LogoutRequest")).toBe(
-    wording.urlParams.samlRequest,
-  );
+  expect(getQueryParamByType("SAMLRequest")).toBe(wording.urlParams.samlRequest);
+  expect(getQueryParamByType("LogoutRequest")).toBe(wording.urlParams.samlRequest);
 });
 test("#31 query param for sso/slo is SamlResponse", () => {
-  expect(getQueryParamByType("SAMLResponse")).toBe(
-    wording.urlParams.samlResponse,
-  );
-  expect(getQueryParamByType("LogoutResponse")).toBe(
-    wording.urlParams.samlResponse,
-  );
+  expect(getQueryParamByType("SAMLResponse")).toBe(wording.urlParams.samlResponse);
+  expect(getQueryParamByType("LogoutResponse")).toBe(wording.urlParams.samlResponse);
 });
 test("#31 query param for sso/slo returns error", () => {
   expect(() => {
@@ -110,11 +101,7 @@ test("#31 query param for sso/slo returns error", () => {
   const acs = extract(spxml, [
     {
       key: "assertionConsumerService",
-      localPath: [
-        "EntityDescriptor",
-        "SPSSODescriptor",
-        "AssertionConsumerService",
-      ],
+      localPath: ["EntityDescriptor", "SPSSODescriptor", "AssertionConsumerService"],
       attributes: ["Binding", "Location", "isDefault", "index"],
     },
   ]);
@@ -128,22 +115,14 @@ test("#31 query param for sso/slo returns error", () => {
   const sso = extract(idpxml, [
     {
       key: "singleSignOnService",
-      localPath: [
-        "EntityDescriptor",
-        "IDPSSODescriptor",
-        "SingleSignOnService",
-      ],
+      localPath: ["EntityDescriptor", "IDPSSODescriptor", "SingleSignOnService"],
       attributes: ["Binding", "Location", "isDefault", "index"],
     },
   ]);
   const idpslo = extract(idpxml, [
     {
       key: "singleLogoutService",
-      localPath: [
-        "EntityDescriptor",
-        "IDPSSODescriptor",
-        "SingleLogoutService",
-      ],
+      localPath: ["EntityDescriptor", "IDPSSODescriptor", "SingleLogoutService"],
       attributes: ["Binding", "Location", "isDefault", "index"],
     },
   ]);
@@ -183,23 +162,16 @@ test("#31 query param for sso/slo returns error", () => {
       },
     ]);
     expect(issuer.length).toBe(1);
-    expect(
-      issuer.every((i: string) => i === "http://www.okta.com/dummyIssuer"),
-    ).toBe(true);
+    expect(issuer.every((i: string) => i === "http://www.okta.com/dummyIssuer")).toBe(true);
   });
 
   test("#87 add existence check for signature verification", () => {
-    const res = libsaml.verifySignature(
-      fixtureRead("misc/response.xml").toString(),
-      {},
-    );
+    const res = libsaml.verifySignature(fixtureRead("misc/response.xml").toString(), {});
     expect(res[0]).toBe(false); // signature is invalid because one doesn't exist
   });
 
   test("#91 idp gets single sign on service from the metadata", () => {
-    expect(idp.entityMeta.getSingleSignOnService("post")).toBe(
-      "idp.example.com/sso",
-    );
+    expect(idp.entityMeta.getSingleSignOnService("post")).toBe("idp.example.com/sso");
   });
 
   test("#98 undefined AssertionConsumerServiceURL with redirect request", () => {
@@ -207,14 +179,12 @@ test("#31 query param for sso/slo returns error", () => {
     const query = parseUrlQueryObject(context);
     const request = query.SAMLRequest;
     const rawRequest = utility.inflateString(decodeURIComponent(request));
-    const xml = new dom().parseFromString(rawRequest);
+    const xml = new dom().parseFromString(rawRequest, "text/xml");
     const root = xml.documentElement;
     if (!root) {
       throw new Error("Expected SAML request XML to have a document element.");
     }
-    const acsUrl = root.attributes.getNamedItem(
-      "AssertionConsumerServiceURL",
-    )?.value;
+    const acsUrl = root.attributes.getNamedItem("AssertionConsumerServiceURL")?.value;
     expect(acsUrl).toBe("https://example.org/response");
   });
 })();

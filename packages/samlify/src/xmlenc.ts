@@ -68,11 +68,7 @@ function toUtf8String(input: string | Uint8Array): string {
 }
 
 function hasWebCrypto(): boolean {
-  return !!(
-    globalThis.crypto &&
-    globalThis.crypto.subtle &&
-    globalThis.crypto.getRandomValues
-  );
+  return !!(globalThis.crypto && globalThis.crypto.subtle && globalThis.crypto.getRandomValues);
 }
 
 function getSubtleCrypto(): SubtleCrypto {
@@ -164,9 +160,7 @@ function uint8ArrayToArrayBuffer(input: Uint8Array): ArrayBuffer {
   return out.buffer;
 }
 
-async function importRsaOaepPublicKey(
-  publicKeyPem: string,
-): Promise<CryptoKey> {
+async function importRsaOaepPublicKey(publicKeyPem: string): Promise<CryptoKey> {
   const subtle = getSubtleCrypto();
   const der = pemToDer(publicKeyPem);
   return subtle.importKey(
@@ -181,9 +175,7 @@ async function importRsaOaepPublicKey(
   );
 }
 
-async function importRsaOaepPrivateKey(
-  privateKeyPem: string,
-): Promise<CryptoKey> {
+async function importRsaOaepPrivateKey(privateKeyPem: string): Promise<CryptoKey> {
   const subtle = getSubtleCrypto();
   const keyObject = KEYUTIL.getKey(privateKeyPem);
   const pkcs8Pem = KEYUTIL.getPEM(keyObject, "PKCS8PRV");
@@ -228,10 +220,7 @@ function bigIntToSizedBytes(value: any, size: number): Uint8Array {
   return bytes;
 }
 
-function rsaPkcs1v15PadEncrypt(
-  message: Uint8Array,
-  modulusSize: number,
-): Uint8Array {
+function rsaPkcs1v15PadEncrypt(message: Uint8Array, modulusSize: number): Uint8Array {
   if (message.length > modulusSize - 11) {
     throw new Error("ERR_RSA_MESSAGE_TOO_LONG");
   }
@@ -288,10 +277,7 @@ function encryptRsa1_5(data: Uint8Array, publicKeyPem: string): Uint8Array {
   return bigIntToSizedBytes(c, modulusSize);
 }
 
-function decryptRsa1_5(
-  encrypted: Uint8Array,
-  privateKeyPem: string,
-): Uint8Array {
+function decryptRsa1_5(encrypted: Uint8Array, privateKeyPem: string): Uint8Array {
   const privateKey = KEYUTIL.getKey(privateKeyPem) as any;
   const modulusSize = getRsaModulusSizeInBytes(privateKey);
   const c = new BigInteger(bytesToHex(encrypted), 16);
@@ -320,9 +306,7 @@ async function wrapSymmetricKey(
     return encryptRsa1_5(symmetricKey, publicKeyPem);
   }
 
-  throw new Error(
-    `ERR_KEY_ENCRYPTION_ALGORITHM_NOT_SUPPORTED: ${keyEncryptionAlgorithm}`,
-  );
+  throw new Error(`ERR_KEY_ENCRYPTION_ALGORITHM_NOT_SUPPORTED: ${keyEncryptionAlgorithm}`);
 }
 
 async function unwrapSymmetricKey(
@@ -345,9 +329,7 @@ async function unwrapSymmetricKey(
     return decryptRsa1_5(encryptedKey, privateKeyPem);
   }
 
-  throw new Error(
-    `ERR_KEY_ENCRYPTION_ALGORITHM_NOT_SUPPORTED: ${keyEncryptionAlgorithm}`,
-  );
+  throw new Error(`ERR_KEY_ENCRYPTION_ALGORITHM_NOT_SUPPORTED: ${keyEncryptionAlgorithm}`);
 }
 
 async function encryptAes(
@@ -369,11 +351,7 @@ async function encryptAes(
       ? ({ name: "AES-GCM", iv, tagLength: 128 } as AesGcmParams)
       : ({ name: "AES-CBC", iv } as AesCbcParams);
 
-  const encrypted = await subtle.encrypt(
-    params,
-    key,
-    uint8ArrayToArrayBuffer(content),
-  );
+  const encrypted = await subtle.encrypt(params, key, uint8ArrayToArrayBuffer(content));
   return new Uint8Array(encrypted);
 }
 
@@ -396,11 +374,7 @@ async function decryptAes(
       ? ({ name: "AES-GCM", iv, tagLength: 128 } as AesGcmParams)
       : ({ name: "AES-CBC", iv } as AesCbcParams);
 
-  const decrypted = await subtle.decrypt(
-    params,
-    key,
-    uint8ArrayToArrayBuffer(encrypted),
-  );
+  const decrypted = await subtle.decrypt(params, key, uint8ArrayToArrayBuffer(encrypted));
   return new Uint8Array(decrypted);
 }
 
@@ -455,10 +429,7 @@ function getCipherValueText(node: any): string {
 }
 
 function resolveEncryptedDataNode(doc: Document): any {
-  const encryptedDataNode = selectNodes(
-    "//*[local-name(.)='EncryptedData']",
-    doc,
-  )[0];
+  const encryptedDataNode = selectNodes("//*[local-name(.)='EncryptedData']", doc)[0];
   if (!encryptedDataNode) {
     throw new Error("ERR_MISSING_ENCRYPTED_DATA");
   }
@@ -472,24 +443,15 @@ function resolveEncryptedKeyNode(
   keyEncryptionAlgorithm: string;
   encryptedKey: Uint8Array;
 } {
-  const keyInfoNode = selectNodes(
-    "./*[local-name(.)='KeyInfo']",
-    encryptedDataNode,
-  )[0];
+  const keyInfoNode = selectNodes("./*[local-name(.)='KeyInfo']", encryptedDataNode)[0];
   if (!keyInfoNode) {
     throw new Error("cant find encryption algorithm");
   }
 
-  let encryptedKeyContainer = selectNodes(
-    "./*[local-name(.)='EncryptedKey']",
-    keyInfoNode,
-  )[0];
+  let encryptedKeyContainer = selectNodes("./*[local-name(.)='EncryptedKey']", keyInfoNode)[0];
 
   if (!encryptedKeyContainer) {
-    const keyRetrievalMethod = selectNodes(
-      "./*[local-name(.)='RetrievalMethod']",
-      keyInfoNode,
-    )[0];
+    const keyRetrievalMethod = selectNodes("./*[local-name(.)='RetrievalMethod']", keyInfoNode)[0];
     const retrievalMethodUri =
       keyRetrievalMethod && keyRetrievalMethod.getAttribute
         ? keyRetrievalMethod.getAttribute("URI")
@@ -507,10 +469,7 @@ function resolveEncryptedKeyNode(
   }
 
   if (!encryptedKeyContainer) {
-    encryptedKeyContainer = selectNodes(
-      ".//*[local-name(.)='EncryptedKey']",
-      keyInfoNode,
-    )[0];
+    encryptedKeyContainer = selectNodes(".//*[local-name(.)='EncryptedKey']", keyInfoNode)[0];
   }
 
   if (!encryptedKeyContainer) {
@@ -518,23 +477,14 @@ function resolveEncryptedKeyNode(
   }
 
   const keyEncMethodNode =
-    selectNodes(
-      "./*[local-name(.)='EncryptionMethod']",
-      encryptedKeyContainer,
-    )[0] ||
-    selectNodes(
-      ".//*[local-name(.)='EncryptionMethod']",
-      encryptedKeyContainer,
-    )[0];
+    selectNodes("./*[local-name(.)='EncryptionMethod']", encryptedKeyContainer)[0] ||
+    selectNodes(".//*[local-name(.)='EncryptionMethod']", encryptedKeyContainer)[0];
 
   if (!keyEncMethodNode) {
     throw new Error("cant find encryption algorithm");
   }
 
-  const keyEncryptionAlgorithm = getRequiredAttrValue(
-    keyEncMethodNode,
-    "Algorithm",
-  );
+  const keyEncryptionAlgorithm = getRequiredAttrValue(keyEncMethodNode, "Algorithm");
   const encryptedKeyNode =
     selectNodes(
       "./*[local-name(.)='CipherData']/*[local-name(.)='CipherValue']",
@@ -564,24 +514,15 @@ function escapeXmlText(value: string): string {
     .replace(/'/g, "&apos;");
 }
 
-export async function encryptAssertion(
-  opts: EncryptAssertionOptions,
-): Promise<string> {
-  const {
-    assertionXml,
-    publicKeyPem,
-    certificate,
-    encryptionAlgorithm,
-    keyEncryptionAlgorithm,
-  } = opts;
+export async function encryptAssertion(opts: EncryptAssertionOptions): Promise<string> {
+  const { assertionXml, publicKeyPem, certificate, encryptionAlgorithm, keyEncryptionAlgorithm } =
+    opts;
 
   if (!assertionXml) {
     throw new Error("must provide content to encrypt");
   }
   if (!publicKeyPem) {
-    throw new Error(
-      "rsa_pub option is mandatory and you should provide a valid RSA public key",
-    );
+    throw new Error("rsa_pub option is mandatory and you should provide a valid RSA public key");
   }
   if (!certificate) {
     throw new Error(
@@ -591,9 +532,7 @@ export async function encryptAssertion(
 
   const dataAlg = DATA_ALGORITHMS[encryptionAlgorithm];
   if (!dataAlg) {
-    throw new Error(
-      `encryption algorithm not supported: ${encryptionAlgorithm}`,
-    );
+    throw new Error(`encryption algorithm not supported: ${encryptionAlgorithm}`);
   }
 
   const symmetricKey = randomBytes(dataAlg.keyBytes);
@@ -602,22 +541,13 @@ export async function encryptAssertion(
 
   let encryptedContent: Uint8Array;
   if (dataAlg.mode === "AES-CBC" || dataAlg.mode === "AES-GCM") {
-    encryptedContent = await encryptAes(
-      contentBytes,
-      symmetricKey,
-      dataAlg.mode,
-      iv,
-    );
+    encryptedContent = await encryptAes(contentBytes, symmetricKey, dataAlg.mode, iv);
   } else {
     encryptedContent = encryptTripleDesCbc(contentBytes, symmetricKey, iv);
   }
 
   const encryptedPayload = concatBytes(iv, encryptedContent);
-  const encryptedKey = await wrapSymmetricKey(
-    symmetricKey,
-    publicKeyPem,
-    keyEncryptionAlgorithm,
-  );
+  const encryptedKey = await wrapSymmetricKey(symmetricKey, publicKeyPem, keyEncryptionAlgorithm);
   const certBody = normalizeCertificateBody(certificate);
 
   return (
@@ -643,9 +573,7 @@ export async function encryptAssertion(
   );
 }
 
-export async function decryptAssertion(
-  opts: DecryptAssertionOptions,
-): Promise<string> {
+export async function decryptAssertion(opts: DecryptAssertionOptions): Promise<string> {
   const { encryptedAssertionXml, privateKey } = opts;
 
   if (!encryptedAssertionXml) {
@@ -654,28 +582,21 @@ export async function decryptAssertion(
 
   const privateKeyPem = toUtf8String(privateKey);
   if (!privateKeyPem) {
-    throw new Error(
-      "key option is mandatory and you should provide a valid RSA private key",
-    );
+    throw new Error("key option is mandatory and you should provide a valid RSA private key");
   }
 
-  const doc = new DOMParser().parseFromString(encryptedAssertionXml);
+  const doc = new DOMParser().parseFromString(encryptedAssertionXml, "text/xml");
   const encryptedDataNode = resolveEncryptedDataNode(doc);
 
   const dataEncMethodNode = selectNodes(
     "./*[local-name(.)='EncryptionMethod']",
     encryptedDataNode,
   )[0];
-  const encryptionAlgorithm = getRequiredAttrValue(
-    dataEncMethodNode,
-    "Algorithm",
-  );
+  const encryptionAlgorithm = getRequiredAttrValue(dataEncMethodNode, "Algorithm");
 
   const dataAlg = DATA_ALGORITHMS[encryptionAlgorithm];
   if (!dataAlg) {
-    throw new Error(
-      `encryption algorithm ${encryptionAlgorithm} not supported`,
-    );
+    throw new Error(`encryption algorithm ${encryptionAlgorithm} not supported`);
   }
 
   const keyInfo = resolveEncryptedKeyNode(doc, encryptedDataNode);
