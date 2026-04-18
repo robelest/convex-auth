@@ -64,14 +64,10 @@ function materializeProviders(providers: AuthProviderConfig[]) {
   return config.providers as AuthProviderMaterializedConfig[];
 }
 
-function materializeProviderConfig(
-  raw: AuthProviderConfig,
-): AuthProviderMaterializedConfig {
+function materializeProviderConfig(raw: AuthProviderConfig): AuthProviderMaterializedConfig {
   const resolved = typeof raw === "function" ? raw() : raw;
   const merged =
-    "options" in resolved &&
-    typeof resolved.options === "object" &&
-    resolved.options !== null
+    "options" in resolved && typeof resolved.options === "object" && resolved.options !== null
       ? { ...resolved, ...resolved.options }
       : resolved;
   return merged as AuthProviderMaterializedConfig;

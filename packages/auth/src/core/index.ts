@@ -35,10 +35,7 @@ import {
   callRetrieveAccountWithCredentials,
   callModifyAccount,
 } from "../server/mutations/index";
-import type {
-  ConvexAuthConfig,
-  AuthAuthorizationConfig,
-} from "../server/types";
+import type { ConvexAuthConfig, AuthAuthorizationConfig } from "../server/types";
 
 export type { AuthContext, OptionalAuthContext, UserDoc, AuthContextConfig };
 
@@ -101,8 +98,7 @@ export function createAuthContext(
     ...config,
   });
 
-  const INVITE_TOKEN_ALPHABET =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const INVITE_TOKEN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   const INVITE_TOKEN_LENGTH = 48;
 
   const enrichCtx = <T>(ctx: T) => ctx;
@@ -133,12 +129,26 @@ export function createAuthContext(
     invite: domains.invite,
     key: domains.key,
 
+    /**
+     * Zero-round-trip helper: parse the current user id straight from the
+     * JWT subject claim. No component read, no cache lookup — just the
+     * identity token. Returns `null` when unauthenticated.
+     *
+     * Prefer this over `auth.context(ctx)` when you only need the user's
+     * id (e.g. early guards, routing decisions, audit logging). For the
+     * full user document, follow up with `auth.user.get(ctx, userId)`.
+     */
+    getUserId: domains.session.userId,
+
     context: ((ctx, config) => {
       assertAuthResolverContext(ctx);
       return createPublicAuthContext(authLike, ctx, config);
     }) as PublicContextFactory as AuthContextResolver,
 
     ctx: ((config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>) =>
-      createAuthContextCustomization(authLike, config)) as PublicContextCustomizationFactory as AuthContextFactory,
+      createAuthContextCustomization(
+        authLike,
+        config,
+      )) as PublicContextCustomizationFactory as AuthContextFactory,
   };
 }

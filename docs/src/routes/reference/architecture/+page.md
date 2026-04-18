@@ -132,11 +132,11 @@ export const authMutation = customMutation(mutation, auth.ctx());
 without `signIn`, `signOut`, `store`, `http`, or provider logic. Queries that
 import from `auth/core.ts` never load provider, OAuth, or crypto code.
 
-| Entry point | What it loads | Use for |
-| --- | --- | --- |
-| `@robelest/convex-auth/server` | Everything (providers, OAuth, crypto, HTTP) | `convex/auth.ts` — signIn/signOut exports |
-| `@robelest/convex-auth/core` | Context resolution only (~2KB) | `convex/functions.ts` — query/mutation wrappers |
-| `@robelest/convex-auth/providers/*` | Individual provider | Only in `convex/auth.ts` |
+| Entry point                         | What it loads                               | Use for                                         |
+| ----------------------------------- | ------------------------------------------- | ----------------------------------------------- |
+| `@robelest/convex-auth/server`      | Everything (providers, OAuth, crypto, HTTP) | `convex/auth.ts` — signIn/signOut exports       |
+| `@robelest/convex-auth/core`        | Context resolution only (~2KB)              | `convex/functions.ts` — query/mutation wrappers |
+| `@robelest/convex-auth/providers/*` | Individual provider                         | Only in `convex/auth.ts`                        |
 
 ## Where `ctx.auth` comes from
 
@@ -146,11 +146,7 @@ those builders everywhere auth is required.
 
 ```ts
 // convex/functions.ts
-import {
-  customAction,
-  customMutation,
-  customQuery,
-} from "convex-helpers/server/customFunctions";
+import { customAction, customMutation, customQuery } from "convex-helpers/server/customFunctions";
 import { action, mutation, query } from "./_generated/server";
 import { auth } from "./auth/core";
 

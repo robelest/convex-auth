@@ -56,9 +56,7 @@ function buildRedirectURL(opts: BuildRedirectConfig) {
   const noParams = hasNoQuery(baseUrl);
   const queryParam = libsaml.getQueryParamByType(type);
   // In general, this xmlstring is required to do deflate -> base64 -> urlencode
-  const samlRequest = encodeURIComponent(
-    utility.base64Encode(utility.deflateString(context)),
-  );
+  const samlRequest = encodeURIComponent(utility.base64Encode(utility.deflateString(context)));
   if (relayState !== "") {
     relayState = pvPair(urlParams.relayState, encodeURIComponent(relayState));
   }
@@ -115,25 +113,18 @@ function loginRequestRedirectURL(
       rawSamlRequest = get(info, "context", null);
     } else {
       const nameIDFormat = spSetting.nameIDFormat;
-      const selectedNameIDFormat = Array.isArray(nameIDFormat)
-        ? nameIDFormat[0]
-        : nameIDFormat;
+      const selectedNameIDFormat = Array.isArray(nameIDFormat) ? nameIDFormat[0] : nameIDFormat;
       id = spSetting.generateID();
-      rawSamlRequest = libsaml.replaceTagsByValue(
-        libsaml.defaultLoginRequestTemplate.context,
-        {
-          ID: id,
-          Destination: base,
-          Issuer: metadata.sp.getEntityID(),
-          IssueInstant: new Date().toISOString(),
-          NameIDFormat: selectedNameIDFormat,
-          AssertionConsumerServiceURL: metadata.sp.getAssertionConsumerService(
-            binding.post,
-          ),
-          EntityID: metadata.sp.getEntityID(),
-          AllowCreate: spSetting.allowCreate,
-        } as any,
-      );
+      rawSamlRequest = libsaml.replaceTagsByValue(libsaml.defaultLoginRequestTemplate.context, {
+        ID: id,
+        Destination: base,
+        Issuer: metadata.sp.getEntityID(),
+        IssueInstant: new Date().toISOString(),
+        NameIDFormat: selectedNameIDFormat,
+        AssertionConsumerServiceURL: metadata.sp.getAssertionConsumerService(binding.post),
+        EntityID: metadata.sp.getEntityID(),
+        AllowCreate: spSetting.allowCreate,
+      } as any);
     }
     return {
       id,
@@ -178,9 +169,7 @@ function loginResponseRedirectURL(
     let rawSamlResponse: string;
     //
     const nameIDFormat = idpSetting.nameIDFormat;
-    const selectedNameIDFormat = Array.isArray(nameIDFormat)
-      ? nameIDFormat[0]
-      : nameIDFormat;
+    const selectedNameIDFormat = Array.isArray(nameIDFormat) ? nameIDFormat[0] : nameIDFormat;
     const nowTime = new Date();
     // Five minutes later : nowtime  + 5 * 60 * 1000 (in milliseconds)
     const fiveMinutesLaterTime = new Date(nowTime.getTime() + 300_000);
@@ -207,9 +196,7 @@ function loginResponseRedirectURL(
     };
 
     if (idpSetting.loginResponseTemplate && customTagReplacement) {
-      const template = customTagReplacement(
-        idpSetting.loginResponseTemplate.context,
-      );
+      const template = customTagReplacement(idpSetting.loginResponseTemplate.context);
       id = get(template, "id", null);
       rawSamlResponse = get(template, "context", null);
     } else {
@@ -240,8 +227,7 @@ function loginResponseRedirectURL(
         ...config,
         rawSamlMessage: rawSamlResponse,
         transformationAlgorithms: spSetting.transformationAlgorithms,
-        referenceTagXPath:
-          "/*[local-name(.)='Response']/*[local-name(.)='Assertion']",
+        referenceTagXPath: "/*[local-name(.)='Response']/*[local-name(.)='Assertion']",
         signatureConfig: {
           prefix: "ds",
           location: {
@@ -289,9 +275,7 @@ function logoutRequestRedirectURL(
   const initSetting = entity.init.entitySetting;
   let id: string = initSetting.generateID();
   const nameIDFormat = initSetting.nameIDFormat;
-  const selectedNameIDFormat = Array.isArray(nameIDFormat)
-    ? nameIDFormat[0]
-    : nameIDFormat;
+  const selectedNameIDFormat = Array.isArray(nameIDFormat) ? nameIDFormat[0] : nameIDFormat;
 
   if (metadata && metadata.init && metadata.target) {
     const base = metadata.target.getSingleLogoutService(binding.redirect);
@@ -307,10 +291,7 @@ function logoutRequestRedirectURL(
       SessionIndex: user.sessionIndex,
     };
     if (initSetting.logoutRequestTemplate && customTagReplacement) {
-      const info = customTagReplacement(
-        initSetting.logoutRequestTemplate,
-        requiredTags,
-      );
+      const info = customTagReplacement(initSetting.logoutRequestTemplate, requiredTags);
       id = get(info, "id", null);
       rawSamlRequest = get(info, "context", null);
     } else {

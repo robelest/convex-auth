@@ -16,21 +16,14 @@ import {
   type BrowserAuthClient,
   type ClientOptions,
 } from "../client/index";
-import {
-  ClientAdapterFactoriesLive,
-  ClientAdaptersLive,
-} from "../client/services/adapters";
+import { ClientAdapterFactoriesLive, ClientAdaptersLive } from "../client/services/adapters";
 import { ClientHttpLive } from "../client/services/http";
 import { resolveClientServices } from "../client/services/resolve";
 import { ClientRuntimeLive } from "../client/services/runtime";
 import { createPasskeyClient } from "./passkey";
 import { createBrowserRuntime } from "./runtime";
 
-export type {
-  AuthApiRefs,
-  BrowserAuthClient as AuthClient,
-  ClientOptions,
-} from "../client/index";
+export type { AuthApiRefs, BrowserAuthClient as AuthClient, ClientOptions } from "../client/index";
 
 /**
  * Create a browser-configured auth client.
@@ -54,13 +47,11 @@ export type {
  * const auth = client({ convex, api: api.auth });
  * ```
  */
-export function client<
-  Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs,
->(options: ClientOptions<Api>): BrowserAuthClient<Api> {
+export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs>(
+  options: ClientOptions<Api>,
+): BrowserAuthClient<Api> {
   const url =
-    options.proxyPath === undefined
-      ? (options.url ?? inferConvexUrl(options.convex))
-      : undefined;
+    options.proxyPath === undefined ? (options.url ?? inferConvexUrl(options.convex)) : undefined;
   const runtime = mergeBrowserRuntime(options.runtime);
 
   const services = resolveClientServices({
@@ -68,9 +59,7 @@ export function client<
     adapters: ClientAdaptersLive(options.adapters ?? {}),
     adapterFactories: ClientAdapterFactoriesLive({
       ...options.adapterFactories,
-      passkey:
-        options.adapterFactories?.passkey ??
-        ((deps) => createPasskeyClient(deps)),
+      passkey: options.adapterFactories?.passkey ?? ((deps) => createPasskeyClient(deps)),
     }),
     http: ClientHttpLive(
       options.proxyPath !== undefined
@@ -82,9 +71,7 @@ export function client<
   return createClient({
     ...options,
     storage:
-      options.storage === undefined && options.proxyPath !== undefined
-        ? null
-        : options.storage,
+      options.storage === undefined && options.proxyPath !== undefined ? null : options.storage,
     runtime: services.runtime,
     adapters: services.adapters,
     adapterFactories: services.adapterFactories,
@@ -101,8 +88,7 @@ function mergeBrowserRuntime(
     ...runtime,
     environment: runtime?.environment ?? defaults.environment,
     proxy: runtime?.proxy ?? defaults.proxy,
-    storage:
-      runtime?.storage === undefined ? defaults.storage : runtime.storage,
+    storage: runtime?.storage === undefined ? defaults.storage : runtime.storage,
     location: runtime?.location ?? defaults.location,
     sync: runtime?.sync ?? defaults.sync,
     mutex: runtime?.mutex ?? defaults.mutex,

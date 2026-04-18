@@ -76,13 +76,12 @@ export type AuthAuthorizationConfig = {
  *
  * @see {@link AuthGrant}
  */
-export type AuthRoleId<
-  TAuthorization extends AuthAuthorizationConfig | undefined,
-> = TAuthorization extends {
-  roles: infer TRoles extends Record<string, unknown>;
-}
-  ? keyof TRoles & string
-  : string;
+export type AuthRoleId<TAuthorization extends AuthAuthorizationConfig | undefined> =
+  TAuthorization extends {
+    roles: infer TRoles extends Record<string, unknown>;
+  }
+    ? keyof TRoles & string
+    : string;
 
 /**
  * Extracts the union of grant strings from all roles in an authorization config.
@@ -94,13 +93,12 @@ export type AuthRoleId<
  *
  * @see {@link AuthRoleId}
  */
-export type AuthGrant<
-  TAuthorization extends AuthAuthorizationConfig | undefined,
-> = TAuthorization extends {
-  roles: infer TRoles extends Record<string, { grants: readonly unknown[] }>;
-}
-  ? TRoles[keyof TRoles]["grants"][number] & string
-  : string;
+export type AuthGrant<TAuthorization extends AuthAuthorizationConfig | undefined> =
+  TAuthorization extends {
+    roles: infer TRoles extends Record<string, { grants: readonly unknown[] }>;
+  }
+    ? TRoles[keyof TRoles]["grants"][number] & string
+    : string;
 
 /**
  * The config for the Convex Auth library, passed to `createAuth`.
@@ -423,10 +421,7 @@ export type GroupConnectionScimReuseUserPolicy = "externalId" | "none";
  * - `"createUser"` — create a user record on first SSO sign-in.
  * - `"createUserAndMembership"` — create a user and add them to the group on first SSO sign-in.
  */
-export type GroupConnectionJitProvisioningMode =
-  | "off"
-  | "createUser"
-  | "createUserAndMembership";
+export type GroupConnectionJitProvisioningMode = "off" | "createUser" | "createUserAndMembership";
 
 /**
  * Deprovisioning strategy when a SCIM user is deleted.
@@ -537,9 +532,7 @@ export interface GroupConnectionPolicyPatch {
  *
  * @typeParam DataModel - The Convex data model for typed action contexts.
  */
-export interface EmailConfig<
-  DataModel extends GenericDataModel = GenericDataModel,
-> {
+export interface EmailConfig<DataModel extends GenericDataModel = GenericDataModel> {
   /** Provider identifier (e.g. `"email"`, `"resend"`). */
   id: string;
   /** Discriminant for provider type routing. */
@@ -607,9 +600,10 @@ export interface EmailConfig<
  *
  * @typeParam DataModel - The Convex data model.
  */
-export type EmailUserConfig<
-  DataModel extends GenericDataModel = GenericDataModel,
-> = Omit<Partial<EmailConfig<DataModel>>, "options" | "type">;
+export type EmailUserConfig<DataModel extends GenericDataModel = GenericDataModel> = Omit<
+  Partial<EmailConfig<DataModel>>,
+  "options" | "type"
+>;
 
 /**
  * Same as email provider config, but verifies
@@ -617,9 +611,7 @@ export type EmailUserConfig<
  *
  * @typeParam DataModel - The Convex data model for typed action contexts.
  */
-export interface PhoneConfig<
-  DataModel extends GenericDataModel = GenericDataModel,
-> {
+export interface PhoneConfig<DataModel extends GenericDataModel = GenericDataModel> {
   id: string;
   type: "phone";
   /**
@@ -683,9 +675,10 @@ export interface PhoneConfig<
  *
  * @typeParam DataModel - The Convex data model.
  */
-export type PhoneUserConfig<
-  DataModel extends GenericDataModel = GenericDataModel,
-> = Omit<Partial<PhoneConfig<DataModel>>, "options" | "type">;
+export type PhoneUserConfig<DataModel extends GenericDataModel = GenericDataModel> = Omit<
+  Partial<PhoneConfig<DataModel>>,
+  "options" | "type"
+>;
 
 /**
  * Credentials provider config used by Convex Auth.
@@ -695,12 +688,11 @@ export type PhoneUserConfig<
  *
  * @typeParam DataModel - The Convex data model used by the auth context.
  */
-export type ConvexCredentialsConfig<
-  DataModel extends GenericDataModel = GenericDataModel,
-> = CredentialsConfig<DataModel> & {
-  type: "credentials";
-  id: string;
-};
+export type ConvexCredentialsConfig<DataModel extends GenericDataModel = GenericDataModel> =
+  CredentialsConfig<DataModel> & {
+    type: "credentials";
+    id: string;
+  };
 
 /**
  * Configuration for the passkey (WebAuthn) provider.
@@ -817,10 +809,7 @@ export interface OAuthRuntimeClient {
     nonce?: string;
     loginHint?: string;
   }): URL;
-  validateAuthorizationCode(args: {
-    code: string;
-    codeVerifier?: string;
-  }): Promise<OAuthTokens>;
+  validateAuthorizationCode(args: { code: string; codeVerifier?: string }): Promise<OAuthTokens>;
 }
 
 /**
@@ -838,10 +827,7 @@ export interface OAuthProviderConfig {
   /** Whether to issue and validate a nonce cookie. */
   nonce?: boolean;
   /** Optional token validation hook after code exchange. */
-  validateTokens?: (
-    tokens: OAuthTokens,
-    ctx: { nonce?: string },
-  ) => Promise<void>;
+  validateTokens?: (tokens: OAuthTokens, ctx: { nonce?: string }) => Promise<void>;
   /** Account-linking policy for OAuth identities. */
   accountLinking?: "verifiedEmail" | "none";
 }
@@ -1016,13 +1002,7 @@ export type ConvexAuthMaterializedConfig = {
   providers: AuthProviderMaterializedConfig[];
 } & Pick<
   ConvexAuthConfig,
-  | "component"
-  | "session"
-  | "jwt"
-  | "signIn"
-  | "callbacks"
-  | "authorization"
-  | "sso"
+  "component" | "session" | "jwt" | "signIn" | "callbacks" | "authorization" | "sso"
 >;
 
 /**
@@ -1102,10 +1082,7 @@ export interface OAuthMaterializedConfig {
   /** Whether to issue and verify a nonce cookie during the callback flow. */
   readonly nonce?: boolean;
   /** Optional token validation hook after code exchange. */
-  readonly validateTokens?: (
-    tokens: OAuthTokens,
-    ctx: { nonce?: string },
-  ) => Promise<void>;
+  readonly validateTokens?: (tokens: OAuthTokens, ctx: { nonce?: string }) => Promise<void>;
   /**
    * Account-linking policy for OAuth identities. Defaults to verified email linking.
    * @readonly
@@ -1254,10 +1231,7 @@ export interface KeyRecord {
  * });
  * ```
  */
-export type ListOptions<
-  TWhere extends Record<string, unknown>,
-  TOrderBy extends string,
-> = {
+export type ListOptions<TWhere extends Record<string, unknown>, TOrderBy extends string> = {
   /** Serializable filter — only known fields for the entity. */
   where?: TWhere;
   /** Maximum number of items to return. Defaults to 50, max 100. */
@@ -1341,12 +1315,7 @@ export type InviteWhere = {
 };
 
 /** Sortable fields for `auth.invite.list()`. */
-export type InviteOrderBy =
-  | "_creationTime"
-  | "status"
-  | "email"
-  | "expiresTime"
-  | "acceptedTime";
+export type InviteOrderBy = "_creationTime" | "status" | "email" | "expiresTime" | "acceptedTime";
 
 /** Filter fields for `auth.key.list()`. All optional. */
 export type KeyWhere = {
@@ -1357,12 +1326,7 @@ export type KeyWhere = {
 };
 
 /** Sortable fields for `auth.key.list()`. */
-export type KeyOrderBy =
-  | "_creationTime"
-  | "name"
-  | "lastUsedAt"
-  | "expiresAt"
-  | "revoked";
+export type KeyOrderBy = "_creationTime" | "name" | "lastUsedAt" | "expiresAt" | "revoked";
 
 /** Filter fields for `auth.user.list()`. All optional. */
 export type UserWhere = {
@@ -1510,159 +1474,49 @@ export type AuthComponentApi = {
     deviceDelete: FunctionReference<"mutation", "internal", any, any>;
     groupConnectionCreate: FunctionReference<"mutation", "internal", any, any>;
     groupConnectionGet: FunctionReference<"query", "internal", any, any>;
-    groupConnectionGetByDomain: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
+    groupConnectionGetByDomain: FunctionReference<"query", "internal", any, any>;
     groupConnectionList: FunctionReference<"query", "internal", any, any>;
     groupConnectionUpdate: FunctionReference<"mutation", "internal", any, any>;
     groupConnectionDelete: FunctionReference<"mutation", "internal", any, any>;
-    groupConnectionDomainAdd: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
+    groupConnectionDomainAdd: FunctionReference<"mutation", "internal", any, any>;
     groupConnectionDomainList: FunctionReference<"query", "internal", any, any>;
-    groupConnectionDomainDelete: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
-    groupConnectionDomainVerificationGet: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
-    groupConnectionDomainVerificationUpsert: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
-    groupConnectionDomainVerificationDelete: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
-    groupConnectionDomainVerify: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
-    groupConnectionSecretUpsert: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
+    groupConnectionDomainDelete: FunctionReference<"mutation", "internal", any, any>;
+    groupConnectionDomainVerificationGet: FunctionReference<"query", "internal", any, any>;
+    groupConnectionDomainVerificationUpsert: FunctionReference<"mutation", "internal", any, any>;
+    groupConnectionDomainVerificationDelete: FunctionReference<"mutation", "internal", any, any>;
+    groupConnectionDomainVerify: FunctionReference<"mutation", "internal", any, any>;
+    groupConnectionSecretUpsert: FunctionReference<"mutation", "internal", any, any>;
     groupConnectionSecretGet: FunctionReference<"query", "internal", any, any>;
-    groupConnectionSecretDelete: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
-    groupConnectionScimConfigUpsert: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
-    groupConnectionScimConfigGetByGroupConnection: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
-    groupConnectionScimConfigGetByTokenHash: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
-    groupConnectionScimIdentityGet: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
-    groupConnectionScimIdentityGetByUser: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
+    groupConnectionSecretDelete: FunctionReference<"mutation", "internal", any, any>;
+    groupConnectionScimConfigUpsert: FunctionReference<"mutation", "internal", any, any>;
+    groupConnectionScimConfigGetByGroupConnection: FunctionReference<"query", "internal", any, any>;
+    groupConnectionScimConfigGetByTokenHash: FunctionReference<"query", "internal", any, any>;
+    groupConnectionScimIdentityGet: FunctionReference<"query", "internal", any, any>;
+    groupConnectionScimIdentityGetByUser: FunctionReference<"query", "internal", any, any>;
     groupConnectionScimIdentityGetByGroupConnectionAndUser: FunctionReference<
       "query",
       "internal",
       any,
       any
     >;
-    groupConnectionScimIdentityGetByMappedGroup: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
+    groupConnectionScimIdentityGetByMappedGroup: FunctionReference<"query", "internal", any, any>;
     groupConnectionScimIdentityListByGroupConnection: FunctionReference<
       "query",
       "internal",
       any,
       any
     >;
-    groupConnectionScimIdentityUpsert: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
-    groupConnectionScimIdentityDelete: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
+    groupConnectionScimIdentityUpsert: FunctionReference<"mutation", "internal", any, any>;
+    groupConnectionScimIdentityDelete: FunctionReference<"mutation", "internal", any, any>;
     groupAuditEventCreate: FunctionReference<"mutation", "internal", any, any>;
     groupAuditEventList: FunctionReference<"query", "internal", any, any>;
-    groupWebhookEndpointCreate: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
+    groupWebhookEndpointCreate: FunctionReference<"mutation", "internal", any, any>;
     groupWebhookEndpointList: FunctionReference<"query", "internal", any, any>;
     groupWebhookEndpointGet: FunctionReference<"query", "internal", any, any>;
-    groupWebhookEndpointUpdate: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
-    groupWebhookDeliveryEnqueue: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
-    groupWebhookDeliveryListReady: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
-    groupWebhookDeliveryPatch: FunctionReference<
-      "mutation",
-      "internal",
-      any,
-      any
-    >;
+    groupWebhookEndpointUpdate: FunctionReference<"mutation", "internal", any, any>;
+    groupWebhookDeliveryEnqueue: FunctionReference<"mutation", "internal", any, any>;
+    groupWebhookDeliveryListReady: FunctionReference<"query", "internal", any, any>;
+    groupWebhookDeliveryPatch: FunctionReference<"mutation", "internal", any, any>;
   };
 };
 
@@ -1687,28 +1541,10 @@ export type GenericDoc<
 export type FunctionReferenceFromExport<Export> =
   Export extends RegisteredQuery<infer Visibility, infer Args, infer Output>
     ? FunctionReference<"query", Visibility, Args, ConvertReturnType<Output>>
-    : Export extends RegisteredMutation<
-          infer Visibility,
-          infer Args,
-          infer Output
-        >
-      ? FunctionReference<
-          "mutation",
-          Visibility,
-          Args,
-          ConvertReturnType<Output>
-        >
-      : Export extends RegisteredAction<
-            infer Visibility,
-            infer Args,
-            infer Output
-          >
-        ? FunctionReference<
-            "action",
-            Visibility,
-            Args,
-            ConvertReturnType<Output>
-          >
+    : Export extends RegisteredMutation<infer Visibility, infer Args, infer Output>
+      ? FunctionReference<"mutation", Visibility, Args, ConvertReturnType<Output>>
+      : Export extends RegisteredAction<infer Visibility, infer Args, infer Output>
+        ? FunctionReference<"action", Visibility, Args, ConvertReturnType<Output>>
         : never;
 
 type ConvertReturnType<T> = UndefinedToNull<Awaited<T>>;
@@ -1730,10 +1566,7 @@ export type MutationCtx = GenericMutationCtx<AuthDataModel>;
 export type QueryCtx = GenericQueryCtx<AuthDataModel>;
 
 /** A document from any table in the auth component schema. */
-export type Doc<T extends TableNamesInDataModel<AuthDataModel>> = GenericDoc<
-  AuthDataModel,
-  T
->;
+export type Doc<T extends TableNamesInDataModel<AuthDataModel>> = GenericDoc<AuthDataModel, T>;
 
 /** A pair of JWT access token and refresh token. */
 export type Tokens = { token: string; refreshToken: string };
@@ -1815,10 +1648,9 @@ export async function queryUserByVerifiedEmail(
   ctx: ComponentCallCtx,
   email: string,
 ): Promise<CrossComponentUserDoc | null> {
-  return (await ctx.runQuery(
-    ctx.auth.config.component.public.userFindByVerifiedEmail,
-    { email },
-  )) as CrossComponentUserDoc | null;
+  return (await ctx.runQuery(ctx.auth.config.component.public.userFindByVerifiedEmail, {
+    email,
+  })) as CrossComponentUserDoc | null;
 }
 
 // -- Verifier queries / mutations --
@@ -1856,10 +1688,9 @@ export async function queryTotpVerifiedByUserId(
   ctx: ComponentCallCtx,
   userId: string,
 ): Promise<TotpDoc | null> {
-  return (await ctx.runQuery(
-    ctx.auth.config.component.public.totpGetVerifiedByUserId,
-    { userId },
-  )) as TotpDoc | null;
+  return (await ctx.runQuery(ctx.auth.config.component.public.totpGetVerifiedByUserId, {
+    userId,
+  })) as TotpDoc | null;
 }
 
 export async function mutateTotpInsert(
@@ -1874,10 +1705,7 @@ export async function mutateTotpInsert(
     createdAt: number;
   },
 ): Promise<string> {
-  return (await ctx.runMutation(
-    ctx.auth.config.component.public.totpInsert,
-    args,
-  )) as string;
+  return (await ctx.runMutation(ctx.auth.config.component.public.totpInsert, args)) as string;
 }
 
 export async function mutateTotpMarkVerified(
@@ -1908,20 +1736,18 @@ export async function queryPasskeysByUserId(
   ctx: ComponentCallCtx,
   userId: string,
 ): Promise<PasskeyDoc[]> {
-  return (await ctx.runQuery(
-    ctx.auth.config.component.public.passkeyListByUserId,
-    { userId },
-  )) as PasskeyDoc[];
+  return (await ctx.runQuery(ctx.auth.config.component.public.passkeyListByUserId, {
+    userId,
+  })) as PasskeyDoc[];
 }
 
 export async function queryPasskeyByCredentialId(
   ctx: ComponentCallCtx,
   credentialId: string,
 ): Promise<PasskeyDoc | null> {
-  return (await ctx.runQuery(
-    ctx.auth.config.component.public.passkeyGetByCredentialId,
-    { credentialId },
-  )) as PasskeyDoc | null;
+  return (await ctx.runQuery(ctx.auth.config.component.public.passkeyGetByCredentialId, {
+    credentialId,
+  })) as PasskeyDoc | null;
 }
 
 export async function mutatePasskeyInsert(
@@ -1939,10 +1765,7 @@ export async function mutatePasskeyInsert(
     createdAt: number;
   },
 ): Promise<string> {
-  return (await ctx.runMutation(
-    ctx.auth.config.component.public.passkeyInsert,
-    args,
-  )) as string;
+  return (await ctx.runMutation(ctx.auth.config.component.public.passkeyInsert, args)) as string;
 }
 
 export async function mutatePasskeyUpdateCounter(
@@ -1972,16 +1795,10 @@ export async function mutateKeyInsert(
     expiresAt?: number;
   },
 ): Promise<string> {
-  return (await ctx.runMutation(
-    ctx.auth.config.component.public.keyInsert,
-    args,
-  )) as string;
+  return (await ctx.runMutation(ctx.auth.config.component.public.keyInsert, args)) as string;
 }
 
-export async function queryKeysByUserId(
-  ctx: ComponentCallCtx,
-  userId: string,
-): Promise<KeyDoc[]> {
+export async function queryKeysByUserId(ctx: ComponentCallCtx, userId: string): Promise<KeyDoc[]> {
   const items: KeyDoc[] = [];
   let cursor: string | null = null;
   do {
@@ -1999,10 +1816,7 @@ export async function queryKeysByUserId(
   return items;
 }
 
-export async function queryKeyById(
-  ctx: ComponentCallCtx,
-  keyId: string,
-): Promise<KeyDoc | null> {
+export async function queryKeyById(ctx: ComponentCallCtx, keyId: string): Promise<KeyDoc | null> {
   return (await ctx.runQuery(ctx.auth.config.component.public.keyGetById, {
     keyId,
   })) as KeyDoc | null;
@@ -2019,10 +1833,7 @@ export async function mutateKeyPatch(
   });
 }
 
-export async function mutateKeyDelete(
-  ctx: ComponentCallCtx,
-  keyId: string,
-): Promise<void> {
+export async function mutateKeyDelete(ctx: ComponentCallCtx, keyId: string): Promise<void> {
   await ctx.runMutation(ctx.auth.config.component.public.keyDelete, { keyId });
 }
 
@@ -2040,30 +1851,25 @@ export async function mutateDeviceInsert(
     status: "pending" | "authorized" | "denied";
   },
 ): Promise<string> {
-  return (await ctx.runMutation(
-    ctx.auth.config.component.public.deviceInsert,
-    args,
-  )) as string;
+  return (await ctx.runMutation(ctx.auth.config.component.public.deviceInsert, args)) as string;
 }
 
 export async function queryDeviceByCodeHash(
   ctx: ComponentCallCtx,
   deviceCodeHash: string,
 ): Promise<DeviceDoc | null> {
-  return (await ctx.runQuery(
-    ctx.auth.config.component.public.deviceGetByCodeHash,
-    { deviceCodeHash },
-  )) as DeviceDoc | null;
+  return (await ctx.runQuery(ctx.auth.config.component.public.deviceGetByCodeHash, {
+    deviceCodeHash,
+  })) as DeviceDoc | null;
 }
 
 export async function queryDeviceByUserCode(
   ctx: ComponentCallCtx,
   userCode: string,
 ): Promise<DeviceDoc | null> {
-  return (await ctx.runQuery(
-    ctx.auth.config.component.public.deviceGetByUserCode,
-    { userCode },
-  )) as DeviceDoc | null;
+  return (await ctx.runQuery(ctx.auth.config.component.public.deviceGetByUserCode, {
+    userCode,
+  })) as DeviceDoc | null;
 }
 
 export async function mutateDeviceAuthorize(
@@ -2084,16 +1890,13 @@ export async function mutateDeviceUpdateLastPolled(
   deviceId: string,
   lastPolledAt: number,
 ): Promise<void> {
-  await ctx.runMutation(
-    ctx.auth.config.component.public.deviceUpdateLastPolled,
-    { deviceId, lastPolledAt },
-  );
+  await ctx.runMutation(ctx.auth.config.component.public.deviceUpdateLastPolled, {
+    deviceId,
+    lastPolledAt,
+  });
 }
 
-export async function mutateDeviceDelete(
-  ctx: ComponentCallCtx,
-  deviceId: string,
-): Promise<void> {
+export async function mutateDeviceDelete(ctx: ComponentCallCtx, deviceId: string): Promise<void> {
   await ctx.runMutation(ctx.auth.config.component.public.deviceDelete, {
     deviceId,
   });

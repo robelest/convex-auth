@@ -16,10 +16,7 @@
 import { GitHub as ArcticGitHub } from "arctic";
 
 import { envOptionalString, readConfigSync } from "../server/env";
-import {
-  createArcticOAuthClient,
-  createOAuthProvider,
-} from "../server/oauth/factory";
+import { createArcticOAuthClient, createOAuthProvider } from "../server/oauth/factory";
 
 const DEFAULT_SCOPES = ["user:email"];
 
@@ -98,9 +95,7 @@ export function github(config: GitHubConfig) {
       ]);
 
       if (!userResponse.ok) {
-        throw new Error(
-          `GitHub profile request failed: ${userResponse.status}`,
-        );
+        throw new Error(`GitHub profile request failed: ${userResponse.status}`);
       }
       if (!emailResponse.ok) {
         throw new Error(`GitHub email request failed: ${emailResponse.status}`);
@@ -123,8 +118,7 @@ export function github(config: GitHubConfig) {
         email: typeof primaryEmail === "string" ? primaryEmail : undefined,
         emailVerified: verifiedEmail,
         name: typeof user.name === "string" ? user.name : undefined,
-        image:
-          typeof user.avatar_url === "string" ? user.avatar_url : undefined,
+        image: typeof user.avatar_url === "string" ? user.avatar_url : undefined,
       };
     },
   });

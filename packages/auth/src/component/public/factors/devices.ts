@@ -77,9 +77,7 @@ export const deviceGetByCodeHash = query({
   handler: async (ctx, { deviceCodeHash }) => {
     return await ctx.db
       .query("DeviceCode")
-      .withIndex("device_code_hash", (q) =>
-        q.eq("deviceCodeHash", deviceCodeHash),
-      )
+      .withIndex("device_code_hash", (q) => q.eq("deviceCodeHash", deviceCodeHash))
       .first();
   },
 });
@@ -113,9 +111,7 @@ export const deviceGetByUserCode = query({
   handler: async (ctx, { userCode }) => {
     return await ctx.db
       .query("DeviceCode")
-      .withIndex("user_code_status", (q) =>
-        q.eq("userCode", userCode).eq("status", "pending"),
-      )
+      .withIndex("user_code_status", (q) => q.eq("userCode", userCode).eq("status", "pending"))
       .first();
   },
 });

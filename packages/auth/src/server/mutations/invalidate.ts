@@ -14,9 +14,7 @@ export const invalidateSessionsArgs = v.object({
   except: v.optional(v.array(v.string())),
 });
 
-export const callInvalidateSessions = async <
-  DataModel extends GenericDataModel,
->(
+export const callInvalidateSessions = async <DataModel extends GenericDataModel>(
   ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof invalidateSessionsArgs>,
 ): Promise<void> => {
@@ -37,14 +35,10 @@ export async function invalidateSessionsImpl(
   const { userId, except } = args;
   const exceptSet = new Set(except ?? []);
   const typedUserId = userId as GenericId<"User">;
-  const sessions = (await authDb(ctx, config).sessions.listByUser(
-    typedUserId,
-  )) as Doc<"Session">[];
+  const sessions = (await authDb(ctx, config).sessions.listByUser(typedUserId)) as Doc<"Session">[];
   await Promise.all(
     sessions.map((session) =>
-      exceptSet.has(session._id)
-        ? Promise.resolve()
-        : deleteSession(ctx, session, config),
+      exceptSet.has(session._id) ? Promise.resolve() : deleteSession(ctx, session, config),
     ),
   );
 }

@@ -1,8 +1,5 @@
 import { sha256 as rawSha256 } from "@oslojs/crypto/sha2";
-import {
-  decodeBase64urlIgnorePadding,
-  encodeBase64urlNoPadding,
-} from "@oslojs/encoding";
+import { decodeBase64urlIgnorePadding, encodeBase64urlNoPadding } from "@oslojs/encoding";
 import { ConvexError } from "convex/values";
 
 import { requireEnv } from "./env";
@@ -11,22 +8,16 @@ const SECRET_KEY_ENV = "AUTH_SECRET_ENCRYPTION_KEY";
 const SECRET_IV_LENGTH = 12;
 
 function toArrayBuffer(bytes: Uint8Array) {
-  return bytes.buffer.slice(
-    bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength,
-  ) as ArrayBuffer;
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
 async function getSecretCryptoKey() {
   const material = requireEnv(SECRET_KEY_ENV);
   const rawKey = rawSha256(new TextEncoder().encode(material));
-  return await crypto.subtle.importKey(
-    "raw",
-    toArrayBuffer(rawKey),
-    { name: "AES-GCM" },
-    false,
-    ["encrypt", "decrypt"],
-  );
+  return await crypto.subtle.importKey("raw", toArrayBuffer(rawKey), { name: "AES-GCM" }, false, [
+    "encrypt",
+    "decrypt",
+  ]);
 }
 
 /** @internal */

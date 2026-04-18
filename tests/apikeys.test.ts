@@ -728,9 +728,7 @@ test("key.rotate: old key verify throws ConvexError after rotation", async () =>
 
   await t.run(async (ctx) => auth.key.rotate(ctx, oldKeyId));
 
-  await expect(
-    t.run(async (ctx) => auth.key.verify(ctx, oldSecret)),
-  ).rejects.toThrow(ConvexError);
+  await expect(t.run(async (ctx) => auth.key.verify(ctx, oldSecret))).rejects.toThrow(ConvexError);
 });
 
 test("key.rotate: new key verify succeeds with same userId", async () => {
@@ -797,7 +795,5 @@ test("key.rotate: rotating already-revoked key throws ConvexError", async () => 
 
   await t.run(async (ctx) => auth.key.revoke(ctx, keyId));
 
-  await expect(
-    t.run(async (ctx) => auth.key.rotate(ctx, keyId)),
-  ).rejects.toThrow(ConvexError);
+  await expect(t.run(async (ctx) => auth.key.rotate(ctx, keyId))).rejects.toThrow(ConvexError);
 });

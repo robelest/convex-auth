@@ -1,11 +1,6 @@
 import { v } from "convex/values";
 
-const payloadPrimitiveValidator = v.union(
-  v.string(),
-  v.number(),
-  v.boolean(),
-  v.null(),
-);
+const payloadPrimitiveValidator = v.union(v.string(), v.number(), v.boolean(), v.null());
 
 const payloadArrayValidator = v.array(payloadPrimitiveValidator);
 
@@ -20,10 +15,7 @@ export const payloadValueValidator = v.union(
   payloadNestedRecordValidator,
 );
 
-export const payloadRecordValidator = v.record(
-  v.string(),
-  payloadValueValidator,
-);
+export const payloadRecordValidator = v.record(v.string(), payloadValueValidator);
 
 export const accountIdentityValidator = v.object({
   type: v.optional(v.string()),
@@ -41,9 +33,7 @@ export const accountExtendValidator = v.object({
   identity: v.optional(accountIdentityValidator),
   saml: v.optional(
     v.object({
-      attributes: v.optional(
-        v.record(v.string(), v.union(v.string(), v.array(v.string()))),
-      ),
+      attributes: v.optional(v.record(v.string(), v.union(v.string(), v.array(v.string())))),
       sessionIndex: v.optional(v.string()),
     }),
   ),

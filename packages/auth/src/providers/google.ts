@@ -16,10 +16,7 @@
 import { Google as ArcticGoogle } from "arctic";
 
 import { envOptionalString, readConfigSync } from "../server/env";
-import {
-  createArcticOAuthClient,
-  createOAuthProvider,
-} from "../server/oauth/factory";
+import { createArcticOAuthClient, createOAuthProvider } from "../server/oauth/factory";
 
 const DEFAULT_SCOPES = ["openid", "profile", "email"];
 

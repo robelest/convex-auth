@@ -6,17 +6,12 @@ import type { ServerServices } from "../services/resolve";
 import { MutationCtx } from "../types";
 import { modifyAccountArgs, modifyAccountImpl } from "./account";
 import { createVerificationCodeArgs, createVerificationCodeImpl } from "./code";
+import { credentialsSignInArgs, credentialsSignInImpl } from "./credentialsSignIn";
 import { invalidateSessionsArgs, invalidateSessionsImpl } from "./invalidate";
 import { userOAuthArgs, userOAuthImpl } from "./oauth";
 import { refreshSessionArgs } from "./refresh";
-import {
-  createAccountFromCredentialsArgs,
-  createAccountFromCredentialsImpl,
-} from "./register";
-import {
-  retrieveAccountWithCredentialsArgs,
-  retrieveAccountWithCredentialsImpl,
-} from "./retrieve";
+import { createAccountFromCredentialsArgs, createAccountFromCredentialsImpl } from "./register";
+import { retrieveAccountWithCredentialsArgs, retrieveAccountWithCredentialsImpl } from "./retrieve";
 import { verifierSignatureArgs, verifierSignatureImpl } from "./signature";
 import { signInArgs, signInImpl } from "./signin";
 import { signOutImpl } from "./signout";
@@ -65,6 +60,10 @@ export const storeArgs = v.object({
       ...retrieveAccountWithCredentialsArgs.fields,
     }),
     v.object({
+      type: v.literal("credentialsSignIn"),
+      ...credentialsSignInArgs.fields,
+    }),
+    v.object({
       type: v.literal("modifyAccount"),
       ...modifyAccountArgs.fields,
     }),
@@ -88,7 +87,8 @@ export const storeImpl = async (
   const handlers: Record<string, (a: typeof args) => Promise<unknown>> = {
     signIn: (a) => signInImpl(ctx, a as Infer<typeof signInArgs> & { type: string }, config),
     signOut: () => signOutImpl(ctx, config),
-    refreshSession: (a) => services.refresh.refresh(ctx, a as Infer<typeof refreshSessionArgs> & { type: string }),
+    refreshSession: (a) =>
+      services.refresh.refresh(ctx, a as Infer<typeof refreshSessionArgs> & { type: string }),
     verifyCodeAndSignIn: (a) =>
       verifyCodeAndSignInImpl(
         ctx,
@@ -98,7 +98,11 @@ export const storeImpl = async (
       ),
     verifier: (a) => verifierImpl(ctx, a as Infer<typeof verifierArgs> & { type: string }, config),
     verifierSignature: (a) =>
-      verifierSignatureImpl(ctx, a as Infer<typeof verifierSignatureArgs> & { type: string }, config),
+      verifierSignatureImpl(
+        ctx,
+        a as Infer<typeof verifierSignatureArgs> & { type: string },
+        config,
+      ),
     userOAuth: (a) =>
       userOAuthImpl(
         ctx,
@@ -124,6 +128,13 @@ export const storeImpl = async (
       retrieveAccountWithCredentialsImpl(
         ctx,
         a as Infer<typeof retrieveAccountWithCredentialsArgs> & { type: string },
+        getProviderOrThrow,
+        config,
+      ),
+    credentialsSignIn: (a) =>
+      credentialsSignInImpl(
+        ctx,
+        a as Infer<typeof credentialsSignInArgs> & { type: string },
         getProviderOrThrow,
         config,
       ),

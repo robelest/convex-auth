@@ -15,15 +15,12 @@ function withJsExtension(specifier) {
 }
 
 function patchModuleSpecifiers(content) {
-  return content.replace(
-    /(["'])(\.{1,2}\/[^"]+)(["'])/g,
-    (full, q1, specifier, q2) => {
-      if (q1 !== q2) {
-        return full;
-      }
-      return `${q1}${withJsExtension(specifier)}${q2}`;
-    },
-  );
+  return content.replace(/(["'])(\.{1,2}\/[^"]+)(["'])/g, (full, q1, specifier, q2) => {
+    if (q1 !== q2) {
+      return full;
+    }
+    return `${q1}${withJsExtension(specifier)}${q2}`;
+  });
 }
 
 async function collectJsFiles(directory) {
@@ -44,10 +41,7 @@ async function collectJsFiles(directory) {
 
 async function getPackageRoots() {
   const roots = new Set();
-  const workspaceRoot = path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "..",
-  );
+  const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
   try {
     const entryPath = fileURLToPath(import.meta.resolve("fluent-convex"));

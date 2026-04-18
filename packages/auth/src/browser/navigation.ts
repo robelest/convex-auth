@@ -5,8 +5,7 @@ export interface BrowserNavigationService {
 }
 
 export const BrowserNavigationLive: BrowserNavigationService = {
-  get: () =>
-    typeof window === "undefined" ? null : new URL(window.location.href),
+  get: () => (typeof window === "undefined" ? null : new URL(window.location.href)),
   replace: (url: string) => {
     if (typeof window !== "undefined") {
       window.history.replaceState({}, "", url);

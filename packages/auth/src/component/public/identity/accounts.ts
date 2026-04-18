@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 import { mutation, query } from "../../functions";
 import { vAccountDoc } from "../../model";
@@ -194,9 +194,44 @@ export const accountPatch = mutation({
  * ```
  */
 export const accountDelete = mutation({
-  args: { accountId: v.id("Account") },
+  args: {
+    accountId: v.id("Account"),
+    /**
+     * When true, atomically verifies that the owning user has at least one
+     * other account remaining before deleting. Throws `ACCOUNT_NOT_FOUND`
+     * if the account doesn't exist, or `INVALID_PARAMETERS` if it's the
+     * only account on the user. Collapses what the app side previously
+     * did in three RPCs (get account → list all by user → delete) into a
+     * single atomic mutation.
+     */
+    requireOtherAccount: v.optional(v.boolean()),
+  },
   returns: v.null(),
-  handler: async (ctx, { accountId }) => {
+  handler: async (ctx, { accountId, requireOtherAccount }) => {
+    if (requireOtherAccount === true) {
+      const doc = await ctx.db.get("Account", accountId);
+      if (doc === null) {
+        throw new ConvexError({
+          code: "ACCOUNT_NOT_FOUND",
+          message: "Account not found.",
+        });
+      }
+      let otherFound = false;
+      for await (const sibling of ctx.db
+        .query("Account")
+        .withIndex("user_id_provider", (q) => q.eq("userId", doc.userId))) {
+        if (sibling._id !== accountId) {
+          otherFound = true;
+          break;
+        }
+      }
+      if (!otherFound) {
+        throw new ConvexError({
+          code: "INVALID_PARAMETERS",
+          message: "The provided parameters are invalid.",
+        });
+      }
+    }
     await ctx.db.delete("Account", accountId);
     return null;
   },

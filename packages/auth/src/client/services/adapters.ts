@@ -4,9 +4,7 @@ export type ClientAdaptersService = ClientAdapters;
 
 export type ClientAdapterFactoriesService = ClientAdapterFactories;
 
-export const ClientAdaptersLive = (
-  adapters: ClientAdapters,
-): ClientAdaptersService => adapters;
+export const ClientAdaptersLive = (adapters: ClientAdapters): ClientAdaptersService => adapters;
 
 export const ClientAdapterFactoriesLive = (
   adapterFactories: ClientAdapterFactories,

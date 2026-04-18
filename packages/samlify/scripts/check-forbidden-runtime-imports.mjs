@@ -24,25 +24,14 @@ const forbiddenModules = [
   "zlib",
 ];
 
-const sourceExtensions = new Set([
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
-]);
+const sourceExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
 
 function isForbidden(specifier) {
   if (!specifier) return false;
 
-  const normalized = specifier.startsWith("node:")
-    ? specifier.slice("node:".length)
-    : specifier;
+  const normalized = specifier.startsWith("node:") ? specifier.slice("node:".length) : specifier;
 
-  return forbiddenModules.some(
-    (name) => normalized === name || normalized.startsWith(name + "/"),
-  );
+  return forbiddenModules.some((name) => normalized === name || normalized.startsWith(name + "/"));
 }
 
 function collectFiles(dir, files = []) {
@@ -68,8 +57,7 @@ function findViolationsInFile(filePath) {
   const lines = content.split(/\r?\n/);
   const violations = [];
 
-  const importRegex =
-    /\bimport\s+(?:type\s+)?(?:[^'";]+\s+from\s+)?['"]([^'"]+)['"]/g;
+  const importRegex = /\bimport\s+(?:type\s+)?(?:[^'";]+\s+from\s+)?['"]([^'"]+)['"]/g;
   const requireRegex = /\brequire\(\s*['"]([^'"]+)['"]\s*\)/g;
 
   for (let i = 0; i < lines.length; i++) {
@@ -116,17 +104,13 @@ function main() {
     process.exit(0);
   }
 
-  const violations = files.flatMap((filePath) =>
-    findViolationsInFile(filePath),
-  );
+  const violations = files.flatMap((filePath) => findViolationsInFile(filePath));
   if (violations.length === 0) {
     console.log(`Runtime import guard passed (${files.length} files scanned).`);
     process.exit(0);
   }
 
-  console.error(
-    "Forbidden Node builtin imports found in runtime source files:",
-  );
+  console.error("Forbidden Node builtin imports found in runtime source files:");
   for (const violation of violations) {
     console.error(
       `- ${path.relative(packageRoot, violation.filePath)}:${violation.line} imports '${violation.specifier}'`,

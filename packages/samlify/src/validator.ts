@@ -33,10 +33,7 @@ function verifyTime(
   notBeforeLocal = new Date(utcNotBefore!);
   notOnOrAfterLocal = new Date(utcNotOnOrAfter!);
 
-  return (
-    +notBeforeLocal + notBeforeDrift <= +now &&
-    +now < +notOnOrAfterLocal + notOnOrAfterDrift
-  );
+  return +notBeforeLocal + notBeforeDrift <= +now && +now < +notOnOrAfterLocal + notOnOrAfterDrift;
 }
 
 export { verifyTime };

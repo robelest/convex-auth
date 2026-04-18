@@ -1,10 +1,7 @@
 const mutexTails: Record<string, Promise<void>> = {};
 
 /** @internal */
-export async function localMutex<T>(
-  key: string,
-  callback: () => Promise<T>,
-): Promise<T> {
+export async function localMutex<T>(key: string, callback: () => Promise<T>): Promise<T> {
   const previousTail = mutexTails[key] ?? Promise.resolve();
 
   let releaseCurrent: (() => void) | undefined;

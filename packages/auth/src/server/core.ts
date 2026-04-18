@@ -4,17 +4,14 @@ import { ConvexError, GenericId } from "convex/values";
 import type { ComponentCtx, ComponentReadCtx } from "./componentContext";
 import { configDefaults } from "./config";
 import { getSessionUserId } from "./context";
-import {
-  buildScopeChecker,
-  checkKeyRateLimit,
-  generateApiKey,
-  hashApiKey,
-} from "./keys";
+import { cached, ctxCacheHas, invalidateCtxCache } from "./ctxCache";
+import { buildScopeChecker, checkKeyRateLimit, generateApiKey, hashApiKey } from "./keys";
 import type { AuthProfile, SignInParams } from "./payloads";
 import { generateRandomString, sha256 } from "./random";
 import { TOKEN_SUB_CLAIM_DIVIDER } from "./constants";
 import type {
   AuthProviderConfig,
+  Doc,
   KeyDoc,
   KeyScope,
   ScopeChecker,
@@ -46,8 +43,8 @@ type CredentialsAccountResult = {
   user: Record<string, unknown>;
 };
 
-type UserDocLike = Record<string, unknown> | null;
-type GroupDocLike = Record<string, unknown> | null;
+type UserDocLike = Doc<"User"> | null;
+type GroupDocLike = Doc<"Group"> | null;
 type MemberDocLike = {
   _id: string;
   _creationTime: number;
@@ -81,10 +78,7 @@ type CoreDeps = {
     ctx: GenericActionCtx<DataModel>,
     args: RetrieveAccountArgs,
   ) => Promise<
-    | CredentialsAccountResult
-    | "InvalidAccountId"
-    | "InvalidSecret"
-    | "TooManyFailedAttempts"
+    CredentialsAccountResult | "InvalidAccountId" | "InvalidSecret" | "TooManyFailedAttempts"
   >;
   callModifyAccount: <DataModel extends GenericDataModel>(
     ctx: GenericActionCtx<DataModel>,
@@ -151,42 +145,6 @@ export function createCoreDomains(deps: CoreDeps) {
     return normalized;
   };
 
-  const listAllKeysByUser = async (ctx: ComponentCtx, userId: string) => {
-    const items: Array<{ _id: string }> = [];
-    let cursor: string | null = null;
-    do {
-      const page = (await ctx.runQuery(config.component.public.keyList, {
-        where: { userId },
-        limit: 100,
-        cursor,
-      })) as {
-        items: Array<{ _id: string }>;
-        nextCursor: string | null;
-      };
-      items.push(...page.items);
-      cursor = page.nextCursor;
-    } while (cursor !== null);
-    return items;
-  };
-
-  const listAllMembersByUser = async (ctx: ComponentCtx, userId: string) => {
-    const items: Array<{ _id: string }> = [];
-    let cursor: string | null = null;
-    do {
-      const page = (await ctx.runQuery(config.component.public.memberList, {
-        where: { userId },
-        limit: 100,
-        cursor,
-      })) as {
-        items: Array<{ _id: string }>;
-        nextCursor: string | null;
-      };
-      items.push(...page.items);
-      cursor = page.nextCursor;
-    } while (cursor !== null);
-    return items;
-  };
-
   const resolveGrantedPermissions = (roleIds?: string[]) => {
     const grants = new Set<string>();
     for (const roleId of roleIds ?? []) {
@@ -199,51 +157,66 @@ export function createCoreDomains(deps: CoreDeps) {
     return Array.from(grants).sort();
   };
 
-  // Per-execution cache — attached to ctx so each function invocation has its own.
-  // Eliminates redundant cross-component RPCs for the same entity within a handler.
-  type CtxCache = {
-    users: Map<string, UserDocLike>;
-    groups: Map<string, GroupDocLike>;
-  };
-  const AUTH_CACHE = Symbol("__convexAuthCache");
-  function cache(ctx: ComponentCtx | ComponentReadCtx): CtxCache {
-    const cachedCtx = ctx as typeof ctx & { [AUTH_CACHE]?: CtxCache };
-    if (!cachedCtx[AUTH_CACHE]) {
-      cachedCtx[AUTH_CACHE] = {
-        users: new Map(),
-        groups: new Map(),
-      } satisfies CtxCache;
+  function userGet(ctx: ComponentReadCtx, userId: string): Promise<UserDocLike>;
+  function userGet(ctx: ComponentReadCtx, userIds: readonly string[]): Promise<Array<UserDocLike>>;
+  async function userGet(
+    ctx: ComponentReadCtx,
+    input: string | readonly string[],
+  ): Promise<UserDocLike | Array<UserDocLike>> {
+    if (typeof input === "string") {
+      return (await cached(ctx, `user:${input}`, () =>
+        ctx.runQuery(config.component.public.userGetById, {
+          userId: input,
+        }),
+      )) as UserDocLike;
     }
-    return cachedCtx[AUTH_CACHE];
+    const userIds = input;
+    if (userIds.length === 0) return [];
+    const unique = Array.from(new Set(userIds));
+    const toFetch: string[] = [];
+    for (const id of unique) {
+      if (!ctxCacheHas(ctx, `user:${id}`)) {
+        toFetch.push(id);
+      }
+    }
+    if (toFetch.length > 0) {
+      const sharedFetch = (ctx.runQuery as UntypedRunQuery)(
+        (config.component.public as Record<string, unknown>)["userGetMany"],
+        { userIds: toFetch },
+      ) as Promise<Array<UserDocLike>>;
+      for (let i = 0; i < toFetch.length; i += 1) {
+        const id = toFetch[i]!;
+        const indexInBatch = i;
+        void cached(ctx, `user:${id}`, async () => {
+          const docs = await sharedFetch;
+          return docs[indexInBatch] ?? null;
+        });
+      }
+    }
+    return (await Promise.all(
+      userIds.map((id) =>
+        cached(ctx, `user:${id}`, () =>
+          ctx.runQuery(config.component.public.userGetById, { userId: id }),
+        ),
+      ),
+    )) as Array<UserDocLike>;
   }
 
   const user = {
     /**
-     * Fetch a user document by ID.
+     * Fetch a user document by ID, or a batch of user documents by IDs.
      *
-     * Results are **cached per-execution** — calling `auth.user.get(ctx, id)`
-     * multiple times within the same query or mutation handler for the same
-     * `userId` returns the cached result without an additional component read.
-     *
-     * @param ctx - Convex query or mutation context.
-     * @param userId - The user's document ID.
-     * @returns The user document, or `null` if not found.
-     *
-     * @example
+     * @example Single
      * ```ts
      * const user = await auth.user.get(ctx, userId);
-     * const name = user?.name ?? user?.email ?? "Unknown";
+     * ```
+     *
+     * @example Batched
+     * ```ts
+     * const users = await auth.user.get(ctx, memberIds);
      * ```
      */
-    get: async (ctx: ComponentReadCtx, userId: string) => {
-      const c = cache(ctx);
-      if (c.users.has(userId)) return c.users.get(userId);
-      const result = await ctx.runQuery(config.component.public.userGetById, {
-        userId,
-      });
-      c.users.set(userId, result);
-      return result;
-    },
+    get: userGet,
     /**
      * List users with optional filtering, pagination, and ordering.
      *
@@ -315,15 +288,12 @@ export function createCoreDomains(deps: CoreDeps) {
      * });
      * ```
      */
-    update: async (
-      ctx: ComponentCtx,
-      userId: string,
-      data: Record<string, unknown>,
-    ) => {
+    update: async (ctx: ComponentCtx, userId: string, data: Record<string, unknown>) => {
       await ctx.runMutation(config.component.public.userPatch, {
         userId,
         data,
       });
+      invalidateCtxCache(ctx, `user:${userId}`);
       return { userId };
     },
     /**
@@ -345,10 +315,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * await auth.user.setActiveGroup(ctx, { userId, groupId: null });
      * ```
      */
-    setActiveGroup: async (
-      ctx: ComponentCtx,
-      opts: { userId: string; groupId: string | null },
-    ) => {
+    setActiveGroup: async (ctx: ComponentCtx, opts: { userId: string; groupId: string | null }) => {
       const doc = await user.get(ctx, opts.userId);
       const existingExtend =
         doc !== null &&
@@ -412,79 +379,12 @@ export function createCoreDomains(deps: CoreDeps) {
      * @returns `{ userId }`.
      * @throws `INVALID_PARAMETERS` if `cascade` is `false` but the user has linked data.
      */
-    delete: async (
-      ctx: ComponentCtx,
-      userId: string,
-      opts?: { cascade?: boolean },
-    ) => {
-      const cascade = opts?.cascade !== false;
-      const [sessions, accounts, keys, members, passkeys, totps] =
-        await Promise.all([
-          ctx.runQuery(config.component.public.sessionListByUser, {
-            userId,
-          }) as Promise<Array<{ _id: string }>>,
-          ctx.runQuery(config.component.public.accountListByUser, {
-            userId,
-          }) as Promise<Array<{ _id: string }>>,
-          listAllKeysByUser(ctx, userId),
-          listAllMembersByUser(ctx, userId),
-          ctx.runQuery(config.component.public.passkeyListByUserId, {
-            userId,
-          }) as Promise<Array<{ _id: string }>>,
-          ctx.runQuery(config.component.public.totpListByUserId, {
-            userId,
-          }) as Promise<Array<{ _id: string }>>,
-        ]);
-      const totalLinked =
-        sessions.length +
-        accounts.length +
-        keys.length +
-        members.length +
-        passkeys.length +
-        totps.length;
-      if (!cascade && totalLinked > 0) {
-        throw new ConvexError({
-          code: "INVALID_PARAMETERS",
-          message: "The provided parameters are invalid.",
-        });
-      }
-      const deletions: Promise<unknown>[] = [];
-      for (const s of sessions)
-        deletions.push(
-          ctx.runMutation(config.component.public.sessionDelete, {
-            sessionId: s._id,
-          }),
-        );
-      for (const a of accounts)
-        deletions.push(
-          ctx.runMutation(config.component.public.accountDelete, {
-            accountId: a._id,
-          }),
-        );
-      for (const k of keys)
-        deletions.push(
-          ctx.runMutation(config.component.public.keyDelete, { keyId: k._id }),
-        );
-      for (const m of members)
-        deletions.push(
-          ctx.runMutation(config.component.public.memberRemove, {
-            memberId: m._id,
-          }),
-        );
-      for (const p of passkeys)
-        deletions.push(
-          ctx.runMutation(config.component.public.passkeyDelete, {
-            passkeyId: p._id,
-          }),
-        );
-      for (const t of totps)
-        deletions.push(
-          ctx.runMutation(config.component.public.totpDelete, {
-            totpId: t._id,
-          }),
-        );
-      await Promise.all(deletions);
-      await ctx.runMutation(config.component.public.userDelete, { userId });
+    delete: async (ctx: ComponentCtx, userId: string, opts?: { cascade?: boolean }) => {
+      await ctx.runMutation(config.component.public.userDelete, {
+        userId,
+        cascade: opts?.cascade !== false,
+      });
+      invalidateCtxCache(ctx);
       return { userId };
     },
   };
@@ -515,6 +415,34 @@ export function createCoreDomains(deps: CoreDeps) {
       if (identity === null) return null;
       const [, sessionId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
       return sessionId as GenericId<"Session">;
+    },
+    /**
+     * Resolve the current user's ID from the JWT **without any component
+     * round-trip**. Parses the `subject` claim on the identity token and
+     * returns the `userId` half.
+     *
+     * Use this for trivial "who is asking?" checks that don't need the
+     * full user document or membership — e.g. early authorization guards,
+     * audit logging, or passing through into a downstream query. For the
+     * actual user doc, follow up with `auth.user.get(ctx, userId)` (which
+     * is cached per-request).
+     *
+     * Returns `null` when there is no authenticated identity.
+     *
+     * @param ctx - Convex query, mutation, or action context.
+     * @returns The current user's document ID, or `null` if unauthenticated.
+     *
+     * @example
+     * ```ts
+     * const userId = await auth.session.userId(ctx);
+     * if (!userId) throw new Error("Not signed in");
+     * ```
+     */
+    userId: async (ctx: { auth: Auth }) => {
+      const identity = await ctx.auth.getUserIdentity();
+      if (identity === null) return null;
+      const [userId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
+      return (userId ?? null) as GenericId<"User"> | null;
     },
     /**
      * Invalidate (sign out) all sessions for a given user.
@@ -570,9 +498,11 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     get: async (ctx: ComponentReadCtx, sessionId: string) => {
-      return await ctx.runQuery(config.component.public.sessionGetById, {
-        sessionId,
-      });
+      return await cached(ctx, `session:${sessionId}`, () =>
+        ctx.runQuery(config.component.public.sessionGetById, {
+          sessionId,
+        }),
+      );
     },
     /**
      * List all sessions belonging to a user.
@@ -720,27 +650,9 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     delete: async (ctx: ComponentCtx, accountId: string) => {
-      const doc = await ctx.runQuery(config.component.public.accountGetById, {
-        accountId,
-      });
-      if (doc === null) {
-        throw new ConvexError({
-          code: "ACCOUNT_NOT_FOUND",
-          message: "Account not found.",
-        });
-      }
-      const allAccounts = (await ctx.runQuery(
-        config.component.public.accountListByUser,
-        { userId: doc.userId },
-      )) as Array<{ _id: string }>;
-      if (allAccounts.length <= 1) {
-        throw new ConvexError({
-          code: "INVALID_PARAMETERS",
-          message: "The provided parameters are invalid.",
-        });
-      }
       await ctx.runMutation(config.component.public.accountDelete, {
         accountId,
+        requireOtherAccount: true,
       });
       return { accountId };
     },
@@ -765,10 +677,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     listPasskeys: async (ctx: ComponentReadCtx, opts: { userId: string }) => {
-      return await ctx.runQuery(
-        config.component.public.passkeyListByUserId,
-        opts,
-      );
+      return await ctx.runQuery(config.component.public.passkeyListByUserId, opts);
     },
     /**
      * Rename a passkey credential.
@@ -787,11 +696,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * await auth.account.renamePasskey(ctx, passkeyId, "Work laptop");
      * ```
      */
-    renamePasskey: async (
-      ctx: ComponentCtx,
-      passkeyId: string,
-      name: string,
-    ) => {
+    renamePasskey: async (ctx: ComponentCtx, passkeyId: string, name: string) => {
       await ctx.runMutation(config.component.public.passkeyUpdateMeta, {
         passkeyId,
         data: { name },
@@ -908,6 +813,54 @@ export function createCoreDomains(deps: CoreDeps) {
       : undefined,
   };
 
+  function groupGet(ctx: ComponentReadCtx, groupId: string): Promise<GroupDocLike>;
+  function groupGet(
+    ctx: ComponentReadCtx,
+    groupIds: readonly string[],
+  ): Promise<Array<GroupDocLike>>;
+  async function groupGet(
+    ctx: ComponentReadCtx,
+    input: string | readonly string[],
+  ): Promise<GroupDocLike | Array<GroupDocLike>> {
+    if (typeof input === "string") {
+      return (await cached(ctx, `group:${input}`, () =>
+        ctx.runQuery(config.component.public.groupGet, {
+          groupId: input,
+        }),
+      )) as GroupDocLike;
+    }
+    const groupIds = input;
+    if (groupIds.length === 0) return [];
+    const unique = Array.from(new Set(groupIds));
+    const toFetch: string[] = [];
+    for (const id of unique) {
+      if (!ctxCacheHas(ctx, `group:${id}`)) {
+        toFetch.push(id);
+      }
+    }
+    if (toFetch.length > 0) {
+      const sharedFetch = (ctx.runQuery as UntypedRunQuery)(
+        (config.component.public as Record<string, unknown>)["groupGetMany"],
+        { groupIds: toFetch },
+      ) as Promise<Array<GroupDocLike>>;
+      for (let i = 0; i < toFetch.length; i += 1) {
+        const id = toFetch[i]!;
+        const indexInBatch = i;
+        void cached(ctx, `group:${id}`, async () => {
+          const docs = await sharedFetch;
+          return docs[indexInBatch] ?? null;
+        });
+      }
+    }
+    return (await Promise.all(
+      groupIds.map((id) =>
+        cached(ctx, `group:${id}`, () =>
+          ctx.runQuery(config.component.public.groupGet, { groupId: id }),
+        ),
+      ),
+    )) as Array<GroupDocLike>;
+  }
+
   const group = {
     /**
      * Create a new group (organization, workspace, team, etc.).
@@ -953,32 +906,24 @@ export function createCoreDomains(deps: CoreDeps) {
         extend?: Record<string, unknown>;
       },
     ): Promise<{ groupId: string }> => {
-      const groupId = (await ctx.runMutation(
-        config.component.public.groupCreate,
-        data,
-      )) as string;
+      const groupId = (await ctx.runMutation(config.component.public.groupCreate, data)) as string;
       return { groupId };
     },
     /**
-     * Fetch a group document by ID.
+     * Fetch a group document by ID, or a batch of group documents by IDs.
+     * See {@link userGet} for the overload pattern.
      *
-     * Results are **cached per-execution** — calling `auth.group.get(ctx, id)`
-     * multiple times within the same handler for the same `groupId` returns
-     * the cached result without an additional component read.
+     * @example Single
+     * ```ts
+     * const group = await auth.group.get(ctx, groupId);
+     * ```
      *
-     * @param ctx - Convex query or mutation context.
-     * @param groupId - The group's document ID.
-     * @returns The group document (including `rootGroupId`, `isRoot`), or `null`.
+     * @example Batched
+     * ```ts
+     * const groups = await auth.group.get(ctx, membershipGroupIds);
+     * ```
      */
-    get: async (ctx: ComponentReadCtx, groupId: string) => {
-      const c = cache(ctx);
-      if (c.groups.has(groupId)) return c.groups.get(groupId);
-      const result = await ctx.runQuery(config.component.public.groupGet, {
-        groupId,
-      });
-      c.groups.set(groupId, result);
-      return result;
-    },
+    get: groupGet,
     /**
      * List groups with optional filtering, pagination, and ordering.
      *
@@ -1056,15 +1001,12 @@ export function createCoreDomains(deps: CoreDeps) {
      * });
      * ```
      */
-    update: async (
-      ctx: ComponentCtx,
-      groupId: string,
-      data: Record<string, unknown>,
-    ) => {
+    update: async (ctx: ComponentCtx, groupId: string, data: Record<string, unknown>) => {
       await ctx.runMutation(config.component.public.groupUpdate, {
         groupId,
         data,
       });
+      invalidateCtxCache(ctx, `group:${groupId}`);
       return { groupId };
     },
     /**
@@ -1082,6 +1024,9 @@ export function createCoreDomains(deps: CoreDeps) {
      */
     delete: async (ctx: ComponentCtx, groupId: string) => {
       await ctx.runMutation(config.component.public.groupDelete, { groupId });
+      invalidateCtxCache(ctx, `group:${groupId}`);
+      invalidateCtxCache(ctx, "member");
+      invalidateCtxCache(ctx, "member-inspect");
       return { groupId };
     },
     /**
@@ -1108,40 +1053,151 @@ export function createCoreDomains(deps: CoreDeps) {
       ctx: ComponentReadCtx,
       opts: { groupId: string; maxDepth?: number; includeSelf?: boolean },
     ) => {
-      const maxDepth = Math.max(0, Math.floor(opts.maxDepth ?? 32));
-      const visited = new Set<string>();
-      const ancestors: Array<Exclude<GroupDocLike, null>> = [];
-      let cycleDetected = false;
-      let maxDepthReached = false;
-      let currentGroupId: string | undefined = opts.groupId;
-      let depth = 0;
-      let isFirst = true;
-      while (currentGroupId !== undefined) {
-        if (depth > maxDepth) {
-          maxDepthReached = true;
-          break;
-        }
-        if (visited.has(currentGroupId)) {
-          cycleDetected = true;
-          break;
-        }
-        visited.add(currentGroupId);
-        const doc = await group.get(ctx, currentGroupId);
-        if (doc === null) break;
-        if (isFirst) {
-          isFirst = false;
-          if (opts.includeSelf) ancestors.push(doc);
-          currentGroupId = doc.parentGroupId;
-          depth += 1;
-          continue;
-        }
-        ancestors.push(doc);
-        currentGroupId = doc.parentGroupId;
-        depth += 1;
+      const ancestorsRef = (config.component.public as Record<string, unknown>)["groupAncestors"];
+      const result = (await (ctx.runQuery as UntypedRunQuery)(ancestorsRef, {
+        groupId: opts.groupId,
+        maxDepth: opts.maxDepth,
+        includeSelf: opts.includeSelf,
+      })) as {
+        ancestors: Array<Exclude<GroupDocLike, null>>;
+        cycleDetected: boolean;
+        maxDepthReached: boolean;
+      };
+      for (const ancestor of result.ancestors) {
+        const id = ancestor._id as string;
+        void cached(ctx, `group:${id}`, () => Promise.resolve(ancestor));
       }
-      return { ancestors, cycleDetected, maxDepthReached };
+      return result;
     },
   };
+
+  type InspectResult = {
+    membership: MemberDocLike;
+    roleIds: string[];
+    grants: string[];
+  };
+  function memberInspect(
+    ctx: ComponentReadCtx,
+    opts: {
+      userId: string;
+      groupId: string;
+      ancestry?: boolean;
+      maxDepth?: number;
+    },
+  ): Promise<InspectResult>;
+  function memberInspect(
+    ctx: ComponentReadCtx,
+    opts: { userId: string; groupIds: readonly string[] },
+  ): Promise<Array<InspectResult>>;
+  async function memberInspect(
+    ctx: ComponentReadCtx,
+    opts:
+      | {
+          userId: string;
+          groupId: string;
+          ancestry?: boolean;
+          maxDepth?: number;
+        }
+      | { userId: string; groupIds: readonly string[] },
+  ): Promise<InspectResult | Array<InspectResult>> {
+    if ("groupIds" in opts) {
+      const { userId, groupIds } = opts;
+      if (groupIds.length === 0) return [];
+      const unique = Array.from(new Set(groupIds));
+      const toFetch: string[] = [];
+      for (const groupId of unique) {
+        if (!ctxCacheHas(ctx, `member-inspect:${userId}:${groupId}:n`)) {
+          toFetch.push(groupId);
+        }
+      }
+      if (toFetch.length > 0) {
+        const sharedFetch = (ctx.runQuery as UntypedRunQuery)(
+          (config.component.public as Record<string, unknown>)["memberGetByGroupAndUserMany"],
+          { userId, groupIds: toFetch },
+        ) as Promise<Array<MemberDocLike>>;
+        for (let i = 0; i < toFetch.length; i += 1) {
+          const groupId = toFetch[i]!;
+          const indexInBatch = i;
+          void cached(ctx, `member-inspect:${userId}:${groupId}:n`, async () => {
+            const docs = await sharedFetch;
+            return (docs[indexInBatch] ?? null) as MemberDocLike;
+          });
+        }
+      }
+      return await Promise.all(
+        groupIds.map(async (groupId) => {
+          const membership = (await cached(ctx, `member-inspect:${userId}:${groupId}:n`, () =>
+            ctx.runQuery(config.component.public.memberGetByGroupAndUser, {
+              userId,
+              groupId,
+            }),
+          )) as MemberDocLike;
+          if (membership === null) {
+            return {
+              membership: null,
+              roleIds: [] as string[],
+              grants: [] as string[],
+            };
+          }
+          const membershipRoleIds = membership.roleIds ?? [];
+          const membershipGrants = resolveGrantedPermissions(membershipRoleIds);
+          return {
+            membership,
+            roleIds: membershipRoleIds,
+            grants: membershipGrants,
+          };
+        }),
+      );
+    }
+
+    const useAncestry = opts.ancestry === true;
+    const maxDepth = useAncestry ? Math.max(0, Math.floor(opts.maxDepth ?? 32)) : 0;
+    const cacheKey = `member-inspect:${opts.userId}:${opts.groupId}:${
+      useAncestry ? `a${maxDepth}` : "n"
+    }`;
+
+    let membership: MemberDocLike = null;
+
+    if (useAncestry) {
+      const memberResolveRef = (config.component.public as Record<string, unknown>)[
+        "memberResolve"
+      ];
+      const result = (await cached(ctx, cacheKey, () =>
+        (ctx.runQuery as UntypedRunQuery)(memberResolveRef, {
+          userId: opts.userId,
+          groupId: opts.groupId,
+          maxDepth,
+          ancestry: true,
+        }),
+      )) as { membership: MemberDocLike };
+      membership = result.membership;
+    } else {
+      const doc = (await cached(ctx, cacheKey, () =>
+        ctx.runQuery(config.component.public.memberGetByGroupAndUser, {
+          userId: opts.userId,
+          groupId: opts.groupId,
+        }),
+      )) as MemberDocLike;
+      membership = doc;
+    }
+
+    if (membership === null) {
+      return {
+        membership: null,
+        roleIds: [] as string[],
+        grants: [] as string[],
+      };
+    }
+
+    const membershipRoleIds = membership.roleIds ?? [];
+    const membershipGrants = resolveGrantedPermissions(membershipRoleIds);
+
+    return {
+      membership,
+      roleIds: membershipRoleIds,
+      grants: membershipGrants,
+    };
+  }
 
   const member = {
     /**
@@ -1180,10 +1236,11 @@ export function createCoreDomains(deps: CoreDeps) {
       },
     ) => {
       const roleIds = normalizeRoleIds(data.roleIds);
-      const memberId = (await ctx.runMutation(
-        config.component.public.memberAdd,
-        { ...data, roleIds },
-      )) as string;
+      const memberId = (await ctx.runMutation(config.component.public.memberAdd, {
+        ...data,
+        roleIds,
+      })) as string;
+      invalidateCtxCache(ctx, `member-inspect:${data.userId}:${data.groupId}`);
       return { memberId };
     },
     /**
@@ -1201,9 +1258,11 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     get: async (ctx: ComponentReadCtx, memberId: string) => {
-      return await ctx.runQuery(config.component.public.memberGet, {
-        memberId,
-      });
+      return await cached(ctx, `member:${memberId}`, () =>
+        ctx.runQuery(config.component.public.memberGet, {
+          memberId,
+        }),
+      );
     },
     /**
      * List memberships with optional filtering and pagination.
@@ -1267,6 +1326,8 @@ export function createCoreDomains(deps: CoreDeps) {
      */
     delete: async (ctx: ComponentCtx, memberId: string) => {
       await ctx.runMutation(config.component.public.memberRemove, { memberId });
+      invalidateCtxCache(ctx, "member");
+      invalidateCtxCache(ctx, "member-inspect");
       return { memberId };
     },
     /**
@@ -1287,23 +1348,19 @@ export function createCoreDomains(deps: CoreDeps) {
      * });
      * ```
      */
-    update: async (
-      ctx: ComponentCtx,
-      memberId: string,
-      data: Record<string, unknown>,
-    ) => {
+    update: async (ctx: ComponentCtx, memberId: string, data: Record<string, unknown>) => {
       const nextData = { ...data };
       if ("roleIds" in nextData) {
         nextData.roleIds = normalizeRoleIds(
-          Array.isArray(nextData.roleIds)
-            ? (nextData.roleIds as string[])
-            : undefined,
+          Array.isArray(nextData.roleIds) ? (nextData.roleIds as string[]) : undefined,
         );
       }
       await ctx.runMutation(config.component.public.memberUpdate, {
         memberId,
         data: nextData,
       });
+      invalidateCtxCache(ctx, `member:${memberId}`);
+      invalidateCtxCache(ctx, "member-inspect");
       return { memberId };
     },
     /**
@@ -1348,62 +1405,15 @@ export function createCoreDomains(deps: CoreDeps) {
      *   userId, groupId: teamId, ancestry: true,
      * });
      * ```
+     *
+     * @example Batched across many groups (one RPC)
+     * ```ts
+     * const resolutions = await auth.member.inspect(ctx, {
+     *   userId, groupIds: rootGroupIds,
+     * });
+     * ```
      */
-    inspect: async (
-      ctx: ComponentReadCtx,
-      opts: {
-        userId: string;
-        groupId: string;
-        ancestry?: boolean;
-        maxDepth?: number;
-      },
-    ) => {
-      const useAncestry = opts.ancestry === true;
-
-      let membership: MemberDocLike = null;
-
-      if (useAncestry) {
-        // Hierarchy walk — single component RPC
-        const maxDepth = Math.max(0, Math.floor(opts.maxDepth ?? 32));
-        const memberResolveRef = (
-          config.component.public as Record<string, unknown>
-        )["memberResolve"];
-        const result = (await (ctx.runQuery as UntypedRunQuery)(
-          memberResolveRef,
-          {
-            userId: opts.userId,
-            groupId: opts.groupId,
-            maxDepth,
-            ancestry: true,
-          },
-        )) as { membership: MemberDocLike };
-        membership = result.membership;
-      } else {
-        // Fast path — direct lookup, 1 read
-        const doc = await ctx.runQuery(
-          config.component.public.memberGetByGroupAndUser,
-          { userId: opts.userId, groupId: opts.groupId },
-        );
-        membership = doc;
-      }
-
-      if (membership === null) {
-        return {
-          membership: null,
-          roleIds: [] as string[],
-          grants: [] as string[],
-        };
-      }
-
-      const membershipRoleIds = membership.roleIds ?? [];
-      const membershipGrants = resolveGrantedPermissions(membershipRoleIds);
-
-      return {
-        membership,
-        roleIds: membershipRoleIds,
-        grants: membershipGrants,
-      };
-    },
+    inspect: memberInspect,
     require: async (
       ctx: ComponentReadCtx,
       opts: {
@@ -1417,8 +1427,7 @@ export function createCoreDomains(deps: CoreDeps) {
     ) => {
       const validatedRoleIds = normalizeRoleIds(opts.roleIds);
       const requiredGrants = Array.from(new Set(opts.grants ?? []));
-      const roleFilter =
-        validatedRoleIds.length > 0 ? new Set(validatedRoleIds) : null;
+      const roleFilter = validatedRoleIds.length > 0 ? new Set(validatedRoleIds) : null;
       const result = await member.inspect(ctx, {
         userId: opts.userId,
         groupId: opts.groupId,
@@ -1432,19 +1441,14 @@ export function createCoreDomains(deps: CoreDeps) {
           groupId: opts.groupId,
         });
       }
-      if (
-        roleFilter !== null &&
-        !result.roleIds.some((roleId: string) => roleFilter.has(roleId))
-      ) {
+      if (roleFilter !== null && !result.roleIds.some((roleId: string) => roleFilter.has(roleId))) {
         throw new ConvexError({
           code: "NOT_A_MEMBER",
           message: "User is not a member of this group.",
           groupId: opts.groupId,
         });
       }
-      const missingGrants = requiredGrants.filter(
-        (grant) => !result.grants.includes(grant),
-      );
+      const missingGrants = requiredGrants.filter((grant) => !result.grants.includes(grant));
       if (missingGrants.length > 0) {
         throw new ConvexError({
           code: "MISSING_GRANTS",
@@ -1491,15 +1495,14 @@ export function createCoreDomains(deps: CoreDeps) {
       },
     ) => {
       const roleIds = normalizeRoleIds(data.roleIds);
-      const token = generateRandomString(
-        inviteTokenLength,
-        inviteTokenAlphabet,
-      );
+      const token = generateRandomString(inviteTokenLength, inviteTokenAlphabet);
       const tokenHash = await sha256(token);
-      const inviteId = (await ctx.runMutation(
-        config.component.public.inviteCreate,
-        { ...data, roleIds, tokenHash, status: "pending" },
-      )) as string;
+      const inviteId = (await ctx.runMutation(config.component.public.inviteCreate, {
+        ...data,
+        roleIds,
+        tokenHash,
+        status: "pending",
+      })) as string;
       return { inviteId, token };
     },
     /**
@@ -1548,10 +1551,7 @@ export function createCoreDomains(deps: CoreDeps) {
        */
       get: async (ctx: ComponentReadCtx, token: string) => {
         const tokenHash = await sha256(token);
-        return await ctx.runQuery(
-          config.component.public.inviteGetByTokenHash,
-          { tokenHash },
-        );
+        return await ctx.runQuery(config.component.public.inviteGetByTokenHash, { tokenHash });
       },
       /**
        * Accept an invite by token. Creates a membership and marks the invite as accepted.
@@ -1573,15 +1573,12 @@ export function createCoreDomains(deps: CoreDeps) {
        * });
        * ```
        */
-      accept: async (
-        ctx: ComponentCtx,
-        args: { token: string; acceptedByUserId: string },
-      ) => {
+      accept: async (ctx: ComponentCtx, args: { token: string; acceptedByUserId: string }) => {
         const tokenHash = await sha256(args.token);
-        const result = await ctx.runMutation(
-          config.component.public.inviteAcceptByToken,
-          { tokenHash, acceptedByUserId: args.acceptedByUserId },
-        );
+        const result = await ctx.runMutation(config.component.public.inviteAcceptByToken, {
+          tokenHash,
+          acceptedByUserId: args.acceptedByUserId,
+        });
         return { ...result };
       },
     },
@@ -1622,12 +1619,7 @@ export function createCoreDomains(deps: CoreDeps) {
         };
         limit?: number;
         cursor?: string | null;
-        orderBy?:
-          | "_creationTime"
-          | "status"
-          | "email"
-          | "expiresTime"
-          | "acceptedTime";
+        orderBy?: "_creationTime" | "status" | "email" | "expiresTime" | "acceptedTime";
         order?: "asc" | "desc";
       },
     ) => {
@@ -1657,11 +1649,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * await auth.invite.accept(ctx, inviteId, userId);
      * ```
      */
-    accept: async (
-      ctx: ComponentCtx,
-      inviteId: string,
-      acceptedByUserId?: string,
-    ) => {
+    accept: async (ctx: ComponentCtx, inviteId: string, acceptedByUserId?: string) => {
       await ctx.runMutation(config.component.public.inviteAccept, {
         inviteId,
         ...(acceptedByUserId ? { acceptedByUserId } : {}),
@@ -1764,10 +1752,9 @@ export function createCoreDomains(deps: CoreDeps) {
       rawKey: string,
     ): Promise<{ userId: string; keyId: string; scopes: ScopeChecker }> => {
       const hashedKey = await hashApiKey(rawKey);
-      const doc = (await ctx.runQuery(
-        config.component.public.keyGetByHashedKey,
-        { hashedKey },
-      )) as KeyDoc | null;
+      const doc = (await ctx.runQuery(config.component.public.keyGetByHashedKey, {
+        hashedKey,
+      })) as KeyDoc | null;
       if (!doc) {
         throw new ConvexError({
           code: "INVALID_API_KEY",
@@ -1789,10 +1776,7 @@ export function createCoreDomains(deps: CoreDeps) {
       }
       const patchData: Record<string, unknown> = { lastUsedAt: Date.now() };
       if (k.rateLimit) {
-        const { limited, newState } = checkKeyRateLimit(
-          k.rateLimit,
-          k.rateLimitState ?? undefined,
-        );
+        const { limited, newState } = checkKeyRateLimit(k.rateLimit, k.rateLimitState ?? undefined);
         if (limited) {
           throw new ConvexError({
             code: "API_KEY_RATE_LIMITED",
@@ -1843,12 +1827,7 @@ export function createCoreDomains(deps: CoreDeps) {
         };
         limit?: number;
         cursor?: string | null;
-        orderBy?:
-          | "_creationTime"
-          | "name"
-          | "lastUsedAt"
-          | "expiresAt"
-          | "revoked";
+        orderBy?: "_creationTime" | "name" | "lastUsedAt" | "expiresAt" | "revoked";
         order?: "asc" | "desc";
       },
     ) => {
@@ -1878,10 +1857,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * console.log(key.name, key.prefix);
      * ```
      */
-    get: async (
-      ctx: ComponentReadCtx,
-      keyId: string,
-    ): Promise<KeyDoc | null> => {
+    get: async (ctx: ComponentReadCtx, keyId: string): Promise<KeyDoc | null> => {
       const doc = (await ctx.runQuery(config.component.public.keyGetById, {
         keyId,
       })) as KeyDoc | null;

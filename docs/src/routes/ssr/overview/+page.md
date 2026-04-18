@@ -1,7 +1,6 @@
 ---
 title: SSR Overview
-description:
-  Server-side authentication with httpOnly cookies, OAuth code exchange, and
+description: Server-side authentication with httpOnly cookies, OAuth code exchange, and
   token refresh.
 ---
 

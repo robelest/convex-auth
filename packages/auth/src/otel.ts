@@ -13,16 +13,10 @@ import type { Attributes } from "@opentelemetry/api";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import type { LogRecordProcessor } from "@opentelemetry/sdk-logs";
 import type { MetricReader } from "@opentelemetry/sdk-metrics";
-import type {
-  SpanProcessor,
-  TracerConfig,
-} from "@opentelemetry/sdk-trace-base";
+import type { SpanProcessor, TracerConfig } from "@opentelemetry/sdk-trace-base";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { WebTracerProvider } from "@opentelemetry/sdk-trace-web";
-import {
-  ATTR_SERVICE_NAME,
-  ATTR_SERVICE_VERSION,
-} from "@opentelemetry/semantic-conventions";
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions";
 
 /**
  * Consumer-provided telemetry configuration for Convex Auth spans.
@@ -80,9 +74,7 @@ function resolveProcessors(
 export function nodeTelemetry(config: TelemetryConfig): NodeTracerProvider {
   const resource = resourceFromAttributes({
     [ATTR_SERVICE_NAME]: config.serviceName,
-    ...(config.serviceVersion
-      ? { [ATTR_SERVICE_VERSION]: config.serviceVersion }
-      : {}),
+    ...(config.serviceVersion ? { [ATTR_SERVICE_VERSION]: config.serviceVersion } : {}),
     ...config.attributes,
   });
   const provider = new NodeTracerProvider({
@@ -116,9 +108,7 @@ export function nodeTelemetry(config: TelemetryConfig): NodeTracerProvider {
 export function browserTelemetry(config: TelemetryConfig): WebTracerProvider {
   const resource = resourceFromAttributes({
     [ATTR_SERVICE_NAME]: config.serviceName,
-    ...(config.serviceVersion
-      ? { [ATTR_SERVICE_VERSION]: config.serviceVersion }
-      : {}),
+    ...(config.serviceVersion ? { [ATTR_SERVICE_VERSION]: config.serviceVersion } : {}),
     ...config.attributes,
   });
   const provider = new WebTracerProvider({

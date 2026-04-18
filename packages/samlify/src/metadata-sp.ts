@@ -83,15 +83,11 @@ export class SpMetadata extends Metadata {
       }
 
       for (const cert of castArrayOpt(signingCert)) {
-        descriptors.KeyDescriptor!.push(
-          libsaml.createKeySection("signing", cert).KeyDescriptor,
-        );
+        descriptors.KeyDescriptor!.push(libsaml.createKeySection("signing", cert).KeyDescriptor);
       }
 
       for (const cert of castArrayOpt(encryptCert)) {
-        descriptors.KeyDescriptor!.push(
-          libsaml.createKeySection("encryption", cert).KeyDescriptor,
-        );
+        descriptors.KeyDescriptor!.push(libsaml.createKeySection("encryption", cert).KeyDescriptor);
       }
 
       if (isNonEmptyArray(nameIDFormat)) {
@@ -132,9 +128,7 @@ export class SpMetadata extends Metadata {
       }
 
       // handle element order
-      const existedElements = elementsOrder.filter((name) =>
-        isNonEmptyArray(descriptors[name]),
-      );
+      const existedElements = elementsOrder.filter((name) => isNonEmptyArray(descriptors[name]));
       existedElements.forEach((name) => {
         descriptors[name].forEach((e) => SPSSODescriptor.push({ [name]: e }));
       });
@@ -166,11 +160,7 @@ export class SpMetadata extends Metadata {
       },
       {
         key: "assertionConsumerService",
-        localPath: [
-          "EntityDescriptor",
-          "SPSSODescriptor",
-          "AssertionConsumerService",
-        ],
+        localPath: ["EntityDescriptor", "SPSSODescriptor", "AssertionConsumerService"],
         attributes: ["Binding", "Location", "isDefault", "index"],
       },
     ]);

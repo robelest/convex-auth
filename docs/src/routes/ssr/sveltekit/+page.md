@@ -1,7 +1,6 @@
 ---
 title: SvelteKit
-description:
-  Integrate convex-auth SSR with SvelteKit using hooks and API routes.
+description: Integrate convex-auth SSR with SvelteKit using hooks and API routes.
 ---
 
 <svelte:head>

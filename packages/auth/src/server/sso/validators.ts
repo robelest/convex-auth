@@ -13,12 +13,8 @@ export const groupPolicyPatchValidator = v.object({
     v.object({
       accountLinking: v.optional(
         v.object({
-          oidc: v.optional(
-            v.union(v.literal("verifiedEmail"), v.literal("none")),
-          ),
-          saml: v.optional(
-            v.union(v.literal("verifiedEmail"), v.literal("none")),
-          ),
+          oidc: v.optional(v.union(v.literal("verifiedEmail"), v.literal("none"))),
+          saml: v.optional(v.union(v.literal("verifiedEmail"), v.literal("none"))),
         }),
       ),
     }),
@@ -29,22 +25,12 @@ export const groupPolicyPatchValidator = v.object({
         v.object({
           createOnSignIn: v.optional(v.boolean()),
           updateProfileOnLogin: v.optional(
-            v.union(
-              v.literal("never"),
-              v.literal("missing"),
-              v.literal("always"),
-            ),
+            v.union(v.literal("never"), v.literal("missing"), v.literal("always")),
           ),
           updateProfileFromScim: v.optional(
-            v.union(
-              v.literal("never"),
-              v.literal("missing"),
-              v.literal("always"),
-            ),
+            v.union(v.literal("never"), v.literal("missing"), v.literal("always")),
           ),
-          authority: v.optional(
-            v.union(v.literal("app"), v.literal("sso"), v.literal("scim")),
-          ),
+          authority: v.optional(v.union(v.literal("app"), v.literal("sso"), v.literal("scim"))),
         }),
       ),
       scimReuse: v.optional(
@@ -136,9 +122,7 @@ export const ssoSamlSecurityValidator = v.object({
   requireSignedAssertions: v.optional(v.boolean()),
   requireTimestamps: v.optional(v.boolean()),
   clockSkewSeconds: v.optional(v.number()),
-  weakAlgorithmHandling: v.optional(
-    v.union(v.literal("warn"), v.literal("reject")),
-  ),
+  weakAlgorithmHandling: v.optional(v.union(v.literal("warn"), v.literal("reject"))),
   maxMetadataSize: v.optional(v.number()),
   maxResponseSize: v.optional(v.number()),
 });

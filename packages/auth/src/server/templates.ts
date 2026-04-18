@@ -19,10 +19,7 @@
 export function defaultMagicLinkEmail(url: string, host: string): string {
   const escapedHost = host.replace(
     /[&<>"']/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ]!,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
   );
 
   return `<!DOCTYPE html>

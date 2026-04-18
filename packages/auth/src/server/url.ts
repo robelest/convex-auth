@@ -33,9 +33,5 @@ export function isLocalHost(host?: string) {
   } catch {
     return false;
   }
-  return (
-    url.hostname === "localhost" ||
-    url.hostname === "127.0.0.1" ||
-    url.hostname === "::1"
-  );
+  return url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1";
 }

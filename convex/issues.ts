@@ -7,7 +7,7 @@ import {
   issuePriority as issuePriorityValidator,
   issueStatus as issueStatusValidator,
 } from "./schema";
-import { getUserSummary, issueSummary } from "./shared";
+import { getUserSummaries, issueSummary } from "./shared";
 
 const projectIssueSummary = v.object({
   projectId: v.id("projects"),
@@ -16,11 +16,7 @@ const projectIssueSummary = v.object({
   description: v.string(),
 });
 
-async function getProjectIssuesResult(
-  ctx: any,
-  userId: string,
-  projectId: string,
-) {
+async function getProjectIssuesResult(ctx: any, userId: string, projectId: string) {
   const project = await ctx.db.get(projectId);
   if (project === null) {
     throw new ConvexError({ code: "NOT_FOUND", message: "Project not found." });
@@ -37,29 +33,26 @@ async function getProjectIssuesResult(
     .withIndex("by_projectId", (q: any) => q.eq("projectId", project._id))
     .take(200);
 
-  const assigneeMap = new Map<
-    string,
-    Awaited<ReturnType<typeof getUserSummary>>
-  >();
-  const creatorMap = new Map<
-    string,
-    Awaited<ReturnType<typeof getUserSummary>>
-  >();
-
+  // Collect every distinct user referenced by the issues and fetch them all
+  // in a single batched component round-trip. Previously this ran a serial
+  // `for`/`await getUserSummary(...)` loop (one RPC per distinct user), which
+  // added 500ms–2s on large issue lists. `getUserSummaries` collapses that
+  // fan-out into one component query and primes the ctx cache for any later
+  // `getUserSummary` callers in the same request.
+  const userIds = new Set<string>();
   for (const issue of issues) {
-    if (issue.assigneeUserId && !assigneeMap.has(issue.assigneeUserId)) {
-      assigneeMap.set(
-        issue.assigneeUserId,
-        await getUserSummary(ctx, issue.assigneeUserId),
-      );
-    }
-    if (!creatorMap.has(issue.createdByUserId)) {
-      creatorMap.set(
-        issue.createdByUserId,
-        await getUserSummary(ctx, issue.createdByUserId),
-      );
+    userIds.add(issue.createdByUserId);
+    if (issue.assigneeUserId) {
+      userIds.add(issue.assigneeUserId);
     }
   }
+  const uniqueIds = Array.from(userIds);
+  const summaries = await getUserSummaries(ctx, uniqueIds);
+  const userSummaryMap = new Map<string, (typeof summaries)[number]>(
+    uniqueIds.map((id, i) => [id, summaries[i]!]),
+  );
+  const assigneeMap = userSummaryMap;
+  const creatorMap = userSummaryMap;
 
   return {
     project: {
@@ -142,8 +135,7 @@ export const projectIssues = authQuery({
     project: v.union(projectIssueSummary, v.null()),
     issues: v.array(issueSummary),
   }),
-  handler: async (ctx, args) =>
-    await getProjectIssuesResult(ctx, ctx.auth.userId, args.projectId),
+  handler: async (ctx, args) => await getProjectIssuesResult(ctx, ctx.auth.userId, args.projectId),
 });
 
 export const projectIssuesByString = authQuery({
@@ -175,8 +167,7 @@ export const createIssue = authMutation({
     labels: v.optional(v.array(v.string())),
   },
   returns: v.object({ issueId: v.id("issues") }),
-  handler: async (ctx, args) =>
-    await createIssueRecord(ctx, ctx.auth.userId, args),
+  handler: async (ctx, args) => await createIssueRecord(ctx, ctx.auth.userId, args),
 });
 
 export const createIssueByString = authMutation({
@@ -281,13 +272,11 @@ export const updateIssue = authMutation({
 
     const patch: Record<string, unknown> = {};
     if (args.title !== undefined) patch.title = args.title.trim();
-    if (args.description !== undefined)
-      patch.description = args.description.trim();
+    if (args.description !== undefined) patch.description = args.description.trim();
     if (args.status !== undefined) patch.status = args.status;
     if (args.priority !== undefined) patch.priority = args.priority;
     if (args.assigneeUserId !== undefined) {
-      patch.assigneeUserId =
-        args.assigneeUserId === null ? undefined : args.assigneeUserId;
+      patch.assigneeUserId = args.assigneeUserId === null ? undefined : args.assigneeUserId;
     }
     if (args.labels !== undefined) patch.labels = args.labels;
 
@@ -298,10 +287,7 @@ export const updateIssue = authMutation({
         const project = await ctx.db.get(issue.projectId);
         if (project) {
           await ctx.db.patch(issue.projectId, {
-            openIssueCount: Math.max(
-              0,
-              (project.openIssueCount ?? 0) + (isNowOpen ? 1 : -1),
-            ),
+            openIssueCount: Math.max(0, (project.openIssueCount ?? 0) + (isNowOpen ? 1 : -1)),
           });
         }
       }

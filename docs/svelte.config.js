@@ -29,11 +29,7 @@ const config = {
       filename.includes("node_modules") ? undefined : { runes: true },
     onwarn(warning, handler) {
       if (warning.code === "script_context_deprecated") return;
-      if (
-        warning.code === "css_unused_selector" &&
-        warning.message?.includes("data-theme")
-      )
-        return;
+      if (warning.code === "css_unused_selector" && warning.message?.includes("data-theme")) return;
       handler(warning);
     },
   },

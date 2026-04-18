@@ -52,8 +52,7 @@ type WebhookDeps = {
   ) => Promise<void>;
 };
 
-const convexError = (data: { code: string; message: string }) =>
-  new ConvexError(data);
+const convexError = (data: { code: string; message: string }) => new ConvexError(data);
 
 export function createGroupWebhookDomain(deps: WebhookDeps) {
   const {
@@ -67,11 +66,7 @@ export function createGroupWebhookDomain(deps: WebhookDeps) {
   return {
     endpoint: {
       get: async (ctx: ComponentReadCtx, endpointId: string) => {
-        return await getWebhookEndpoint(
-          ctx,
-          config.component.public,
-          endpointId,
-        );
+        return await getWebhookEndpoint(ctx, config.component.public, endpointId);
       },
       create: async (
         ctx: ComponentCtx,
@@ -91,18 +86,14 @@ export function createGroupWebhookDomain(deps: WebhookDeps) {
           });
         }
         const secretHash = await sha256(data.secret);
-        const endpointId = await createWebhookEndpoint(
-          ctx,
-          config.component.public,
-          {
-            connectionId: connection._id,
-            groupId: connection.groupId,
-            url: data.url,
-            secretHash,
-            subscriptions: data.subscriptions,
-            createdByUserId: data.createdByUserId,
-          },
-        );
+        const endpointId = await createWebhookEndpoint(ctx, config.component.public, {
+          connectionId: connection._id,
+          groupId: connection.groupId,
+          url: data.url,
+          secretHash,
+          subscriptions: data.subscriptions,
+          createdByUserId: data.createdByUserId,
+        });
         await recordGroupAuditEvent(ctx, {
           connectionId: connection._id,
           groupId: connection.groupId,
@@ -116,11 +107,7 @@ export function createGroupWebhookDomain(deps: WebhookDeps) {
         return { endpointId };
       },
       list: async (ctx: ComponentReadCtx, connectionId: string) => {
-        return await listWebhookEndpoints(
-          ctx,
-          config.component.public,
-          connectionId,
-        );
+        return await listWebhookEndpoints(ctx, config.component.public, connectionId);
       },
       disable: async (ctx: ComponentCtx, endpointId: string) => {
         await updateWebhookEndpoint(ctx, config.component.public, {
@@ -142,10 +129,7 @@ export function createGroupWebhookDomain(deps: WebhookDeps) {
       await emitGroupWebhookDeliveries(ctx, data);
     },
     delivery: {
-      list: async (
-        ctx: ComponentReadCtx,
-        data: { connectionId: string; limit?: number },
-      ) => {
+      list: async (ctx: ComponentReadCtx, data: { connectionId: string; limit?: number }) => {
         return await listWebhookDeliveries(ctx, config.component.public, data);
       },
       listReady: async (ctx: ComponentReadCtx, limit?: number) => {
@@ -154,11 +138,7 @@ export function createGroupWebhookDomain(deps: WebhookDeps) {
           limit,
         });
       },
-      markDelivered: async (
-        ctx: ComponentCtx,
-        deliveryId: string,
-        responseStatus?: number,
-      ) => {
+      markDelivered: async (ctx: ComponentCtx, deliveryId: string, responseStatus?: number) => {
         await patchWebhookDelivery(ctx, config.component.public, {
           deliveryId,
           data: {

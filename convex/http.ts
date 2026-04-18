@@ -59,10 +59,7 @@ http.route({
       groupId: project.groupId,
       grants: ["projects.read"],
     });
-    if (
-      authContext.source === "key" &&
-      !authContext.key.scopes.can("issues", "read")
-    ) {
+    if (authContext.source === "key" && !authContext.key.scopes.can("issues", "read")) {
       return Response.json(
         { error: "This API key does not have issues.read access." },
         { status: 403 },
@@ -115,10 +112,7 @@ http.route({
       groupId: project.groupId,
       grants: ["issues.create"],
     });
-    if (
-      authContext.source === "key" &&
-      !authContext.key.scopes.can("issues", "write")
-    ) {
+    if (authContext.source === "key" && !authContext.key.scopes.can("issues", "write")) {
       return Response.json(
         { error: "This API key does not have issues.write access." },
         { status: 403 },

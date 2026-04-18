@@ -8,31 +8,20 @@ const modules: Record<string, () => Promise<unknown>> = {
   "./component/index.ts": () => import("./index"),
   "./component/model.ts": () => import("./model"),
   "./component/public.ts": () => import("./public"),
-  "./component/public/factors/devices.ts": () =>
-    import("./public/factors/devices"),
-  "./component/public/factors/passkeys.ts": () =>
-    import("./public/factors/passkeys"),
+  "./component/public/factors/devices.ts": () => import("./public/factors/devices"),
+  "./component/public/factors/passkeys.ts": () => import("./public/factors/passkeys"),
   "./component/public/factors/totp.ts": () => import("./public/factors/totp"),
   "./component/public/groups/core.ts": () => import("./public/groups/core"),
-  "./component/public/groups/invites.ts": () =>
-    import("./public/groups/invites"),
-  "./component/public/groups/members.ts": () =>
-    import("./public/groups/members"),
-  "./component/public/identity/accounts.ts": () =>
-    import("./public/identity/accounts"),
-  "./component/public/identity/codes.ts": () =>
-    import("./public/identity/codes"),
-  "./component/public/identity/sessions.ts": () =>
-    import("./public/identity/sessions"),
-  "./component/public/identity/tokens.ts": () =>
-    import("./public/identity/tokens"),
-  "./component/public/identity/users.ts": () =>
-    import("./public/identity/users"),
-  "./component/public/identity/verifiers.ts": () =>
-    import("./public/identity/verifiers"),
+  "./component/public/groups/invites.ts": () => import("./public/groups/invites"),
+  "./component/public/groups/members.ts": () => import("./public/groups/members"),
+  "./component/public/identity/accounts.ts": () => import("./public/identity/accounts"),
+  "./component/public/identity/codes.ts": () => import("./public/identity/codes"),
+  "./component/public/identity/sessions.ts": () => import("./public/identity/sessions"),
+  "./component/public/identity/tokens.ts": () => import("./public/identity/tokens"),
+  "./component/public/identity/users.ts": () => import("./public/identity/users"),
+  "./component/public/identity/verifiers.ts": () => import("./public/identity/verifiers"),
   "./component/public/security/keys.ts": () => import("./public/security/keys"),
-  "./component/public/security/limits.ts": () =>
-    import("./public/security/limits"),
+  "./component/public/security/limits.ts": () => import("./public/security/limits"),
   "./component/public/sso/audit.ts": () => import("./public/sso/audit"),
   "./component/public/sso/core.ts": () => import("./public/sso/core"),
   "./component/public/sso/domains.ts": () => import("./public/sso/domains"),

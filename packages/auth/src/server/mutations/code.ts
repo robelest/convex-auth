@@ -40,9 +40,7 @@ export async function createVerificationCodeImpl(
     allowExtraProviders,
   } = args;
   const db = authDb(ctx, config);
-  const typedExistingAccountId = existingAccountId as
-    | GenericId<"Account">
-    | undefined;
+  const typedExistingAccountId = existingAccountId as GenericId<"Account"> | undefined;
   const existingAccount =
     typedExistingAccountId !== undefined
       ? ((await db.accounts.getById(typedExistingAccountId)) ??
@@ -54,15 +52,11 @@ export async function createVerificationCodeImpl(
         })())
       : await db.accounts.get(providerId, email ?? phone!);
 
-  const provider = getProviderOrThrow(providerId, allowExtraProviders) as
-    | EmailConfig
-    | PhoneConfig;
+  const provider = getProviderOrThrow(providerId, allowExtraProviders) as EmailConfig | PhoneConfig;
   const { accountId } = await upsertUserAndAccount(
     ctx,
     await getAuthSessionId(ctx),
-    existingAccount !== null
-      ? { existingAccount }
-      : { providerAccountId: email ?? phone! },
+    existingAccount !== null ? { existingAccount } : { providerAccountId: email ?? phone! },
     provider.type === "email"
       ? { type: "email", provider, profile: { email: email! } }
       : { type: "phone", provider, profile: { phone: phone! } },
@@ -80,9 +74,7 @@ export async function createVerificationCodeImpl(
   return email ?? phone!;
 }
 
-export const callCreateVerificationCode = async <
-  DataModel extends GenericDataModel,
->(
+export const callCreateVerificationCode = async <DataModel extends GenericDataModel>(
   ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof createVerificationCodeArgs>,
 ): Promise<ReturnType> => {

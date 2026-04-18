@@ -1,8 +1,4 @@
-import {
-  inflateString,
-  base64Decode,
-  SamlLibCompat as libsaml,
-} from "./compat";
+import { inflateString, base64Decode, SamlLibCompat as libsaml } from "./compat";
 import { verifyTime } from "./security";
 import {
   extract,
@@ -15,13 +11,7 @@ import {
   loginResponseStatusFields,
 } from "./core-xml";
 
-import {
-  BindingNamespace,
-  ParserType,
-  wording,
-  MessageSignatureOrder,
-  StatusCode,
-} from "./urn";
+import { BindingNamespace, ParserType, wording, MessageSignatureOrder, StatusCode } from "./urn";
 
 const bindDict = wording.binding;
 const urlParams = wording.urlParams;
@@ -33,10 +23,7 @@ export interface FlowResult {
 }
 
 // get the default extractor fields based on the parserType
-function getDefaultExtractorFields(
-  parserType: ParserType,
-  assertion?: any,
-): ExtractorFields {
+function getDefaultExtractorFields(parserType: ParserType, assertion?: any): ExtractorFields {
   switch (parserType) {
     case ParserType.SAMLRequest:
       return loginRequestFields;
@@ -228,17 +215,9 @@ async function postFlow(options): Promise<FlowResult> {
 
     // First two cases are encrypted assertion cases
     // This case the verifiedAssertionNode is actually a response
-    if (
-      decryptRequired &&
-      verified &&
-      parserType === "SAMLResponse" &&
-      verifiedAssertionNode
-    ) {
+    if (decryptRequired && verified && parserType === "SAMLResponse" && verifiedAssertionNode) {
       // now it is extracted from solely signed contents
-      const result = await libsaml.decryptAssertion(
-        self,
-        verifiedAssertionNode,
-      );
+      const result = await libsaml.decryptAssertion(self, verifiedAssertionNode);
       samlContent = result[0];
       // extractor depends on signed content
       extractorFields = getDefaultExtractorFields(parserType, result[1]);
@@ -246,23 +225,19 @@ async function postFlow(options): Promise<FlowResult> {
       // Encrypted Assertion, the assertion is signed
       const result = await libsaml.decryptAssertion(self, samlContent);
       const decryptedDoc = result[0];
-      const [decryptedDocVerified, verifiedDecryptedAssertion] =
-        libsaml.verifySignature(decryptedDoc, verificationOptions);
+      const [decryptedDocVerified, verifiedDecryptedAssertion] = libsaml.verifySignature(
+        decryptedDoc,
+        verificationOptions,
+      );
       if (decryptedDocVerified) {
         // extractor depends on signed content
-        extractorFields = getDefaultExtractorFields(
-          parserType,
-          verifiedDecryptedAssertion,
-        );
+        extractorFields = getDefaultExtractorFields(parserType, verifiedDecryptedAssertion);
       } else {
         return Promise.reject("FAILED_TO_VERIFY_SIGNATURE");
       }
     } else if (verified) {
       // extractor depends on signed content
-      extractorFields = getDefaultExtractorFields(
-        parserType,
-        verifiedAssertionNode,
-      );
+      extractorFields = getDefaultExtractorFields(parserType, verifiedAssertionNode);
     } else {
       return Promise.reject("FAILED_TO_VERIFY_SIGNATURE");
     }
@@ -456,17 +431,12 @@ async function postSimpleSignFlow(options): Promise<FlowResult> {
 
 function checkStatus(content: string, parserType: string): Promise<string> {
   // only check response parser
-  if (
-    parserType !== urlParams.samlResponse &&
-    parserType !== urlParams.logoutResponse
-  ) {
+  if (parserType !== urlParams.samlResponse && parserType !== urlParams.logoutResponse) {
     return Promise.resolve("SKIPPED");
   }
 
   const fields =
-    parserType === urlParams.samlResponse
-      ? loginResponseStatusFields
-      : logoutResponseStatusFields;
+    parserType === urlParams.samlResponse ? loginResponseStatusFields : logoutResponseStatusFields;
 
   const { top, second } = extract(content, fields);
 
@@ -480,9 +450,7 @@ function checkStatus(content: string, parserType: string): Promise<string> {
   }
 
   // returns a detailed error for two-tier error code
-  throw new Error(
-    `ERR_FAILED_STATUS with top tier code: ${top}, second tier code: ${second}`,
-  );
+  throw new Error(`ERR_FAILED_STATUS with top tier code: ${top}, second tier code: ${second}`);
 }
 
 export function flow(options): Promise<FlowResult> {

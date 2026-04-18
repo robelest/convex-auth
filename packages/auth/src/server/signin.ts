@@ -18,6 +18,8 @@ import { handlePasskeyFx } from "./passkey";
 import type { SignInParams } from "./payloads";
 import { generateRandomString } from "./random";
 import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects";
+import { finalizeSessionIssuance } from "./sessions";
+import type { SessionIssuance } from "./sessions";
 import { handleTotp } from "./totp";
 import {
   AuthProviderMaterializedConfig,
@@ -107,14 +109,8 @@ const describeUnknown = (value: unknown) => {
   return json ?? Object.prototype.toString.call(value);
 };
 
-const asConvexError = (
-  error: unknown,
-  code: string,
-  message: string,
-): ConvexError<AuthErrorData> =>
-  error instanceof ConvexError
-    ? error
-    : toConvexError(authFlowError(code, message));
+const asConvexError = (error: unknown, code: string, message: string): ConvexError<AuthErrorData> =>
+  error instanceof ConvexError ? error : toConvexError(authFlowError(code, message));
 
 const asCredentialsError = (error: unknown): ConvexError<AuthErrorData> => {
   if (error instanceof ConvexError) {
@@ -122,15 +118,11 @@ const asCredentialsError = (error: unknown): ConvexError<AuthErrorData> => {
   }
   if (error instanceof Error) {
     return new ConvexError({
-      code: error.message.startsWith("Missing `")
-        ? "INVALID_PARAMETERS"
-        : "INVALID_CREDENTIALS",
+      code: error.message.startsWith("Missing `") ? "INVALID_PARAMETERS" : "INVALID_CREDENTIALS",
       message: error.message,
     });
   }
-  return toConvexError(
-    authFlowError("INTERNAL_ERROR", "Failed to authorize credentials."),
-  );
+  return toConvexError(authFlowError("INTERNAL_ERROR", "Failed to authorize credentials."));
 };
 
 export async function signInImpl(
@@ -146,10 +138,7 @@ export async function signInImpl(
   options: {
     generateTokens: boolean;
     allowExtraProviders: boolean;
-    resolveSsoProtocol?: (
-      ctx: EnrichedActionCtx,
-      connectionId: string,
-    ) => Promise<"oidc" | "saml">;
+    resolveSsoProtocol?: (ctx: EnrichedActionCtx, connectionId: string) => Promise<"oidc" | "saml">;
   },
 ): Promise<SignInResult> {
   return signInFx(ctx, provider, args, options);
@@ -168,79 +157,80 @@ async function signInFx(
   options: {
     generateTokens: boolean;
     allowExtraProviders: boolean;
-    resolveSsoProtocol?: (
-      ctx: EnrichedActionCtx,
-      connectionId: string,
-    ) => Promise<"oidc" | "saml">;
+    resolveSsoProtocol?: (ctx: EnrichedActionCtx, connectionId: string) => Promise<"oidc" | "saml">;
   },
 ): Promise<SignInResult> {
-  return withSpan("convex-auth.signin", {
-    hasProvider: provider !== null,
-    hasCode: args.params?.code !== undefined,
-    hasRefreshToken: args.refreshToken !== undefined,
-  }, async () => {
-    if (provider === null && args.refreshToken) {
-      try {
-        const tokens = await callRefreshSession(ctx, { refreshToken: args.refreshToken! });
-        if (tokens === null) {
-          return { kind: "signedIn" as const, signedIn: null };
+  return withSpan(
+    "convex-auth.signin",
+    {
+      hasProvider: provider !== null,
+      hasCode: args.params?.code !== undefined,
+      hasRefreshToken: args.refreshToken !== undefined,
+    },
+    async () => {
+      if (provider === null && args.refreshToken) {
+        try {
+          const tokens = await callRefreshSession(ctx, { refreshToken: args.refreshToken! });
+          if (tokens === null) {
+            return { kind: "signedIn" as const, signedIn: null };
+          }
+          return { kind: "refreshTokens" as const, signedIn: { tokens } };
+        } catch (error) {
+          throw asConvexError(error, "INTERNAL_ERROR", "Failed to refresh session.");
         }
-        return { kind: "refreshTokens" as const, signedIn: { tokens } };
-      } catch (error) {
-        throw asConvexError(error, "INTERNAL_ERROR", "Failed to refresh session.");
       }
-    }
 
-    if (provider === null && args.params?.code !== undefined) {
-      try {
-        const result = await callVerifyCodeAndSignIn(ctx, {
-          params: args.params as SignInParams,
-          verifier: args.verifier,
-          generateTokens: true,
-          allowExtraProviders: options.allowExtraProviders,
-        });
-        return { kind: "signedIn" as const, signedIn: result };
-      } catch (error) {
-        throw asConvexError(
-          error,
-          "INTERNAL_ERROR",
-          "Failed to verify sign-in code.",
+      if (provider === null && args.params?.code !== undefined) {
+        try {
+          const result = await callVerifyCodeAndSignIn(ctx, {
+            params: args.params as SignInParams,
+            verifier: args.verifier,
+            generateTokens: true,
+            allowExtraProviders: options.allowExtraProviders,
+          });
+          return { kind: "signedIn" as const, signedIn: result };
+        } catch (error) {
+          throw asConvexError(error, "INTERNAL_ERROR", "Failed to verify sign-in code.");
+        }
+      }
+
+      const resolvedProvider = provider;
+      if (resolvedProvider === null) {
+        throw toConvexError(
+          authFlowError(
+            "SIGN_IN_MISSING_PARAMS",
+            "Cannot sign in: missing provider, code, or refresh token.",
+          ),
         );
       }
-    }
 
-    const resolvedProvider = provider;
-    if (resolvedProvider === null) {
-      throw toConvexError(
-        authFlowError(
-          "SIGN_IN_MISSING_PARAMS",
-          "Cannot sign in: missing provider, code, or refresh token.",
-        ),
-      );
-    }
+      const providerHandlers: Record<string, () => Promise<SignInResult>> = {
+        email: () =>
+          handleEmailAndPhoneProviderFx(ctx, resolvedProvider as EmailConfig, args, options),
+        phone: () =>
+          handleEmailAndPhoneProviderFx(ctx, resolvedProvider as PhoneConfig, args, options),
+        credentials: () =>
+          handleCredentialsFx(ctx, resolvedProvider as ConvexCredentialsConfig, args, options),
+        oauth: () =>
+          handleOAuthProviderFx(ctx, resolvedProvider as OAuthMaterializedConfig, args, options),
+        passkey: () => handlePasskeyFx(ctx, resolvedProvider as any, args),
+        totp: () => handleTotp(ctx, resolvedProvider as any, args),
+        device: () => handleDevice(ctx, resolvedProvider as any, args),
+        sso: () => handleSsoProviderFx(ctx, args, options),
+      };
 
-    const providerHandlers: Record<string, () => Promise<SignInResult>> = {
-      email: () => handleEmailAndPhoneProviderFx(ctx, resolvedProvider as EmailConfig, args, options),
-      phone: () => handleEmailAndPhoneProviderFx(ctx, resolvedProvider as PhoneConfig, args, options),
-      credentials: () => handleCredentialsFx(ctx, resolvedProvider as ConvexCredentialsConfig, args, options),
-      oauth: () => handleOAuthProviderFx(ctx, resolvedProvider as OAuthMaterializedConfig, args, options),
-      passkey: () => handlePasskeyFx(ctx, resolvedProvider as any, args),
-      totp: () => handleTotp(ctx, resolvedProvider as any, args),
-      device: () => handleDevice(ctx, resolvedProvider as any, args),
-      sso: () => handleSsoProviderFx(ctx, args, options),
-    };
-
-    const handler = providerHandlers[resolvedProvider.type];
-    if (!handler) {
-      throw toConvexError(
-        authFlowError(
-          "SIGN_IN_MISSING_PARAMS",
-          `Unknown provider type: ${resolvedProvider.type}`,
-        ),
-      );
-    }
-    return handler();
-  });
+      const handler = providerHandlers[resolvedProvider.type];
+      if (!handler) {
+        throw toConvexError(
+          authFlowError(
+            "SIGN_IN_MISSING_PARAMS",
+            `Unknown provider type: ${resolvedProvider.type}`,
+          ),
+        );
+      }
+      return handler();
+    },
+  );
 }
 
 async function handleEmailAndPhoneProviderFx(
@@ -255,8 +245,7 @@ async function handleEmailAndPhoneProviderFx(
     allowExtraProviders: boolean;
   },
 ): Promise<
-  | { kind: "started"; started: true }
-  | { kind: "signedIn"; signedIn: SessionInfoWithTokens }
+  { kind: "started"; started: true } | { kind: "signedIn"; signedIn: SessionInfoWithTokens }
 > {
   return withSpan(`convex-auth.signin.${provider.type}`, {}, async () => {
     const normalizedParams = normalizeVerificationParams(args.params);
@@ -270,18 +259,11 @@ async function handleEmailAndPhoneProviderFx(
           allowExtraProviders: options.allowExtraProviders,
         });
       } catch (error) {
-        throw asConvexError(
-          error,
-          "INTERNAL_ERROR",
-          "Failed to verify email or phone code.",
-        );
+        throw asConvexError(error, "INTERNAL_ERROR", "Failed to verify email or phone code.");
       }
       if (result === null) {
         throw toConvexError(
-          authFlowError(
-            "INVALID_VERIFICATION_CODE",
-            "Invalid or expired verification code.",
-          ),
+          authFlowError("INVALID_VERIFICATION_CODE", "Invalid or expired verification code."),
         );
       }
       return {
@@ -290,18 +272,14 @@ async function handleEmailAndPhoneProviderFx(
       };
     }
 
-    const alphabet =
-      "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     let code: string;
     if (provider.generateVerificationToken) {
       try {
         code = await provider.generateVerificationToken();
       } catch {
         throw toConvexError(
-          authFlowError(
-            "INTERNAL_ERROR",
-            "Failed to generate verification token",
-          ),
+          authFlowError("INTERNAL_ERROR", "Failed to generate verification token"),
         );
       }
     } else {
@@ -309,8 +287,7 @@ async function handleEmailAndPhoneProviderFx(
     }
 
     const expirationTime =
-      Date.now() +
-      (provider.maxAge ?? DEFAULT_EMAIL_VERIFICATION_CODE_DURATION_S) * 1000;
+      Date.now() + (provider.maxAge ?? DEFAULT_EMAIL_VERIFICATION_CODE_DURATION_S) * 1000;
 
     let identifier: string;
     try {
@@ -324,11 +301,7 @@ async function handleEmailAndPhoneProviderFx(
         allowExtraProviders: options.allowExtraProviders,
       });
     } catch (error) {
-      throw asConvexError(
-        error,
-        "INTERNAL_ERROR",
-        "Failed to create verification code.",
-      );
+      throw asConvexError(error, "INTERNAL_ERROR", "Failed to create verification code.");
     }
 
     let destination: string;
@@ -338,11 +311,7 @@ async function handleEmailAndPhoneProviderFx(
         (args.params ?? {}) as { redirectTo: unknown },
       );
     } catch (error) {
-      throw asConvexError(
-        error,
-        "INVALID_REDIRECT",
-        "Failed to resolve redirect URL.",
-      );
+      throw asConvexError(error, "INVALID_REDIRECT", "Failed to resolve redirect URL.");
     }
 
     const verificationArgs = {
@@ -363,9 +332,7 @@ async function handleEmailAndPhoneProviderFx(
           ctx,
         );
       } catch {
-        throw toConvexError(
-          authFlowError("INTERNAL_ERROR", "Failed to send email code"),
-        );
+        throw toConvexError(authFlowError("INTERNAL_ERROR", "Failed to send email code"));
       }
     } else {
       try {
@@ -374,9 +341,7 @@ async function handleEmailAndPhoneProviderFx(
           ctx,
         );
       } catch {
-        throw toConvexError(
-          authFlowError("INTERNAL_ERROR", "Failed to send phone code"),
-        );
+        throw toConvexError(authFlowError("INTERNAL_ERROR", "Failed to send phone code"));
       }
     }
 
@@ -394,15 +359,19 @@ async function handleCredentialsFx(
     generateTokens: boolean;
   },
 ): Promise<
-  | { kind: "signedIn"; signedIn: SessionInfo | null }
-  | { kind: "totpRequired"; verifier: string }
+  { kind: "signedIn"; signedIn: SessionInfo | null } | { kind: "totpRequired"; verifier: string }
 > {
   return withSpan("convex-auth.signin.credentials", {}, async () => {
     let result;
     try {
-      result = await provider.authorize(
-        (args.params ?? {}) as Partial<Record<string, Value | undefined>>,
-        ctx,
+      result = await withSpan(
+        "convex-auth.signin.credentials.authorize",
+        { providerId: provider.id },
+        () =>
+          provider.authorize(
+            (args.params ?? {}) as Partial<Record<string, Value | undefined>>,
+            ctx,
+          ),
       );
     } catch (error) {
       throw asCredentialsError(error);
@@ -411,31 +380,45 @@ async function handleCredentialsFx(
       return { kind: "signedIn" as const, signedIn: null };
     }
 
+    const hintedHasTotp = (result as unknown as { hasTotp?: boolean }).hasTotp;
+    const preIssuedIssuance = (result as unknown as { issuance?: SessionIssuance }).issuance;
+
     let hasTotpEnrolled: boolean;
-    try {
-      const totpDoc = await queryTotpVerifiedByUserId(ctx, result.userId);
-      hasTotpEnrolled = totpDoc !== null;
-    } catch (error) {
-      throw asConvexError(
-        error,
-        "INTERNAL_ERROR",
-        "Failed to load TOTP enrollment.",
-      );
+    if (hintedHasTotp === false) {
+      hasTotpEnrolled = false;
+    } else if (hintedHasTotp === true) {
+      hasTotpEnrolled = true;
+    } else if (preIssuedIssuance !== undefined && preIssuedIssuance.refreshToken === null) {
+      hasTotpEnrolled = true;
+    } else {
+      try {
+        const totpDoc = await withSpan(
+          "convex-auth.signin.credentials.totp-check",
+          { hinted: hintedHasTotp ?? "unknown" },
+          () => queryTotpVerifiedByUserId(ctx, result.userId),
+        );
+        hasTotpEnrolled = totpDoc !== null;
+      } catch (error) {
+        throw asConvexError(error, "INTERNAL_ERROR", "Failed to load TOTP enrollment.");
+      }
     }
 
     if (hasTotpEnrolled) {
-      try {
-        await callSignIn(ctx, {
-          userId: result.userId,
-          sessionId: result.sessionId,
-          generateTokens: false,
-        });
-      } catch (error) {
-        throw asConvexError(
-          error,
-          "INTERNAL_ERROR",
-          "Failed to start TOTP sign-in.",
-        );
+      if (preIssuedIssuance === undefined) {
+        try {
+          await withSpan(
+            "convex-auth.signin.credentials.issue-session",
+            { generateTokens: false, totpStepUp: true },
+            () =>
+              callSignIn(ctx, {
+                userId: result.userId,
+                sessionId: result.sessionId,
+                generateTokens: false,
+              }),
+          );
+        } catch (error) {
+          throw asConvexError(error, "INTERNAL_ERROR", "Failed to start TOTP sign-in.");
+        }
       }
       let verifier: string;
       try {
@@ -446,13 +429,35 @@ async function handleCredentialsFx(
       return { kind: "totpRequired" as const, verifier };
     }
 
+    if (preIssuedIssuance !== undefined) {
+      try {
+        const idsAndTokens = await withSpan(
+          "convex-auth.signin.credentials.finalize",
+          { generateTokens: options.generateTokens, fromAuthorize: true },
+          () =>
+            finalizeSessionIssuance(ctx.auth.config, {
+              ...preIssuedIssuance,
+              refreshToken: options.generateTokens ? preIssuedIssuance.refreshToken : null,
+            }),
+        );
+        return { kind: "signedIn" as const, signedIn: idsAndTokens };
+      } catch (error) {
+        throw asConvexError(error, "INTERNAL_ERROR", "Failed to finalize sign-in.");
+      }
+    }
+
     let idsAndTokens;
     try {
-      idsAndTokens = await callSignIn(ctx, {
-        userId: result.userId,
-        sessionId: result.sessionId,
-        generateTokens: options.generateTokens,
-      });
+      idsAndTokens = await withSpan(
+        "convex-auth.signin.credentials.issue-session",
+        { generateTokens: options.generateTokens },
+        () =>
+          callSignIn(ctx, {
+            userId: result.userId,
+            sessionId: result.sessionId,
+            generateTokens: options.generateTokens,
+          }),
+      );
     } catch (error) {
       throw asConvexError(error, "INTERNAL_ERROR", "Failed to complete sign-in.");
     }
@@ -485,11 +490,7 @@ async function handleOAuthProviderFx(
           allowExtraProviders: options.allowExtraProviders,
         });
       } catch (error) {
-        throw asConvexError(
-          error,
-          "INTERNAL_ERROR",
-          "Failed to verify OAuth sign-in.",
-        );
+        throw asConvexError(error, "INTERNAL_ERROR", "Failed to verify OAuth sign-in.");
       }
       return {
         kind: "signedIn" as const,
@@ -498,8 +499,8 @@ async function handleOAuthProviderFx(
     }
 
     const redirect = new URL(
-      (readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ??
-        requireEnv("CONVEX_SITE_URL")) + `/api/auth/signin/${provider.id}`,
+      (readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ?? requireEnv("CONVEX_SITE_URL")) +
+        `/api/auth/signin/${provider.id}`,
     );
     let verifier: string;
     try {
@@ -535,10 +536,7 @@ async function handleSsoProviderFx(
     params?: SignInParams;
   },
   options: {
-    resolveSsoProtocol?: (
-      ctx: EnrichedActionCtx,
-      connectionId: string,
-    ) => Promise<"oidc" | "saml">;
+    resolveSsoProtocol?: (ctx: EnrichedActionCtx, connectionId: string) => Promise<"oidc" | "saml">;
   },
 ): Promise<{ kind: "redirect"; redirect: string; verifier: string }> {
   return withSpan("convex-auth.signin.sso", {}, async () => {
@@ -546,16 +544,12 @@ async function handleSsoProviderFx(
     const connectionId = normalizedParams.connectionId;
     if (!connectionId || typeof connectionId !== "string") {
       throw toConvexError(
-        authFlowError(
-          "SIGN_IN_MISSING_PARAMS",
-          "connectionId is required for SSO sign-in.",
-        ),
+        authFlowError("SIGN_IN_MISSING_PARAMS", "connectionId is required for SSO sign-in."),
       );
     }
 
     let protocol: "oidc" | "saml" =
-      (normalizedParams.protocol === "oidc" ||
-      normalizedParams.protocol === "saml"
+      (normalizedParams.protocol === "oidc" || normalizedParams.protocol === "saml"
         ? normalizedParams.protocol
         : undefined) ??
       (options.resolveSsoProtocol
@@ -563,11 +557,7 @@ async function handleSsoProviderFx(
             try {
               return await options.resolveSsoProtocol!(ctx, connectionId);
             } catch (error) {
-              throw asConvexError(
-                error,
-                "INTERNAL_ERROR",
-                "Failed to resolve SSO protocol.",
-              );
+              throw asConvexError(error, "INTERNAL_ERROR", "Failed to resolve SSO protocol.");
             }
           })()
         : "oidc");
@@ -575,10 +565,7 @@ async function handleSsoProviderFx(
     log("DEBUG", "[group-sso] signin:resolved", {
       connectionId,
       protocol,
-      redirectTo:
-        typeof args.params?.redirectTo === "string"
-          ? args.params.redirectTo
-          : undefined,
+      redirectTo: typeof args.params?.redirectTo === "string" ? args.params.redirectTo : undefined,
     });
 
     if (protocol !== "oidc" && protocol !== "saml") {
@@ -597,11 +584,8 @@ async function handleSsoProviderFx(
       throw asConvexError(error, "INTERNAL_ERROR", "Failed to create verifier.");
     }
     const siteUrl =
-      readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ??
-      requireEnv("CONVEX_SITE_URL");
-    const redirect = new URL(
-      `${siteUrl}/api/auth/connections/${connectionId}/${protocol}/signin`,
-    );
+      readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ?? requireEnv("CONVEX_SITE_URL");
+    const redirect = new URL(`${siteUrl}/api/auth/connections/${connectionId}/${protocol}/signin`);
     redirect.searchParams.set("code", verifier);
 
     if (typeof args.params?.redirectTo === "string") {

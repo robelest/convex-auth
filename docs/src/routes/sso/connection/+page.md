@@ -1,7 +1,6 @@
 ---
 title: auth.group.sso.connection
-description:
-  SSO connection management — create and manage per-tenant SSO connections.
+description: SSO connection management — create and manage per-tenant SSO connections.
 ---
 
 <svelte:head>
@@ -60,38 +59,27 @@ const { connectionId } = await auth.group.sso.connection.create(ctx, {
 });
 
 // Replace the attached group connection domains
-const domainResult = await auth.group.sso.connection.domain.set(
-  ctx,
+const domainResult = await auth.group.sso.connection.domain.set(ctx, connectionId, [
+  { domain: "acme.com", isPrimary: true },
+  { domain: "login.acme.com" },
+]);
+
+const challenge = await auth.group.sso.connection.domain.verification.request(ctx, {
   connectionId,
-  [{ domain: "acme.com", isPrimary: true }, { domain: "login.acme.com" }],
-);
+  domain: "acme.com",
+});
 
-const challenge = await auth.group.sso.connection.domain.verification.request(
-  ctx,
-  {
-    connectionId,
-    domain: "acme.com",
-  },
-);
-
-const confirmation =
-  await auth.group.sso.connection.domain.verification.confirm(ctx, {
-    connectionId,
-    domain: "acme.com",
-  });
+const confirmation = await auth.group.sso.connection.domain.verification.confirm(ctx, {
+  connectionId,
+  domain: "acme.com",
+});
 
 const domains = await auth.group.sso.connection.domain.list(ctx, connectionId);
 
-const domainStatus = await auth.group.sso.connection.domain.status(
-  ctx,
-  connectionId,
-);
+const domainStatus = await auth.group.sso.connection.domain.status(ctx, connectionId);
 
 // Inspect domain onboarding readiness
-const diagnostics = await auth.group.sso.connection.domain.validate(
-  ctx,
-  connectionId,
-);
+const diagnostics = await auth.group.sso.connection.domain.validate(ctx, connectionId);
 
 // Check connection health
 const status = await auth.group.sso.connection.status(ctx, connectionId);

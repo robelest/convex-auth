@@ -13,9 +13,7 @@ import type { ConvexError, Value } from "convex/values";
 export interface ConvexTransport {
   action(action: unknown, args: unknown): Promise<unknown>;
   setAuth(
-    fetchToken: (args: {
-      forceRefreshToken: boolean;
-    }) => Promise<string | null | undefined>,
+    fetchToken: (args: { forceRefreshToken: boolean }) => Promise<string | null | undefined>,
     onChange?: (isAuthenticated: boolean) => void,
   ): void;
   clearAuth?(): void;
@@ -30,9 +28,7 @@ export type SignInApiRef = { signIn: AuthApiRefs["signIn"] };
 
 /** Pluggable key-value storage supplied by the host runtime. */
 export interface Storage {
-  getItem(
-    key: string,
-  ): string | null | undefined | Promise<string | null | undefined>;
+  getItem(key: string): string | null | undefined | Promise<string | null | undefined>;
   setItem(key: string, value: string): void | Promise<void>;
   removeItem(key: string): void | Promise<void>;
 }
@@ -211,18 +207,8 @@ export type AuthApiRefs<
   HasDevice extends boolean = boolean,
 > = {
   signIn: FunctionReference<"action", "public", Record<string, Value>, unknown>;
-  signOut: FunctionReference<
-    "action",
-    "public",
-    Record<string, Value>,
-    unknown
-  >;
-  store: FunctionReference<
-    "mutation",
-    "public",
-    Record<string, Value>,
-    unknown
-  >;
+  signOut: FunctionReference<"action", "public", Record<string, Value>, unknown>;
+  store: FunctionReference<"mutation", "public", Record<string, Value>, unknown>;
   /** @internal Set automatically by `createAuth` — do not set manually. */
   _capabilities?: {
     passkey: HasPasskey;
@@ -458,10 +444,7 @@ export interface AuthClientBase {
    */
   readonly invite: PendingInvite | null;
   /** Start a sign-in flow for a provider. */
-  signIn: (
-    provider: string,
-    params?: Record<string, unknown>,
-  ) => Promise<SignInResult>;
+  signIn: (provider: string, params?: Record<string, unknown>) => Promise<SignInResult>;
   /** Sign out and clear local auth state. */
   signOut: () => Promise<void>;
   /** Subscribe to auth state changes. Returns an unsubscribe function. */
@@ -479,11 +462,10 @@ export interface AuthClientBase {
  *
  * @typeParam Api - An AuthApiRefs type that determines which factor helpers are included.
  */
-export type AuthClient<
-  Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs,
-> = AuthClientBase &
-  (InferCaps<Api>["totp"] extends true ? { totp: TotpClient } : {}) &
-  (InferCaps<Api>["device"] extends true ? { device: DeviceClient } : {});
+export type AuthClient<Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs> =
+  AuthClientBase &
+    (InferCaps<Api>["totp"] extends true ? { totp: TotpClient } : {}) &
+    (InferCaps<Api>["device"] extends true ? { device: DeviceClient } : {});
 
 /**
  * Browser auth client return type.
@@ -493,19 +475,15 @@ export type AuthClient<
  *
  * @typeParam Api - An AuthApiRefs type that determines which factor helpers are included.
  */
-export type BrowserAuthClient<
-  Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs,
-> = AuthClient<Api> &
-  (InferCaps<Api>["passkey"] extends true ? { passkey: PasskeyClient } : {});
+export type BrowserAuthClient<Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs> =
+  AuthClient<Api> & (InferCaps<Api>["passkey"] extends true ? { passkey: PasskeyClient } : {});
 
 /**
  * Options for {@link client}.
  *
  * @typeParam Api - An AuthApiRefs type.
  */
-export type ClientOptions<
-  Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs,
-> = {
+export type ClientOptions<Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs> = {
   /** Any Convex client implementation used to run auth actions. */
   convex: ConvexTransport;
   /** Platform runtime implementation used by the client core. */
@@ -546,9 +524,7 @@ export type ClientOptions<
   location?: URL | (() => URL | null);
 };
 
-export type AuthHandshakeErrorCode =
-  | "AUTH_HANDSHAKE_TIMEOUT"
-  | "AUTH_HANDSHAKE_REJECTED";
+export type AuthHandshakeErrorCode = "AUTH_HANDSHAKE_TIMEOUT" | "AUTH_HANDSHAKE_REJECTED";
 
 export type AuthFlowContext = {
   provider?: string;

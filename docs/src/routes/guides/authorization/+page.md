@@ -115,10 +115,7 @@ These examples assume your handlers use auth-aware builders that inject
 `ctx.auth` once in `convex/functions.ts`:
 
 ```ts
-import {
-  customMutation,
-  customQuery,
-} from "convex-helpers/server/customFunctions";
+import { customMutation, customQuery } from "convex-helpers/server/customFunctions";
 import { mutation, query } from "./_generated/server";
 import { auth } from "./auth";
 

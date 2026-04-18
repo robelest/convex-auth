@@ -1,10 +1,7 @@
 import { v } from "convex/values";
 
 import { mutation, query } from "../../functions";
-import {
-  vGroupConnectionSecretDoc,
-  vGroupConnectionSecretKind,
-} from "../../model";
+import { vGroupConnectionSecretDoc, vGroupConnectionSecretKind } from "../../model";
 
 /**
  * Create or update an encrypted secret for an connection.

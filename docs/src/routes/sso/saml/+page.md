@@ -1,7 +1,6 @@
 ---
 title: auth.group.sso.saml
-description:
-  SAML 2.0 provider configuration — metadata exchange and assertion validation.
+description: SAML 2.0 provider configuration — metadata exchange and assertion validation.
 ---
 
 <svelte:head>

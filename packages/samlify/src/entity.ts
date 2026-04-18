@@ -6,17 +6,11 @@
 import { isString, isNonEmptyArray } from "./compat";
 import { namespace, wording, algorithms, messageConfigurations } from "./urn";
 import * as uuid from "uuid";
-import IdpMetadata, {
-  IdpMetadata as IdpMetadataConstructor,
-} from "./metadata-idp";
+import IdpMetadata, { IdpMetadata as IdpMetadataConstructor } from "./metadata-idp";
 import SpMetadata, { SpMetadata as SpMetadataConstructor } from "./metadata-sp";
 import redirectBinding from "./binding-redirect";
 import postBinding from "./binding-post";
-import {
-  MetadataIdpConstructor,
-  MetadataSpConstructor,
-  EntitySetting,
-} from "./types";
+import { MetadataIdpConstructor, MetadataSpConstructor, EntitySetting } from "./types";
 import { BinaryLike } from "./types";
 import { flow, FlowResult } from "./flow";
 
@@ -72,10 +66,9 @@ export interface ParseResult {
   sigAlg: string;
 }
 
-export type EntityConstructor = (
-  | MetadataIdpConstructor
-  | MetadataSpConstructor
-) & { metadata?: BinaryLike };
+export type EntityConstructor = (MetadataIdpConstructor | MetadataSpConstructor) & {
+  metadata?: BinaryLike;
+};
 
 export default class Entity {
   entitySetting: EntitySetting;
@@ -93,18 +86,15 @@ export default class Entity {
       case "idp":
         this.entityMeta = IdpMetadata(metadata);
         // setting with metadata has higher precedence
-        this.entitySetting.wantAuthnRequestsSigned =
-          this.entityMeta.isWantAuthnRequestsSigned();
+        this.entitySetting.wantAuthnRequestsSigned = this.entityMeta.isWantAuthnRequestsSigned();
         this.entitySetting.nameIDFormat =
           this.entityMeta.getNameIDFormat() || this.entitySetting.nameIDFormat;
         break;
       case "sp":
         this.entityMeta = SpMetadata(metadata);
         // setting with metadata has higher precedence
-        this.entitySetting.authnRequestsSigned =
-          this.entityMeta.isAuthnRequestSigned();
-        this.entitySetting.wantAssertionsSigned =
-          this.entityMeta.isWantAssertionsSigned();
+        this.entitySetting.authnRequestsSigned = this.entityMeta.isAuthnRequestSigned();
+        this.entitySetting.wantAssertionsSigned = this.entityMeta.isWantAssertionsSigned();
         this.entitySetting.nameIDFormat =
           this.entityMeta.getNameIDFormat() || this.entitySetting.nameIDFormat;
         break;
@@ -183,8 +173,7 @@ export default class Entity {
       );
     }
     if (binding === wording.binding.post) {
-      const entityEndpoint =
-        targetEntity.entityMeta.getSingleLogoutService(binding);
+      const entityEndpoint = targetEntity.entityMeta.getSingleLogoutService(binding);
       const context = postBinding.base64LogoutRequest(
         user,
         "/*[local-name(.)='LogoutRequest']",

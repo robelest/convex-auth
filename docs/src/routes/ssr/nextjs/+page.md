@@ -1,7 +1,6 @@
 ---
 title: Next.js
-description:
-  Integrate convex-auth SSR with Next.js using middleware or server components.
+description: Integrate convex-auth SSR with Next.js using middleware or server components.
 ---
 
 <svelte:head>

@@ -18,10 +18,7 @@
     "**/*.d.ts"
   ],
   "rules": {
-    "typescript/no-unused-vars": [
-      "warn",
-      { "varsIgnorePattern": "^_", "argsIgnorePattern": "^_" }
-    ],
+    "typescript/no-unused-vars": ["warn", { "varsIgnorePattern": "^_", "argsIgnorePattern": "^_" }],
     "typescript/ban-ts-comment": "error",
     "typescript/no-explicit-any": "off",
     "typescript/no-empty-object-type": "off",
@@ -42,10 +39,7 @@
         "convex/no-old-registered-function-syntax": "error",
         "convex/explicit-table-ids": "error",
         "convex/import-wrong-runtime": "error",
-        "convex/require-args-validator": [
-          "error",
-          { "ignoreUnusedArguments": false }
-        ]
+        "convex/require-args-validator": ["error", { "ignoreUnusedArguments": false }]
       }
     },
     {

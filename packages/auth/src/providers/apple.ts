@@ -18,10 +18,7 @@
 import { Apple as ArcticApple } from "arctic";
 
 import { envOptionalString, readConfigSync } from "../server/env";
-import {
-  createArcticOAuthClient,
-  createOAuthProvider,
-} from "../server/oauth/factory";
+import { createArcticOAuthClient, createOAuthProvider } from "../server/oauth/factory";
 
 const DEFAULT_SCOPES = ["name", "email"];
 

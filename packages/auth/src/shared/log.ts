@@ -60,13 +60,10 @@ export function logMessage(
   }
 }
 
-export function logErrorCause(
-  module: string,
-  message: string,
-  cause: unknown,
-) {
-  const causeMessage = cause instanceof Error
-    ? `${cause.message}${cause.stack ? `\n${cause.stack}` : ""}`
-    : serialize(cause);
+export function logErrorCause(module: string, message: string, cause: unknown) {
+  const causeMessage =
+    cause instanceof Error
+      ? `${cause.message}${cause.stack ? `\n${cause.stack}` : ""}`
+      : serialize(cause);
   console.error(`[${module}] [${LOG_LEVELS.ERROR}]`, `${message} ${causeMessage}`);
 }

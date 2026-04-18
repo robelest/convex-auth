@@ -1,7 +1,4 @@
-import type {
-  GroupConnectionPolicy,
-  GroupConnectionPolicyPatch,
-} from "../types";
+import type { GroupConnectionPolicy, GroupConnectionPolicyPatch } from "../types";
 import { asRecord } from "./shared";
 
 export const DEFAULT_GROUP_CONNECTION_POLICY: GroupConnectionPolicy = {
@@ -40,9 +37,7 @@ export const DEFAULT_GROUP_CONNECTION_POLICY: GroupConnectionPolicy = {
   },
 };
 
-export function normalizeGroupConnectionPolicy(
-  policy: unknown,
-): GroupConnectionPolicy {
+export function normalizeGroupConnectionPolicy(policy: unknown): GroupConnectionPolicy {
   const input = asRecord(policy) ?? {};
   const identity = asRecord(input.identity) ?? {};
   const accountLinking = asRecord(identity.accountLinking) ?? {};
@@ -76,17 +71,13 @@ export function normalizeGroupConnectionPolicy(
             ? user.createOnSignIn
             : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.user.createOnSignIn,
         updateProfileOnLogin:
-          user.updateProfileOnLogin === "never" ||
-          user.updateProfileOnLogin === "always"
+          user.updateProfileOnLogin === "never" || user.updateProfileOnLogin === "always"
             ? user.updateProfileOnLogin
-            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.user
-                .updateProfileOnLogin,
+            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.user.updateProfileOnLogin,
         updateProfileFromScim:
-          user.updateProfileFromScim === "never" ||
-          user.updateProfileFromScim === "missing"
+          user.updateProfileFromScim === "never" || user.updateProfileFromScim === "missing"
             ? user.updateProfileFromScim
-            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.user
-                .updateProfileFromScim,
+            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.user.updateProfileFromScim,
         authority:
           user.authority === "sso" || user.authority === "scim"
             ? user.authority
@@ -100,17 +91,14 @@ export function normalizeGroupConnectionPolicy(
       },
       jit: {
         mode:
-          jit.mode === "off" ||
-          jit.mode === "createUser" ||
-          jit.mode === "createUserAndMembership"
+          jit.mode === "off" || jit.mode === "createUser" || jit.mode === "createUserAndMembership"
             ? jit.mode
             : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.jit.mode,
         defaultRoleIds: Array.isArray(jit.defaultRoleIds)
           ? Array.from(
               new Set(
                 jit.defaultRoleIds.filter(
-                  (value): value is string =>
-                    typeof value === "string" && value.length > 0,
+                  (value): value is string => typeof value === "string" && value.length > 0,
                 ),
               ),
             )
@@ -134,17 +122,13 @@ export function normalizeGroupConnectionPolicy(
           ? {
               mapping: Object.fromEntries(
                 Object.entries(groups.mapping)
-                  .filter(
-                    ([key, value]) =>
-                      typeof key === "string" && Array.isArray(value),
-                  )
+                  .filter(([key, value]) => typeof key === "string" && Array.isArray(value))
                   .map(([key, value]) => [
                     key,
                     Array.from(
                       new Set(
                         (value as unknown[]).filter(
-                          (item): item is string =>
-                            typeof item === "string" && item.length > 0,
+                          (item): item is string => typeof item === "string" && item.length > 0,
                         ),
                       ),
                     ),
@@ -155,25 +139,19 @@ export function normalizeGroupConnectionPolicy(
       },
       roles: {
         mode:
-          roles.mode === "map"
-            ? "map"
-            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.roles.mode,
+          roles.mode === "map" ? "map" : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.roles.mode,
         source: "protocol",
         ...(typeof roles.mapping === "object" && roles.mapping !== null
           ? {
               mapping: Object.fromEntries(
                 Object.entries(roles.mapping)
-                  .filter(
-                    ([key, value]) =>
-                      typeof key === "string" && Array.isArray(value),
-                  )
+                  .filter(([key, value]) => typeof key === "string" && Array.isArray(value))
                   .map(([key, value]) => [
                     key,
                     Array.from(
                       new Set(
                         (value as unknown[]).filter(
-                          (item): item is string =>
-                            typeof item === "string" && item.length > 0,
+                          (item): item is string => typeof item === "string" && item.length > 0,
                         ),
                       ),
                     ),
@@ -231,10 +209,7 @@ export function patchGroupConnectionPolicy(
         ...patch.provisioning?.roles,
       },
     },
-    extend:
-      patch.extend === undefined
-        ? base.extend
-        : { ...base.extend, ...patch.extend },
+    extend: patch.extend === undefined ? base.extend : { ...base.extend, ...patch.extend },
   });
 }
 

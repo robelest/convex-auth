@@ -53,9 +53,7 @@ export function zipObject(arr1: string[], arr2: any[], skipDuplicated = true) {
     }
     // if key exists, aggregate with array in order to get rid of duplicate key
     if (res[l] !== undefined) {
-      res[l] = Array.isArray(res[l])
-        ? res[l].concat(arr2[i])
-        : [res[l]].concat(arr2[i]);
+      res[l] = Array.isArray(res[l]) ? res[l].concat(arr2[i]) : [res[l]].concat(arr2[i]);
       return res;
     }
 
@@ -69,9 +67,7 @@ export function zipObject(arr1: string[], arr2: any[], skipDuplicated = true) {
  * @param input {[]}
  */
 export function flattenDeep(input: any[]) {
-  return Array.isArray(input)
-    ? input.reduce((a, b) => a.concat(flattenDeep(b)), [])
-    : [input];
+  return Array.isArray(input) ? input.reduce((a, b) => a.concat(flattenDeep(b)), []) : [input];
 }
 /**
  * @desc Alternative to lodash.last
@@ -98,9 +94,7 @@ export function uniq(input: string[]) {
  * @param defaultValue
  */
 export function get(obj, path, defaultValue) {
-  return path
-    .split(".")
-    .reduce((a, c) => (a && a[c] ? a[c] : defaultValue || null), obj);
+  return path.split(".").reduce((a, c) => (a && a[c] ? a[c] : defaultValue || null), obj);
 }
 /**
  * @desc Check if the input is string
@@ -123,10 +117,7 @@ function base64Encode(message: string | number[] | Uint8Array) {
  * @param  {boolean} isBytes                      determine the return value type (True: bytes False: string)
  * @return {bytes/string}  decoded bytes/string depends on isBytes, default is {string}
  */
-export function base64Decode(
-  base64Message: string,
-  isBytes?: boolean,
-): string | Uint8Array {
+export function base64Decode(base64Message: string, isBytes?: boolean): string | Uint8Array {
   const bytes = base64ToBytes(base64Message);
   return Boolean(isBytes) ? bytes : new TextDecoder().decode(bytes);
 }
@@ -255,9 +246,7 @@ export function castArrayOpt<T>(a?: T | T[]): T[] {
   return Array.isArray(a) ? a : [a];
 }
 
-export function notEmpty<TValue>(
-  value: TValue | null | undefined,
-): value is TValue {
+export function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
   return value !== null && value !== undefined;
 }
 

@@ -17,18 +17,12 @@ async function run(command: string, args: string[]) {
         resolve();
         return;
       }
-      reject(
-        new Error(`${command} ${args.join(" ")} exited with code ${code}`),
-      );
+      reject(new Error(`${command} ${args.join(" ")} exited with code ${code}`));
     });
   });
 }
 
-const buildReadyFile = path.join(
-  process.cwd(),
-  ".tmp",
-  "full-test-build-ready",
-);
+const buildReadyFile = path.join(process.cwd(), ".tmp", "full-test-build-ready");
 
 try {
   await run("vp", ["run", "cache:build:samlify"]);

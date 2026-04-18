@@ -1,8 +1,7 @@
 import { ConvexError } from "convex/values";
 
 function readEnv(name: string): string | undefined {
-  const value =
-    typeof process === "undefined" ? undefined : process.env?.[name];
+  const value = typeof process === "undefined" ? undefined : process.env?.[name];
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 

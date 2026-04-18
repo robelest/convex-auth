@@ -11,8 +11,7 @@ export const GET: RequestHandler = async () => {
     eager: true,
   }) as Record<string, string>;
 
-  let output =
-    "# convex-auth\n\n> Component-first authentication for Convex.\n\n";
+  let output = "# convex-auth\n\n> Component-first authentication for Convex.\n\n";
 
   for (const group of sidebar) {
     output += `## ${group.label}\n\n`;

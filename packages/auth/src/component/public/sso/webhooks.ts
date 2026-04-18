@@ -86,9 +86,7 @@ export const groupWebhookEndpointList = query({
   handler: async (ctx, { connectionId }) => {
     return await ctx.db
       .query("GroupWebhookEndpoint")
-      .withIndex("group_connection_id", (idx) =>
-        idx.eq("connectionId", connectionId),
-      )
+      .withIndex("group_connection_id", (idx) => idx.eq("connectionId", connectionId))
       .collect();
   },
 });
@@ -270,9 +268,7 @@ export const groupWebhookDeliveryList = query({
   handler: async (ctx, { connectionId, limit }) => {
     return await ctx.db
       .query("GroupWebhookDelivery")
-      .withIndex("group_connection_id", (idx) =>
-        idx.eq("connectionId", connectionId),
-      )
+      .withIndex("group_connection_id", (idx) => idx.eq("connectionId", connectionId))
       .order("desc")
       .take(Math.min(Math.max(limit ?? 50, 1), 100));
   },

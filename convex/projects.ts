@@ -83,9 +83,7 @@ async function createProjectRecord(
   const slug = toSlug(args.name) || "project";
   const existingSlug = await ctx.db
     .query("projects")
-    .withIndex("by_groupId_and_slug", (q: any) =>
-      q.eq("groupId", args.groupId).eq("slug", slug),
-    )
+    .withIndex("by_groupId_and_slug", (q: any) => q.eq("groupId", args.groupId).eq("slug", slug))
     .first();
   if (existingSlug) {
     throw new ConvexError({
@@ -112,8 +110,7 @@ async function createProjectRecord(
 export const listProjects = authQuery({
   args: { groupId: v.string() },
   returns: v.array(projectSummary),
-  handler: async (ctx, args) =>
-    await listProjectsForGroup(ctx, ctx.auth.userId, args.groupId),
+  handler: async (ctx, args) => await listProjectsForGroup(ctx, ctx.auth.userId, args.groupId),
 });
 
 export const createProject = authMutation({
@@ -124,8 +121,7 @@ export const createProject = authMutation({
     description: v.string(),
   },
   returns: v.object({ projectId: v.id("projects") }),
-  handler: async (ctx, args) =>
-    await createProjectRecord(ctx, ctx.auth.userId, args),
+  handler: async (ctx, args) => await createProjectRecord(ctx, ctx.auth.userId, args),
 });
 
 export const createProjectByString = authMutation({

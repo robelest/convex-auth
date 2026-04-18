@@ -11,6 +11,8 @@ export type AuthRefreshService = {
   ) => ReturnType<typeof refreshSessionImpl>;
 };
 
-export const createAuthRefresh = (config: ReturnType<typeof configDefaults>): AuthRefreshService => ({
+export const createAuthRefresh = (
+  config: ReturnType<typeof configDefaults>,
+): AuthRefreshService => ({
   refresh: (ctx, args) => refreshSessionImpl(ctx, args, config),
 });

@@ -10,17 +10,10 @@
  * @module
  */
 
-import {
-  DocumentByName,
-  GenericDataModel,
-  WithoutSystemFields,
-} from "convex/server";
+import { DocumentByName, GenericDataModel, WithoutSystemFields } from "convex/server";
 import { Value } from "convex/values";
 
-import type {
-  ConvexCredentialsConfig,
-  GenericActionCtxWithAuthConfig,
-} from "../server/types";
+import type { ConvexCredentialsConfig, GenericActionCtxWithAuthConfig } from "../server/types";
 import { credentials } from "./credentials";
 
 /** Configuration for the {@link anonymous} provider. */
@@ -61,9 +54,7 @@ function defaultAnonymousProfile<DataModel extends GenericDataModel>() {
  * anonymous()
  * ```
  */
-export function anonymous<
-  DataModel extends GenericDataModel = GenericDataModel,
->(
+export function anonymous<DataModel extends GenericDataModel = GenericDataModel>(
   config: AnonymousConfig<DataModel> = {} as AnonymousConfig<DataModel>,
 ): ConvexCredentialsConfig {
   const provider = config.id ?? "anonymous";
@@ -71,8 +62,7 @@ export function anonymous<
   return credentials<DataModel>({
     id: provider,
     authorize: async (params, ctx) => {
-      const profile =
-        config.profile?.(params, ctx) ?? defaultAnonymousProfile<DataModel>();
+      const profile = config.profile?.(params, ctx) ?? defaultAnonymousProfile<DataModel>();
       const { user } = await ctx.auth.account.create(ctx, {
         provider,
         account: { id: crypto.randomUUID() },

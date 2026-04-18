@@ -22,13 +22,10 @@
 
 import { scryptAsync } from "@noble/hashes/scrypt.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import {
-  DocumentByName,
-  GenericDataModel,
-  WithoutSystemFields,
-} from "convex/server";
-import { Value } from "convex/values";
+import { DocumentByName, GenericDataModel, WithoutSystemFields } from "convex/server";
+import { ConvexError, Value } from "convex/values";
 
+import { callCredentialsSignIn } from "../server/mutations/index";
 import type {
   EmailConfig,
   GenericActionCtxWithAuthConfig,
@@ -147,10 +144,8 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
   config: PasswordConfig<DataModel> = {} as PasswordConfig<DataModel>,
 ): ConvexCredentialsConfig {
   const provider = config.id ?? "password";
-  const resetProvider =
-    typeof config.reset === "function" ? config.reset() : config.reset;
-  const verifyProvider =
-    typeof config.verify === "function" ? config.verify() : config.verify;
+  const resetProvider = typeof config.reset === "function" ? config.reset() : config.reset;
+  const verifyProvider = typeof config.verify === "function" ? config.verify() : config.verify;
 
   return credentials<DataModel>({
     id: provider,
@@ -173,10 +168,7 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
 
       const profile = config.profile?.(params, ctx) ?? defaultProfile(params);
       const { email } = profile;
-      const requirePasswordParam = (
-        value: unknown,
-        flow: "signUp" | "signIn",
-      ) => {
+      const requirePasswordParam = (value: unknown, flow: "signUp" | "signIn") => {
         if (typeof value !== "string" || value.length === 0) {
           throw new Error(`Missing \`password\` param for \`${flow}\` flow`);
         }
@@ -193,7 +185,8 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
             params,
           });
         }
-        return { userId: user._id };
+        const hasTotp = (user as unknown as { hasTotp?: boolean }).hasTotp;
+        return { userId: user._id, hasTotp };
       };
 
       if (flowDispatch.tag === "signUp") {
@@ -208,17 +201,34 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
         return await finalizeCredentialsResult(created.account, created.user);
       } else if (flowDispatch.tag === "signIn") {
         const secret = requirePasswordParam(params.password, "signIn");
-        const retrieved = await ctx.auth.account.get(ctx, {
+        const result = await callCredentialsSignIn(ctx, {
           provider,
           account: { id: email, secret },
+          generateTokens: true,
+          requireVerifiedEmail: verifyProvider !== undefined,
+          enforceTotp: true,
         });
-        if (retrieved === null) {
+        if (result.kind === "invalidAccount" || result.kind === "invalidSecret") {
           throw new Error("Invalid credentials");
         }
-        return await finalizeCredentialsResult(
-          retrieved.account,
-          retrieved.user,
-        );
+        if (result.kind === "tooManyAttempts") {
+          throw new ConvexError({
+            code: "RATE_LIMITED",
+            message: "Too many failed sign-in attempts. Please try again later.",
+          });
+        }
+        if (result.kind === "emailVerificationRequired") {
+          return await ctx.auth.provider.signIn(ctx, verifyProvider!, {
+            accountId: result.account._id as GenericDoc<DataModel, "Account">["_id"],
+            params,
+          });
+        }
+        const hasTotp = result.kind === "signedIn" ? result.user.hasTotp : true;
+        return {
+          userId: result.user._id as GenericDoc<DataModel, "User">["_id"],
+          hasTotp,
+          issuance: result.issuance,
+        };
       } else if (flowDispatch.tag === "reset") {
         if (!resetProvider) {
           throw new Error(`Password reset is not enabled for ${provider}`);
@@ -236,9 +246,7 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
           throw new Error(`Password reset is not enabled for ${provider}`);
         }
         if (params.newPassword === undefined) {
-          throw new Error(
-            "Missing `newPassword` param for `reset-verification` flow",
-          );
+          throw new Error("Missing `newPassword` param for `reset-verification` flow");
         }
         const result = await ctx.auth.provider.signIn(ctx, resetProvider, {
           params,
@@ -327,11 +335,7 @@ async function hashPassword(password: string) {
 
 async function verifyPassword(password: string, storedHash: string) {
   const [prefix, saltHex, hashHex] = storedHash.split("$");
-  if (
-    prefix !== PASSWORD_HASH_PREFIX ||
-    saltHex === undefined ||
-    hashHex === undefined
-  ) {
+  if (prefix !== PASSWORD_HASH_PREFIX || saltHex === undefined || hashHex === undefined) {
     return false;
   }
 
@@ -343,10 +347,7 @@ async function verifyPassword(password: string, storedHash: string) {
   } catch {
     return false;
   }
-  if (
-    salt.length !== 32 ||
-    expectedHash.length !== PASSWORD_HASH_PARAMS.dkLen
-  ) {
+  if (salt.length !== 32 || expectedHash.length !== PASSWORD_HASH_PARAMS.dkLen) {
     return false;
   }
 

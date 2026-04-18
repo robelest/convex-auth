@@ -5,12 +5,7 @@ import { decodeJwt } from "jose";
 import { expect, test } from "vite-plus/test";
 
 import { convexTest } from "./convex.setup";
-import {
-  expectSignedInResult,
-  subjectToUserId,
-  TEST_EMAIL,
-  TEST_PASSWORD,
-} from "./helpers";
+import { expectSignedInResult, subjectToUserId, TEST_EMAIL, TEST_PASSWORD } from "./helpers";
 
 test("sign up with password", async () => {
   const t = convexTest(schema);

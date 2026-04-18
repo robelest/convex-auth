@@ -37,28 +37,17 @@ export async function createAccountFromCredentialsImpl(
     },
   });
 
-  const {
-    provider: providerId,
-    account,
-    profile,
-    shouldLinkViaEmail,
-    shouldLinkViaPhone,
-  } = args;
+  const { provider: providerId, account, profile, shouldLinkViaEmail, shouldLinkViaPhone } = args;
   const db = authDb(ctx, config);
   const provider = getProviderOrThrow(providerId) as ConvexCredentialsConfig;
   const typedProfile = profile as AuthProfile;
 
-  const existingAccount = (await db.accounts.get(
-    provider.id,
-    account.id,
-  )) as Doc<"Account"> | null;
+  const existingAccount = (await db.accounts.get(provider.id, account.id)) as Doc<"Account"> | null;
 
   if (existingAccount === null) {
     const accountSecret = account.secret;
     const secret =
-      accountSecret === undefined
-        ? undefined
-        : await Provider.hash(provider, accountSecret);
+      accountSecret === undefined ? undefined : await Provider.hash(provider, accountSecret);
 
     const result = await upsertUserAndAccount(
       ctx,
@@ -100,11 +89,7 @@ export async function createAccountFromCredentialsImpl(
   } else {
     if (account.secret !== undefined) {
       const accountSecret = account.secret;
-      const valid = await Provider.verify(
-        provider,
-        accountSecret,
-        existingAccount.secret ?? "",
-      );
+      const valid = await Provider.verify(provider, accountSecret, existingAccount.secret ?? "");
       if (!valid) {
         throw new ConvexError<AuthErrorData>({
           code: "INVALID_CREDENTIALS",
@@ -113,9 +98,7 @@ export async function createAccountFromCredentialsImpl(
       }
     }
 
-    const user = (await db.users.getById(
-      existingAccount.userId,
-    )) as Doc<"User"> | null;
+    const user = (await db.users.getById(existingAccount.userId)) as Doc<"User"> | null;
     if (user === null) {
       throw new ConvexError<AuthErrorData>({
         code: "ACCOUNT_NOT_FOUND",
@@ -127,9 +110,7 @@ export async function createAccountFromCredentialsImpl(
   }
 }
 
-export const callCreateAccountFromCredentials = async <
-  DataModel extends GenericDataModel,
->(
+export const callCreateAccountFromCredentials = async <DataModel extends GenericDataModel>(
   ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof createAccountFromCredentialsArgs>,
 ): Promise<ReturnType> => {

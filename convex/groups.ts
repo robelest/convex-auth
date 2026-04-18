@@ -7,7 +7,7 @@ import { authAction, authMutation, authQuery } from "./functions";
 import {
   getPermissions,
   getUserRoleLabel,
-  getUserSummary,
+  getUserSummaries,
   groupSummary,
   inviteSummary,
   memberSummary,
@@ -38,9 +38,7 @@ export const getAuthProviders = query({
   }),
   handler: async () => {
     return {
-      google: Boolean(
-        process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET,
-      ),
+      google: Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET),
     };
   },
 });
@@ -62,9 +60,21 @@ export const listMyGroups = authQuery({
       orderBy: "_creationTime",
       order: "asc",
     });
-    const groups = await Promise.all(
-      memberships.items.map(async (membership: any) => {
-        const group = await auth.group.get(ctx, membership.groupId);
+    // Batch-fetch every group doc in one component round-trip. Previously
+    // this fanned out N `auth.group.get` RPCs (one per membership).
+    const groupIds: string[] = memberships.items.map(
+      (membership: (typeof memberships.items)[number]) => membership.groupId,
+    );
+    const groupDocs = await auth.group.get(ctx, groupIds);
+    type ListGroupEntry = {
+      groupId: string;
+      name: string;
+      roleIds: string[];
+      userRoleLabel: string;
+    };
+    const groupsWithNulls: Array<ListGroupEntry | null> = memberships.items.map(
+      (membership: (typeof memberships.items)[number], i: number) => {
+        const group = groupDocs[i];
         return group
           ? {
               groupId: group._id,
@@ -73,11 +83,9 @@ export const listMyGroups = authQuery({
               userRoleLabel: getUserRoleLabel(membership.roleIds),
             }
           : null;
-      }),
+      },
     );
-    return groups.filter(
-      (group): group is NonNullable<typeof group> => group !== null,
-    );
+    return groupsWithNulls.filter((group): group is ListGroupEntry => group !== null);
   },
 });
 
@@ -111,25 +119,31 @@ export const getDashboard = authQuery({
       limit: 20,
     });
 
-    const groups = (
-      await Promise.all(
-        roots.items.map(async (group: (typeof roots.items)[number]) => {
-          const resolution = await auth.member.inspect(ctx, {
-            userId,
-            groupId: group._id,
-          });
-          if (resolution.membership === null) {
-            return null;
-          }
-          return {
-            groupId: group._id,
-            name: group.name,
-            roleIds: resolution.roleIds,
-            grants: resolution.grants,
-          } satisfies GroupSummary;
-        }),
-      )
-    ).filter((group): group is GroupSummary => group !== null);
+    // Resolve all root-group memberships in a single batched component
+    // round-trip. Previously this fanned out N `auth.member.inspect` RPCs
+    // (one per root group via `Promise.all`) — on an org with 20 root groups
+    // that's 20 component crossings just to decide which workspaces to
+    // list. The batched helper collapses them into one.
+    const rootGroupIds = roots.items.map((group: (typeof roots.items)[number]) => group._id);
+    const resolutions = await auth.member.inspect(ctx, {
+      userId,
+      groupIds: rootGroupIds,
+    });
+    const groupsWithNulls: Array<GroupSummary | null> = roots.items.map(
+      (group: (typeof roots.items)[number], i: number) => {
+        const resolution = resolutions[i]!;
+        if (resolution.membership === null) return null;
+        return {
+          groupId: group._id,
+          name: group.name,
+          roleIds: resolution.roleIds,
+          grants: resolution.grants,
+        } satisfies GroupSummary;
+      },
+    );
+    const groups: GroupSummary[] = groupsWithNulls.filter(
+      (group): group is GroupSummary => group !== null,
+    );
 
     if (groups.length === 0) {
       return {
@@ -143,18 +157,25 @@ export const getDashboard = authQuery({
       };
     }
 
-    const selectedGroup =
-      groups.find((group) => group.groupId === args.groupId) ?? groups[0]!;
+    const selectedGroup = groups.find((group) => group.groupId === args.groupId) ?? groups[0]!;
     const permissions = getPermissions(selectedGroup.grants);
 
-    const projects = permissions.canReadProjects
-      ? await ctx.db
-          .query("projects")
-          .withIndex("by_groupId", (q) =>
-            q.eq("groupId", selectedGroup.groupId),
-          )
-          .take(50)
-      : [];
+    // Kick off the projects scan and the member-list component read at the
+    // same time — neither depends on the other.
+    const [projects, members] = await Promise.all([
+      permissions.canReadProjects
+        ? ctx.db
+            .query("projects")
+            .withIndex("by_groupId", (q) => q.eq("groupId", selectedGroup.groupId))
+            .take(50)
+        : Promise.resolve([]),
+      auth.member.list(ctx, {
+        where: { groupId: selectedGroup.groupId },
+        limit: 20,
+        orderBy: "_creationTime",
+        order: "asc",
+      }),
+    ]);
 
     const projectSummaries = projects.map((project) => ({
       projectId: project._id,
@@ -167,23 +188,22 @@ export const getDashboard = authQuery({
       openIssueCount: project.openIssueCount ?? 0,
     }));
 
-    const members = await auth.member.list(ctx, {
-      where: { groupId: selectedGroup.groupId },
-      limit: 20,
-      orderBy: "_creationTime",
-      order: "asc",
-    });
-    const memberSummaries = await Promise.all(
-      members.items.map(async (member: (typeof members.items)[number]) => {
-        const summary = await getUserSummary(ctx, member.userId);
-        return {
-          memberId: member._id,
-          userId: member.userId,
-          name: summary.name,
-          email: summary.email,
-          roleIds: member.roleIds ?? [],
-          status: member.status ?? "active",
-        };
+    // Fetch every member's user doc in a single batched component round-trip
+    // rather than firing N serial `auth.user.get` calls. With the batched
+    // helper plus the ctx-scoped cache, the shared active-group member
+    // summary (already resolved by `auth.ctx()`) also dedupes for free.
+    const memberUserIds = members.items.map(
+      (member: (typeof members.items)[number]) => member.userId,
+    );
+    const memberUserSummaries = await getUserSummaries(ctx, memberUserIds);
+    const memberSummaries = members.items.map(
+      (member: (typeof members.items)[number], i: number) => ({
+        memberId: member._id,
+        userId: member.userId,
+        name: memberUserSummaries[i]!.name,
+        email: memberUserSummaries[i]!.email,
+        roleIds: member.roleIds ?? [],
+        status: member.status ?? "active",
       }),
     );
 
@@ -264,8 +284,7 @@ export const updateMemberRole = authMutation({
       });
       const adminCount = members.items.filter(
         (member: (typeof members.items)[number]) =>
-          member.roleIds?.includes(validRoleIds[0]) &&
-          member._id !== args.memberId,
+          member.roleIds?.includes(validRoleIds[0]) && member._id !== args.memberId,
       ).length;
       if (adminCount === 0) {
         throw new ConvexError({

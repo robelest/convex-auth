@@ -8,14 +8,10 @@ import { test, expect } from "vite-plus/test";
 process.chdir(path.resolve(import.meta.dirname, "../../packages/samlify"));
 
 const FIXTURE_ROOT = path.resolve(import.meta.dirname);
-const fixturePath = (relativePath: string) =>
-  path.join(FIXTURE_ROOT, relativePath);
-const fixtureRead = (relativePath: string) =>
-  readFileSync(fixturePath(relativePath));
+const fixturePath = (relativePath: string) => path.join(FIXTURE_ROOT, relativePath);
+const fixtureRead = (relativePath: string) => readFileSync(fixturePath(relativePath));
 
-const _decodedResponse: string = String(
-  fixtureRead("misc/response_signed.xml"),
-);
+const _decodedResponse: string = String(fixtureRead("misc/response_signed.xml"));
 const _spmeta: string = String(fixtureRead("misc/spmeta.xml"));
 
 (() => {
@@ -27,12 +23,8 @@ const _spmeta: string = String(fixtureRead("misc/spmeta.xml"));
         attributes: ["ID", "Destination"],
       },
     ]);
-    expect(result.response.id).toBe(
-      "_8e8dc5f69a98cc4c1ff3427e5ce34606fd672f91e6",
-    );
-    expect(result.response.destination).toBe(
-      "http://sp.example.com/demo1/index.php?acs",
-    );
+    expect(result.response.id).toBe("_8e8dc5f69a98cc4c1ff3427e5ce34606fd672f91e6");
+    expect(result.response.destination).toBe("http://sp.example.com/demo1/index.php?acs");
   });
 
   test("fetch single attributes", () => {
@@ -43,22 +35,14 @@ const _spmeta: string = String(fixtureRead("misc/spmeta.xml"));
         attributes: ["Value"],
       },
     ]);
-    expect(result.statusCode).toBe(
-      "urn:oasis:names:tc:SAML:2.0:status:Success",
-    );
+    expect(result.statusCode).toBe("urn:oasis:names:tc:SAML:2.0:status:Success");
   });
 
   test("fetch the inner context of leaf node", () => {
     const result = extract(_decodedResponse, [
       {
         key: "audience",
-        localPath: [
-          "Response",
-          "Assertion",
-          "Conditions",
-          "AudienceRestriction",
-          "Audience",
-        ],
+        localPath: ["Response", "Assertion", "Conditions", "AudienceRestriction", "Audience"],
         attributes: [],
       },
     ]);
@@ -101,11 +85,7 @@ const _spmeta: string = String(fixtureRead("misc/spmeta.xml"));
       },
     ]);
     expect(result.issuer.length).toBe(1);
-    expect(
-      result.issuer.every(
-        (i: string) => i === "https://idp.example.com/metadata",
-      ),
-    ).toBe(true);
+    expect(result.issuer.every((i: string) => i === "https://idp.example.com/metadata")).toBe(true);
   });
 
   test("fetch the attribute with wildcard local path", () => {
@@ -141,24 +121,16 @@ const _spmeta: string = String(fixtureRead("misc/spmeta.xml"));
     const result = extract(_spmeta, [
       {
         key: "singleSignOnService",
-        localPath: [
-          "EntityDescriptor",
-          "~SSODescriptor",
-          "AssertionConsumerService",
-        ],
+        localPath: ["EntityDescriptor", "~SSODescriptor", "AssertionConsumerService"],
         index: ["Binding"],
         attributePath: [],
         attributes: ["Location"],
       },
     ]);
     const postEndpoint =
-      result.singleSignOnService[
-        "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
-      ];
+      result.singleSignOnService["urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"];
     const artifactEndpoint =
-      result.singleSignOnService[
-        "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact"
-      ];
+      result.singleSignOnService["urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Artifact"];
 
     expect(postEndpoint).toBe("https://sp.example.org/sp/sso");
     expect(artifactEndpoint).toBe("https://sp.example.org/sp/sso");

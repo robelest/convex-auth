@@ -136,9 +136,7 @@ export const refreshTokenGetChildren = query({
     return await ctx.db
       .query("RefreshToken")
       .withIndex("session_id_parent_refresh_token_id", (q) =>
-        q
-          .eq("sessionId", sessionId as any)
-          .eq("parentRefreshTokenId", parentRefreshTokenId as any),
+        q.eq("sessionId", sessionId as any).eq("parentRefreshTokenId", parentRefreshTokenId as any),
       )
       .collect();
   },
@@ -202,9 +200,7 @@ export const refreshTokenDeleteAll = mutation({
       .query("RefreshToken")
       .withIndex("session_id", (q) => q.eq("sessionId", sessionId as any))
       .collect();
-    await Promise.all(
-      tokens.map((token) => ctx.db.delete("RefreshToken", token._id)),
-    );
+    await Promise.all(tokens.map((token) => ctx.db.delete("RefreshToken", token._id)));
     return null;
   },
 });
@@ -237,15 +233,10 @@ export const refreshTokenExchange = mutation({
         .query("RefreshToken")
         .withIndex("session_id", (q) => q.eq("sessionId", args.sessionId))
         .collect();
-      await Promise.all(
-        tokens.map((token) => ctx.db.delete("RefreshToken", token._id)),
-      );
+      await Promise.all(tokens.map((token) => ctx.db.delete("RefreshToken", token._id)));
     };
 
-    const refreshTokenDoc = await ctx.db.get(
-      "RefreshToken",
-      args.refreshTokenId,
-    );
+    const refreshTokenDoc = await ctx.db.get("RefreshToken", args.refreshTokenId);
     if (
       refreshTokenDoc === null ||
       refreshTokenDoc.expirationTime < args.now ||
@@ -318,9 +309,7 @@ export const refreshTokenExchange = mutation({
         const children = await ctx.db
           .query("RefreshToken")
           .withIndex("session_id_parent_refresh_token_id", (q) =>
-            q
-              .eq("sessionId", args.sessionId)
-              .eq("parentRefreshTokenId", parentRefreshTokenId),
+            q.eq("sessionId", args.sessionId).eq("parentRefreshTokenId", parentRefreshTokenId),
           )
           .collect();
         for (const child of children) {

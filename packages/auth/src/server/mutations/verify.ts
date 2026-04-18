@@ -1,23 +1,27 @@
-import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import type { GenericDataModel } from "convex/server";
 import { Infer, v } from "convex/values";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
 import { requireEnv } from "../env";
 import {
-  isSignInRateLimited,
+  getSignInRateLimitState,
+  isStateRateLimited,
   recordFailedSignIn,
   resetSignInRateLimit,
+  type SignInRateLimitState,
 } from "../limits";
 import { LOG_LEVELS, log } from "../log";
 import type { SignInParams } from "../payloads";
 import { payloadRecordValidator } from "../payloads";
 import { sha256 } from "../random";
-import { getAuthSessionId, issueSession } from "../sessions";
+import { finalizeSessionIssuance, getAuthSessionId, issueSession } from "../sessions";
+import type { SessionIssuance } from "../sessions";
 import { createSyntheticOAuthMaterializedConfig } from "../sso/oidc";
 import { isGroupProviderId } from "../sso/shared";
-import { MutationCtx, SessionInfo } from "../types";
+import { GenericActionCtxWithAuthConfig, MutationCtx, SessionInfo } from "../types";
 import { upsertUserAndAccount } from "../users";
+import { withSpan } from "../utils/span";
 import { AUTH_STORE_REF } from "./store/refs";
 
 export const verifyCodeAndSignInArgs = v.object({
@@ -28,7 +32,7 @@ export const verifyCodeAndSignInArgs = v.object({
   allowExtraProviders: v.boolean(),
 });
 
-type ReturnType = null | SessionInfo;
+type MutationReturnType = null | SessionIssuance;
 
 // ============================================================================
 // Main exported function
@@ -39,7 +43,23 @@ export async function verifyCodeAndSignInImpl(
   args: Infer<typeof verifyCodeAndSignInArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
-): Promise<ReturnType> {
+): Promise<MutationReturnType> {
+  return withSpan(
+    "convex-auth.mutations.verifyCodeAndSignIn",
+    {
+      provider: args.provider ?? "",
+      generateTokens: args.generateTokens,
+    },
+    () => verifyCodeAndSignInImplInner(ctx, args, getProviderOrThrow, config),
+  );
+}
+
+async function verifyCodeAndSignInImplInner(
+  ctx: MutationCtx,
+  args: Infer<typeof verifyCodeAndSignInArgs>,
+  getProviderOrThrow: Provider.GetProviderOrThrowFunc,
+  config: Provider.Config,
+): Promise<MutationReturnType> {
   const params = args.params as SignInParams;
   const { generateTokens, provider, allowExtraProviders } = args;
   const identifier: string | undefined =
@@ -48,6 +68,9 @@ export async function verifyCodeAndSignInImpl(
       : typeof params.phone === "string"
         ? params.phone
         : undefined;
+
+  let rateLimitState: SignInRateLimitState | null = null;
+  let rateLimitLoaded = false;
 
   try {
     log(LOG_LEVELS.DEBUG, "verifyCodeAndSignInImpl args:", {
@@ -64,11 +87,10 @@ export async function verifyCodeAndSignInImpl(
     }
 
     if (identifier !== undefined) {
-      const limited = await isSignInRateLimited(ctx, identifier, config);
-      if (limited) {
-        throw new VerifyFailure(
-          "Too many failed attempts to verify code for this email",
-        );
+      rateLimitState = await getSignInRateLimitState(ctx, identifier, config);
+      rateLimitLoaded = true;
+      if (isStateRateLimited(rateLimitState)) {
+        throw new VerifyFailure("Too many failed attempts to verify code for this email");
       }
     }
 
@@ -84,8 +106,6 @@ export async function verifyCodeAndSignInImpl(
       throw new VerifyFailure("Invalid verification code");
     }
 
-    await db.verificationCodes.delete(code._id);
-
     if (code.verifier !== verifier) {
       throw new VerifyFailure("Invalid verifier");
     }
@@ -93,16 +113,12 @@ export async function verifyCodeAndSignInImpl(
       throw new VerifyFailure("Expired verification code");
     }
     if (provider !== undefined && code.provider !== provider) {
-      throw new VerifyFailure(
-        `Invalid provider "${provider}" for given \`code\``,
-      );
+      throw new VerifyFailure(`Invalid provider "${provider}" for given \`code\``);
     }
 
     const account = await db.accounts.getById(code.accountId);
     if (account === null) {
-      throw new VerifyFailure(
-        "Account associated with this email has been deleted",
-      );
+      throw new VerifyFailure("Account associated with this email has been deleted");
     }
 
     const codeProvider = isGroupProviderId(code.provider)
@@ -145,11 +161,14 @@ export async function verifyCodeAndSignInImpl(
             )
           ).userId;
 
-    if (identifier !== undefined) {
-      await resetSignInRateLimit(ctx, identifier, config);
-    }
+    const [, , replaceSessionId] = await Promise.all([
+      db.verificationCodes.delete(code._id),
+      identifier !== undefined
+        ? resetSignInRateLimit(ctx, identifier, config, rateLimitState)
+        : Promise.resolve(),
+      getAuthSessionId(ctx),
+    ]);
 
-    const replaceSessionId = await getAuthSessionId(ctx);
     return await issueSession(ctx, config, {
       userId,
       replaceSessionId: replaceSessionId ?? undefined,
@@ -159,7 +178,12 @@ export async function verifyCodeAndSignInImpl(
     if (error instanceof VerifyFailure) {
       log(LOG_LEVELS.ERROR, error.reason);
       if (identifier !== undefined) {
-        await recordFailedSignIn(ctx, identifier, config);
+        await recordFailedSignIn(
+          ctx,
+          identifier,
+          config,
+          rateLimitLoaded ? rateLimitState : undefined,
+        );
       }
       return null;
     }
@@ -183,16 +207,24 @@ class VerifyFailure extends Error {
 // Action-level caller (unchanged -- just forwards to mutation)
 // ============================================================================
 
-export const callVerifyCodeAndSignIn = async <
-  DataModel extends GenericDataModel,
->(
-  ctx: GenericActionCtx<DataModel>,
+/**
+ * Run the verify-code-and-sign-in mutation, then sign the JWT on the action
+ * side. See {@link callSignIn} for the rationale — the mutation returns
+ * `SessionIssuance` (cheap string-encoded refresh token + IDs), and this
+ * wrapper does the RSA-2048 work outside the mutation transaction.
+ *
+ * @internal
+ */
+export const callVerifyCodeAndSignIn = async <DataModel extends GenericDataModel>(
+  ctx: GenericActionCtxWithAuthConfig<DataModel>,
   args: Infer<typeof verifyCodeAndSignInArgs>,
-): Promise<ReturnType> => {
-  return ctx.runMutation(AUTH_STORE_REF, {
+): Promise<SessionInfo | null> => {
+  const issuance = (await ctx.runMutation(AUTH_STORE_REF, {
     args: {
       type: "verifyCodeAndSignIn",
       ...args,
     },
-  }) as Promise<ReturnType>;
+  })) as MutationReturnType;
+  if (issuance === null) return null;
+  return await finalizeSessionIssuance(ctx.auth.config, issuance);
 };

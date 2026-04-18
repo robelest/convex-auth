@@ -111,23 +111,17 @@ test("proxy sign up can immediately accept invite", async () => {
           };
 
           if (payload.action !== "auth:signIn") {
-            return new Response(
-              JSON.stringify({ error: "Unsupported action" }),
-              {
-                status: 400,
-                headers: { "Content-Type": "application/json" },
-              },
-            );
+            return new Response(JSON.stringify({ error: "Unsupported action" }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
           }
 
           if (payload.args?.refreshToken === true) {
-            return new Response(
-              JSON.stringify({ kind: "signedIn", tokens: null }),
-              {
-                status: 200,
-                headers: { "Content-Type": "application/json" },
-              },
-            );
+            return new Response(JSON.stringify({ kind: "signedIn", tokens: null }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            });
           }
 
           const result = await t.action(api.auth.signIn, payload.args ?? {});
@@ -169,9 +163,7 @@ test("proxy sign up can immediately accept invite", async () => {
 
 function createConvexTransportMock() {
   const authRegistrations: Array<{
-    fetchToken: (args: {
-      forceRefreshToken: boolean;
-    }) => Promise<string | null | undefined>;
+    fetchToken: (args: { forceRefreshToken: boolean }) => Promise<string | null | undefined>;
     onChange?: (isAuthenticated: boolean) => void;
   }> = [];
 
@@ -182,9 +174,7 @@ function createConvexTransportMock() {
     }),
     clearAuth: vi.fn(),
     triggerAuthChange(isAuthenticated: boolean) {
-      authRegistrations[authRegistrations.length - 1]?.onChange?.(
-        isAuthenticated,
-      );
+      authRegistrations[authRegistrations.length - 1]?.onChange?.(isAuthenticated);
     },
     setAuthCallCount() {
       return authRegistrations.length;
@@ -223,7 +213,5 @@ async function createInvite(
 async function sha256Hex(value: string) {
   const encoded = new TextEncoder().encode(value);
   const digest = await crypto.subtle.digest("SHA-256", encoded);
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }

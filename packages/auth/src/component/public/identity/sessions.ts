@@ -52,9 +52,7 @@ export const sessionList = query({
 
     let q;
     if (where.userId !== undefined) {
-      q = ctx.db
-        .query("Session")
-        .withIndex("user_id", (idx) => idx.eq("userId", where.userId!));
+      q = ctx.db.query("Session").withIndex("user_id", (idx) => idx.eq("userId", where.userId!));
     } else {
       q = ctx.db.query("Session");
     }
@@ -128,25 +126,16 @@ export const sessionIssue = mutation({
 
     if (sessionId === undefined) {
       if (args.replaceSessionId !== undefined) {
-        const existingSession = await ctx.db.get(
-          "Session",
-          args.replaceSessionId,
-        );
+        const existingSession = await ctx.db.get("Session", args.replaceSessionId);
         if (existingSession !== null) {
           await ctx.db.delete("Session", args.replaceSessionId);
         }
 
         const existingTokens = await ctx.db
           .query("RefreshToken")
-          .withIndex("session_id", (q) =>
-            q.eq("sessionId", args.replaceSessionId!),
-          )
+          .withIndex("session_id", (q) => q.eq("sessionId", args.replaceSessionId!))
           .collect();
-        await Promise.all(
-          existingTokens.map((token) =>
-            ctx.db.delete("RefreshToken", token._id),
-          ),
-        );
+        await Promise.all(existingTokens.map((token) => ctx.db.delete("RefreshToken", token._id)));
       }
 
       sessionId = await ctx.db.insert("Session", {

@@ -119,10 +119,7 @@ export function parseSetCookieHeaders(response: {
   return result;
 }
 
-export function updateCookieJar(
-  jar: Map<string, string>,
-  setCookies: string[],
-) {
+export function updateCookieJar(jar: Map<string, string>, setCookies: string[]) {
   for (const raw of setCookies) {
     const [cookiePair] = raw.split(";");
     if (!cookiePair) {
@@ -164,12 +161,7 @@ export function rewriteUrlForHostAccess(
 
 export function extractAuthRequestId(location: string, baseUrl?: string) {
   const url = new URL(location, baseUrl);
-  for (const key of [
-    "authRequest",
-    "auth_request",
-    "authRequestId",
-    "auth_request_id",
-  ]) {
+  for (const key of ["authRequest", "auth_request", "authRequestId", "auth_request_id"]) {
     const value = url.searchParams.get(key);
     if (value) {
       return value;
@@ -178,10 +170,7 @@ export function extractAuthRequestId(location: string, baseUrl?: string) {
   throw new Error(`Unable to extract auth request id from ${location}`);
 }
 
-export function extractSamlRequestIdFromLoginUrl(
-  location: string,
-  base?: string,
-) {
+export function extractSamlRequestIdFromLoginUrl(location: string, base?: string) {
   const url = new URL(location, base);
   for (const key of [
     "samlRequest",
@@ -226,10 +215,7 @@ export function parseSamlPostFormFromHtml(html: string) {
 
 export function buildFormBody(fields: Record<string, string>) {
   return Object.entries(fields)
-    .map(
-      ([key, value]) =>
-        `${encodeURIComponent(key)}=${encodeURIComponent(value)}`,
-    )
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
     .join("&");
 }
 
@@ -247,10 +233,7 @@ function toHeadersObject(headers: Headers): Record<string, string> {
   return result;
 }
 
-export function requestHttp(
-  input: string,
-  init: RequestOptions = {},
-): Promise<SimpleResponse> {
+export function requestHttp(input: string, init: RequestOptions = {}): Promise<SimpleResponse> {
   const url = new URL(input);
   const request = url.protocol === "https:" ? https.request : http.request;
   const headers = new Headers(init.headers);
@@ -270,11 +253,7 @@ export function requestHttp(
       {
         protocol: url.protocol,
         hostname: resolveHostname(url.hostname),
-        port: url.port
-          ? Number(url.port)
-          : url.protocol === "https:"
-            ? 443
-            : 80,
+        port: url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80,
         path: `${url.pathname}${url.search}`,
         method,
         headers: toHeadersObject(headers),
@@ -313,9 +292,7 @@ export function requestHttp(
           }) as Headers & { getSetCookie: () => string[] };
 
           resolve({
-            ok:
-              (response.statusCode ?? 0) >= 200 &&
-              (response.statusCode ?? 0) <= 299,
+            ok: (response.statusCode ?? 0) >= 200 && (response.statusCode ?? 0) <= 299,
             status: response.statusCode ?? 0,
             headers: headersWithSetCookie,
             text: async () => text,
@@ -333,16 +310,11 @@ export function requestHttp(
   });
 }
 
-export async function requestJson<T>(
-  url: string,
-  opts: RequestOptions = {},
-): Promise<T> {
+export async function requestJson<T>(url: string, opts: RequestOptions = {}): Promise<T> {
   const response = await requestHttp(url, opts);
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(
-      `${opts.method ?? "GET"} ${url} failed: ${response.status} ${text}`,
-    );
+    throw new Error(`${opts.method ?? "GET"} ${url} failed: ${response.status} ${text}`);
   }
   if (text === "") {
     return {} as T;
@@ -363,9 +335,7 @@ async function groupRpc<T>(
     reference = reference?.[segment];
   }
   if (!reference) {
-    throw new Error(
-      `Group SSO RPC function not found: ${functionPath.join(".")}`,
-    );
+    throw new Error(`Group SSO RPC function not found: ${functionPath.join(".")}`);
   }
   switch (kind) {
     case "mutation":
@@ -383,10 +353,7 @@ export async function groupCreateRpc(
   args: { name: string },
 ): Promise<{ groupId: string }> {
   convexClient.setAuth(userToken);
-  return (await convexClient.mutation(
-    (api as any).groups.createGroup,
-    args,
-  )) as {
+  return (await convexClient.mutation((api as any).groups.createGroup, args)) as {
     groupId: string;
   };
 }

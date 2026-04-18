@@ -1,7 +1,6 @@
 ---
 title: auth.member
-description:
-  Membership management — add users to groups with roles and permissions.
+description: Membership management — add users to groups with roles and permissions.
 ---
 
 <svelte:head>

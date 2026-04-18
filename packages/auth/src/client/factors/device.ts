@@ -39,8 +39,7 @@ type DeviceDeps = {
 
 /** @internal */
 export function createDeviceClient(deps: DeviceDeps): DeviceClient {
-  const { proxy, convex, requireApiRefs, proxyFetch, setTokenAndMaybeWait } =
-    deps;
+  const { proxy, convex, requireApiRefs, proxyFetch, setTokenAndMaybeWait } = deps;
 
   const requestDeviceSignIn = async (
     params: Record<string, unknown>,
@@ -77,9 +76,7 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
           pollResult = await requestDeviceSignIn(params);
         } catch (error) {
           if (error instanceof ConvexError) {
-            const errorCode = (
-              error.data as Record<string, unknown> | undefined
-            )?.code;
+            const errorCode = (error.data as Record<string, unknown> | undefined)?.code;
             if (errorCode === "DEVICE_AUTHORIZATION_PENDING") {
               continue;
             }
@@ -99,10 +96,7 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
           if (proxy) {
             await setTokenAndMaybeWait({
               shouldStore: false,
-              tokens:
-                pollResult.tokens === null
-                  ? null
-                  : { token: pollResult.tokens.token },
+              tokens: pollResult.tokens === null ? null : { token: pollResult.tokens.token },
               waitForHandshake: true,
               context: { provider: "device", flow: "poll" },
             });
@@ -135,8 +129,7 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
       } catch (error) {
         throw new ConvexError({
           code: "DEVICE_AUTHORIZATION_FAILED",
-          message:
-            error instanceof Error ? error.message : "Invalid or expired code.",
+          message: error instanceof Error ? error.message : "Invalid or expired code.",
         });
       }
     },

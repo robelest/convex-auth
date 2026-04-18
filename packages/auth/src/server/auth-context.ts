@@ -25,10 +25,7 @@ import type { Doc } from "./types";
  * Config for auth setup. Extends the standard auth config
  * minus `component` (which is passed as the first constructor argument).
  */
-export type AuthConfig = Omit<
-  import("./types").ConvexAuthConfig,
-  "component"
->;
+export type AuthConfig = Omit<import("./types").ConvexAuthConfig, "component">;
 
 /** Canonical user document type exposed by Convex Auth. */
 export type UserDoc = Doc<"User">;
@@ -43,10 +40,9 @@ type AuthQueryCtx = {
   runQuery: (...args: never[]) => Promise<unknown>;
 };
 
-type CustomFunctionInputResult<TAuth extends Record<string, unknown>> =
-  Promise<{
-    ctx: { auth: TAuth };
-  }>;
+type CustomFunctionInputResult<TAuth extends Record<string, unknown>> = Promise<{
+  ctx: { auth: TAuth };
+}>;
 
 /**
  * Current request auth context injected into `ctx.auth` by `auth.ctx()`. This
@@ -130,10 +126,10 @@ type ResolvedOptionalAuthContext<TResolve> = OptionalAuthContext & TResolve;
 
 type AuthResolverCtx = AuthIdentityCtx & AuthQueryCtx;
 
-type PublicAuthContextConfig<
-  TResolve extends Record<string, unknown>,
-  TCtx,
-> = AuthContextConfig<TResolve, TCtx & AuthResolverCtx>;
+type PublicAuthContextConfig<TResolve extends Record<string, unknown>, TCtx> = AuthContextConfig<
+  TResolve,
+  TCtx & AuthResolverCtx
+>;
 
 type AuthContextResolver = {
   <TCtx, TResolve extends Record<string, unknown> = Record<string, never>>(
@@ -177,7 +173,7 @@ type AuthContextFactory = {
  */
 export type AuthLike = {
   user: {
-    get: (...args: any[]) => Promise<UserDoc>;
+    get: (...args: any[]) => Promise<UserDoc | null>;
     getActiveGroup: (...args: any[]) => Promise<string | null>;
     [key: string]: unknown;
   };
@@ -219,16 +215,29 @@ export type AuthContextConfig<
    */
   optional?: boolean;
   /**
+   * Resolve the active group + membership when building `ctx.auth`.
+   *
+   * The full resolver fires three sequential component reads on every
+   * call: `user.get`, `user.getActiveGroup`, `member.inspect`. For
+   * handlers that only need `userId` / `user` (e.g. `account:listPasskeys`,
+   * profile reads, self-service settings), the second and third reads are
+   * pure overhead.
+   *
+   * Set `group: false` to skip them. `ctx.auth.groupId`, `ctx.auth.role`,
+   * and `ctx.auth.grants` come back as `null` / `[]` without any
+   * component round-trip. Saves ~10–30ms per auth-gated call on the
+   * lightweight path.
+   *
+   * @defaultValue true
+   */
+  group?: boolean;
+  /**
    * Attach additional derived fields to the auth context after the base auth
    * context is resolved.
    *
    * This callback runs only when a user is authenticated.
    */
-  resolve?: (
-    ctx: TCtx,
-    user: UserDoc,
-    auth: AuthContext,
-  ) => Promise<TResolve> | TResolve;
+  resolve?: (ctx: TCtx, user: UserDoc, auth: AuthContext) => Promise<TResolve> | TResolve;
   /**
    * Override or wrap the base auth resolution used by {@link createAuth().ctx}.
    *
@@ -285,9 +294,7 @@ export type AuthContextConfig<
  */
 export type InferAuth<
   T extends {
-    input: (
-      ...args: never[]
-    ) => CustomFunctionInputResult<Record<string, unknown>>;
+    input: (...args: never[]) => CustomFunctionInputResult<Record<string, unknown>>;
   },
 > = Awaited<ReturnType<T["input"]>>["ctx"]["auth"];
 
@@ -316,13 +323,10 @@ async function resolveConfiguredAuthContext<
   config?: AuthContextConfig<TResolve, TCtx>,
 ): Promise<AuthContext | null> {
   const fallback = () =>
-    getResolvedAuthContext(
-      auth,
-      ctx as unknown as Parameters<typeof getResolvedAuthContext>[1],
-    );
-  const authOverride = config?.authResolve
-    ? await config.authResolve(ctx, fallback)
-    : undefined;
+    getResolvedAuthContext(auth, ctx as unknown as Parameters<typeof getResolvedAuthContext>[1], {
+      group: config?.group !== false,
+    });
+  const authOverride = config?.authResolve ? await config.authResolve(ctx, fallback) : undefined;
   return authOverride === undefined ? await fallback() : authOverride;
 }
 
@@ -333,9 +337,7 @@ function createNotSignedInError() {
   });
 }
 
-export function assertAuthResolverContext<TCtx>(
-  ctx: TCtx,
-): asserts ctx is TCtx & AuthResolverCtx {
+export function assertAuthResolverContext<TCtx>(ctx: TCtx): asserts ctx is TCtx & AuthResolverCtx {
   const candidate = ctx as {
     auth?: { getUserIdentity?: unknown };
     runQuery?: unknown;
@@ -375,9 +377,7 @@ export async function createPublicAuthContext<
     return createUnauthenticatedAuthContext();
   }
 
-  const extra = config?.resolve
-    ? await config.resolve(ctx, resolved.user, resolved)
-    : {};
+  const extra = config?.resolve ? await config.resolve(ctx, resolved.user, resolved) : {};
 
   return {
     ...resolved,
@@ -399,11 +399,7 @@ export function createAuthContextCustomization<
 >(auth: AuthLike, config?: AuthContextConfig<TResolve, TCtx>) {
   return {
     args: {},
-    input: async (
-      ctx: TCtx,
-      _args: Record<string, never>,
-      _extra?: unknown,
-    ) => {
+    input: async (ctx: TCtx, _args: Record<string, never>, _extra?: unknown) => {
       const nativeAuth = ctx.auth;
       const getUserIdentity = nativeAuth.getUserIdentity.bind(nativeAuth);
       const resolved = await resolveConfiguredAuthContext(auth, ctx, config);
@@ -423,9 +419,7 @@ export function createAuthContextCustomization<
         };
       }
 
-      const extra = config?.resolve
-        ? await config.resolve(ctx, resolved.user, resolved)
-        : {};
+      const extra = config?.resolve ? await config.resolve(ctx, resolved.user, resolved) : {};
 
       return {
         ctx: {

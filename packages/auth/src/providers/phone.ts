@@ -40,14 +40,11 @@ export function phone(config: PhoneProviderConfig): PhoneConfig {
     maxAge: config.maxAge ?? 60 * 20,
     authorize: async (params, account) => {
       if (typeof params.phone !== "string") {
-        throw new Error(
-          "Token verification requires a `phone` in params of `signIn`.",
-        );
+        throw new Error("Token verification requires a `phone` in params of `signIn`.");
       }
       if (account.providerAccountId !== params.phone) {
         throw new Error(
-          "Short verification code requires a matching `phone` " +
-            "in params of `signIn`.",
+          "Short verification code requires a matching `phone` " + "in params of `signIn`.",
         );
       }
     },

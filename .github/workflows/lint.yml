@@ -7,8 +7,7 @@ on:
     branches: [main]
 
 concurrency:
-  group:
-    lint-${{ github.workflow }}-${{ github.event.pull_request.number ||
+  group: lint-${{ github.workflow }}-${{ github.event.pull_request.number ||
     github.ref }}
   cancel-in-progress: true
 
@@ -53,8 +52,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build package prerequisites
-        run:
-          vp run '@robelest/samlify#build' && vp run
+        run: vp run '@robelest/samlify#build' && vp run
           '@robelest/convex-auth#build'
 
       - name: Run lint

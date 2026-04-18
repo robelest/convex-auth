@@ -114,10 +114,7 @@ test("refresh token expiration", async () => {
   expect(tokens).toBeNull();
 });
 
-async function exchangeToken(
-  t: TestConvex<typeof schema>,
-  refreshToken: string,
-) {
+async function exchangeToken(t: TestConvex<typeof schema>, refreshToken: string) {
   const newTokens = expectSignedInResult(
     await t.action(api.auth.signIn, {
       refreshToken,

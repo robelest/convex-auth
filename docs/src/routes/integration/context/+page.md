@@ -1,7 +1,6 @@
 ---
 title: Context Enrichment
-description:
-  Zero-boilerplate ctx.auth.userId, groupId, role, and grants via
+description: Zero-boilerplate ctx.auth.userId, groupId, role, and grants via
   convex-helpers.
 ---
 
@@ -36,14 +35,8 @@ export const auth = createAuthContext(components.auth);
 
 ```ts
 // convex/lib/functions.ts
-import {
-  customQuery,
-  customMutation,
-} from "convex-helpers/server/customFunctions";
-import {
-  query as rawQuery,
-  mutation as rawMutation,
-} from "../_generated/server";
+import { customQuery, customMutation } from "convex-helpers/server/customFunctions";
+import { query as rawQuery, mutation as rawMutation } from "../_generated/server";
 import { auth } from "../auth/core";
 
 const authCtx = auth.ctx();
@@ -170,14 +163,8 @@ export function setupTest() {
 
 ```ts
 // convex/lib/functions.ts
-import {
-  customQuery,
-  customMutation,
-} from "convex-helpers/server/customFunctions";
-import {
-  query as rawQuery,
-  mutation as rawMutation,
-} from "../_generated/server";
+import { customQuery, customMutation } from "convex-helpers/server/customFunctions";
+import { query as rawQuery, mutation as rawMutation } from "../_generated/server";
 import type { AuthContext } from "@robelest/convex-auth/component";
 import { auth } from "../auth";
 

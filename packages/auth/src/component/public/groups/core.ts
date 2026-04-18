@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import type { Id } from "../../_generated/dataModel";
+import type { Doc, Id } from "../../_generated/dataModel";
 import { mutation, query } from "../../functions";
 import { vGroupDoc, vPaginated, vTag } from "../../model";
 
@@ -125,6 +125,94 @@ export const groupGet = query({
 });
 
 /**
+ * Batched equivalent of {@link groupGet}. Fetches many group documents by ID
+ * in a single component round-trip. Returns each group (or `null`) in the
+ * same slot as the input ID; duplicates are tolerated but de-duplicated
+ * internally so each `ctx.db.get` runs exactly once per distinct ID.
+ *
+ * Used by app-side aggregate handlers (e.g. `groups:listMyGroups`) that
+ * previously fanned out one `groupGet` per item.
+ *
+ * @param args.groupIds - Array of group document IDs.
+ * @returns Array of group documents (or `null` entries) in input order.
+ */
+export const groupGetMany = query({
+  args: { groupIds: v.array(v.id("Group")) },
+  returns: v.array(v.union(vGroupDoc, v.null())),
+  handler: async (ctx, { groupIds }) => {
+    if (groupIds.length === 0) return [];
+    const unique = Array.from(new Set(groupIds));
+    const docs = await Promise.all(unique.map((id) => ctx.db.get("Group", id)));
+    const byId = new Map(unique.map((id, i) => [id, docs[i] ?? null]));
+    return groupIds.map((id) => byId.get(id) ?? null);
+  },
+});
+
+/**
+ * Walk up the group hierarchy from `groupId` in a single component
+ * round-trip and return every ancestor document. Consolidates what would
+ * otherwise be D successive `groupGet` calls (one per level) when the app
+ * resolver steps parent-by-parent.
+ *
+ * Cycle detection walks up only along `parentGroupId` links; if the chain
+ * revisits a group, the traversal stops with `cycleDetected: true`. Stops
+ * early with `maxDepthReached: true` when the depth limit is hit.
+ *
+ * @param args.groupId - Starting group id. The top of the walk.
+ * @param args.maxDepth - Maximum number of ancestor levels to visit
+ *   (default 32). Set to 0 to inspect only the starting group.
+ * @param args.includeSelf - When `true`, include the starting group in
+ *   the returned `ancestors` array. Default `false`.
+ * @returns `{ ancestors, cycleDetected, maxDepthReached }` — ancestors
+ *   are ordered from the immediate parent upward (or starting at
+ *   `groupId` when `includeSelf` is set).
+ */
+export const groupAncestors = query({
+  args: {
+    groupId: v.id("Group"),
+    maxDepth: v.optional(v.number()),
+    includeSelf: v.optional(v.boolean()),
+  },
+  returns: v.object({
+    ancestors: v.array(vGroupDoc),
+    cycleDetected: v.boolean(),
+    maxDepthReached: v.boolean(),
+  }),
+  handler: async (ctx, { groupId, maxDepth, includeSelf }) => {
+    const limit = Math.max(0, Math.floor(maxDepth ?? 32));
+    const visited = new Set<string>();
+    const ancestors: Array<Doc<"Group">> = [];
+    let cycleDetected = false;
+    let maxDepthReached = false;
+    let current: Id<"Group"> | undefined = groupId;
+    let depth = 0;
+    let first = true;
+    while (current !== undefined) {
+      if (depth > limit) {
+        maxDepthReached = true;
+        break;
+      }
+      if (visited.has(current)) {
+        cycleDetected = true;
+        break;
+      }
+      visited.add(current);
+      const doc = await ctx.db.get("Group", current);
+      if (doc === null) break;
+      if (first) {
+        first = false;
+        if (includeSelf === true) ancestors.push(doc);
+      } else {
+        ancestors.push(doc);
+      }
+      current = doc.parentGroupId as Id<"Group"> | undefined;
+      depth += 1;
+    }
+    return { ancestors, cycleDetected, maxDepthReached };
+  },
+});
+
+/**
  * List groups with optional filtering, sorting, and pagination.
  *
  * Returns `{ items, nextCursor }`. Empty `where` returns **all** groups.
@@ -174,12 +262,7 @@ export const groupList = query({
     limit: v.optional(v.number()),
     cursor: v.optional(v.union(v.string(), v.null())),
     orderBy: v.optional(
-      v.union(
-        v.literal("_creationTime"),
-        v.literal("name"),
-        v.literal("slug"),
-        v.literal("type"),
-      ),
+      v.union(v.literal("_creationTime"), v.literal("name"), v.literal("slug"), v.literal("type")),
     ),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
@@ -199,9 +282,7 @@ export const groupList = query({
         const t = normalizeTag(rawTag);
         const rows = await ctx.db
           .query("GroupTag")
-          .withIndex("by_key_value", (idx) =>
-            idx.eq("key", t.key).eq("value", t.value),
-          )
+          .withIndex("by_key_value", (idx) => idx.eq("key", t.key).eq("value", t.value))
           .collect();
         const ids = new Set(rows.map((r) => r.group_id as string));
         if (allSet === null) {
@@ -225,9 +306,7 @@ export const groupList = query({
         const t = normalizeTag(rawTag);
         const rows = await ctx.db
           .query("GroupTag")
-          .withIndex("by_key_value", (idx) =>
-            idx.eq("key", t.key).eq("value", t.value),
-          )
+          .withIndex("by_key_value", (idx) => idx.eq("key", t.key).eq("value", t.value))
           .collect();
         for (const r of rows) {
           anySet.add(r.group_id as string);
@@ -252,23 +331,15 @@ export const groupList = query({
           idx.eq("type", where.type!).eq("parentGroupId", where.parentGroupId!),
         );
     } else if (where.slug !== undefined) {
-      q = ctx.db
-        .query("Group")
-        .withIndex("slug", (idx) => idx.eq("slug", where.slug!));
+      q = ctx.db.query("Group").withIndex("slug", (idx) => idx.eq("slug", where.slug!));
     } else if (where.type !== undefined) {
-      q = ctx.db
-        .query("Group")
-        .withIndex("type", (idx) => idx.eq("type", where.type!));
+      q = ctx.db.query("Group").withIndex("type", (idx) => idx.eq("type", where.type!));
     } else if (where.parentGroupId !== undefined) {
       q = ctx.db
         .query("Group")
-        .withIndex("parent_group_id", (idx) =>
-          idx.eq("parentGroupId", where.parentGroupId!),
-        );
+        .withIndex("parent_group_id", (idx) => idx.eq("parentGroupId", where.parentGroupId!));
     } else if (where.isRoot !== undefined) {
-      q = ctx.db
-        .query("Group")
-        .withIndex("is_root", (idx) => idx.eq("isRoot", where.isRoot!));
+      q = ctx.db.query("Group").withIndex("is_root", (idx) => idx.eq("isRoot", where.isRoot!));
     } else {
       q = ctx.db.query("Group");
     }
@@ -363,9 +434,7 @@ export const groupUpdate = mutation({
       if (oldRootGroupId && oldRootGroupId !== newRootGroupId) {
         const descendants = await ctx.db
           .query("Group")
-          .withIndex("root_group_id", (q) =>
-            q.eq("rootGroupId", oldRootGroupId),
-          )
+          .withIndex("root_group_id", (q) => q.eq("rootGroupId", oldRootGroupId))
           .collect();
         for (const desc of descendants) {
           if (desc._id !== groupId) {

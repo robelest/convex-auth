@@ -86,9 +86,7 @@ export class IdpMetadata extends Metadata {
           IDPSSODescriptor.push({ SingleLogoutService: [{ _attr: attr }] });
         });
       } else {
-        console.warn(
-          "Construct identity  provider - missing endpoint of SingleLogoutService",
-        );
+        console.warn("Construct identity  provider - missing endpoint of SingleLogoutService");
       }
       // Create a new metadata by setting
       meta = buildXml([
@@ -116,11 +114,7 @@ export class IdpMetadata extends Metadata {
       },
       {
         key: "singleSignOnService",
-        localPath: [
-          "EntityDescriptor",
-          "IDPSSODescriptor",
-          "SingleSignOnService",
-        ],
+        localPath: ["EntityDescriptor", "IDPSSODescriptor", "SingleSignOnService"],
         index: ["Binding"],
         attributePath: [],
         attributes: ["Location"],

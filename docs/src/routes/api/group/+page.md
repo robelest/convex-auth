@@ -1,7 +1,6 @@
 ---
 title: auth.group
-description:
-  Group management — create, list, update, and delete hierarchical groups.
+description: Group management — create, list, update, and delete hierarchical groups.
 ---
 
 <svelte:head>

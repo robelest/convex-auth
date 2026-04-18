@@ -100,10 +100,7 @@ function parseJwtPayload(token: string): { sub?: string } {
     return {};
   }
   const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(
-    normalized.length + ((4 - (normalized.length % 4)) % 4),
-    "=",
-  );
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
   return JSON.parse(Buffer.from(padded, "base64").toString("utf8")) as {
     sub?: string;
   };
@@ -121,10 +118,7 @@ function parseUserIdFromToken(token: string) {
   return userId;
 }
 
-async function startGroupConnectionContext(
-  prefix: string,
-  protocol: "oidc" | "saml",
-) {
+async function startGroupConnectionContext(prefix: string, protocol: "oidc" | "saml") {
   const { convexApiUrl, convexSiteUrl } = getInteropRuntime();
   const convexClient = new ConvexHttpClient(convexApiUrl, {
     skipConvexDeploymentUrlCheck: true,
@@ -145,17 +139,13 @@ async function startGroupConnectionContext(
   const { groupId } = await groupCreateRpc(convexClient, convexUserToken, {
     name: `${prefix} ${runId}`,
   });
-  const connectionCreated = await groupConnectionCreateRpc(
-    convexClient,
-    convexUserToken,
-    {
-      groupId,
-      name: `${prefix} ${runId}`,
-      slug: runId,
-      protocol,
-      status: "active",
-    },
-  );
+  const connectionCreated = await groupConnectionCreateRpc(convexClient, convexUserToken, {
+    groupId,
+    name: `${prefix} ${runId}`,
+    slug: runId,
+    protocol,
+    status: "active",
+  });
   expect(connectionCreated.connectionId).toBeTruthy();
 
   return {
@@ -230,14 +220,8 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
   const { zitadelBaseUrl, zitadelRuntimeBaseUrl, managementToken, loginToken } =
     getInteropRuntime();
 
-  const {
-    convexSiteUrl,
-    convexClient,
-    convexUserToken,
-    connectionId,
-    groupId,
-    runId,
-  } = await startGroupConnectionContext("combined-oidc", "oidc");
+  const { convexSiteUrl, convexClient, convexUserToken, connectionId, groupId, runId } =
+    await startGroupConnectionContext("combined-oidc", "oidc");
 
   const email = `${runId}@example.com`;
 
@@ -276,10 +260,7 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
         name: `combined-oidc-app-${runId}`,
         redirectUris: [connectionCallbackUrl],
         responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
-        grantTypes: [
-          "OIDC_GRANT_TYPE_AUTHORIZATION_CODE",
-          "OIDC_GRANT_TYPE_REFRESH_TOKEN",
-        ],
+        grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"],
         appType: "OIDC_APP_TYPE_WEB",
         authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
         postLogoutRedirectUris: [redirectTo],
@@ -387,9 +368,7 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
   const convexCookies = new Map<string, string>();
   const signInResponse = await requestHttp(signInUrl);
   if (signInResponse.status !== 302) {
-    throw new Error(
-      `OIDC signin failed: ${signInResponse.status} ${await signInResponse.text()}`,
-    );
+    throw new Error(`OIDC signin failed: ${signInResponse.status} ${await signInResponse.text()}`);
   }
   updateCookieJar(convexCookies, parseSetCookieHeaders(signInResponse));
   const authorizeLocation = signInResponse.headers.get("location");
@@ -398,40 +377,27 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
   }
 
   const authorizeResponse = await requestHttp(
-    rewriteUrlForHostAccess(
-      authorizeLocation,
-      zitadelRuntimeBaseUrl,
-      zitadelBaseUrl,
-    ),
+    rewriteUrlForHostAccess(authorizeLocation, zitadelRuntimeBaseUrl, zitadelBaseUrl),
   );
   const authRequestLocation = authorizeResponse.headers.get("location");
   if (!authRequestLocation) {
-    throw new Error(
-      "Authorize endpoint did not return an auth request redirect.",
-    );
+    throw new Error("Authorize endpoint did not return an auth request redirect.");
   }
   const authRequestId = extractAuthRequestId(
-    rewriteUrlForHostAccess(
-      authRequestLocation,
-      zitadelRuntimeBaseUrl,
-      zitadelBaseUrl,
-    ),
+    rewriteUrlForHostAccess(authRequestLocation, zitadelRuntimeBaseUrl, zitadelBaseUrl),
     zitadelBaseUrl,
   );
 
-  const session = await requestJson<ZitadelCreateSessionResponse>(
-    `${zitadelBaseUrl}/v2/sessions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${loginToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        checks: { user: { userId: zitadelUserId }, password: { password } },
-      }),
+  const session = await requestJson<ZitadelCreateSessionResponse>(`${zitadelBaseUrl}/v2/sessions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${loginToken}`,
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({
+      checks: { user: { userId: zitadelUserId }, password: { password } },
+    }),
+  });
   const sessionId = session.sessionId ?? session.session_id;
   const sessionToken = session.sessionToken ?? session.session_token;
   expect(sessionId).toBeTruthy();
@@ -460,9 +426,7 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
   expect(callbackResponse.status).toBe(302);
   const completionLocation = callbackResponse.headers.get("location");
   if (!completionLocation) {
-    throw new Error(
-      "Group Connection callback did not return completion redirect.",
-    );
+    throw new Error("Group Connection callback did not return completion redirect.");
   }
   const verificationCode = new URL(completionLocation).searchParams.get("code");
   expect(verificationCode).toBeTruthy();
@@ -484,8 +448,7 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
   expect(
     auditEvents.some(
       (event) =>
-        event.eventType === "group.sso.scim.user.created" &&
-        event.subjectId === provisionedUserId,
+        event.eventType === "group.sso.scim.user.created" && event.subjectId === provisionedUserId,
     ),
   ).toBe(true);
 }, 60_000);
@@ -494,14 +457,8 @@ test("SCIM + SAML reuses provisioned userId", async () => {
   const { zitadelBaseUrl, zitadelRuntimeBaseUrl, managementToken, loginToken } =
     getInteropRuntime();
 
-  const {
-    convexSiteUrl,
-    convexClient,
-    convexUserToken,
-    connectionId,
-    groupId,
-    runId,
-  } = await startGroupConnectionContext("combined-saml", "saml");
+  const { convexSiteUrl, convexClient, convexUserToken, connectionId, groupId, runId } =
+    await startGroupConnectionContext("combined-saml", "saml");
 
   const email = `${runId}@example.com`;
 
@@ -551,9 +508,7 @@ test("SCIM + SAML reuses provisioned userId", async () => {
   );
   expect(samlApp.appId ?? samlApp.app_id).toBeTruthy();
 
-  const idpMetadataResponse = await requestHttp(
-    `${zitadelBaseUrl}/saml/v2/metadata`,
-  );
+  const idpMetadataResponse = await requestHttp(`${zitadelBaseUrl}/saml/v2/metadata`);
   expect(idpMetadataResponse.status).toBe(200);
   const idpMetadataXml = await idpMetadataResponse.text();
 
@@ -650,20 +605,13 @@ test("SCIM + SAML reuses provisioned userId", async () => {
       throw new Error("SAML signin did not return a redirect.");
     }
     const ssoResponse = await requestHttp(
-      rewriteUrlForHostAccess(
-        signInLocation,
-        zitadelRuntimeBaseUrl,
-        zitadelBaseUrl,
-      ),
+      rewriteUrlForHostAccess(signInLocation, zitadelRuntimeBaseUrl, zitadelBaseUrl),
     );
     const loginLocation = ssoResponse.headers.get("location");
     if (!loginLocation) {
       throw new Error("ZITADEL SSO did not redirect to login UI.");
     }
-    samlRequestId = extractSamlRequestIdFromLoginUrl(
-      loginLocation,
-      zitadelBaseUrl,
-    );
+    samlRequestId = extractSamlRequestIdFromLoginUrl(loginLocation, zitadelBaseUrl);
   } else {
     const html = await signInResponse.text();
     const { action, fields } = parseSamlPostFormFromHtml(html);
@@ -679,10 +627,7 @@ test("SCIM + SAML reuses provisioned userId", async () => {
     if (!loginLocation) {
       throw new Error("ZITADEL SSO POST did not redirect to login UI.");
     }
-    samlRequestId = extractSamlRequestIdFromLoginUrl(
-      loginLocation,
-      zitadelBaseUrl,
-    );
+    samlRequestId = extractSamlRequestIdFromLoginUrl(loginLocation, zitadelBaseUrl);
   }
 
   const samlRequestDetails = await requestJson<ZitadelSamlRequestDetails>(
@@ -697,19 +642,16 @@ test("SCIM + SAML reuses provisioned userId", async () => {
   );
   expect(samlRequestDetails.samlRequest?.id).toBe(samlRequestId);
 
-  const session = await requestJson<ZitadelCreateSessionResponse>(
-    `${zitadelBaseUrl}/v2/sessions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${loginToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        checks: { user: { userId: zitadelUserId }, password: { password } },
-      }),
+  const session = await requestJson<ZitadelCreateSessionResponse>(`${zitadelBaseUrl}/v2/sessions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${loginToken}`,
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({
+      checks: { user: { userId: zitadelUserId }, password: { password } },
+    }),
+  });
   const sessionId = session.sessionId ?? session.session_id;
   const sessionToken = session.sessionToken ?? session.session_token;
   expect(sessionId).toBeTruthy();
@@ -735,16 +677,10 @@ test("SCIM + SAML reuses provisioned userId", async () => {
   const postBinding = finalized.post ?? finalized.binding?.post;
   if (postBinding) {
     if (!postBinding.samlResponse) {
-      throw new Error(
-        "ZITADEL SAML POST binding did not include samlResponse.",
-      );
+      throw new Error("ZITADEL SAML POST binding did not include samlResponse.");
     }
     acsResponse = await requestHttp(
-      rewriteUrlForHostAccess(
-        finalized.url,
-        zitadelRuntimeBaseUrl,
-        convexSiteUrl,
-      ),
+      rewriteUrlForHostAccess(finalized.url, zitadelRuntimeBaseUrl, convexSiteUrl),
       {
         method: "POST",
         headers: {
@@ -753,19 +689,13 @@ test("SCIM + SAML reuses provisioned userId", async () => {
         },
         body: buildFormBody({
           SAMLResponse: postBinding.samlResponse,
-          ...(postBinding.relayState
-            ? { RelayState: postBinding.relayState }
-            : {}),
+          ...(postBinding.relayState ? { RelayState: postBinding.relayState } : {}),
         }),
       },
     );
   } else {
     acsResponse = await requestHttp(
-      rewriteUrlForHostAccess(
-        finalized.url,
-        zitadelRuntimeBaseUrl,
-        convexSiteUrl,
-      ),
+      rewriteUrlForHostAccess(finalized.url, zitadelRuntimeBaseUrl, convexSiteUrl),
       { headers: { Cookie: cookieHeader(convexCookies) ?? "" } },
     );
   }
@@ -794,8 +724,7 @@ test("SCIM + SAML reuses provisioned userId", async () => {
   expect(
     auditEvents.some(
       (event) =>
-        event.eventType === "group.sso.scim.user.created" &&
-        event.subjectId === provisionedUserId,
+        event.eventType === "group.sso.scim.user.created" && event.subjectId === provisionedUserId,
     ),
   ).toBe(true);
 }, 60_000);

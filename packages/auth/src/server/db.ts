@@ -5,10 +5,7 @@ import {
   FunctionReference,
 } from "convex/server";
 
-type MutationCtxLike = Pick<
-  GenericMutationCtx<GenericDataModel>,
-  "runQuery" | "runMutation"
->;
+type MutationCtxLike = Pick<GenericMutationCtx<GenericDataModel>, "runQuery" | "runMutation">;
 type ActionCtxLike = Pick<
   GenericActionCtx<GenericDataModel>,
   "runQuery" | "runMutation" | "runAction"
@@ -69,8 +66,7 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
   const component = config.component;
   return {
     users: {
-      getById: (userId: string) =>
-        ctx.runQuery(component.public.userGetById, { userId }),
+      getById: (userId: string) => ctx.runQuery(component.public.userGetById, { userId }),
       findByVerifiedEmail: (email: string) =>
         ctx.runQuery(component.public.userFindByVerifiedEmail, { email }),
       findByVerifiedPhone: (phone: string) =>
@@ -93,23 +89,17 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
           provider,
           providerAccountId,
         }),
-      getById: (accountId: string) =>
-        ctx.runQuery(component.public.accountGetById, { accountId }),
+      getById: (accountId: string) => ctx.runQuery(component.public.accountGetById, { accountId }),
       create: (args: {
         userId: string;
         provider: string;
         providerAccountId: string;
         secret?: string;
         extend?: Record<string, unknown>;
-      }) =>
-        ctx.runMutation(
-          component.public.accountInsert,
-          args,
-        ) as Promise<string>,
+      }) => ctx.runMutation(component.public.accountInsert, args) as Promise<string>,
       patch: (accountId: string, data: Record<string, unknown>) =>
         ctx.runMutation(component.public.accountPatch, { accountId, data }),
-      delete: (accountId: string) =>
-        ctx.runMutation(component.public.accountDelete, { accountId }),
+      delete: (accountId: string) => ctx.runMutation(component.public.accountDelete, { accountId }),
     },
     sessions: {
       create: (userId: string, expirationTime: number) =>
@@ -129,12 +119,9 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
           sessionId: string;
           refreshTokenId?: string;
         }>,
-      getById: (sessionId: string) =>
-        ctx.runQuery(component.public.sessionGetById, { sessionId }),
-      delete: (sessionId: string) =>
-        ctx.runMutation(component.public.sessionDelete, { sessionId }),
-      listByUser: (userId: string) =>
-        ctx.runQuery(component.public.sessionListByUser, { userId }),
+      getById: (sessionId: string) => ctx.runQuery(component.public.sessionGetById, { sessionId }),
+      delete: (sessionId: string) => ctx.runMutation(component.public.sessionDelete, { sessionId }),
+      listByUser: (userId: string) => ctx.runQuery(component.public.sessionListByUser, { userId }),
     },
     verifiers: {
       create: (sessionId?: string, signature?: string) =>
@@ -177,11 +164,7 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         sessionId: string;
         expirationTime: number;
         parentRefreshTokenId?: string;
-      }) =>
-        ctx.runMutation(
-          component.public.refreshTokenCreate,
-          args,
-        ) as Promise<string>,
+      }) => ctx.runMutation(component.public.refreshTokenCreate, args) as Promise<string>,
       exchange: (args: {
         refreshTokenId: string;
         sessionId: string;
@@ -189,10 +172,7 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         refreshTokenExpirationTime: number;
         reuseWindowMs: number;
       }) =>
-        ctx.runMutation(
-          component.public.refreshTokenExchange!,
-          args,
-        ) as Promise<null | {
+        ctx.runMutation(component.public.refreshTokenExchange!, args) as Promise<null | {
           userId: string;
           sessionId: string;
           refreshTokenId: string;
@@ -217,13 +197,9 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         ctx.runQuery(component.public.refreshTokenGetActive, { sessionId }),
     },
     rateLimits: {
-      get: (identifier: string) =>
-        ctx.runQuery(component.public.rateLimitGet, { identifier }),
-      create: (args: {
-        identifier: string;
-        attemptsLeft: number;
-        lastAttemptTime: number;
-      }) => ctx.runMutation(component.public.rateLimitCreate, args),
+      get: (identifier: string) => ctx.runQuery(component.public.rateLimitGet, { identifier }),
+      create: (args: { identifier: string; attemptsLeft: number; lastAttemptTime: number }) =>
+        ctx.runMutation(component.public.rateLimitCreate, args),
       patch: (rateLimitId: string, data: Record<string, unknown>) =>
         ctx.runMutation(component.public.rateLimitPatch, { rateLimitId, data }),
       delete: (rateLimitId: string) =>

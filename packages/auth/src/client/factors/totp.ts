@@ -42,8 +42,7 @@ type TotpDeps = {
 
 /** @internal */
 export function createTotpClient(deps: TotpDeps): TotpClient {
-  const { proxy, convex, requireApiRefs, proxyFetch, setTokenAndMaybeWait } =
-    deps;
+  const { proxy, convex, requireApiRefs, proxyFetch, setTokenAndMaybeWait } = deps;
 
   return {
     setup: async (opts?: {
@@ -90,11 +89,7 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
       };
     },
 
-    confirm: async (opts: {
-      code: string;
-      verifier: string;
-      totpId: string;
-    }): Promise<void> => {
+    confirm: async (opts: { code: string; verifier: string; totpId: string }): Promise<void> => {
       const params: Record<string, unknown> = {
         flow: "confirm",
         code: opts.code,
@@ -109,8 +104,7 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
         if (isSignedInResult(result) && result.tokens) {
           await setTokenAndMaybeWait({
             shouldStore: false,
-            tokens:
-              result.tokens === null ? null : { token: result.tokens.token },
+            tokens: result.tokens === null ? null : { token: result.tokens.token },
             waitForHandshake: true,
             context: { provider: "totp", flow: "confirm" },
           });
@@ -147,8 +141,7 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
         if (isSignedInResult(result) && result.tokens) {
           await setTokenAndMaybeWait({
             shouldStore: false,
-            tokens:
-              result.tokens === null ? null : { token: result.tokens.token },
+            tokens: result.tokens === null ? null : { token: result.tokens.token },
             waitForHandshake: true,
             context: { provider: "totp", flow: "verify" },
           });

@@ -1,10 +1,8 @@
 import { ConvexError, Value } from "convex/values";
 
 const HANDSHAKE_ERROR_MESSAGES = {
-  AUTH_HANDSHAKE_TIMEOUT:
-    "Sign-in succeeded but authentication confirmation timed out.",
-  AUTH_HANDSHAKE_REJECTED:
-    "Authentication was rejected while confirming the session.",
+  AUTH_HANDSHAKE_TIMEOUT: "Sign-in succeeded but authentication confirmation timed out.",
+  AUTH_HANDSHAKE_REJECTED: "Authentication was rejected while confirming the session.",
 } as const;
 
 export type ClientHandshakeErrorCode = keyof typeof HANDSHAKE_ERROR_MESSAGES;

@@ -107,6 +107,32 @@ export async function getUserSummary(ctx: any, userId: string) {
   };
 }
 
+/**
+ * Batched equivalent of {@link getUserSummary}. Folds N user lookups into a
+ * single `auth.user.get` (batched overload) component round-trip and also primes the ctx
+ * cache so subsequent `getUserSummary` calls for the same ids are free.
+ *
+ * Prefer this in list handlers that need to decorate many rows with user
+ * names/emails (dashboards, issue lists, member rosters).
+ */
+export async function getUserSummaries(ctx: any, userIds: string[]) {
+  if (userIds.length === 0)
+    return [] as Array<{
+      userId: string;
+      name: string;
+      email: string | null;
+    }>;
+  const docs = await auth.user.get(ctx, userIds);
+  return userIds.map((userId, i) => {
+    const user = docs[i];
+    return {
+      userId,
+      name: user?.name ?? user?.email ?? "Unknown user",
+      email: user?.email ?? null,
+    };
+  });
+}
+
 export function getPermissions(grants: string[]) {
   return {
     canReadProjects: grants.includes("projects.read"),
@@ -138,8 +164,4 @@ export function getUserRoleLabel(roleIds: string[]) {
   return "Unassigned";
 }
 
-export const validRoleIds = [
-  roles.orgAdmin.id,
-  roles.member.id,
-  roles.viewer.id,
-] as const;
+export const validRoleIds = [roles.orgAdmin.id, roles.member.id, roles.viewer.id] as const;

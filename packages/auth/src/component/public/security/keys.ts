@@ -191,9 +191,7 @@ export const keyList = query({
 
     let q;
     if (where.userId !== undefined) {
-      q = ctx.db
-        .query("ApiKey")
-        .withIndex("user_id", (idx) => idx.eq("userId", where.userId!));
+      q = ctx.db.query("ApiKey").withIndex("user_id", (idx) => idx.eq("userId", where.userId!));
     } else {
       q = ctx.db.query("ApiKey");
     }

@@ -1,7 +1,6 @@
 ---
 title: Device Flow (RFC 8628)
-description:
-  Authenticate input-constrained devices like CLIs, smart TVs, and IoT.
+description: Authenticate input-constrained devices like CLIs, smart TVs, and IoT.
 ---
 
 <svelte:head>

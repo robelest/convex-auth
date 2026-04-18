@@ -1,8 +1,4 @@
-import {
-  authCookieNames,
-  parseAuthCookies,
-  server,
-} from "@robelest/convex-auth/server";
+import { authCookieNames, parseAuthCookies, server } from "@robelest/convex-auth/server";
 import { ConvexHttpClient } from "convex/browser";
 import { ConvexError } from "convex/values";
 import { afterEach, expect, test, vi } from "vite-plus/test";
@@ -173,9 +169,7 @@ test("OAuth callback rejects PKCE provider when verifier cookie is missing", asy
   const authResult = await createOAuthAuthorizationURL("google", {
     provider,
   });
-  const stateCookie = authResult.cookies.find((cookie) =>
-    cookie.name.endsWith("OAuthstate"),
-  );
+  const stateCookie = authResult.cookies.find((cookie) => cookie.name.endsWith("OAuthstate"));
   expect(stateCookie).toBeDefined();
 
   await expect(
@@ -188,10 +182,7 @@ test("OAuth callback rejects PKCE provider when verifier cookie is missing", asy
       },
     ),
   ).rejects.toSatisfy((error: unknown) => {
-    return (
-      error instanceof ConvexError &&
-      error.data?.code === "OAUTH_MISSING_VERIFIER"
-    );
+    return error instanceof ConvexError && error.data?.code === "OAUTH_MISSING_VERIFIER";
   });
 
   expect(provider.validateAuthorizationCode).not.toHaveBeenCalled();
@@ -199,9 +190,7 @@ test("OAuth callback rejects PKCE provider when verifier cookie is missing", asy
 
 test("refresh keeps existing session when code exchange fails transiently", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
-  vi.spyOn(ConvexHttpClient.prototype, "action").mockRejectedValue(
-    new Error("exchange failed"),
-  );
+  vi.spyOn(ConvexHttpClient.prototype, "action").mockRejectedValue(new Error("exchange failed"));
 
   const auth = server({
     url: "https://example.convex.cloud",
@@ -250,13 +239,12 @@ test("refresh recovers from malformed access token with valid refresh token", as
   const result = expectNonRedirectRefreshResult(await auth.refresh(request));
 
   expect(result.token).toBe("new-jwt-token");
-  expect(
-    result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value,
-  ).toBe("new-jwt-token");
-  expect(
-    result.cookies.find((cookie) => cookie.name === cookieNames.refreshToken)
-      ?.value,
-  ).toBe("new-refresh-token");
+  expect(result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value).toBe(
+    "new-jwt-token",
+  );
+  expect(result.cookies.find((cookie) => cookie.name === cookieNames.refreshToken)?.value).toBe(
+    "new-refresh-token",
+  );
 });
 
 test("refresh does not mutate cookies for CORS requests", async () => {
@@ -424,15 +412,13 @@ test("verify rejects unrelated issuer tokens", async () => {
 });
 
 test("refresh keeps valid convex.site issuer token for convex.cloud URL", async () => {
-  const actionSpy = vi
-    .spyOn(ConvexHttpClient.prototype, "action")
-    .mockResolvedValue({
-      kind: "signedIn",
-      tokens: {
-        token: "unexpected-token",
-        refreshToken: "unexpected-refresh-token",
-      },
-    });
+  const actionSpy = vi.spyOn(ConvexHttpClient.prototype, "action").mockResolvedValue({
+    kind: "signedIn",
+    tokens: {
+      token: "unexpected-token",
+      refreshToken: "unexpected-refresh-token",
+    },
+  });
 
   const auth = server({
     url: "https://example.convex.cloud",
@@ -485,13 +471,8 @@ test("refresh clears foreign issuer token before expiry checks", async () => {
 
   const result = expectNonRedirectRefreshResult(await auth.refresh(request));
   expect(result.token).toBeNull();
-  expect(
-    result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value,
-  ).toBe("");
-  expect(
-    result.cookies.find((cookie) => cookie.name === cookieNames.refreshToken)
-      ?.value,
-  ).toBe("");
+  expect(result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value).toBe("");
+  expect(result.cookies.find((cookie) => cookie.name === cookieNames.refreshToken)?.value).toBe("");
 });
 
 test("refresh clears malformed refresh token values", async () => {
@@ -518,13 +499,8 @@ test("refresh clears malformed refresh token values", async () => {
 
   const result = expectNonRedirectRefreshResult(await auth.refresh(request));
   expect(result.token).toBeNull();
-  expect(
-    result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value,
-  ).toBe("");
-  expect(
-    result.cookies.find((cookie) => cookie.name === cookieNames.refreshToken)
-      ?.value,
-  ).toBe("");
+  expect(result.cookies.find((cookie) => cookie.name === cookieNames.token)?.value).toBe("");
+  expect(result.cookies.find((cookie) => cookie.name === cookieNames.refreshToken)?.value).toBe("");
 });
 
 test("proxy refresh keeps valid access token when refresh cookie is missing", async () => {
@@ -608,9 +584,7 @@ test("proxy refresh returns null when missing refresh cookie and access token is
 
 test("proxy signIn errors keep existing cookies for non-refresh requests", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
-  vi.spyOn(ConvexHttpClient.prototype, "action").mockRejectedValue(
-    new Error("signIn failed"),
-  );
+  vi.spyOn(ConvexHttpClient.prototype, "action").mockRejectedValue(new Error("signIn failed"));
 
   const auth = server({
     url: "https://example.convex.cloud",
@@ -651,10 +625,7 @@ test("proxy signIn errors keep existing cookies for non-refresh requests", async
 test("proxy signIn hydrates auth from refresh cookie for device verification", async () => {
   const actionSpy = vi
     .spyOn(ConvexHttpClient.prototype, "action")
-    .mockImplementation(async function (
-      this: ConvexHttpClient,
-      ...[_reference, args]: any[]
-    ) {
+    .mockImplementation(async function (this: ConvexHttpClient, ...[_reference, args]: any[]) {
       if (typeof args === "object" && args !== null && "refreshToken" in args) {
         return {
           kind: "signedIn",
@@ -665,9 +636,7 @@ test("proxy signIn hydrates auth from refresh cookie for device verification", a
         };
       }
 
-      expect((this as unknown as { auth?: string }).auth).toBe(
-        "fresh-jwt-token",
-      );
+      expect((this as unknown as { auth?: string }).auth).toBe("fresh-jwt-token");
       expect(args).toMatchObject({
         provider: "device",
         params: { flow: "verify", userCode: "ABCD-EFGH" },
@@ -717,9 +686,7 @@ test("proxy signIn hydrates auth from refresh cookie for device verification", a
       : (response.headers.get("set-cookie") ?? "");
 
   expect(setCookie).toContain(`${cookieNames.token}=fresh-jwt-token`);
-  expect(setCookie).toContain(
-    `${cookieNames.refreshToken}=fresh-refresh-token`,
-  );
+  expect(setCookie).toContain(`${cookieNames.refreshToken}=fresh-refresh-token`);
 });
 
 test("proxy signOut retries revocation via refresh token", async () => {

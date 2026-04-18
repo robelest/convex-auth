@@ -67,8 +67,7 @@ export type ScimListRequest = {
 /** @internal */
 export const SCIM_USER_SCHEMA_ID = "urn:ietf:params:scim:schemas:core:2.0:User";
 /** @internal */
-export const SCIM_GROUP_SCHEMA_ID =
-  "urn:ietf:params:scim:schemas:core:2.0:Group";
+export const SCIM_GROUP_SCHEMA_ID = "urn:ietf:params:scim:schemas:core:2.0:Group";
 
 /** @internal */
 export const GROUP_OIDC_PROVIDER_PREFIX = "group:oidc:";
@@ -129,15 +128,10 @@ export function getGroupOidcUrls(opts: {
 }
 
 /** @internal */
-export function encodeGroupOidcState(opts: {
-  connectionId: string;
-  state: string;
-}) {
+export function encodeGroupOidcState(opts: { connectionId: string; state: string }) {
   const json = JSON.stringify(opts);
   const encoded =
-    typeof btoa === "function"
-      ? btoa(json)
-      : Buffer.from(json, "utf8").toString("base64");
+    typeof btoa === "function" ? btoa(json) : Buffer.from(json, "utf8").toString("base64");
   return encoded.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
@@ -149,17 +143,12 @@ export function decodeGroupOidcState(value: string | null) {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
   const decoded =
-    typeof atob === "function"
-      ? atob(padded)
-      : Buffer.from(padded, "base64").toString("utf8");
+    typeof atob === "function" ? atob(padded) : Buffer.from(padded, "base64").toString("utf8");
   const parsed = JSON.parse(decoded) as {
     connectionId?: unknown;
     state?: unknown;
   };
-  if (
-    typeof parsed.connectionId !== "string" ||
-    typeof parsed.state !== "string"
-  ) {
+  if (typeof parsed.connectionId !== "string" || typeof parsed.state !== "string") {
     throw new Error("Invalid OIDC state.");
   }
   return {
@@ -182,6 +171,4 @@ export function isGroupProviderId(providerId: string): boolean {
 }
 
 export const asRecord = (value: unknown) =>
-  typeof value === "object" && value !== null
-    ? (value as Record<string, unknown>)
-    : null;
+  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;

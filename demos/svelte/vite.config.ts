@@ -7,10 +7,7 @@ import { defineConfig, loadEnv } from "vite";
 const convexRoot = path.resolve(import.meta.dirname, "../../convex");
 const rootEnvDir = path.resolve(import.meta.dirname, "../..");
 
-Object.assign(
-  process.env,
-  loadEnv(process.env.NODE_ENV ?? "development", rootEnvDir, ""),
-);
+Object.assign(process.env, loadEnv(process.env.NODE_ENV ?? "development", rootEnvDir, ""));
 
 export default defineConfig(({ mode }) => {
   Object.assign(process.env, loadEnv(mode, rootEnvDir, ""));

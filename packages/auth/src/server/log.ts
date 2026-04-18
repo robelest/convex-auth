@@ -6,14 +6,10 @@ export type { LogLevel };
 
 const configuredLogLevel =
   LOG_LEVELS[
-    (readConfigSync(envOptionalString("AUTH_LOG_LEVEL")) as
-      | LogLevel
-      | undefined) ?? "INFO"
+    (readConfigSync(envOptionalString("AUTH_LOG_LEVEL")) as LogLevel | undefined) ?? "INFO"
   ] ?? "INFO";
 
-const shouldRedactSecrets = !readConfigSync(
-  envBoolean("AUTH_LOG_SECRETS") ?? false,
-);
+const shouldRedactSecrets = !readConfigSync(envBoolean("AUTH_LOG_SECRETS") ?? false);
 
 /** @internal */
 export function log(level: LogLevel, ...args: unknown[]) {
@@ -24,9 +20,7 @@ export function log(level: LogLevel, ...args: unknown[]) {
 export function logError(error: unknown) {
   return log(
     LOG_LEVELS.ERROR,
-    error instanceof Error
-      ? error.message + "\n" + error.stack?.replace("\\n", "\n")
-      : error,
+    error instanceof Error ? error.message + "\n" + error.stack?.replace("\\n", "\n") : error,
   );
 }
 

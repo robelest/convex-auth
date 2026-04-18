@@ -27,7 +27,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       accountDelete: FunctionReference<
         "mutation",
         "internal",
-        { accountId: string },
+        { accountId: string; requireOtherAccount?: boolean },
         null,
         Name
       >;
@@ -421,6 +421,63 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           >;
         };
       };
+      groupAncestors: FunctionReference<
+        "query",
+        "internal",
+        { groupId: string; includeSelf?: boolean; maxDepth?: number },
+        {
+          ancestors: Array<{
+            _creationTime: number;
+            _id: string;
+            extend?: any;
+            isRoot?: boolean;
+            name: string;
+            parentGroupId?: string;
+            policy?: {
+              extend?: any;
+              identity: {
+                accountLinking: {
+                  oidc: "verifiedEmail" | "none";
+                  saml: "verifiedEmail" | "none";
+                };
+              };
+              provisioning: {
+                deprovision: { mode: "soft" | "hard" };
+                groups: {
+                  mapping?: Record<string, Array<string>>;
+                  mode: "ignore" | "sync";
+                  source: "protocol";
+                };
+                jit: {
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
+                  mode: "off" | "createUser" | "createUserAndMembership";
+                };
+                roles: {
+                  mapping?: Record<string, Array<string>>;
+                  mode: "ignore" | "map";
+                  source: "protocol";
+                };
+                scimReuse: { user: "externalId" | "none" };
+                user: {
+                  authority: "app" | "sso" | "scim";
+                  createOnSignIn: boolean;
+                  updateProfileFromScim: "never" | "missing" | "always";
+                  updateProfileOnLogin: "never" | "missing" | "always";
+                };
+              };
+              version: 1;
+            };
+            rootGroupId?: string;
+            slug?: string;
+            tags?: Array<{ key: string; value: string }>;
+            type?: string;
+          }>;
+          cycleDetected: boolean;
+          maxDepthReached: boolean;
+        },
+        Name
+      >;
       groupAuditEventCreate: FunctionReference<
         "mutation",
         "internal",
@@ -507,7 +564,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       groupConnectionDomainList: FunctionReference<
         "query",
         "internal",
-        { connectionId: string },
+        { connectionId: string; limit?: number },
         Array<{
           _creationTime: number;
           _id: string;
@@ -750,6 +807,28 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         } | null,
         Name
       >;
+      groupConnectionScimIdentityGetByGroupConnectionAndUsers: FunctionReference<
+        "query",
+        "internal",
+        { connectionId: string; userIds: Array<string> },
+        Array<{
+          identity: {
+            _creationTime: number;
+            _id: string;
+            active?: boolean;
+            connectionId: string;
+            externalId: string;
+            groupId: string;
+            lastProvisionedAt?: number;
+            mappedGroupId?: string;
+            raw?: any;
+            resourceType: "user" | "group";
+            userId?: string;
+          } | null;
+          userId: string;
+        }>,
+        Name
+      >;
       groupConnectionScimIdentityGetByMappedGroup: FunctionReference<
         "query",
         "internal",
@@ -940,6 +1019,59 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         } | null,
         Name
       >;
+      groupGetMany: FunctionReference<
+        "query",
+        "internal",
+        { groupIds: Array<string> },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          extend?: any;
+          isRoot?: boolean;
+          name: string;
+          parentGroupId?: string;
+          policy?: {
+            extend?: any;
+            identity: {
+              accountLinking: {
+                oidc: "verifiedEmail" | "none";
+                saml: "verifiedEmail" | "none";
+              };
+            };
+            provisioning: {
+              deprovision: { mode: "soft" | "hard" };
+              groups: {
+                mapping?: Record<string, Array<string>>;
+                mode: "ignore" | "sync";
+                source: "protocol";
+              };
+              jit: {
+                defaultRole?: string;
+                defaultRoleIds?: Array<string>;
+                mode: "off" | "createUser" | "createUserAndMembership";
+              };
+              roles: {
+                mapping?: Record<string, Array<string>>;
+                mode: "ignore" | "map";
+                source: "protocol";
+              };
+              scimReuse: { user: "externalId" | "none" };
+              user: {
+                authority: "app" | "sso" | "scim";
+                createOnSignIn: boolean;
+                updateProfileFromScim: "never" | "missing" | "always";
+                updateProfileOnLogin: "never" | "missing" | "always";
+              };
+            };
+            version: 1;
+          };
+          rootGroupId?: string;
+          slug?: string;
+          tags?: Array<{ key: string; value: string }>;
+          type?: string;
+        } | null>,
+        Name
+      >;
       groupList: FunctionReference<
         "query",
         "internal",
@@ -1012,6 +1144,63 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       >;
       groups: {
         core: {
+          groupAncestors: FunctionReference<
+            "query",
+            "internal",
+            { groupId: string; includeSelf?: boolean; maxDepth?: number },
+            {
+              ancestors: Array<{
+                _creationTime: number;
+                _id: string;
+                extend?: any;
+                isRoot?: boolean;
+                name: string;
+                parentGroupId?: string;
+                policy?: {
+                  extend?: any;
+                  identity: {
+                    accountLinking: {
+                      oidc: "verifiedEmail" | "none";
+                      saml: "verifiedEmail" | "none";
+                    };
+                  };
+                  provisioning: {
+                    deprovision: { mode: "soft" | "hard" };
+                    groups: {
+                      mapping?: Record<string, Array<string>>;
+                      mode: "ignore" | "sync";
+                      source: "protocol";
+                    };
+                    jit: {
+                      defaultRole?: string;
+                      defaultRoleIds?: Array<string>;
+                      mode: "off" | "createUser" | "createUserAndMembership";
+                    };
+                    roles: {
+                      mapping?: Record<string, Array<string>>;
+                      mode: "ignore" | "map";
+                      source: "protocol";
+                    };
+                    scimReuse: { user: "externalId" | "none" };
+                    user: {
+                      authority: "app" | "sso" | "scim";
+                      createOnSignIn: boolean;
+                      updateProfileFromScim: "never" | "missing" | "always";
+                      updateProfileOnLogin: "never" | "missing" | "always";
+                    };
+                  };
+                  version: 1;
+                };
+                rootGroupId?: string;
+                slug?: string;
+                tags?: Array<{ key: string; value: string }>;
+                type?: string;
+              }>;
+              cycleDetected: boolean;
+              maxDepthReached: boolean;
+            },
+            Name
+          >;
           groupCreate: FunctionReference<
             "mutation",
             "internal",
@@ -1084,6 +1273,59 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               tags?: Array<{ key: string; value: string }>;
               type?: string;
             } | null,
+            Name
+          >;
+          groupGetMany: FunctionReference<
+            "query",
+            "internal",
+            { groupIds: Array<string> },
+            Array<{
+              _creationTime: number;
+              _id: string;
+              extend?: any;
+              isRoot?: boolean;
+              name: string;
+              parentGroupId?: string;
+              policy?: {
+                extend?: any;
+                identity: {
+                  accountLinking: {
+                    oidc: "verifiedEmail" | "none";
+                    saml: "verifiedEmail" | "none";
+                  };
+                };
+                provisioning: {
+                  deprovision: { mode: "soft" | "hard" };
+                  groups: {
+                    mapping?: Record<string, Array<string>>;
+                    mode: "ignore" | "sync";
+                    source: "protocol";
+                  };
+                  jit: {
+                    defaultRole?: string;
+                    defaultRoleIds?: Array<string>;
+                    mode: "off" | "createUser" | "createUserAndMembership";
+                  };
+                  roles: {
+                    mapping?: Record<string, Array<string>>;
+                    mode: "ignore" | "map";
+                    source: "protocol";
+                  };
+                  scimReuse: { user: "externalId" | "none" };
+                  user: {
+                    authority: "app" | "sso" | "scim";
+                    createOnSignIn: boolean;
+                    updateProfileFromScim: "never" | "missing" | "always";
+                    updateProfileOnLogin: "never" | "missing" | "always";
+                  };
+                };
+                version: 1;
+              };
+              rootGroupId?: string;
+              slug?: string;
+              tags?: Array<{ key: string; value: string }>;
+              type?: string;
+            } | null>,
             Name
           >;
           groupList: FunctionReference<
@@ -1340,6 +1582,22 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             } | null,
             Name
           >;
+          memberGetByGroupAndUserMany: FunctionReference<
+            "query",
+            "internal",
+            { groupIds: Array<string>; userId: string },
+            Array<{
+              _creationTime: number;
+              _id: string;
+              extend?: any;
+              groupId: string;
+              role?: string;
+              roleIds?: Array<string>;
+              status?: string;
+              userId: string;
+            } | null>,
+            Name
+          >;
           memberList: FunctionReference<
             "query",
             "internal",
@@ -1554,7 +1812,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           accountDelete: FunctionReference<
             "mutation",
             "internal",
-            { accountId: string },
+            { accountId: string; requireOtherAccount?: boolean },
             null,
             Name
           >;
@@ -1865,7 +2123,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           userDelete: FunctionReference<
             "mutation",
             "internal",
-            { userId: string },
+            { cascade?: boolean; userId: string },
             null,
             Name
           >;
@@ -1879,6 +2137,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               email?: string;
               emailVerificationTime?: number;
               extend?: any;
+              hasTotp?: boolean;
               image?: string;
               isAnonymous?: boolean;
               name?: string;
@@ -1897,6 +2156,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               email?: string;
               emailVerificationTime?: number;
               extend?: any;
+              hasTotp?: boolean;
               image?: string;
               isAnonymous?: boolean;
               name?: string;
@@ -1915,12 +2175,32 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               email?: string;
               emailVerificationTime?: number;
               extend?: any;
+              hasTotp?: boolean;
               image?: string;
               isAnonymous?: boolean;
               name?: string;
               phone?: string;
               phoneVerificationTime?: number;
             } | null,
+            Name
+          >;
+          userGetMany: FunctionReference<
+            "query",
+            "internal",
+            { userIds: Array<string> },
+            Array<{
+              _creationTime: number;
+              _id: string;
+              email?: string;
+              emailVerificationTime?: number;
+              extend?: any;
+              hasTotp?: boolean;
+              image?: string;
+              isAnonymous?: boolean;
+              name?: string;
+              phone?: string;
+              phoneVerificationTime?: number;
+            } | null>,
             Name
           >;
           userInsert: FunctionReference<
@@ -1952,6 +2232,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 email?: string;
                 emailVerificationTime?: number;
                 extend?: any;
+                hasTotp?: boolean;
                 image?: string;
                 isAnonymous?: boolean;
                 name?: string;
@@ -2321,6 +2602,22 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           status?: string;
           userId: string;
         } | null,
+        Name
+      >;
+      memberGetByGroupAndUserMany: FunctionReference<
+        "query",
+        "internal",
+        { groupIds: Array<string>; userId: string },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          extend?: any;
+          groupId: string;
+          role?: string;
+          roleIds?: Array<string>;
+          status?: string;
+          userId: string;
+        } | null>,
         Name
       >;
       memberList: FunctionReference<
@@ -3034,7 +3331,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           groupConnectionDomainList: FunctionReference<
             "query",
             "internal",
-            { connectionId: string },
+            { connectionId: string; limit?: number },
             Array<{
               _creationTime: number;
               _id: string;
@@ -3202,6 +3499,28 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               resourceType: "user" | "group";
               userId?: string;
             } | null,
+            Name
+          >;
+          groupConnectionScimIdentityGetByGroupConnectionAndUsers: FunctionReference<
+            "query",
+            "internal",
+            { connectionId: string; userIds: Array<string> },
+            Array<{
+              identity: {
+                _creationTime: number;
+                _id: string;
+                active?: boolean;
+                connectionId: string;
+                externalId: string;
+                groupId: string;
+                lastProvisionedAt?: number;
+                mappedGroupId?: string;
+                raw?: any;
+                resourceType: "user" | "group";
+                userId?: string;
+              } | null;
+              userId: string;
+            }>,
             Name
           >;
           groupConnectionScimIdentityGetByMappedGroup: FunctionReference<
@@ -3540,7 +3859,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       userDelete: FunctionReference<
         "mutation",
         "internal",
-        { userId: string },
+        { cascade?: boolean; userId: string },
         null,
         Name
       >;
@@ -3554,6 +3873,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           email?: string;
           emailVerificationTime?: number;
           extend?: any;
+          hasTotp?: boolean;
           image?: string;
           isAnonymous?: boolean;
           name?: string;
@@ -3572,6 +3892,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           email?: string;
           emailVerificationTime?: number;
           extend?: any;
+          hasTotp?: boolean;
           image?: string;
           isAnonymous?: boolean;
           name?: string;
@@ -3590,12 +3911,32 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           email?: string;
           emailVerificationTime?: number;
           extend?: any;
+          hasTotp?: boolean;
           image?: string;
           isAnonymous?: boolean;
           name?: string;
           phone?: string;
           phoneVerificationTime?: number;
         } | null,
+        Name
+      >;
+      userGetMany: FunctionReference<
+        "query",
+        "internal",
+        { userIds: Array<string> },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          email?: string;
+          emailVerificationTime?: number;
+          extend?: any;
+          hasTotp?: boolean;
+          image?: string;
+          isAnonymous?: boolean;
+          name?: string;
+          phone?: string;
+          phoneVerificationTime?: number;
+        } | null>,
         Name
       >;
       userInsert: FunctionReference<
@@ -3627,6 +3968,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             email?: string;
             emailVerificationTime?: number;
             extend?: any;
+            hasTotp?: boolean;
             image?: string;
             isAnonymous?: boolean;
             name?: string;

@@ -9,10 +9,7 @@ export function getAuthServer() {
   return server({ url: convexUrl });
 }
 
-export function applyAuthCookies(
-  cookies: import("@sveltejs/kit").Cookies,
-  result: RefreshResult,
-) {
+export function applyAuthCookies(cookies: import("@sveltejs/kit").Cookies, result: RefreshResult) {
   if (result.redirect) return;
   for (const cookie of result.cookies) {
     cookies.set(cookie.name, cookie.value, {

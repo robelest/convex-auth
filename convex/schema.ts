@@ -1,10 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
-export const projectStatus = v.union(
-  v.literal("active"),
-  v.literal("archived"),
-);
+export const projectStatus = v.union(v.literal("active"), v.literal("archived"));
 
 export const issueStatus = v.union(
   v.literal("backlog"),

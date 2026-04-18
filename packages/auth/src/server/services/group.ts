@@ -55,34 +55,45 @@ export function createGroupService(deps: {
     });
   };
 
-  const getGroupConnectionOidcConfigWithSecret = async (
+  /**
+   * Core OIDC config resolver. Fires the connection fetch (when only the ID
+   * is known) in parallel with the secret fetch, and decrypts lazily once the
+   * secret is available. All three operations are independent until the final
+   * merge, so doing them sequentially was costing 30–60ms per OIDC lookup.
+   */
+  const resolveOidcConfigWithSecret = async (
     ctx: ComponentReadCtx | ComponentCtx,
-    connection: { _id: string; config?: unknown },
+    connectionId: string,
+    preloadedConnection?: { _id: string; config?: unknown },
   ): Promise<Record<string, unknown>> => {
-    const oidc = getOidcConfig(connection.config);
-    const secret = await getGroupConnectionSecret(
-      ctx,
-      connection._id,
-      "oidc_client_secret",
-    );
-    if (secret) {
-      const decrypted = await decryptSecret(secret.ciphertext);
-      const existingClient =
-        typeof oidc.client === "object" && oidc.client !== null
-          ? (oidc.client as Record<string, unknown>)
-          : {};
-      return {
-        ...oidc,
-        client: { ...existingClient, secret: decrypted },
-      };
+    const [connection, secret] = await Promise.all([
+      preloadedConnection !== undefined
+        ? Promise.resolve(preloadedConnection)
+        : getGroupConnection(ctx, config.component.public, connectionId),
+      getGroupConnectionSecret(ctx, connectionId, "oidc_client_secret"),
+    ]);
+    if (!connection) {
+      throw convexError({
+        code: "INVALID_PARAMETERS",
+        message: connectionNotFoundError,
+      });
     }
-    return oidc;
+    const oidc = getOidcConfig(connection.config);
+    if (!secret) {
+      return oidc;
+    }
+    const decrypted = await decryptSecret(secret.ciphertext);
+    const existingClient =
+      typeof oidc.client === "object" && oidc.client !== null
+        ? (oidc.client as Record<string, unknown>)
+        : {};
+    return {
+      ...oidc,
+      client: { ...existingClient, secret: decrypted },
+    };
   };
 
-  const loadGroupPolicyOrThrow = async (
-    ctx: ComponentReadCtx,
-    groupId: string,
-  ) => {
+  const loadGroupPolicyOrThrow = async (ctx: ComponentReadCtx, groupId: string) => {
     const group = await getGroup(ctx, config.component.public, groupId);
     if (!group) {
       throw convexError({
@@ -97,11 +108,7 @@ export function createGroupService(deps: {
     ctx: ComponentReadCtx,
     connectionId: string,
   ): Promise<RuntimeGroupConnection> => {
-    const connection = await getGroupConnection(
-      ctx,
-      config.component.public,
-      connectionId,
-    );
+    const connection = await getGroupConnection(ctx, config.component.public, connectionId);
     if (!connection) {
       throw convexError({
         code: "INVALID_PARAMETERS",
@@ -111,10 +118,7 @@ export function createGroupService(deps: {
     return connection;
   };
 
-  const loadActiveGroupConnectionOrThrow = async (
-    ctx: ComponentReadCtx,
-    connectionId: string,
-  ) => {
+  const loadActiveGroupConnectionOrThrow = async (ctx: ComponentReadCtx, connectionId: string) => {
     const connection = await loadConnectionOrThrow(ctx, connectionId);
     if (connection.status !== "active") {
       throw convexError({
@@ -125,10 +129,7 @@ export function createGroupService(deps: {
     return connection;
   };
 
-  const loadActiveConnectionSamlOrThrow = async (
-    ctx: ComponentReadCtx,
-    connectionId: string,
-  ) => {
+  const loadActiveConnectionSamlOrThrow = async (ctx: ComponentReadCtx, connectionId: string) => {
     const connection = await loadConnectionOrThrow(ctx, connectionId);
     const loaded = {
       source: {
@@ -155,15 +156,11 @@ export function createGroupService(deps: {
     return { loaded, connection, saml };
   };
 
-  const loadConnectionOidcOrThrow = async (
-    ctx: ComponentReadCtx,
-    connectionId: string,
-  ) => {
-    const connection = await loadActiveGroupConnectionOrThrow(
-      ctx,
-      connectionId,
-    );
-    const oidc = await getGroupConnectionOidcConfigWithSecret(ctx, connection);
+  const loadConnectionOidcOrThrow = async (ctx: ComponentReadCtx, connectionId: string) => {
+    const [connection, oidc] = await Promise.all([
+      loadActiveGroupConnectionOrThrow(ctx, connectionId),
+      resolveOidcConfigWithSecret(ctx, connectionId),
+    ]);
     if (oidc.enabled !== true) {
       throw convexError({
         code: "PROVIDER_NOT_CONFIGURED",
@@ -177,10 +174,7 @@ export function createGroupService(deps: {
     ctx: ComponentReadCtx,
     connectionId: string,
   ): Promise<"oidc" | "saml"> => {
-    const connection = await loadActiveGroupConnectionOrThrow(
-      ctx,
-      connectionId,
-    );
+    const connection = await loadActiveGroupConnectionOrThrow(ctx, connectionId);
     if (connection.protocol === "oidc") {
       return "oidc";
     }
@@ -219,34 +213,22 @@ export function createGroupService(deps: {
       });
       checks.push({
         name: "provisioning_role_mapping_targets_known",
-        ok: Object.values(policy.provisioning.roles.mapping ?? {}).every(
-          (roleIds) =>
-            roleIds.every(
-              (roleId) => config.authorization.roles[roleId] !== undefined,
-            ),
+        ok: Object.values(policy.provisioning.roles.mapping ?? {}).every((roleIds) =>
+          roleIds.every((roleId) => config.authorization.roles[roleId] !== undefined),
         ),
-        message: Object.values(policy.provisioning.roles.mapping ?? {}).every(
-          (roleIds) =>
-            roleIds.every(
-              (roleId) => config.authorization.roles[roleId] !== undefined,
-            ),
+        message: Object.values(policy.provisioning.roles.mapping ?? {}).every((roleIds) =>
+          roleIds.every((roleId) => config.authorization.roles[roleId] !== undefined),
         )
           ? undefined
           : "Provisioning role mappings contain unknown roleIds.",
       });
       checks.push({
         name: "provisioning_group_mapping_targets_known",
-        ok: Object.values(policy.provisioning.groups.mapping ?? {}).every(
-          (roleIds) =>
-            roleIds.every(
-              (roleId) => config.authorization.roles[roleId] !== undefined,
-            ),
+        ok: Object.values(policy.provisioning.groups.mapping ?? {}).every((roleIds) =>
+          roleIds.every((roleId) => config.authorization.roles[roleId] !== undefined),
         ),
-        message: Object.values(policy.provisioning.groups.mapping ?? {}).every(
-          (roleIds) =>
-            roleIds.every(
-              (roleId) => config.authorization.roles[roleId] !== undefined,
-            ),
+        message: Object.values(policy.provisioning.groups.mapping ?? {}).every((roleIds) =>
+          roleIds.every((roleId) => config.authorization.roles[roleId] !== undefined),
         )
           ? undefined
           : "Provisioning group mappings contain unknown roleIds.",
@@ -279,14 +261,11 @@ export function createGroupService(deps: {
     },
   ) => {
     const { ok, ...rest } = data;
-    return (await ctx.runMutation(
-      config.component.public.groupAuditEventCreate,
-      {
-        ...rest,
-        status: ok ? "success" : "failure",
-        occurredAt: Date.now(),
-      },
-    )) as string;
+    return (await ctx.runMutation(config.component.public.groupAuditEventCreate, {
+      ...rest,
+      status: ok ? "success" : "failure",
+      occurredAt: Date.now(),
+    })) as string;
   };
 
   const emitGroupWebhookDeliveries = async (
@@ -298,36 +277,23 @@ export function createGroupService(deps: {
       auditEventId?: string;
     },
   ) => {
-    const endpoints = await listWebhookEndpoints(
-      ctx,
-      config.component.public,
-      data.connectionId,
-    );
+    const endpoints = await listWebhookEndpoints(ctx, config.component.public, data.connectionId);
     for (const endpoint of endpoints) {
-      if (
-        endpoint.status !== "active" ||
-        !endpoint.subscriptions.includes(data.eventType)
-      ) {
+      if (endpoint.status !== "active" || !endpoint.subscriptions.includes(data.eventType)) {
         continue;
       }
-      await ctx.runMutation(
-        config.component.public.groupWebhookDeliveryEnqueue,
-        {
-          connectionId: data.connectionId,
-          endpointId: endpoint._id,
-          auditEventId: data.auditEventId,
-          eventType: data.eventType,
-          payload: data.payload,
-          nextAttemptAt: Date.now(),
-        },
-      );
+      await ctx.runMutation(config.component.public.groupWebhookDeliveryEnqueue, {
+        connectionId: data.connectionId,
+        endpointId: endpoint._id,
+        auditEventId: data.auditEventId,
+        eventType: data.eventType,
+        payload: data.payload,
+        nextAttemptAt: Date.now(),
+      });
     }
   };
 
-  const getGroupConnectionScimContext = async (
-    ctx: ComponentReadCtx,
-    request: Request,
-  ) => {
+  const getGroupConnectionScimContext = async (ctx: ComponentReadCtx, request: Request) => {
     const authHeader = request.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       throw convexError({

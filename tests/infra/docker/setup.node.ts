@@ -44,14 +44,8 @@ declare module "vite-plus/test" {
 export default async function setupNodeInterop(project: {
   provide: (key: string, value: string) => void;
 }) {
-  const waitTimeoutMs = envNumber(
-    "ZITADEL_WAIT_TIMEOUT_MS",
-    DEFAULT_WAIT_TIMEOUT_MS,
-  );
-  const convexTimeoutMs = envNumber(
-    "ZITADEL_CONVEX_RUN_TIMEOUT_MS",
-    DEFAULT_CONVEX_TIMEOUT_MS,
-  );
+  const waitTimeoutMs = envNumber("ZITADEL_WAIT_TIMEOUT_MS", DEFAULT_WAIT_TIMEOUT_MS);
+  const convexTimeoutMs = envNumber("ZITADEL_CONVEX_RUN_TIMEOUT_MS", DEFAULT_CONVEX_TIMEOUT_MS);
   const generated = await generateKeys();
   const env = {
     ...baseEnv(),
@@ -108,21 +102,9 @@ export default async function setupNodeInterop(project: {
       await run("vp", ["exec", "convex", "deploy", "--yes"], convexEnv, {
         timeout: convexTimeoutMs,
       });
-      await run(
-        "vp",
-        ["exec", "convex", "env", "set", "SITE_URL", env.SITE_URL],
-        convexEnv,
-      );
-      await run(
-        "vp",
-        ["exec", "convex", "env", "set", "APP_URL", env.APP_URL],
-        convexEnv,
-      );
-      await run(
-        "vp",
-        ["exec", "convex", "env", "set", "AUTH_EMAIL", env.AUTH_EMAIL],
-        convexEnv,
-      );
+      await run("vp", ["exec", "convex", "env", "set", "SITE_URL", env.SITE_URL], convexEnv);
+      await run("vp", ["exec", "convex", "env", "set", "APP_URL", env.APP_URL], convexEnv);
+      await run("vp", ["exec", "convex", "env", "set", "AUTH_EMAIL", env.AUTH_EMAIL], convexEnv);
       await run(
         "vp",
         [
@@ -138,22 +120,10 @@ export default async function setupNodeInterop(project: {
       await writeFile(pemPath, generated.jwtPrivateKey + "\n");
       await run(
         "vp",
-        [
-          "exec",
-          "convex",
-          "env",
-          "set",
-          "JWT_PRIVATE_KEY",
-          "--from-file",
-          pemPath,
-        ],
+        ["exec", "convex", "env", "set", "JWT_PRIVATE_KEY", "--from-file", pemPath],
         convexEnv,
       );
-      await run(
-        "vp",
-        ["exec", "convex", "env", "set", "JWKS", generated.jwks],
-        convexEnv,
-      );
+      await run("vp", ["exec", "convex", "env", "set", "JWKS", generated.jwks], convexEnv);
       await run(
         "vp",
         ["exec", "convex", "env", "set", "AUTH_GOOGLE_ID", env.AUTH_GOOGLE_ID],
@@ -161,14 +131,7 @@ export default async function setupNodeInterop(project: {
       );
       await run(
         "vp",
-        [
-          "exec",
-          "convex",
-          "env",
-          "set",
-          "AUTH_GOOGLE_SECRET",
-          env.AUTH_GOOGLE_SECRET,
-        ],
+        ["exec", "convex", "env", "set", "AUTH_GOOGLE_SECRET", env.AUTH_GOOGLE_SECRET],
         convexEnv,
       );
       await run(
@@ -188,10 +151,7 @@ export default async function setupNodeInterop(project: {
     );
     project.provide(
       "zitadelLoginClientPat",
-      await readFileFromZitadel(
-        "/zitadel/bootstrap/login-client.pat",
-        waitTimeoutMs,
-      ),
+      await readFileFromZitadel("/zitadel/bootstrap/login-client.pat", waitTimeoutMs),
     );
     project.provide("zitadelPublicUrl", env.ZITADEL_BASE_URL);
     project.provide("zitadelInternalUrl", env.ZITADEL_RUNTIME_BASE_URL);
@@ -270,9 +230,7 @@ async function run(
         resolve();
         return;
       }
-      reject(
-        new Error(`${command} ${args.join(" ")} exited with code ${code}`),
-      );
+      reject(new Error(`${command} ${args.join(" ")} exited with code ${code}`));
     });
   });
 }
@@ -324,7 +282,10 @@ async function restoreEnvLocalAfterSelfHostedCommands(wasHidden: boolean) {
 }
 
 async function generateKeys() {
-  const keys = await generateKeyPair("RS256", { extractable: true });
+  const keys = await generateKeyPair("EdDSA", {
+    crv: "Ed25519",
+    extractable: true,
+  });
   const privateKey = await exportPKCS8(keys.privateKey);
   const publicKey = await exportJWK(keys.publicKey);
   return {
@@ -368,11 +329,7 @@ async function dumpDockerLogs() {
   try {
     await run("docker", composeArgs("ps"), composeEnv());
     console.log("\n=== Docker Compose Logs ===");
-    await run(
-      "docker",
-      composeArgs("logs", "--no-color", "--since=10m"),
-      composeEnv(),
-    );
+    await run("docker", composeArgs("logs", "--no-color", "--since=10m"), composeEnv());
   } catch (error) {
     console.error("Failed to print Docker logs", error);
   }
@@ -381,9 +338,7 @@ async function dumpDockerLogs() {
 function parseAdminKey(output: string) {
   const match = output.match(/convex-self-hosted\|[A-Za-z0-9]+/);
   if (!match) {
-    throw new Error(
-      `Unable to parse self-hosted admin key from output:\n${output}`,
-    );
+    throw new Error(`Unable to parse self-hosted admin key from output:\n${output}`);
   }
   return match[0];
 }
@@ -395,8 +350,7 @@ async function readFileFromZitadel(remotePath: string, timeoutMs: number) {
     composeEnv(),
   );
   const containerId = idOut.trim();
-  if (!containerId)
-    throw new Error("Could not find the running zitadel container.");
+  if (!containerId) throw new Error("Could not find the running zitadel container.");
   const { stdout: volumeOut } = await capture(
     "docker",
     [
@@ -408,8 +362,7 @@ async function readFileFromZitadel(remotePath: string, timeoutMs: number) {
     composeEnv(),
   );
   const bootstrapVolume = volumeOut.trim();
-  if (!bootstrapVolume)
-    throw new Error("Could not find the zitadel bootstrap volume.");
+  if (!bootstrapVolume) throw new Error("Could not find the zitadel bootstrap volume.");
 
   const fileName = remotePath.split("/").at(-1);
   const startedAt = Date.now();
@@ -417,15 +370,7 @@ async function readFileFromZitadel(remotePath: string, timeoutMs: number) {
     try {
       const { stdout } = await capture(
         "docker",
-        [
-          "run",
-          "--rm",
-          "-v",
-          `${bootstrapVolume}:/data`,
-          "alpine",
-          "cat",
-          `/data/${fileName}`,
-        ],
+        ["run", "--rm", "-v", `${bootstrapVolume}:/data`, "alpine", "cat", `/data/${fileName}`],
         composeEnv(),
       );
       const value = stdout.trim();

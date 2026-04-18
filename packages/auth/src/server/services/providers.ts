@@ -14,13 +14,9 @@ export const createProviderRegistry = (
 ): ProviderRegistryService => ({
   getProviderOrThrow: (id: string, allowExtraProviders: boolean = false) => {
     const provider =
-      config.providers.find(
-        (configuredProvider) => configuredProvider.id === id,
-      ) ??
+      config.providers.find((configuredProvider) => configuredProvider.id === id) ??
       (allowExtraProviders
-        ? config.extraProviders.find(
-            (configuredProvider) => configuredProvider.id === id,
-          )
+        ? config.extraProviders.find((configuredProvider) => configuredProvider.id === id)
         : undefined);
     if (provider === undefined) {
       const detail =

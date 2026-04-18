@@ -14,8 +14,7 @@ type ScimGroupRecord = {
 /** @internal */
 export function parseScimPath(pathname: string) {
   const parts = pathname.split("/").filter(Boolean);
-  const [api, auth, connections, connectionId, protocol, version, ...rest] =
-    parts;
+  const [api, auth, connections, connectionId, protocol, version, ...rest] = parts;
 
   if (
     api !== "api" ||
@@ -42,14 +41,8 @@ export function parseScimPath(pathname: string) {
 
 /** @internal */
 export function parseScimListRequest(url: URL): ScimListRequest {
-  const startIndex = Math.max(
-    1,
-    Number(url.searchParams.get("startIndex") ?? "1"),
-  );
-  const count = Math.min(
-    100,
-    Math.max(1, Number(url.searchParams.get("count") ?? "100")),
-  );
+  const startIndex = Math.max(1, Number(url.searchParams.get("startIndex") ?? "1"));
+  const count = Math.min(100, Math.max(1, Number(url.searchParams.get("count") ?? "100")));
   const filterParam = url.searchParams.get("filter");
   const filter = filterParam
     ? (() => {
@@ -123,16 +116,11 @@ export function serializeScimUser(args: {
     },
     userName: args.user.email ?? args.user.phone ?? args.user.name ?? args.id,
     active: args.active ?? true,
-    name:
-      args.user.name !== undefined ? { formatted: args.user.name } : undefined,
+    name: args.user.name !== undefined ? { formatted: args.user.name } : undefined,
     emails:
-      typeof args.user.email === "string"
-        ? [{ value: args.user.email, primary: true }]
-        : undefined,
+      typeof args.user.email === "string" ? [{ value: args.user.email, primary: true }] : undefined,
     phoneNumbers:
-      typeof args.user.phone === "string"
-        ? [{ value: args.user.phone, primary: true }]
-        : undefined,
+      typeof args.user.phone === "string" ? [{ value: args.user.phone, primary: true }] : undefined,
     displayName: args.user.name,
   };
 }

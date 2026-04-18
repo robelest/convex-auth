@@ -8,15 +8,7 @@ export function createInviteManager(args: {
   tokenKey: string;
   emailKey: string;
 }) {
-  const {
-    param,
-    storageGet,
-    storageSet,
-    storageRemove,
-    cleanUrlParams,
-    tokenKey,
-    emailKey,
-  } = args;
+  const { param, storageGet, storageSet, storageRemove, cleanUrlParams, tokenKey, emailKey } = args;
 
   let pendingInvite: { token: string; email: string | null } | null = null;
 

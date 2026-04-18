@@ -31,7 +31,8 @@ export type AuthSignInService = {
   ) => Promise<Awaited<ReturnType<typeof signInImpl>>>;
 };
 
-export const createAuthSignIn = (_config: ReturnType<typeof configDefaults>): AuthSignInService => ({
-  signIn: (ctx, provider, args, options) =>
-    signInImpl(ctx, provider, args, options),
+export const createAuthSignIn = (
+  _config: ReturnType<typeof configDefaults>,
+): AuthSignInService => ({
+  signIn: (ctx, provider, args, options) => signInImpl(ctx, provider, args, options),
 });

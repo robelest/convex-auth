@@ -29,15 +29,11 @@ export function normalizeStringArray(value: unknown): string[] | undefined {
 }
 
 /** @internal */
-export function finalizeNormalizedProfile<T extends NormalizedProfileInput>(
-  input: T,
-) {
+export function finalizeNormalizedProfile<T extends NormalizedProfileInput>(input: T) {
   return {
     ...input,
     groups: normalizeStringArray(input.groups),
     roles: normalizeStringArray(input.roles),
-    ...(input.extend && Object.keys(input.extend).length > 0
-      ? { extend: input.extend }
-      : {}),
+    ...(input.extend && Object.keys(input.extend).length > 0 ? { extend: input.extend } : {}),
   };
 }

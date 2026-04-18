@@ -11,10 +11,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 
   return {
     convexUrl: env.VITE_CONVEX_URL,
-    siteUrl:
-      env.CONVEX_SITE_URL ??
-      env.VITE_CONVEX_URL?.replace(".cloud", ".site") ??
-      null,
+    siteUrl: env.CONVEX_SITE_URL ?? env.VITE_CONVEX_URL?.replace(".cloud", ".site") ?? null,
     authProviders,
     auth: {
       token,

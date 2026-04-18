@@ -1,11 +1,7 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 import { mutation, query } from "../../functions";
-import {
-  vAuditActorType,
-  vAuditStatus,
-  vGroupAuditEventDoc,
-} from "../../model";
+import { vAuditActorType, vAuditStatus, vGroupAuditEventDoc } from "../../model";
 
 /**
  * Record a new audit event for an group.sso.
@@ -114,12 +110,14 @@ export const groupAuditEventList = query({
     if (args.groupId !== undefined) {
       return await ctx.db
         .query("GroupAuditEvent")
-        .withIndex("group_id_occurred_at", (idx) =>
-          idx.eq("groupId", args.groupId!),
-        )
+        .withIndex("group_id_occurred_at", (idx) => idx.eq("groupId", args.groupId!))
         .order("desc")
         .take(limit);
     }
-    return await ctx.db.query("GroupAuditEvent").order("desc").take(limit);
+    throw new ConvexError({
+      code: "INVALID_PARAMETERS",
+      message:
+        "groupAuditEventList requires either `connectionId` or `groupId` to scope the query. Passing neither would walk the entire audit log.",
+    });
   },
 });

@@ -35,10 +35,7 @@ import {
   storeArgs,
   storeImpl,
 } from "./mutations/index";
-import {
-  createOAuthAuthorizationURL,
-  handleOAuthCallback,
-} from "./oauth/runtime";
+import { createOAuthAuthorizationURL, handleOAuthCallback } from "./oauth/runtime";
 import type { AuthProfile } from "./payloads";
 import { payloadRecordValidator } from "./payloads";
 import { generateRandomString, sha256 } from "./random";
@@ -71,9 +68,7 @@ const convexError = (data: Record<string, Value>) => new ConvexError(data);
  *
  * @internal
  */
-export type SignInAction = FunctionReferenceFromExport<
-  ReturnType<typeof Auth>["signIn"]
->;
+export type SignInAction = FunctionReferenceFromExport<ReturnType<typeof Auth>["signIn"]>;
 
 /** @internal */
 export type SignInActionResult =
@@ -110,9 +105,7 @@ export type SignInActionResult =
  *
  * @internal
  */
-export type SignOutAction = FunctionReferenceFromExport<
-  ReturnType<typeof Auth>["signOut"]
->;
+export type SignOutAction = FunctionReferenceFromExport<ReturnType<typeof Auth>["signOut"]>;
 
 /**
  * Configure the Convex Auth library. Returns an object with
@@ -135,17 +128,13 @@ export type SignOutAction = FunctionReferenceFromExport<
 export function Auth(config_: ConvexAuthConfig) {
   const services = resolveServerServices(config_);
   const config = services.config;
-  const hasOAuth = config.providers.some(
-    (provider) => provider.type === "oauth",
-  );
+  const hasOAuth = config.providers.some((provider) => provider.type === "oauth");
   const hasSSO = config.providers.some((provider) => provider.type === "sso");
   const ssoProvider = config.providers.find(
     (provider): provider is SSOProviderConfig => provider.type === "sso",
   );
-  const getProviderOrThrow: GetProviderOrThrowFunc =
-    services.providerRegistry.getProviderOrThrow;
-  const INVITE_TOKEN_ALPHABET =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const getProviderOrThrow: GetProviderOrThrowFunc = services.providerRegistry.getProviderOrThrow;
+  const INVITE_TOKEN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   const INVITE_TOKEN_LENGTH = 48;
 
   const GROUP_CONNECTION_ROUTE_BASE = "/api/auth/connections";
@@ -190,8 +179,7 @@ export function Auth(config_: ConvexAuthConfig) {
 
   // HTTP wiring stays local to the factory because it still depends on a
   // dense mix of OAuth, SAML, SCIM, cookie, and response helpers.
-  const getDefaultCorsOrigins = () =>
-    siteUrlsFromEnv().allowedUrls.map((u) => new URL(u).origin);
+  const getDefaultCorsOrigins = () => siteUrlsFromEnv().allowedUrls.map((u) => new URL(u).origin);
 
   const http = {
     /**
@@ -229,9 +217,7 @@ export function Auth(config_: ConvexAuthConfig) {
       addGroupHttpRuntime({
         http,
         hasSSO,
-        auth: authBase as unknown as Parameters<
-          typeof addGroupHttpRuntime
-        >[0]["auth"],
+        auth: authBase as unknown as Parameters<typeof addGroupHttpRuntime>[0]["auth"],
         config,
         routeBase: GROUP_CONNECTION_ROUTE_BASE,
         requireEnv,
@@ -271,8 +257,10 @@ export function Auth(config_: ConvexAuthConfig) {
             const provider = getProviderOrThrow(providerId);
 
             const oauthConfig = provider as OAuthMaterializedConfig;
-            const { redirect, cookies, signature } =
-              await createOAuthAuthorizationURL(providerId, oauthConfig);
+            const { redirect, cookies, signature } = await createOAuthAuthorizationURL(
+              providerId,
+              oauthConfig,
+            );
 
             await callVerifierSignature(ctx, {
               verifier,
@@ -286,10 +274,7 @@ export function Auth(config_: ConvexAuthConfig) {
 
             const headers = new Headers({ Location: redirect });
             for (const { name, value, options } of cookies) {
-              headers.append(
-                "Set-Cookie",
-                serializeCookie(name, value, options),
-              );
+              headers.append("Set-Cookie", serializeCookie(name, value, options));
             }
 
             return new Response(null, { status: 302, headers });
@@ -304,11 +289,7 @@ export function Auth(config_: ConvexAuthConfig) {
                 message: "Missing OAuth provider ID.",
               });
             }
-            log(
-              LOG_LEVELS.DEBUG,
-              "Handling OAuth callback for provider:",
-              providerId,
-            );
+            log(LOG_LEVELS.DEBUG, "Handling OAuth callback for provider:", providerId);
             const provider = getProviderOrThrow(providerId);
 
             const cookies = getCookies(request);
@@ -322,9 +303,7 @@ export function Auth(config_: ConvexAuthConfig) {
             const params = url.searchParams;
 
             if (
-              request.headers
-                .get("Content-Type")
-                ?.includes("application/x-www-form-urlencoded")
+              request.headers.get("Content-Type")?.includes("application/x-www-form-urlencoded")
             ) {
               const formData = await request.formData();
               formData.forEach((value, key) => {
@@ -353,27 +332,18 @@ export function Auth(config_: ConvexAuthConfig) {
                 signature,
               });
 
-              const redirUrl = setURLSearchParam(
-                destinationUrl,
-                "code",
-                verificationCode,
-              );
+              const redirUrl = setURLSearchParam(destinationUrl, "code", verificationCode);
               const redirHeaders = new Headers({ Location: redirUrl });
               redirHeaders.set("Cache-Control", "must-revalidate");
               for (const { name, value, options } of [
                 ...oauthCookies,
-                ...(maybeRedirectTo !== null
-                  ? [maybeRedirectTo.updatedCookie]
-                  : []),
+                ...(maybeRedirectTo !== null ? [maybeRedirectTo.updatedCookie] : []),
               ] as Array<{
                 name: string;
                 value: string;
                 options: Parameters<typeof serializeCookie>[2];
               }>) {
-                redirHeaders.append(
-                  "Set-Cookie",
-                  serializeCookie(name, value, options),
-                );
+                redirHeaders.append("Set-Cookie", serializeCookie(name, value, options));
               }
               return new Response(null, {
                 status: 302,
@@ -384,14 +354,10 @@ export function Auth(config_: ConvexAuthConfig) {
               const respHeaders = new Headers({
                 Location: destinationUrl,
               });
-              for (const { name, value, options } of maybeRedirectTo !==
-              null
+              for (const { name, value, options } of maybeRedirectTo !== null
                 ? [maybeRedirectTo.updatedCookie]
                 : []) {
-                respHeaders.append(
-                  "Set-Cookie",
-                  serializeCookie(name, value, options),
-                );
+                respHeaders.append("Set-Cookie", serializeCookie(name, value, options));
               }
               return new Response(null, {
                 status: 302,
@@ -426,9 +392,7 @@ export function Auth(config_: ConvexAuthConfig) {
      * });
      * ```
      */
-    context: createHttpContext(
-      authBase as unknown as Parameters<typeof createHttpContext>[0],
-    ),
+    context: createHttpContext(authBase as unknown as Parameters<typeof createHttpContext>[0]),
 
     /**
      * Wrap an HTTP action handler with Bearer token authentication.
@@ -496,9 +460,7 @@ export function Auth(config_: ConvexAuthConfig) {
 
   const auth = Object.assign(authBase, { http });
 
-  const enrichCtx = <DataModel extends GenericDataModel>(
-    ctx: GenericActionCtx<DataModel>,
-  ) => ({
+  const enrichCtx = <DataModel extends GenericDataModel>(ctx: GenericActionCtx<DataModel>) => ({
     ...ctx,
     auth: {
       ...ctx.auth,
@@ -532,14 +494,9 @@ export function Auth(config_: ConvexAuthConfig) {
         if (args.calledBy !== undefined) {
           log("INFO", `\`auth:signIn\` called by ${args.calledBy}`);
         }
-        const provider =
-          args.provider !== undefined
-            ? getProviderOrThrow(args.provider)
-            : null;
+        const provider = args.provider !== undefined ? getProviderOrThrow(args.provider) : null;
         const result = await services.signIn.signIn(
-          enrichCtx(ctx) as unknown as Parameters<
-            typeof services.signIn.signIn
-          >[0],
+          enrichCtx(ctx) as unknown as Parameters<typeof services.signIn.signIn>[0],
           provider,
           args,
           {

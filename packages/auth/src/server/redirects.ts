@@ -33,8 +33,7 @@ export async function redirectAbsoluteUrl(
       message: `Expected \`redirectTo\` to be a string, got ${describeUnknown(params.redirectTo)}`,
     });
   }
-  const redirectCallback =
-    config.callbacks?.redirect ?? defaultRedirectCallback;
+  const redirectCallback = config.callbacks?.redirect ?? defaultRedirectCallback;
   try {
     return await redirectCallback({ redirectTo: params.redirectTo });
   } catch {
@@ -57,18 +56,12 @@ async function defaultRedirectCallback({ redirectTo }: { redirectTo: string }) {
 // Temporary work-around because Convex doesn't support
 // schemes other than http and https.
 /** @internal */
-export function setURLSearchParam(
-  absoluteUrl: string,
-  param: string,
-  value: string,
-) {
+export function setURLSearchParam(absoluteUrl: string, param: string, value: string) {
   const pattern = /([^:]+):(.*)/;
   const [, scheme, rest] = absoluteUrl.match(pattern)!;
   const hasNoDomain = /^\/\/(?:\/|$|\?)/.test(rest);
   const startsWithPath = hasNoDomain && rest.startsWith("///");
-  const url = new URL(
-    `http:${hasNoDomain ? "//googblibok" + rest.slice(2) : rest}`,
-  );
+  const url = new URL(`http:${hasNoDomain ? "//googblibok" + rest.slice(2) : rest}`);
   url.searchParams.set(param, value);
   const [, , withParam] = url.toString().match(pattern)!;
   return `${scheme}:${hasNoDomain ? (startsWithPath ? "/" : "") + "//" + withParam.slice(13) : withParam}`;

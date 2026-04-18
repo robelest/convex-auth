@@ -12,6 +12,7 @@ import type * as account from "../account.js";
 import type * as auth from "../auth.js";
 import type * as auth_core from "../auth/core.js";
 import type * as auth_group from "../auth/group.js";
+import type * as bench from "../bench.js";
 import type * as comments from "../comments.js";
 import type * as functions from "../functions.js";
 import type * as groups from "../groups.js";
@@ -32,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   "auth/core": typeof auth_core;
   "auth/group": typeof auth_group;
+  bench: typeof bench;
   comments: typeof comments;
   functions: typeof functions;
   groups: typeof groups;

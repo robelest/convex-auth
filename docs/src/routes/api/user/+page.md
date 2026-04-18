@@ -1,7 +1,6 @@
 ---
 title: auth.user
-description:
-  User management — read, update, delete users and manage active groups.
+description: User management — read, update, delete users and manage active groups.
 ---
 
 <svelte:head>

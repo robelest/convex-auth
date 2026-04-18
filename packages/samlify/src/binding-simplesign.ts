@@ -53,10 +53,7 @@ function buildSimpleSignature(opts: BuildSimpleSignConfig): string {
     relayState = pvPair(urlParams.relayState, relayState);
   }
 
-  const sigAlg = pvPair(
-    urlParams.sigAlg,
-    entitySetting.requestSignatureAlgorithm,
-  );
+  const sigAlg = pvPair(urlParams.sigAlg, entitySetting.requestSignatureAlgorithm);
   const octetString = context + relayState + sigAlg;
   return libsaml
     .constructMessageSignature(
@@ -92,25 +89,18 @@ function base64LoginRequest(
       rawSamlRequest = get(info, "context", null);
     } else {
       const nameIDFormat = spSetting.nameIDFormat;
-      const selectedNameIDFormat = Array.isArray(nameIDFormat)
-        ? nameIDFormat[0]
-        : nameIDFormat;
+      const selectedNameIDFormat = Array.isArray(nameIDFormat) ? nameIDFormat[0] : nameIDFormat;
       id = spSetting.generateID();
-      rawSamlRequest = libsaml.replaceTagsByValue(
-        libsaml.defaultLoginRequestTemplate.context,
-        {
-          ID: id,
-          Destination: base,
-          Issuer: metadata.sp.getEntityID(),
-          IssueInstant: new Date().toISOString(),
-          AssertionConsumerServiceURL: metadata.sp.getAssertionConsumerService(
-            binding.simpleSign,
-          ),
-          EntityID: metadata.sp.getEntityID(),
-          AllowCreate: spSetting.allowCreate,
-          NameIDFormat: selectedNameIDFormat,
-        } as any,
-      );
+      rawSamlRequest = libsaml.replaceTagsByValue(libsaml.defaultLoginRequestTemplate.context, {
+        ID: id,
+        Destination: base,
+        Issuer: metadata.sp.getEntityID(),
+        IssueInstant: new Date().toISOString(),
+        AssertionConsumerServiceURL: metadata.sp.getAssertionConsumerService(binding.simpleSign),
+        EntityID: metadata.sp.getEntityID(),
+        AllowCreate: spSetting.allowCreate,
+        NameIDFormat: selectedNameIDFormat,
+      } as any);
     }
 
     let simpleSignatureContext: any = null;
@@ -134,9 +124,7 @@ function base64LoginRequest(
       ...simpleSignatureContext,
     };
   }
-  throw new Error(
-    "ERR_GENERATE_POST_SIMPLESIGN_LOGIN_REQUEST_MISSING_METADATA",
-  );
+  throw new Error("ERR_GENERATE_POST_SIMPLESIGN_LOGIN_REQUEST_MISSING_METADATA");
 }
 /**
  * @desc Generate a base64 encoded login response
@@ -161,9 +149,7 @@ async function base64LoginResponse(
     sp: entity.sp.entityMeta,
   };
   const nameIDFormat = idpSetting.nameIDFormat;
-  const selectedNameIDFormat = Array.isArray(nameIDFormat)
-    ? nameIDFormat[0]
-    : nameIDFormat;
+  const selectedNameIDFormat = Array.isArray(nameIDFormat) ? nameIDFormat[0] : nameIDFormat;
   if (metadata && metadata.idp && metadata.sp) {
     const base = metadata.sp.getAssertionConsumerService(binding.simpleSign);
     let rawSamlResponse: string;
@@ -192,9 +178,7 @@ async function base64LoginResponse(
       AttributeStatement: "",
     };
     if (idpSetting.loginResponseTemplate && customTagReplacement) {
-      const template = customTagReplacement(
-        idpSetting.loginResponseTemplate.context,
-      );
+      const template = customTagReplacement(idpSetting.loginResponseTemplate.context);
       rawSamlResponse = get(template, "context", null);
     } else {
       if (requestInfo !== null) {
@@ -223,8 +207,7 @@ async function base64LoginResponse(
         ...config,
         rawSamlMessage: rawSamlResponse,
         transformationAlgorithms: spSetting.transformationAlgorithms,
-        referenceTagXPath:
-          "/*[local-name(.)='Response']/*[local-name(.)='Assertion']",
+        referenceTagXPath: "/*[local-name(.)='Response']/*[local-name(.)='Assertion']",
         signatureConfig: {
           prefix: "ds",
           location: {
@@ -253,9 +236,7 @@ async function base64LoginResponse(
       sigAlg: idpSetting.requestSignatureAlgorithm,
     });
   }
-  throw new Error(
-    "ERR_GENERATE_POST_SIMPLESIGN_LOGIN_RESPONSE_MISSING_METADATA",
-  );
+  throw new Error("ERR_GENERATE_POST_SIMPLESIGN_LOGIN_RESPONSE_MISSING_METADATA");
 }
 
 const simpleSignBinding = {

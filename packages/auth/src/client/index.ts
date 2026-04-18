@@ -31,10 +31,7 @@ import {
   parseProxyErrorBody,
 } from "./runtime/proxy";
 import { createStorageHelpers } from "./runtime/storage";
-import {
-  ClientAdapterFactoriesLive,
-  ClientAdaptersLive,
-} from "./services/adapters";
+import { ClientAdapterFactoriesLive, ClientAdaptersLive } from "./services/adapters";
 import { ClientHttpLive } from "./services/http";
 import { resolveClientServices } from "./services/resolve";
 import { ClientRuntimeLive } from "./services/runtime";
@@ -103,9 +100,7 @@ function resolveUrl(convex: ConvexTransport, explicit?: string): string {
       : undefined;
   const url: unknown = candidate.url ?? client?.url;
   if (typeof url === "string") return url;
-  throw new Error(
-    "Could not determine Convex deployment URL. Pass `url` explicitly.",
-  );
+  throw new Error("Could not determine Convex deployment URL. Pass `url` explicitly.");
 }
 
 function stableStringify(value: unknown): string {
@@ -120,10 +115,7 @@ function stableStringify(value: unknown): string {
       .filter(([, entryValue]) => entryValue !== undefined)
       .sort(([left], [right]) => left.localeCompare(right));
     return `{${entries
-      .map(
-        ([key, entryValue]) =>
-          `${JSON.stringify(key)}:${stableStringify(entryValue)}`,
-      )
+      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`)
       .join(",")}}`;
   }
   return JSON.stringify(value);
@@ -176,17 +168,15 @@ function buildSignInRequestKey(
  * @throws {Error} When `proxyPath` is not set and the `api` option is missing.
  * @throws {Error} When `proxyPath` is set and `runtime.proxy` is missing.
  */
-export function client<
-  Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs,
->(options: ClientOptions<Api>): AuthClient<Api> {
+export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs>(
+  options: ClientOptions<Api>,
+): AuthClient<Api> {
   const { convex, proxyPath, api: apiRefs } = options;
   const proxy = proxyPath;
   const services = resolveClientServices({
     runtime: ClientRuntimeLive(options.runtime ?? {}),
     adapters: ClientAdaptersLive(options.adapters ?? {}),
-    adapterFactories: ClientAdapterFactoriesLive(
-      options.adapterFactories ?? {},
-    ),
+    adapterFactories: ClientAdapterFactoriesLive(options.adapterFactories ?? {}),
     http: ClientHttpLive(proxy ? null : (options.httpClient ?? null)),
   });
   const runtime: ClientRuntime = services.runtime;
@@ -205,8 +195,7 @@ export function client<
   function requireApiRefs() {
     if (!apiRefs) {
       throw new Error(
-        "The `api` option is required when `proxyPath` is not set. " +
-          "Pass { api: api.auth }.",
+        "The `api` option is required when `proxyPath` is not set. " + "Pass { api: api.auth }.",
       );
     }
     return apiRefs;
@@ -232,9 +221,7 @@ export function client<
 
   const replaceUrl =
     options.replaceUrl ??
-    (runtime.location
-      ? (url: string) => runtime.location!.replace(url)
-      : (_url: string) => {});
+    (runtime.location ? (url: string) => runtime.location!.replace(url) : (_url: string) => {});
 
   // ---------------------------------------------------------------------------
   // Location — SSR-safe URL reading
@@ -278,9 +265,7 @@ export function client<
       }
     }
     if (changed) {
-      const next = searchParams.toString()
-        ? `${loc.pathname}?${searchParams}`
-        : loc.pathname;
+      const next = searchParams.toString() ? `${loc.pathname}?${searchParams}` : loc.pathname;
       void replaceUrl(next);
     }
   }
@@ -303,10 +288,7 @@ export function client<
     if (!response.ok) {
       let errorBody: Record<string, unknown> = {};
       try {
-        errorBody = parseProxyErrorBody(await response.json()) as Record<
-          string,
-          unknown
-        >;
+        errorBody = parseProxyErrorBody(await response.json()) as Record<string, unknown>;
       } catch {
         errorBody = {};
       }
@@ -316,9 +298,7 @@ export function client<
         "authError" in errorBody &&
         typeof (errorBody as Record<string, unknown>).authError === "object"
       ) {
-        throw new ConvexError(
-          (errorBody as Record<string, unknown>).authError as Value,
-        );
+        throw new ConvexError((errorBody as Record<string, unknown>).authError as Value);
       }
       throw new Error(
         ((errorBody as Record<string, unknown>).error as string) ??
@@ -362,11 +342,7 @@ export function client<
   } | null = null;
   const handshakeWaiters = new Set<HandshakeWaiter>();
   let snapshot: AuthState = {
-    phase: hasServerToken
-      ? "authenticated"
-      : isLoading
-        ? "loading"
-        : "unauthenticated",
+    phase: hasServerToken ? "authenticated" : isLoading ? "loading" : "unauthenticated",
     isLoading,
     isAuthenticated: hasServerToken,
     token,
@@ -375,9 +351,7 @@ export function client<
 
   const settleHandshakeWaiters = (
     epoch: number,
-    outcome:
-      | { type: "resolve" }
-      | { type: "reject"; error: ConvexError<Value> },
+    outcome: { type: "resolve" } | { type: "reject"; error: ConvexError<Value> },
   ) => {
     for (const waiter of Array.from(handshakeWaiters)) {
       if (waiter.epoch !== epoch) {
@@ -580,8 +554,7 @@ export function client<
         }),
       });
     } else {
-      const shouldEnterHandshake =
-        args.requireHandshake === true || !authConfirmed;
+      const shouldEnterHandshake = args.requireHandshake === true || !authConfirmed;
       if (shouldEnterHandshake) {
         authConfirmed = false;
         handshakePending = true;
@@ -639,8 +612,7 @@ export function client<
     proxyFetch,
     setTokenAndMaybeWait,
   };
-  const passkeyAdapter =
-    adapters.passkey ?? services.adapterFactories.passkey?.(adapterDeps);
+  const passkeyAdapter = adapters.passkey ?? services.adapterFactories.passkey?.(adapterDeps);
 
   // ---------------------------------------------------------------------------
   // Code verification with retries (SPA mode only)
@@ -653,9 +625,7 @@ export function client<
       () =>
         requireHttpClient().action(
           requireApiRefs().signIn,
-          "code" in args
-            ? { params: { code: args.code }, verifier: args.verifier }
-            : args,
+          "code" in args ? { params: { code: args.code }, verifier: args.verifier } : args,
         ) as Promise<SignInActionResult>,
       isTransientNetworkError,
     );
@@ -669,10 +639,7 @@ export function client<
     if (result.kind !== "signedIn") {
       throw new Error("Code exchange did not return tokens.");
     }
-    const { tokens } = result as Extract<
-      SignInActionResult,
-      { kind: "signedIn" }
-    >;
+    const { tokens } = result as Extract<SignInActionResult, { kind: "signedIn" }>;
     await setToken({
       shouldStore: true,
       tokens: (tokens as AuthSession | null) ?? null,
@@ -681,9 +648,7 @@ export function client<
     return tokens !== null;
   };
 
-  const normalizeDeviceCodeResult = (
-    device_code: unknown,
-  ): DeviceCodeResult => {
+  const normalizeDeviceCodeResult = (device_code: unknown): DeviceCodeResult => {
     const input = device_code as {
       deviceCode: string;
       userCode: string;
@@ -707,8 +672,7 @@ export function client<
 
   const isSignedInResult = (
     result: SignInActionResult,
-  ): result is Extract<SignInActionResult, { kind: "signedIn" }> =>
-    result.kind === "signedIn";
+  ): result is Extract<SignInActionResult, { kind: "signedIn" }> => result.kind === "signedIn";
 
   // ---------------------------------------------------------------------------
   // signIn
@@ -759,10 +723,7 @@ export function client<
             return formParams;
           })()
         : (args ?? {});
-    const flow =
-      typeof params.flow === "string" && params.flow.length > 0
-        ? params.flow
-        : "signIn";
+    const flow = typeof params.flow === "string" && params.flow.length > 0 ? params.flow : "signIn";
     const signInKey = buildSignInRequestKey(provider, params);
 
     const handleSignInActionResult = async (
@@ -809,10 +770,7 @@ export function client<
               }
             : {
                 shouldStore: false as const,
-                tokens:
-                  result.tokens === null
-                    ? null
-                    : { token: result.tokens.token },
+                tokens: result.tokens === null ? null : { token: result.tokens.token },
                 waitForHandshake: true,
                 context: { provider, flow },
               },
@@ -913,8 +871,7 @@ export function client<
 
     const mutex = runtime.mutex;
     const withMutex = mutex
-      ? <T>(key: string, callback: () => Promise<T>) =>
-          mutex.withKey(key, callback)
+      ? <T>(key: string, callback: () => Promise<T>) => mutex.withKey(key, callback)
       : localMutex;
 
     if (proxy) {
@@ -965,16 +922,12 @@ export function client<
       if (tokenAfterLockAcquisition !== tokenBeforeLockAcquisition) {
         return tokenAfterLockAcquisition;
       }
-      const refreshToken =
-        (await storageGet(REFRESH_TOKEN_STORAGE_KEY)) ?? null;
+      const refreshToken = (await storageGet(REFRESH_TOKEN_STORAGE_KEY)) ?? null;
       if (!refreshToken) {
         finalizeLoadingState();
         return null;
       }
-      await verifyCodeAndSetToken(
-        { refreshToken },
-        { resyncConvexAuth: false },
-      );
+      await verifyCodeAndSetToken({ refreshToken }, { resyncConvexAuth: false });
       return token;
     });
   };

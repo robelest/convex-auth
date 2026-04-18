@@ -20,11 +20,7 @@ export type {
   OptionalAuthContext,
   UserDoc,
 } from "./auth";
-export type {
-  HttpAuthContext,
-  HttpAuthContextConfig,
-  OptionalHttpAuthContext,
-} from "./http";
+export type { HttpAuthContext, HttpAuthContextConfig, OptionalHttpAuthContext } from "./http";
 export type {
   GroupSsoAccessInput,
   GroupSsoAccessHandler,

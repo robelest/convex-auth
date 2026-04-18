@@ -8,10 +8,8 @@ import { test, expect } from "vite-plus/test";
 process.chdir(path.resolve(import.meta.dirname, "../../packages/samlify"));
 
 const FIXTURE_ROOT = path.resolve(import.meta.dirname);
-const fixturePath = (relativePath: string) =>
-  path.join(FIXTURE_ROOT, relativePath);
-const fixtureRead = (relativePath: string) =>
-  readFileSync(fixturePath(relativePath));
+const fixturePath = (relativePath: string) => path.join(FIXTURE_ROOT, relativePath);
+const fixtureRead = (relativePath: string) => readFileSync(fixturePath(relativePath));
 
 const {
   IdentityProvider: identityProvider,
@@ -66,16 +64,10 @@ const IdPMetadata = idpMetadata(fixtureRead("misc/idpmeta.xml"));
 const SPMetadata = spMetadata(fixtureRead("misc/spmeta.xml"));
 const sampleSignedResponse = fixtureRead("misc/response_signed.xml").toString();
 const wrongResponse = fixtureRead("misc/invalid_response.xml").toString();
-const spCertKnownGood = fixtureRead("key/sp/knownGoodCert.cer")
-  .toString()
-  .trim();
-const spPemKnownGood = fixtureRead("key/sp/knownGoodEncryptKey.pem")
-  .toString()
-  .trim();
+const spCertKnownGood = fixtureRead("key/sp/knownGoodCert.cer").toString().trim();
+const spPemKnownGood = fixtureRead("key/sp/knownGoodEncryptKey.pem").toString().trim();
 
-async function captureError(
-  run: () => Promise<unknown>,
-): Promise<string | Error | undefined> {
+async function captureError(run: () => Promise<unknown>): Promise<string | Error | undefined> {
   try {
     await run();
     return undefined;
@@ -91,17 +83,13 @@ test("base64 decoding returns decoded string", () => {
   expect(utility.base64Decode("SGVsbG8gV29ybGQ=")).toBe("Hello World");
 });
 test("deflate + base64 encoded", () => {
-  expect(utility.base64Encode(utility.deflateString("Hello World"))).toBe(
-    "80jNyclXCM8vykkBAA==",
-  );
+  expect(utility.base64Encode(utility.deflateString("Hello World"))).toBe("80jNyclXCM8vykkBAA==");
 });
 test("base64 decoded + inflate", () => {
   expect(utility.inflateString("80jNyclXCM8vykkBAA==")).toBe("Hello World");
 });
 test("parse cer format resulting clean certificate", () => {
-  expect(utility.normalizeCerString(fixtureRead("key/sp/cert.cer"))).toBe(
-    spCertKnownGood,
-  );
+  expect(utility.normalizeCerString(fixtureRead("key/sp/cert.cer"))).toBe(spCertKnownGood);
 });
 test("normalize pem key returns clean string", () => {
   const ekey = fixtureRead("key/sp/encryptKey.pem").toString();
@@ -165,28 +153,22 @@ test("getAssertionConsumerService with two bindings", () => {
   expect(_sp.entityMeta.getAssertionConsumerService(wording.binding.post)).toBe(
     expectedPostLocation,
   );
-  expect(
-    _sp.entityMeta.getAssertionConsumerService(wording.binding.artifact),
-  ).toBe(expectedArtifactLocation);
+  expect(_sp.entityMeta.getAssertionConsumerService(wording.binding.artifact)).toBe(
+    expectedArtifactLocation,
+  );
 });
 
 (() => {
   const _originRequest: string = String(fixtureRead("misc/request.xml"));
-  const _decodedResponse: string = String(
-    fixtureRead("misc/response_signed.xml"),
-  );
+  const _decodedResponse: string = String(fixtureRead("misc/response_signed.xml"));
   const _falseDecodedRequestSHA1: string = String(
     fixtureRead("misc/false_signed_request_sha1.xml"),
   );
-  const _decodedRequestSHA256: string = String(
-    fixtureRead("misc/signed_request_sha256.xml"),
-  );
+  const _decodedRequestSHA256: string = String(fixtureRead("misc/signed_request_sha256.xml"));
   const _falseDecodedRequestSHA256: string = String(
     fixtureRead("misc/false_signed_request_sha256.xml"),
   );
-  const _decodedRequestSHA512: string = String(
-    fixtureRead("misc/signed_request_sha512.xml"),
-  );
+  const _decodedRequestSHA512: string = String(fixtureRead("misc/signed_request_sha512.xml"));
   const _falseDecodedRequestSHA512: string = String(
     fixtureRead("misc/false_signed_request_sha512.xml"),
   );
@@ -212,9 +194,7 @@ test("getAssertionConsumerService with two bindings", () => {
 
   test("sign a SAML message with RSA-SHA1", () => {
     expect(
-      libsaml
-        .constructMessageSignature(octetString, _spPrivPem, _spPrivKeyPass)
-        .toString(),
+      libsaml.constructMessageSignature(octetString, _spPrivPem, _spPrivKeyPass).toString(),
     ).toBe(signatureB64SHA1);
   });
   test("sign a SAML message with RSA-SHA256", () => {
@@ -250,9 +230,7 @@ test("getAssertionConsumerService with two bindings", () => {
       _spPrivKeyPass,
       false,
     );
-    expect(
-      libsaml.verifyMessageSignature(SPMetadata, octetString, signature),
-    ).toBe(true);
+    expect(libsaml.verifyMessageSignature(SPMetadata, octetString, signature)).toBe(true);
   });
   test("verify binary SAML message signed with RSA-SHA256", () => {
     const signature = libsaml.constructMessageSignature(
@@ -289,11 +267,7 @@ test("getAssertionConsumerService with two bindings", () => {
     ).toBe(true);
   });
   test("verify stringified SAML message signed with RSA-SHA1", () => {
-    const signature = libsaml.constructMessageSignature(
-      octetString,
-      _spPrivPem,
-      _spPrivKeyPass,
-    );
+    const signature = libsaml.constructMessageSignature(octetString, _spPrivPem, _spPrivKeyPass);
     expect(
       libsaml.verifyMessageSignature(
         SPMetadata,
@@ -367,9 +341,7 @@ test("getAssertionConsumerService with two bindings", () => {
     ).toBe(dummySignRequestSHA512);
   });
   test("verify a XML signature signed by RSA-SHA1 with metadata", () => {
-    expect(
-      libsaml.verifySignature(_decodedResponse, { metadata: IdPMetadata })[0],
-    ).toBe(true);
+    expect(libsaml.verifySignature(_decodedResponse, { metadata: IdPMetadata })[0]).toBe(true);
   });
   test("integrity check for request signed with RSA-SHA1", () => {
     const [verified, _] = libsaml.verifySignature(_falseDecodedRequestSHA1, {
@@ -410,12 +382,8 @@ test("getAssertionConsumerService with two bindings", () => {
   });
 
   test("verify a XML signature with metadata but with rolling certificate", () => {
-    const responseSignedByCert1 = String(
-      fixtureRead("misc/response_signed_cert1.xml"),
-    );
-    const responseSignedByCert2 = String(
-      fixtureRead("misc/response_signed_cert2.xml"),
-    );
+    const responseSignedByCert1 = String(fixtureRead("misc/response_signed_cert1.xml"));
+    const responseSignedByCert2 = String(fixtureRead("misc/response_signed_cert2.xml"));
     expect(
       libsaml.verifySignature(responseSignedByCert1, {
         metadata: idpRollingCert.entityMeta,
@@ -463,9 +431,7 @@ test("getAssertionConsumerService with two bindings", () => {
     expect(verified).toBe(false);
   });
   test("encrypt assertion test passes", async () => {
-    await expect(
-      libsaml.encryptAssertion(idp, sp, sampleSignedResponse),
-    ).resolves.not.toThrow();
+    await expect(libsaml.encryptAssertion(idp, sp, sampleSignedResponse)).resolves.not.toThrow();
   });
   test("encrypt and decrypt assertion with AES-128-GCM + RSA-OAEP", async () => {
     const gcmIdp = identityProvider({
@@ -474,15 +440,8 @@ test("getAssertionConsumerService with two bindings", () => {
       keyEncryptionAlgorithm: algorithms.encryption.key.RSA_OAEP_MGF1P,
     } as any);
 
-    const encrypted = await libsaml.encryptAssertion(
-      gcmIdp,
-      sp,
-      sampleSignedResponse,
-    );
-    const decrypted = await libsaml.decryptAssertion(
-      sp,
-      utility.base64Decode(encrypted) as string,
-    );
+    const encrypted = await libsaml.encryptAssertion(gcmIdp, sp, sampleSignedResponse);
+    const decrypted = await libsaml.decryptAssertion(sp, utility.base64Decode(encrypted) as string);
 
     expect(decrypted[0].indexOf("EncryptedAssertion")).toBe(-1);
     expect(decrypted[1].indexOf("Assertion")).toBeGreaterThan(-1);
@@ -494,15 +453,8 @@ test("getAssertionConsumerService with two bindings", () => {
       keyEncryptionAlgorithm: algorithms.encryption.key.RSA_OAEP_MGF1P,
     } as any);
 
-    const encrypted = await libsaml.encryptAssertion(
-      gcm256Idp,
-      sp,
-      sampleSignedResponse,
-    );
-    const decrypted = await libsaml.decryptAssertion(
-      sp,
-      utility.base64Decode(encrypted) as string,
-    );
+    const encrypted = await libsaml.encryptAssertion(gcm256Idp, sp, sampleSignedResponse);
+    const decrypted = await libsaml.decryptAssertion(sp, utility.base64Decode(encrypted) as string);
 
     expect(decrypted[0].indexOf("EncryptedAssertion")).toBe(-1);
     expect(decrypted[1].indexOf("Assertion")).toBeGreaterThan(-1);
@@ -514,29 +466,16 @@ test("getAssertionConsumerService with two bindings", () => {
       keyEncryptionAlgorithm: algorithms.encryption.key.RSA_1_5,
     } as any);
 
-    const encrypted = await libsaml.encryptAssertion(
-      legacyIdp,
-      sp,
-      sampleSignedResponse,
-    );
-    const decrypted = await libsaml.decryptAssertion(
-      sp,
-      utility.base64Decode(encrypted) as string,
-    );
+    const encrypted = await libsaml.encryptAssertion(legacyIdp, sp, sampleSignedResponse);
+    const decrypted = await libsaml.decryptAssertion(sp, utility.base64Decode(encrypted) as string);
 
     expect(decrypted[0].indexOf("EncryptedAssertion")).toBe(-1);
     expect(decrypted[1].indexOf("Assertion")).toBeGreaterThan(-1);
   });
   test("encrypt assertion response without assertion returns error", async () => {
-    await expect(() =>
-      libsaml.encryptAssertion(idp, sp, wrongResponse),
-    ).rejects.toThrow();
-    const error = await captureError(() =>
-      libsaml.encryptAssertion(idp, sp, wrongResponse),
-    );
-    expect(error instanceof Error ? error.message : error).toBe(
-      "ERR_NO_ASSERTION",
-    );
+    await expect(() => libsaml.encryptAssertion(idp, sp, wrongResponse)).rejects.toThrow();
+    const error = await captureError(() => libsaml.encryptAssertion(idp, sp, wrongResponse));
+    expect(error instanceof Error ? error.message : error).toBe("ERR_NO_ASSERTION");
   });
   test("encrypt assertion with invalid xml syntax returns error", async () => {
     await expect(() =>
@@ -545,29 +484,17 @@ test("getAssertionConsumerService with two bindings", () => {
     const error = await captureError(() =>
       libsaml.encryptAssertion(idp, sp, "This is not a xml format string"),
     );
-    expect(error instanceof Error ? error.message : error).toBe(
-      "ERR_NO_ASSERTION",
-    );
+    expect(error instanceof Error ? error.message : error).toBe("ERR_NO_ASSERTION");
   });
   test("encrypt assertion with empty string returns error", async () => {
     await expect(() => libsaml.encryptAssertion(idp, sp, "")).rejects.toThrow();
-    const error = await captureError(() =>
-      libsaml.encryptAssertion(idp, sp, ""),
-    );
-    expect(error instanceof Error ? error.message : error).toBe(
-      "ERR_UNDEFINED_ASSERTION",
-    );
+    const error = await captureError(() => libsaml.encryptAssertion(idp, sp, ""));
+    expect(error instanceof Error ? error.message : error).toBe("ERR_UNDEFINED_ASSERTION");
   });
   test("encrypt assertion with undefined string returns error", async () => {
-    await expect(() =>
-      libsaml.encryptAssertion(idp, sp, undefined),
-    ).rejects.toThrow();
-    const error = await captureError(() =>
-      libsaml.encryptAssertion(idp, sp, undefined),
-    );
-    expect(error instanceof Error ? error.message : error).toBe(
-      "ERR_UNDEFINED_ASSERTION",
-    );
+    await expect(() => libsaml.encryptAssertion(idp, sp, undefined)).rejects.toThrow();
+    const error = await captureError(() => libsaml.encryptAssertion(idp, sp, undefined));
+    expect(error instanceof Error ? error.message : error).toBe("ERR_UNDEFINED_ASSERTION");
   });
   test("building attribute statement with one attribute", () => {
     const attributes = [
@@ -581,9 +508,7 @@ test("getAssertionConsumerService with two bindings", () => {
     const expectedStatement =
       '<saml:AttributeStatement><saml:Attribute Name="email" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic"><saml:AttributeValue xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="xs:string">{attrUserEmail}</saml:AttributeValue></saml:Attribute></saml:AttributeStatement>';
 
-    expect(libsaml.attributeStatementBuilder(attributes)).toBe(
-      expectedStatement,
-    );
+    expect(libsaml.attributeStatementBuilder(attributes)).toBe(expectedStatement);
   });
   test("building attribute statement with multiple attributes", () => {
     const attributes = [
@@ -602,9 +527,7 @@ test("getAssertionConsumerService with two bindings", () => {
     ];
     const expectedStatement =
       '<saml:AttributeStatement><saml:Attribute Name="email" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic"><saml:AttributeValue xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="xs:string">{attrUserEmail}</saml:AttributeValue></saml:Attribute><saml:Attribute Name="firstname" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:basic"><saml:AttributeValue xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="xs:string">{attrUserFirstname}</saml:AttributeValue></saml:Attribute></saml:AttributeStatement>';
-    expect(libsaml.attributeStatementBuilder(attributes)).toBe(
-      expectedStatement,
-    );
+    expect(libsaml.attributeStatementBuilder(attributes)).toBe(expectedStatement);
   });
 })();
 
@@ -666,8 +589,7 @@ test("idp with multiple signing and encryption certificates", () => {
   });
 
   const signingCertificate = localIdp.entityMeta.getX509Certificate("signing");
-  const encryptionCertificate =
-    localIdp.entityMeta.getX509Certificate("encryption");
+  const encryptionCertificate = localIdp.entityMeta.getX509Certificate("encryption");
 
   expect(Array.isArray(signingCertificate)).toBe(true);
   expect(signingCertificate.length).toBe(2);
@@ -678,18 +600,10 @@ test("idp with multiple signing and encryption certificates", () => {
 
 test("verify time with and without drift tolerance", () => {
   const now = new Date();
-  const timeBefore10Mins = new Date(
-    new Date().setMinutes(now.getMinutes() - 10),
-  ).toISOString();
-  const timeBefore5Mins = new Date(
-    new Date().setMinutes(now.getMinutes() - 5),
-  ).toISOString();
-  const timeAfter5Mins = new Date(
-    new Date().setMinutes(now.getMinutes() + 5),
-  ).toISOString();
-  const timeAfter10Mins = new Date(
-    new Date().setMinutes(now.getMinutes() + 5),
-  ).toISOString();
+  const timeBefore10Mins = new Date(new Date().setMinutes(now.getMinutes() - 10)).toISOString();
+  const timeBefore5Mins = new Date(new Date().setMinutes(now.getMinutes() - 5)).toISOString();
+  const timeAfter5Mins = new Date(new Date().setMinutes(now.getMinutes() + 5)).toISOString();
+  const timeAfter10Mins = new Date(new Date().setMinutes(now.getMinutes() + 5)).toISOString();
 
   // without drift tolerance
   expect(verifyTime(timeBefore5Mins, timeAfter5Mins)).toBe(true);
@@ -733,9 +647,7 @@ test.skip("metadata with multiple entity descriptors is invalid", () => {
       metadata: fixtureRead("misc/multiple_entitydescriptor.xml"),
     });
   } catch (error) {
-    expect((error as Error).message).toBe(
-      "ERR_MULTIPLE_METADATA_ENTITYDESCRIPTOR",
-    );
+    expect((error as Error).message).toBe("ERR_MULTIPLE_METADATA_ENTITYDESCRIPTOR");
   }
 });
 
@@ -745,15 +657,9 @@ test("undefined x509 key in metadata should return null", () => {
 });
 
 test("return list of x509 key in metadata when multiple keys are used", () => {
-  expect(
-    Array.isArray(idpRollingCert.entityMeta.getX509Certificate("signing")),
-  ).toBe(true);
-  expect(idpRollingCert.entityMeta.getX509Certificate("signing").length).toBe(
-    2,
-  );
-  expect(
-    typeof idpRollingCert.entityMeta.getX509Certificate("encryption"),
-  ).toBe("string");
+  expect(Array.isArray(idpRollingCert.entityMeta.getX509Certificate("signing"))).toBe(true);
+  expect(idpRollingCert.entityMeta.getX509Certificate("signing").length).toBe(2);
+  expect(typeof idpRollingCert.entityMeta.getX509Certificate("encryption")).toBe("string");
 });
 
 test("get name id format in metadata", () => {

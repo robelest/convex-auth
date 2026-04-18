@@ -1,7 +1,6 @@
 ---
 title: auth.group.sso.oidc
-description:
-  OIDC provider configuration — discovery, claim mapping, and sign-in
+description: OIDC provider configuration — discovery, claim mapping, and sign-in
   resolution.
 ---
 

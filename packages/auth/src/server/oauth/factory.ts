@@ -1,10 +1,6 @@
 import type { OAuth2Tokens } from "arctic";
 
-import type {
-  OAuthMaterializedConfig,
-  OAuthProfile,
-  OAuthTokens,
-} from "../types";
+import type { OAuthMaterializedConfig, OAuthProfile, OAuthTokens } from "../types";
 
 type OAuthRuntimeClient = {
   readonly pkce: "required" | "optional" | "never";
@@ -15,10 +11,7 @@ type OAuthRuntimeClient = {
     nonce?: string;
     loginHint?: string;
   }): URL;
-  validateAuthorizationCode(args: {
-    code: string;
-    codeVerifier?: string;
-  }): Promise<OAuthTokens>;
+  validateAuthorizationCode(args: { code: string; codeVerifier?: string }): Promise<OAuthTokens>;
 };
 
 type ArcticPkceMode = OAuthRuntimeClient["pkce"];
@@ -29,15 +22,8 @@ type ArcticOAuthProviderWithoutPkce = {
 };
 
 type ArcticOAuthProviderWithPkce = {
-  createAuthorizationURL(
-    state: string,
-    codeVerifier: string,
-    scopes: string[],
-  ): URL;
-  validateAuthorizationCode(
-    code: string,
-    codeVerifier: string,
-  ): Promise<OAuth2Tokens>;
+  createAuthorizationURL(state: string, codeVerifier: string, scopes: string[]): URL;
+  validateAuthorizationCode(code: string, codeVerifier: string): Promise<OAuth2Tokens>;
 };
 
 export interface OAuthProviderConfig {
@@ -46,10 +32,7 @@ export interface OAuthProviderConfig {
   readonly scopes: string[];
   readonly profile?: (tokens: OAuthTokens) => Promise<OAuthProfile>;
   readonly nonce?: boolean;
-  readonly validateTokens?: (
-    tokens: OAuthTokens,
-    ctx: { nonce?: string },
-  ) => Promise<void>;
+  readonly validateTokens?: (tokens: OAuthTokens, ctx: { nonce?: string }) => Promise<void>;
   readonly accountLinking?: "verifiedEmail" | "none";
 }
 
@@ -57,10 +40,8 @@ function normalizeTokens(tokens: OAuth2Tokens): OAuthTokens {
   const raw = tokens.data as Record<string, unknown>;
   const rawScopes = typeof raw.scope === "string" ? raw.scope : undefined;
   return {
-    accessToken:
-      typeof raw.access_token === "string" ? raw.access_token : undefined,
-    refreshToken:
-      typeof raw.refresh_token === "string" ? raw.refresh_token : undefined,
+    accessToken: typeof raw.access_token === "string" ? raw.access_token : undefined,
+    refreshToken: typeof raw.refresh_token === "string" ? raw.refresh_token : undefined,
     idToken: typeof raw.id_token === "string" ? raw.id_token : undefined,
     accessTokenExpiresAt:
       typeof tokens.accessTokenExpiresAt === "function"
@@ -91,8 +72,7 @@ export function createArcticOAuthClient(
   options?: { pkce?: ArcticPkceMode },
 ): OAuthRuntimeClient {
   const pkce =
-    options?.pkce ??
-    (provider.createAuthorizationURL.length >= 3 ? "required" : "never");
+    options?.pkce ?? (provider.createAuthorizationURL.length >= 3 ? "required" : "never");
   return {
     pkce,
     createAuthorizationURL({ state, codeVerifier, scopes, nonce }) {
@@ -100,11 +80,7 @@ export function createArcticOAuthClient(
         pkce === "required"
           ? (
               provider as {
-                createAuthorizationURL(
-                  state: string,
-                  codeVerifier: string,
-                  scopes: string[],
-                ): URL;
+                createAuthorizationURL(state: string, codeVerifier: string, scopes: string[]): URL;
               }
             ).createAuthorizationURL(state, codeVerifier!, scopes)
           : (
@@ -138,9 +114,7 @@ export function createArcticOAuthClient(
   };
 }
 
-export function createOAuthProvider(
-  config: OAuthProviderConfig,
-): OAuthMaterializedConfig {
+export function createOAuthProvider(config: OAuthProviderConfig): OAuthMaterializedConfig {
   if (
     !config.provider ||
     typeof config.provider.createAuthorizationURL !== "function" ||

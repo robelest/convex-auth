@@ -9,10 +9,7 @@ type SelectedGroup = {
   permissions: { canManageSso: boolean };
 };
 
-export async function requireSsoManagerAccess(opts: {
-  authToken: string | null;
-  groupId: string;
-}) {
+export async function requireSsoManagerAccess(opts: { authToken: string | null; groupId: string }) {
   if (!opts.authToken) {
     throw redirect(302, "/");
   }

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 import { mutation, query } from "../../functions";
 import { vPaginated, vUserDoc } from "../../model";
@@ -73,13 +73,9 @@ export const userList = query({
     // Pick index based on where fields
     let q;
     if (where.email !== undefined) {
-      q = ctx.db
-        .query("User")
-        .withIndex("email", (idx) => idx.eq("email", where.email!));
+      q = ctx.db.query("User").withIndex("email", (idx) => idx.eq("email", where.email!));
     } else if (where.phone !== undefined) {
-      q = ctx.db
-        .query("User")
-        .withIndex("phone", (idx) => idx.eq("phone", where.phone!));
+      q = ctx.db.query("User").withIndex("phone", (idx) => idx.eq("phone", where.phone!));
     } else {
       q = ctx.db.query("User");
     }
@@ -140,6 +136,43 @@ export const userGetById = query({
   returns: v.union(vUserDoc, v.null()),
   handler: async (ctx, { userId }) => {
     return await ctx.db.get("User", userId);
+  },
+});
+
+/**
+ * Fetch many user documents by ID in a single component round-trip.
+ *
+ * Equivalent to calling {@link userGetById} for each ID in parallel from the
+ * app side, but collapses what would be `N` cross-component RPCs into one.
+ * Returns the documents in the same order as the input IDs; missing users
+ * appear as `null`. Input is de-duplicated internally so passing the same
+ * ID twice costs exactly one `ctx.db.get`.
+ *
+ * Hot paths like `groups:getDashboard` (member summaries) and
+ * `issues:projectIssues` (assignee/creator lookups) previously fanned out
+ * N `userGetById` calls — this helper is the batched replacement.
+ *
+ * @param args.userIds - Array of user document IDs (order preserved, duplicates tolerated).
+ * @returns Array of user documents or `null` entries, in the same order as `args.userIds`.
+ *
+ * @example
+ * ```ts
+ * const users = await ctx.runQuery(
+ *   component.identity.users.userGetMany,
+ *   { userIds: memberIds },
+ * );
+ * const byId = new Map(users.filter(u => u !== null).map(u => [u!._id, u!]));
+ * ```
+ */
+export const userGetMany = query({
+  args: { userIds: v.array(v.id("User")) },
+  returns: v.array(v.union(vUserDoc, v.null())),
+  handler: async (ctx, { userIds }) => {
+    if (userIds.length === 0) return [];
+    const unique = Array.from(new Set(userIds));
+    const docs = await Promise.all(unique.map((id) => ctx.db.get("User", id)));
+    const byId = new Map(unique.map((id, i) => [id, docs[i] ?? null]));
+    return userIds.map((id) => byId.get(id) ?? null);
   },
 });
 
@@ -340,12 +373,121 @@ export const userPatch = mutation({
  * ```
  */
 export const userDelete = mutation({
-  args: { userId: v.id("User") },
+  args: {
+    userId: v.id("User"),
+    /**
+     * When true, atomically cascade-delete every record linked to the
+     * user: sessions, refresh tokens, accounts, group memberships, API
+     * keys, passkeys, and TOTP factors — then the user document itself.
+     *
+     * When false (or omitted), deletes only the user row. If any linked
+     * data exists, the mutation throws `INVALID_PARAMETERS` to prevent
+     * orphaned records.
+     *
+     * Consolidating the cascade inside the component saves the
+     * `1 + 6 + N` cross-component RPCs the app-side resolver previously
+     * issued.
+     */
+    cascade: v.optional(v.boolean()),
+  },
   returns: v.null(),
-  handler: async (ctx, { userId }) => {
-    if ((await ctx.db.get("User", userId)) !== null) {
-      await ctx.db.delete("User", userId);
+  handler: async (ctx, { userId, cascade }) => {
+    const user = await ctx.db.get("User", userId);
+    if (user === null) return null;
+
+    if (cascade !== true) {
+      const [session, account, key, member, passkey, totp] = await Promise.all([
+        ctx.db
+          .query("Session")
+          .withIndex("user_id", (q) => q.eq("userId", userId))
+          .first(),
+        ctx.db
+          .query("Account")
+          .withIndex("user_id_provider", (q) => q.eq("userId", userId))
+          .first(),
+        ctx.db
+          .query("ApiKey")
+          .withIndex("user_id", (q) => q.eq("userId", userId))
+          .first(),
+        ctx.db
+          .query("GroupMember")
+          .withIndex("user_id", (q) => q.eq("userId", userId))
+          .first(),
+        ctx.db
+          .query("Passkey")
+          .withIndex("user_id", (q) => q.eq("userId", userId))
+          .first(),
+        ctx.db
+          .query("TotpFactor")
+          .withIndex("user_id", (q) => q.eq("userId", userId))
+          .first(),
+      ]);
+      if (
+        session !== null ||
+        account !== null ||
+        key !== null ||
+        member !== null ||
+        passkey !== null ||
+        totp !== null
+      ) {
+        throw new ConvexError({
+          code: "INVALID_PARAMETERS",
+          message: "The provided parameters are invalid.",
+        });
+      }
     }
+
+    if (cascade === true) {
+      const [sessions, accounts, keys, members, passkeys, totps] = await Promise.all([
+        ctx.db
+          .query("Session")
+          .withIndex("user_id", (q) => q.eq("userId", userId))
+          .collect(),
+        ctx.db
+          .query("Account")
+          .withIndex("user_id_provider", (q) => q.eq("userId", userId))
+          .collect(),
+        ctx.db
+          .query("ApiKey")
+          .withIndex("user_id", (q) => q.eq("userId", userId))
+          .collect(),
+        ctx.db
+          .query("GroupMember")
+          .withIndex("user_id", (q) => q.eq("userId", userId))
+          .collect(),
+        ctx.db
+          .query("Passkey")
+          .withIndex("user_id", (q) => q.eq("userId", userId))
+          .collect(),
+        ctx.db
+          .query("TotpFactor")
+          .withIndex("user_id", (q) => q.eq("userId", userId))
+          .collect(),
+      ]);
+      const refreshTokens =
+        sessions.length > 0
+          ? (
+              await Promise.all(
+                sessions.map((s) =>
+                  ctx.db
+                    .query("RefreshToken")
+                    .withIndex("session_id", (q) => q.eq("sessionId", s._id))
+                    .collect(),
+                ),
+              )
+            ).flat()
+          : [];
+      await Promise.all([
+        ...sessions.map((s) => ctx.db.delete("Session", s._id)),
+        ...refreshTokens.map((r) => ctx.db.delete("RefreshToken", r._id)),
+        ...accounts.map((a) => ctx.db.delete("Account", a._id)),
+        ...keys.map((k) => ctx.db.delete("ApiKey", k._id)),
+        ...members.map((m) => ctx.db.delete("GroupMember", m._id)),
+        ...passkeys.map((p) => ctx.db.delete("Passkey", p._id)),
+        ...totps.map((t) => ctx.db.delete("TotpFactor", t._id)),
+      ]);
+    }
+    await ctx.db.delete("User", userId);
     return null;
   },
 });

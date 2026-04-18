@@ -1,10 +1,7 @@
 import { ConvexError, v } from "convex/values";
 
 import { mutation, query } from "../../functions";
-import {
-  vGroupConnectionDomainDoc,
-  vGroupConnectionDomainVerificationDoc,
-} from "../../model";
+import { vGroupConnectionDomainDoc, vGroupConnectionDomainVerificationDoc } from "../../model";
 
 /**
  * Link a domain to an connection record, or update an existing link.
@@ -107,13 +104,23 @@ export const groupConnectionDomainAdd = mutation({
  * ```
  */
 export const groupConnectionDomainList = query({
-  args: { connectionId: v.id("GroupConnection") },
+  args: {
+    connectionId: v.id("GroupConnection"),
+    /**
+     * Optional upper bound on the number of domains returned. Clamped to
+     * the range [1, 500] and defaults to 100 — typical SSO deployments
+     * link a handful of domains per connection, so the hard cap prevents a
+     * runaway `.collect()` if a misconfigured tenant accumulates many.
+     */
+    limit: v.optional(v.number()),
+  },
   returns: v.array(vGroupConnectionDomainDoc),
-  handler: async (ctx, { connectionId }) => {
+  handler: async (ctx, { connectionId, limit }) => {
+    const bounded = Math.min(Math.max(limit ?? 100, 1), 500);
     return await ctx.db
       .query("GroupConnectionDomain")
       .withIndex("connection_id", (idx) => idx.eq("connectionId", connectionId))
-      .collect();
+      .take(bounded);
   },
 });
 

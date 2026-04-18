@@ -20,10 +20,7 @@ const entryMap = (patterns: string[], exclude: string[] = []) => {
   return Object.fromEntries(files.map((file) => [toEntryName(file), file]));
 };
 
-const serverAndProviderEntries = entryMap([
-  "src/server/**/*.ts",
-  "src/providers/**/*.ts",
-]);
+const serverAndProviderEntries = entryMap(["src/server/**/*.ts", "src/providers/**/*.ts"]);
 
 const publicDeclarationEntries = {
   "client/index": "src/client/index.ts",
@@ -38,10 +35,7 @@ const publicDeclarationEntries = {
   "component/_generated/component": "src/component/_generated/component.ts",
 };
 
-const componentRuntimeEntries = entryMap(
-  ["src/component/**/*.ts"],
-  ["src/component/index.ts"],
-);
+const componentRuntimeEntries = entryMap(["src/component/**/*.ts"], ["src/component/index.ts"]);
 
 export default defineConfig([
   {

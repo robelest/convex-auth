@@ -4,10 +4,7 @@
  * @module
  */
 
-import type {
-  GenericActionCtx,
-  GenericDataModel,
-} from "convex/server";
+import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError } from "convex/values";
 
 import type { AuthApiRefs } from "../client/index";
@@ -71,16 +68,12 @@ type ResolvedAuthContext<TResolve> = _ResolvedAuthContext<TResolve>;
 // Types
 // ============================================================================
 
-type MemberApiWithAuthorization<
-  TAuthorization extends AuthAuthorizationConfig | undefined,
-> = Omit<
+type MemberApiWithAuthorization<TAuthorization extends AuthAuthorizationConfig | undefined> = Omit<
   ReturnType<typeof AuthFactory>["auth"]["member"],
   "create" | "list" | "update" | "inspect" | "require"
 > & {
   create: (
-    ctx: Parameters<
-      ReturnType<typeof AuthFactory>["auth"]["member"]["create"]
-    >[0],
+    ctx: Parameters<ReturnType<typeof AuthFactory>["auth"]["member"]["create"]>[0],
     data: {
       groupId: string;
       userId: string;
@@ -90,9 +83,7 @@ type MemberApiWithAuthorization<
     },
   ) => Promise<{ memberId: string }>;
   list: (
-    ctx: Parameters<
-      ReturnType<typeof AuthFactory>["auth"]["member"]["list"]
-    >[0],
+    ctx: Parameters<ReturnType<typeof AuthFactory>["auth"]["member"]["list"]>[0],
     opts?: {
       where?: {
         groupId?: string;
@@ -107,27 +98,13 @@ type MemberApiWithAuthorization<
     },
   ) => ReturnType<ReturnType<typeof AuthFactory>["auth"]["member"]["list"]>;
   update: (
-    ctx: Parameters<
-      ReturnType<typeof AuthFactory>["auth"]["member"]["update"]
-    >[0],
+    ctx: Parameters<ReturnType<typeof AuthFactory>["auth"]["member"]["update"]>[0],
     memberId: string,
     data: Record<string, unknown> & { roleIds?: AuthRoleId<TAuthorization>[] },
   ) => Promise<{ memberId: string }>;
-  inspect: (
-    ctx: Parameters<
-      ReturnType<typeof AuthFactory>["auth"]["member"]["inspect"]
-    >[0],
-    opts: {
-      userId: string;
-      groupId: string;
-      ancestry?: boolean;
-      maxDepth?: number;
-    },
-  ) => ReturnType<ReturnType<typeof AuthFactory>["auth"]["member"]["inspect"]>;
+  inspect: ReturnType<typeof AuthFactory>["auth"]["member"]["inspect"];
   require: (
-    ctx: Parameters<
-      ReturnType<typeof AuthFactory>["auth"]["member"]["require"]
-    >[0],
+    ctx: Parameters<ReturnType<typeof AuthFactory>["auth"]["member"]["require"]>[0],
     opts: {
       userId: string;
       groupId: string;
@@ -154,9 +131,7 @@ type MemberApiWithAuthorization<
  * @typeParam TAuthorization - The authorization config, used to narrow
  *   role IDs and grant strings on the `member` API.
  */
-export type AuthApiBase<
-  TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
-> = {
+export type AuthApiBase<TAuthorization extends AuthAuthorizationConfig | undefined = undefined> = {
   signIn: ReturnType<typeof AuthFactory>["signIn"];
   signOut: ReturnType<typeof AuthFactory>["signOut"];
   store: ReturnType<typeof AuthFactory>["store"];
@@ -169,6 +144,23 @@ export type AuthApiBase<
   invite: ReturnType<typeof AuthFactory>["auth"]["invite"];
   key: ReturnType<typeof AuthFactory>["auth"]["key"];
   http: ReturnType<typeof AuthFactory>["auth"]["http"];
+  /**
+   * Zero-round-trip helper: parse the current user id from the JWT subject
+   * claim. No component read, no cache lookup. Returns `null` when
+   * unauthenticated.
+   *
+   * Prefer this over `auth.context(ctx)` when a handler only needs the
+   * user's id (audit logging, early guards, routing). For the full user
+   * document, follow up with `auth.user.get(ctx, userId)` — cached per
+   * request.
+   *
+   * @example
+   * ```ts
+   * const userId = await auth.getUserId(ctx);
+   * if (!userId) throw new Error("Not signed in");
+   * ```
+   */
+  getUserId: ReturnType<typeof AuthFactory>["auth"]["session"]["userId"];
   /**
    * Resolve the current request's auth context. Framework-agnostic — use
    * this in fluent-convex middleware, custom wrappers, or anywhere you
@@ -345,13 +337,12 @@ type PublicGroupSsoApi = {
  * @typeParam TAuthorization - The authorization config, forwarded to
  *   {@link AuthApiBase} for typed role IDs and grant strings.
  */
-export type AuthApi<
-  TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
-> = AuthApiBase<TAuthorization> & {
-  group: AuthApiBase<TAuthorization>["group"] & {
-    sso: PublicGroupSsoApi;
+export type AuthApi<TAuthorization extends AuthAuthorizationConfig | undefined = undefined> =
+  AuthApiBase<TAuthorization> & {
+    group: AuthApiBase<TAuthorization>["group"] & {
+      sso: PublicGroupSsoApi;
+    };
   };
-};
 
 type PublicContextFactory = <
   TCtx,
@@ -385,10 +376,7 @@ type PublicContextCustomizationFactory = <
 export type ConvexAuthResult<
   P extends AuthProviderConfig[],
   TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
-> =
-  HasSSO<P> extends true
-    ? AuthApi<TAuthorization>
-    : AuthApiBase<TAuthorization>;
+> = HasSSO<P> extends true ? AuthApi<TAuthorization> : AuthApiBase<TAuthorization>;
 
 /**
  * Infer the typed `AuthApiRefs` for the client SDK from a `createAuth` call.
@@ -409,11 +397,7 @@ export type ConvexAuthResult<
  */
 export type InferClientApi<T> =
   T extends ConvexAuthResult<infer P>
-    ? AuthApiRefs<
-        HasPasskeyProvider<P>,
-        HasTotpProvider<P>,
-        HasDeviceProvider<P>
-      >
+    ? AuthApiRefs<HasPasskeyProvider<P>, HasTotpProvider<P>, HasDeviceProvider<P>>
     : AuthApiRefs;
 
 // ============================================================================
@@ -472,115 +456,109 @@ export function createAuth<
     ...restSso
   } = authResult.auth.sso as InternalSsoApi;
 
-  type SetGroupConnectionDomains =
-    PublicGroupSsoApi["connection"]["domain"]["set"];
+  type SetGroupConnectionDomains = PublicGroupSsoApi["connection"]["domain"]["set"];
   type GroupConnectionDomainInput = Array<{
     domain: string;
     isPrimary?: boolean;
   }>;
-  const setGroupConnectionDomains: PublicGroupSsoApi["connection"]["domain"]["set"] =
-    async (
-      ctx: Parameters<SetGroupConnectionDomains>[0],
-      connectionId: Parameters<SetGroupConnectionDomains>[1],
-      domains: GroupConnectionDomainInput,
-    ) => {
-      const connection = await connectionApi.get(ctx, connectionId);
-      if (connection === null) {
+  const setGroupConnectionDomains: PublicGroupSsoApi["connection"]["domain"]["set"] = async (
+    ctx: Parameters<SetGroupConnectionDomains>[0],
+    connectionId: Parameters<SetGroupConnectionDomains>[1],
+    domains: GroupConnectionDomainInput,
+  ) => {
+    const connection = await connectionApi.get(ctx, connectionId);
+    if (connection === null) {
+      throw new ConvexError({
+        code: "INVALID_PARAMETERS",
+        message: "Connection not found.",
+      });
+    }
+
+    const normalized = domains.map((entry: (typeof domains)[number]) => ({
+      ...entry,
+      domain: entry.domain.trim().toLowerCase(),
+    }));
+    const deduped = new Map<string, (typeof normalized)[number]>();
+    for (const entry of normalized) {
+      if (entry.domain.length === 0) {
         throw new ConvexError({
           code: "INVALID_PARAMETERS",
-          message: "Connection not found.",
+          message: "Domain must not be empty.",
         });
       }
-
-      const normalized = domains.map((entry: (typeof domains)[number]) => ({
-        ...entry,
-        domain: entry.domain.trim().toLowerCase(),
-      }));
-      const deduped = new Map<string, (typeof normalized)[number]>();
-      for (const entry of normalized) {
-        if (entry.domain.length === 0) {
-          throw new ConvexError({
-            code: "INVALID_PARAMETERS",
-            message: "Domain must not be empty.",
-          });
-        }
-        if (deduped.has(entry.domain)) {
-          throw new ConvexError({
-            code: "INVALID_PARAMETERS",
-            message: `Duplicate domain: ${entry.domain}`,
-          });
-        }
-        deduped.set(entry.domain, entry);
-      }
-
-      const nextDomains = [...deduped.values()];
-      const primaryCount = nextDomains.filter(
-        (entry) => entry.isPrimary,
-      ).length;
-      if (primaryCount > 1) {
+      if (deduped.has(entry.domain)) {
         throw new ConvexError({
           code: "INVALID_PARAMETERS",
-          message: "Only one primary domain may be set.",
+          message: `Duplicate domain: ${entry.domain}`,
         });
       }
-      if (nextDomains.length > 0 && primaryCount === 0) {
-        nextDomains[0] = { ...nextDomains[0], isPrimary: true };
+      deduped.set(entry.domain, entry);
+    }
+
+    const nextDomains = [...deduped.values()];
+    const primaryCount = nextDomains.filter((entry) => entry.isPrimary).length;
+    if (primaryCount > 1) {
+      throw new ConvexError({
+        code: "INVALID_PARAMETERS",
+        message: "Only one primary domain may be set.",
+      });
+    }
+    if (nextDomains.length > 0 && primaryCount === 0) {
+      nextDomains[0] = { ...nextDomains[0], isPrimary: true };
+    }
+
+    const currentDomains = await domainApi.list(ctx, connectionId);
+    const currentByDomain = new Map<string, (typeof currentDomains)[number]>(
+      currentDomains.map((entry: (typeof currentDomains)[number]) => [
+        entry.domain.toLowerCase(),
+        entry,
+      ]),
+    );
+
+    for (const existing of currentDomains) {
+      if (!deduped.has(existing.domain.toLowerCase())) {
+        await domainApi.remove(ctx, existing._id);
       }
+    }
 
-      const currentDomains = await domainApi.list(ctx, connectionId);
-      const currentByDomain = new Map<string, (typeof currentDomains)[number]>(
-        currentDomains.map((entry: (typeof currentDomains)[number]) => [
-          entry.domain.toLowerCase(),
-          entry,
-        ]),
-      );
-
-      for (const existing of currentDomains) {
-        if (!deduped.has(existing.domain.toLowerCase())) {
-          await domainApi.remove(ctx, existing._id);
-        }
+    for (const nextDomain of nextDomains) {
+      const current = currentByDomain.get(nextDomain.domain);
+      if (current && current.isPrimary === Boolean(nextDomain.isPrimary)) {
+        continue;
       }
-
-      for (const nextDomain of nextDomains) {
-        const current = currentByDomain.get(nextDomain.domain);
-        if (current && current.isPrimary === Boolean(nextDomain.isPrimary)) {
-          continue;
-        }
-        if (current) {
-          await domainApi.remove(ctx, current._id);
-        }
-        const domainId = await domainApi.add(ctx, {
-          connectionId: connection._id,
-          groupId: connection.groupId,
-          domain: nextDomain.domain,
-          isPrimary: Boolean(nextDomain.isPrimary),
+      if (current) {
+        await domainApi.remove(ctx, current._id);
+      }
+      const domainId = await domainApi.add(ctx, {
+        connectionId: connection._id,
+        groupId: connection.groupId,
+        domain: nextDomain.domain,
+        isPrimary: Boolean(nextDomain.isPrimary),
+      });
+      if (current?.verifiedAt !== undefined) {
+        await (
+          ctx as {
+            runMutation: GenericActionCtx<GenericDataModel>["runMutation"];
+          }
+        ).runMutation(component.public.groupConnectionDomainVerify, {
+          domainId,
+          verifiedAt: current.verifiedAt,
         });
-        if (current?.verifiedAt !== undefined) {
-          await (
-            ctx as {
-              runMutation: GenericActionCtx<GenericDataModel>["runMutation"];
-            }
-          ).runMutation(component.public.groupConnectionDomainVerify, {
-            domainId,
-            verifiedAt: current.verifiedAt,
-          });
-        }
       }
+    }
 
-      const updatedDomains = await domainApi.list(ctx, connectionId);
-      return {
-        connectionId,
-        domains: updatedDomains.map(
-          (domain: (typeof updatedDomains)[number]) => ({
-            domainId: domain._id,
-            domain: domain.domain,
-            isPrimary: Boolean(domain.isPrimary),
-            verified: domain.verifiedAt !== undefined,
-            verifiedAt: domain.verifiedAt ?? null,
-          }),
-        ),
-      };
+    const updatedDomains = await domainApi.list(ctx, connectionId);
+    return {
+      connectionId,
+      domains: updatedDomains.map((domain: (typeof updatedDomains)[number]) => ({
+        domainId: domain._id,
+        domain: domain.domain,
+        isPrimary: Boolean(domain.isPrimary),
+        verified: domain.verifiedAt !== undefined,
+        verifiedAt: domain.verifiedAt ?? null,
+      })),
     };
+  };
 
   const publicGroupSso: PublicGroupSsoApi = {
     ...restSso,
@@ -640,14 +618,22 @@ export function createAuth<
     key: authResult.auth.key,
     http: authResult.auth.http,
 
+    /**
+     * Zero-round-trip helper: parse the current user id straight from the
+     * JWT. No component read. Returns `null` when unauthenticated.
+     *
+     * Prefer this over `auth.context(ctx)` when you only need the user's
+     * id. For the full user document, follow up with
+     * `auth.user.get(ctx, userId)` (cached per-request).
+     */
+    getUserId: authResult.auth.session.userId,
+
     context: ((ctx, config) => {
       assertAuthResolverContext(ctx);
       return createPublicAuthContext(authResult.auth, ctx, config);
     }) as PublicContextFactory as AuthContextResolver,
 
-    ctx: ((
-      config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>,
-    ) =>
+    ctx: ((config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>) =>
       createAuthContextCustomization(
         authResult.auth,
         config,

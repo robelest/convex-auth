@@ -8,13 +8,11 @@ import { REFRESH_TOKEN_DIVIDER, refreshTokenExpirationTime } from "./refresh";
 import { generateToken } from "./tokens";
 import { TOKEN_SUB_CLAIM_DIVIDER } from "./tokens";
 import { ConvexAuthConfig, Doc, MutationCtx, SessionInfo } from "./types";
+import { withSpan } from "./utils/span";
 
 const DEFAULT_SESSION_TOTAL_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
-export const sessionExpirationTime = (
-  config: ConvexAuthConfig,
-  now = Date.now(),
-) =>
+export const sessionExpirationTime = (config: ConvexAuthConfig, now = Date.now()) =>
   now +
   (config.session?.totalDurationMs ??
     readConfigSync(envOptionalNumber("AUTH_SESSION_TOTAL_DURATION_MS")) ??
@@ -25,28 +23,60 @@ const encodeRefreshToken = (
   sessionId: GenericId<"Session">,
 ) => `${refreshTokenId}${REFRESH_TOKEN_DIVIDER}${sessionId}`;
 
-/** @internal */
-export async function maybeGenerateTokensForSession(
+/**
+ * Mutation-side session issuance result. The mutation creates the session
+ * and refresh-token rows; JWT signing happens on the action side so the
+ * transaction commits without paying the signing CPU cost.
+ */
+export type SessionIssuance = {
+  userId: GenericId<"User">;
+  sessionId: GenericId<"Session">;
+  /**
+   * Encoded refresh token (`${refreshTokenId}|${sessionId}`), or `null` when
+   * the caller opted out of refresh-token issuance (e.g. TOTP step-up).
+   */
+  refreshToken: string | null;
+};
+
+/**
+ * Convert a {@link SessionIssuance} returned from a mutation into the
+ * external `SessionInfo` shape by signing the JWT on the action side.
+ *
+ * Must be called from an action context because `generateToken` performs
+ * RSA-2048 JWT signing that would otherwise block the mutation commit.
+ *
+ * @internal
+ */
+export async function finalizeSessionIssuance(
   config: ConvexAuthConfig,
-  args: {
-    userId: GenericId<"User">;
-    sessionId: GenericId<"Session">;
-    refreshTokenId?: GenericId<"RefreshToken">;
-  },
-  generateTokens: boolean,
+  issuance: SessionIssuance,
 ): Promise<SessionInfo> {
-  return {
-    userId: args.userId,
-    sessionId: args.sessionId,
-    tokens:
-      generateTokens && args.refreshTokenId !== undefined
-        ? await generateTokensForSession(config, {
-            userId: args.userId,
-            sessionId: args.sessionId,
-            refreshTokenId: args.refreshTokenId,
-          })
-        : null,
-  };
+  return withSpan(
+    "convex-auth.session.finalize",
+    { hasRefreshToken: issuance.refreshToken !== null },
+    async () => {
+      if (issuance.refreshToken === null) {
+        return {
+          userId: issuance.userId,
+          sessionId: issuance.sessionId,
+          tokens: null,
+        };
+      }
+      const token = await generateToken(
+        { userId: issuance.userId, sessionId: issuance.sessionId },
+        config,
+      );
+      log(
+        LOG_LEVELS.DEBUG,
+        `Generated token ${maybeRedact(token)} and refresh token ${maybeRedact(issuance.refreshToken)} for session ${maybeRedact(issuance.sessionId)}`,
+      );
+      return {
+        userId: issuance.userId,
+        sessionId: issuance.sessionId,
+        tokens: { token, refreshToken: issuance.refreshToken },
+      };
+    },
+  );
 }
 
 /** @internal */
@@ -59,7 +89,7 @@ export async function issueSession(
     replaceSessionId?: GenericId<"Session">;
     generateTokens: boolean;
   },
-): Promise<SessionInfo> {
+): Promise<SessionIssuance> {
   const db = authDb(ctx, config);
   const issued = await db.sessions.issue({
     userId: args.userId,
@@ -70,18 +100,16 @@ export async function issueSession(
       ? refreshTokenExpirationTime(config)
       : undefined,
   });
-
-  return await maybeGenerateTokensForSession(
-    config,
-    {
-      userId: issued.userId as GenericId<"User">,
-      sessionId: issued.sessionId as GenericId<"Session">,
-      refreshTokenId: issued.refreshTokenId as
-        | GenericId<"RefreshToken">
-        | undefined,
-    },
-    args.generateTokens,
-  );
+  const sessionId = issued.sessionId as GenericId<"Session">;
+  const refreshTokenId = issued.refreshTokenId as GenericId<"RefreshToken"> | undefined;
+  return {
+    userId: issued.userId as GenericId<"User">,
+    sessionId,
+    refreshToken:
+      args.generateTokens && refreshTokenId !== undefined
+        ? encodeRefreshToken(refreshTokenId, sessionId)
+        : null,
+  };
 }
 
 /** @internal */
@@ -94,10 +122,7 @@ export async function generateTokensForSession(
   },
 ) {
   const result = {
-    token: await generateToken(
-      { userId: args.userId, sessionId: args.sessionId },
-      config,
-    ),
+    token: await generateToken({ userId: args.userId, sessionId: args.sessionId }, config),
     refreshToken: encodeRefreshToken(args.refreshTokenId, args.sessionId),
   };
   log(

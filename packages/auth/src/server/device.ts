@@ -10,10 +10,7 @@ import { toConvexError } from "./errors";
 import { userIdFromIdentitySubject } from "./identity";
 import { callSignIn } from "./mutations/index";
 import { generateRandomString, sha256 } from "./random";
-import type {
-  DeviceProviderConfig,
-  GenericActionCtxWithAuthConfig,
-} from "./types";
+import type { DeviceProviderConfig, GenericActionCtxWithAuthConfig } from "./types";
 import {
   type AuthDataModel,
   type SessionInfo,
@@ -27,8 +24,7 @@ import {
 
 type EnrichedActionCtx = GenericActionCtxWithAuthConfig<AuthDataModel>;
 
-const DEVICE_CODE_ALPHABET =
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+const DEVICE_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const DEVICE_CODE_LENGTH = 40;
 const DEVICE_FLOWS = ["create", "poll", "verify"] as const;
 
@@ -68,16 +64,10 @@ async function handleCreate(
   ctx: EnrichedActionCtx,
   provider: DeviceProviderConfig,
 ): Promise<DeviceResult> {
-  const deviceCode = generateRandomString(
-    DEVICE_CODE_LENGTH,
-    DEVICE_CODE_ALPHABET,
-  );
+  const deviceCode = generateRandomString(DEVICE_CODE_LENGTH, DEVICE_CODE_ALPHABET);
   const deviceCodeHash = await sha256(deviceCode);
 
-  const rawUserCode = generateRandomString(
-    provider.userCodeLength,
-    provider.charset,
-  );
+  const rawUserCode = generateRandomString(provider.userCodeLength, provider.charset);
   const mid = Math.floor(rawUserCode.length / 2);
   const userCode = rawUserCode.slice(0, mid) + "-" + rawUserCode.slice(mid);
 
@@ -91,8 +81,7 @@ async function handleCreate(
   });
 
   const verificationUri =
-    provider.verificationUri ??
-    `${process.env.SITE_URL ?? requireEnv("SITE_URL")}/device`;
+    provider.verificationUri ?? `${process.env.SITE_URL ?? requireEnv("SITE_URL")}/device`;
 
   return {
     kind: "deviceCode" as const,
@@ -105,15 +94,9 @@ async function handleCreate(
   };
 }
 
-async function handlePoll(
-  ctx: EnrichedActionCtx,
-  params: DeviceParams,
-): Promise<DeviceResult> {
+async function handlePoll(ctx: EnrichedActionCtx, params: DeviceParams): Promise<DeviceResult> {
   if (typeof params.deviceCode !== "string") {
-    throw deviceError(
-      "DEVICE_MISSING_FLOW",
-      "Missing `deviceCode` parameter for poll flow.",
-    );
+    throw deviceError("DEVICE_MISSING_FLOW", "Missing `deviceCode` parameter for poll flow.");
   }
 
   const hash = await sha256(params.deviceCode);
@@ -131,10 +114,7 @@ async function handlePoll(
       "The device code has expired. Please start a new authorization request.",
     );
   }
-  if (
-    doc.lastPolledAt !== undefined &&
-    (Date.now() - doc.lastPolledAt) / 1000 < doc.interval
-  ) {
+  if (doc.lastPolledAt !== undefined && (Date.now() - doc.lastPolledAt) / 1000 < doc.interval) {
     throw deviceError(
       "DEVICE_SLOW_DOWN",
       "Polling too frequently. Increase the interval between requests.",
@@ -151,16 +131,10 @@ async function handlePoll(
   }
   if (doc.status === "denied") {
     await mutateDeviceDelete(ctx, doc._id);
-    throw deviceError(
-      "DEVICE_CODE_DENIED",
-      "The authorization request was denied.",
-    );
+    throw deviceError("DEVICE_CODE_DENIED", "The authorization request was denied.");
   }
   if (!doc.userId || !doc.sessionId) {
-    throw deviceError(
-      "INTERNAL_ERROR",
-      "Authorized device code missing userId or sessionId",
-    );
+    throw deviceError("INTERNAL_ERROR", "Authorized device code missing userId or sessionId");
   }
 
   await mutateDeviceDelete(ctx, doc._id);
@@ -177,27 +151,18 @@ async function handleDeviceVerify(
   params: DeviceParams,
 ): Promise<DeviceResult> {
   if (typeof params.userCode !== "string") {
-    throw deviceError(
-      "DEVICE_INVALID_USER_CODE",
-      "Missing `userCode` parameter for verify flow.",
-    );
+    throw deviceError("DEVICE_INVALID_USER_CODE", "Missing `userCode` parameter for verify flow.");
   }
 
   const identity = await ctx.auth.getUserIdentity();
   if (identity === null) {
-    throw deviceError(
-      "NOT_SIGNED_IN",
-      "You must be signed in to authorize a device.",
-    );
+    throw deviceError("NOT_SIGNED_IN", "You must be signed in to authorize a device.");
   }
 
   const userId = userIdFromIdentitySubject(identity.subject);
   const doc = await queryDeviceByUserCode(ctx, params.userCode);
   if (doc === null) {
-    throw deviceError(
-      "DEVICE_INVALID_USER_CODE",
-      "Invalid or expired user code.",
-    );
+    throw deviceError("DEVICE_INVALID_USER_CODE", "Invalid or expired user code.");
   }
   if (Date.now() > doc.expiresAt) {
     await mutateDeviceDelete(ctx, doc._id);
@@ -207,22 +172,14 @@ async function handleDeviceVerify(
     );
   }
   if (doc.status !== "pending") {
-    throw deviceError(
-      "DEVICE_ALREADY_AUTHORIZED",
-      "This device code has already been authorized.",
-    );
+    throw deviceError("DEVICE_ALREADY_AUTHORIZED", "This device code has already been authorized.");
   }
 
   const signInResult = await callSignIn(ctx, {
     userId,
     generateTokens: false,
   });
-  await mutateDeviceAuthorize(
-    ctx,
-    doc._id,
-    signInResult.userId,
-    signInResult.sessionId,
-  );
+  await mutateDeviceAuthorize(ctx, doc._id, signInResult.userId, signInResult.sessionId);
   return { kind: "signedIn" as const, signedIn: null };
 }
 
@@ -234,9 +191,7 @@ export const handleDevice = async (
 ): Promise<DeviceResult> => {
   try {
     const params = args.params ?? {};
-    const flow = assertFlow(
-      typeof params.flow === "string" ? params.flow : "create",
-    );
+    const flow = assertFlow(typeof params.flow === "string" ? params.flow : "create");
 
     const flowHandlers = new Map<string, () => Promise<DeviceResult>>([
       ["create", () => handleCreate(ctx, provider)],
@@ -254,9 +209,7 @@ export const handleDevice = async (
       throw toConvexError(error);
     }
     if (error instanceof Error) {
-      throw toConvexError(
-        authFlowError("INTERNAL_ERROR", `Device flow failed: ${error.message}`),
-      );
+      throw toConvexError(authFlowError("INTERNAL_ERROR", `Device flow failed: ${error.message}`));
     }
     throw toConvexError(error);
   }

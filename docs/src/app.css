@@ -75,8 +75,7 @@
   --font-sans: "Crimson Pro", Georgia, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --font-display: "Newsreader", Georgia, serif;
-  --font-label:
-    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-label: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 /* ═══ BASE STYLES ═══ */
@@ -301,11 +300,7 @@
   width: 1.5rem;
   height: 100%;
   pointer-events: none;
-  background: linear-gradient(
-    to left,
-    var(--color-gray-50),
-    rgb(253 252 250 / 0)
-  );
+  background: linear-gradient(to left, var(--color-gray-50), rgb(253 252 250 / 0));
 }
 
 .doc-content table {
@@ -353,11 +348,7 @@
 }
 
 [data-theme="dark"] .table-scroll[data-overflowing]::after {
-  background: linear-gradient(
-    to left,
-    var(--color-gray-950),
-    rgb(21 19 16 / 0)
-  );
+  background: linear-gradient(to left, var(--color-gray-950), rgb(21 19 16 / 0));
 }
 
 .doc-content blockquote {

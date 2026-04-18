@@ -11,10 +11,7 @@ function parseJwtPayload(token: string): { sub?: string } {
     return {};
   }
   const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-  const padded = normalized.padEnd(
-    normalized.length + ((4 - (normalized.length % 4)) % 4),
-    "=",
-  );
+  const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
   const json = atob(padded);
   return JSON.parse(json) as { sub?: string };
 }
@@ -27,15 +24,11 @@ async function groupAdmin(t: any) {
     tokens?: { token: string; refreshToken: string } | null;
   };
   if (result.kind !== "signedIn" || !result.tokens?.token) {
-    throw new Error(
-      `Expected signedIn with token, got: ${JSON.stringify(result)}`,
-    );
+    throw new Error(`Expected signedIn with token, got: ${JSON.stringify(result)}`);
   }
   const payload = parseJwtPayload(result.tokens.token);
   if (!payload.sub || !payload.sub.includes("|")) {
-    throw new Error(
-      `Missing expected subject claim: ${JSON.stringify(payload)}`,
-    );
+    throw new Error(`Missing expected subject claim: ${JSON.stringify(payload)}`);
   }
   return t.withIdentity({ subject: payload.sub });
 }
@@ -102,15 +95,9 @@ test("group metadata query returns service provider setup values", async () => {
   });
 
   expect(metadata).toContain("EntityDescriptor");
-  expect(metadata).toContain(
-    `/api/auth/connections/${created.connectionId}/saml/metadata`,
-  );
-  expect(metadata).toContain(
-    `/api/auth/connections/${created.connectionId}/saml/acs`,
-  );
-  expect(metadata).toContain(
-    `/api/auth/connections/${created.connectionId}/saml/slo`,
-  );
+  expect(metadata).toContain(`/api/auth/connections/${created.connectionId}/saml/metadata`);
+  expect(metadata).toContain(`/api/auth/connections/${created.connectionId}/saml/acs`);
+  expect(metadata).toContain(`/api/auth/connections/${created.connectionId}/saml/slo`);
 });
 
 test("disableWebhookEndpoint authorizes against the endpoint connection", async () => {
@@ -129,15 +116,12 @@ test("disableWebhookEndpoint authorizes against the endpoint connection", async 
     status: "active",
   });
 
-  const endpoint = await asAdmin.mutation(
-    api.auth.group.createWebhookEndpoint,
-    {
-      connectionId: created.connectionId,
-      url: "https://example.com/webhook",
-      secret: "super-secret",
-      subscriptions: ["user.created"],
-    },
-  );
+  const endpoint = await asAdmin.mutation(api.auth.group.createWebhookEndpoint, {
+    connectionId: created.connectionId,
+    url: "https://example.com/webhook",
+    secret: "super-secret",
+    subscriptions: ["user.created"],
+  });
 
   await expect(
     asOtherUser.mutation(api.auth.group.disableWebhookEndpoint, {
@@ -145,12 +129,9 @@ test("disableWebhookEndpoint authorizes against the endpoint connection", async 
     }),
   ).rejects.toThrow(ConvexError);
 
-  const disabled = await asAdmin.mutation(
-    api.auth.group.disableWebhookEndpoint,
-    {
-      endpointId: endpoint._id,
-    },
-  );
+  const disabled = await asAdmin.mutation(api.auth.group.disableWebhookEndpoint, {
+    endpointId: endpoint._id,
+  });
 
   expect(disabled).toEqual({ endpointId: endpoint._id });
 });

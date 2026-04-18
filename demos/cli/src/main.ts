@@ -11,11 +11,7 @@ import ansiShadow from "figlet/importable-fonts/ANSI Shadow.js";
 import gradientString from "gradient-string";
 
 import { api } from "../../../convex/_generated/api.js";
-import {
-  clearStoredSession,
-  readStoredSession,
-  writeStoredSession,
-} from "./storage";
+import { clearStoredSession, readStoredSession, writeStoredSession } from "./storage";
 
 // ---------------------------------------------------------------------------
 // Branding
@@ -31,9 +27,7 @@ function printBanner() {
     horizontalLayout: "default",
   });
   console.log("\n" + gradient(banner));
-  console.log(
-    "  \x1b[35m✦  cli demo — device login & direct convex calls  ✦\x1b[0m\n",
-  );
+  console.log("  \x1b[35m✦  cli demo — device login & direct convex calls  ✦\x1b[0m\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -84,9 +78,7 @@ loadCliEnv();
 function requireConvexUrl() {
   const url = process.env.VITE_CONVEX_URL ?? process.env.CONVEX_URL;
   if (!url) {
-    p.log.error(
-      "Set VITE_CONVEX_URL or CONVEX_URL before running the CLI demo.",
-    );
+    p.log.error("Set VITE_CONVEX_URL or CONVEX_URL before running the CLI demo.");
     process.exit(1);
   }
   return url;
@@ -172,11 +164,7 @@ async function doAuthLogin() {
   const result = await client.action(api.auth.signIn, {
     provider: "device",
   });
-  if (
-    !isRecord(result) ||
-    result.kind !== "deviceCode" ||
-    !isDeviceCodeResult(result.deviceCode)
-  ) {
+  if (!isRecord(result) || result.kind !== "deviceCode" || !isDeviceCodeResult(result.deviceCode)) {
     s.stop("Failed.");
     p.log.error("Device sign-in did not return a device code.");
     process.exit(1);
@@ -270,8 +258,7 @@ async function doProjectsCreate() {
     groupId: () => p.text({ message: "Group ID" }),
     name: () => p.text({ message: "Project name" }),
     identifier: () => p.text({ message: "Project identifier" }),
-    description: () =>
-      p.text({ message: "Description (optional)", defaultValue: "" }),
+    description: () => p.text({ message: "Description (optional)", defaultValue: "" }),
   });
   if (p.isCancel(group)) process.exit(0);
   const result = await client.mutation(api.projects.createProjectByString, {
@@ -302,8 +289,7 @@ async function doIssuesCreate() {
   const issue = await p.group({
     projectId: () => p.text({ message: "Project ID" }),
     title: () => p.text({ message: "Issue title" }),
-    description: () =>
-      p.text({ message: "Description (optional)", defaultValue: "" }),
+    description: () => p.text({ message: "Description (optional)", defaultValue: "" }),
   });
   if (p.isCancel(issue)) process.exit(0);
   const result = await client.mutation(api.issues.createIssueByString, {

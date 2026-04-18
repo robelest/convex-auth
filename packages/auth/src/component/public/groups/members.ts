@@ -48,9 +48,7 @@ export const memberAdd = mutation({
   handler: async (ctx, args) => {
     const existingMembership = await ctx.db
       .query("GroupMember")
-      .withIndex("group_id_user_id", (q) =>
-        q.eq("groupId", args.groupId).eq("userId", args.userId),
-      )
+      .withIndex("group_id_user_id", (q) => q.eq("groupId", args.groupId).eq("userId", args.userId))
       .unique();
     if (existingMembership !== null) {
       throw new ConvexError({
@@ -136,9 +134,7 @@ export const memberList = query({
     ),
     limit: v.optional(v.number()),
     cursor: v.optional(v.union(v.string(), v.null())),
-    orderBy: v.optional(
-      v.union(v.literal("_creationTime"), v.literal("status")),
-    ),
+    orderBy: v.optional(v.union(v.literal("_creationTime"), v.literal("status"))),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
   returns: vPaginated(vGroupMemberDoc),
@@ -231,10 +227,54 @@ export const memberGetByGroupAndUser = query({
   handler: async (ctx, { groupId, userId }) => {
     return await ctx.db
       .query("GroupMember")
-      .withIndex("group_id_user_id", (q) =>
-        q.eq("groupId", groupId).eq("userId", userId),
-      )
+      .withIndex("group_id_user_id", (q) => q.eq("groupId", groupId).eq("userId", userId))
       .unique();
+  },
+});
+
+/**
+ * Batched equivalent of {@link memberGetByGroupAndUser}. Resolves many
+ * `(groupId, userId)` pairs for the same user in a single component
+ * round-trip. Used by app-side handlers (e.g. `groups:getDashboard`) that
+ * need to inspect the current user's membership across every root group
+ * they can see.
+ *
+ * Each `groupId` is resolved using the `group_id_user_id` index; missing
+ * memberships come back as `null` in the same slot order as the input.
+ *
+ * @param args.userId - The user whose memberships to look up.
+ * @param args.groupIds - One or more groups to resolve. Order is preserved;
+ *   duplicates tolerated (but de-duplicated internally so the DB only sees
+ *   each pair once).
+ * @returns Array of member documents or `null` entries, in `groupIds` order.
+ *
+ * @example
+ * ```ts
+ * const members = await ctx.runQuery(
+ *   components.auth.groups.memberGetByGroupAndUserMany,
+ *   { userId: viewerId, groupIds: rootGroupIds },
+ * );
+ * ```
+ */
+export const memberGetByGroupAndUserMany = query({
+  args: {
+    userId: v.id("User"),
+    groupIds: v.array(v.id("Group")),
+  },
+  returns: v.array(v.union(vGroupMemberDoc, v.null())),
+  handler: async (ctx, { userId, groupIds }) => {
+    if (groupIds.length === 0) return [];
+    const unique = Array.from(new Set(groupIds));
+    const docs = await Promise.all(
+      unique.map((groupId) =>
+        ctx.db
+          .query("GroupMember")
+          .withIndex("group_id_user_id", (q) => q.eq("groupId", groupId).eq("userId", userId))
+          .unique(),
+      ),
+    );
+    const byGroupId = new Map(unique.map((id, i) => [id, docs[i] ?? null]));
+    return groupIds.map((id) => byGroupId.get(id) ?? null);
   },
 });
 
@@ -330,8 +370,7 @@ export const memberResolve = query({
         };
       }
 
-      const groupDoc: { parentGroupId?: Id<"Group"> } | null =
-        await ctx.db.get(currentGroupId);
+      const groupDoc: { parentGroupId?: Id<"Group"> } | null = await ctx.db.get(currentGroupId);
       if (!groupDoc?.parentGroupId) break;
       currentGroupId = groupDoc.parentGroupId;
       depth++;

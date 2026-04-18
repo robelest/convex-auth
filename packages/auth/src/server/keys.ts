@@ -17,8 +17,7 @@ import type { KeyScope, ScopeChecker } from "./types";
 
 const DEFAULT_KEY_PREFIX = "sk_";
 const KEY_RANDOM_LENGTH = 32;
-const KEY_RANDOM_ALPHABET =
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+const KEY_RANDOM_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
 /**
  * How many characters of the full key to store as the visible prefix.
@@ -40,9 +39,7 @@ const VISIBLE_PREFIX_EXTRA_CHARS = 4;
  * @returns `{ raw, hashedKey, displayPrefix }`
  */
 /** @internal */
-export async function generateApiKey(
-  prefix: string = DEFAULT_KEY_PREFIX,
-): Promise<{
+export async function generateApiKey(prefix: string = DEFAULT_KEY_PREFIX): Promise<{
   /** The full raw key — show to user once, never store. */
   raw: string;
   /** SHA-256 hex hash of the raw key — store this. */
@@ -50,10 +47,7 @@ export async function generateApiKey(
   /** Truncated prefix for display (e.g. "sk_aBc1..."). */
   displayPrefix: string;
 }> {
-  const randomPart = generateRandomString(
-    KEY_RANDOM_LENGTH,
-    KEY_RANDOM_ALPHABET,
-  );
+  const randomPart = generateRandomString(KEY_RANDOM_LENGTH, KEY_RANDOM_ALPHABET);
   const raw = `${prefix}${randomPart}`;
   const hashedKey = await sha256(raw);
   const displayPrefix = `${raw.substring(0, prefix.length + VISIBLE_PREFIX_EXTRA_CHARS)}...`;
@@ -133,10 +127,7 @@ export function checkKeyRateLimit(
 
   const elapsed = now - state.lastAttemptTime;
   const refillRate = rateLimit.maxRequests / rateLimit.windowMs;
-  const refilled = Math.min(
-    rateLimit.maxRequests,
-    state.attemptsLeft + elapsed * refillRate,
-  );
+  const refilled = Math.min(rateLimit.maxRequests, state.attemptsLeft + elapsed * refillRate);
 
   if (refilled < 1) {
     return {

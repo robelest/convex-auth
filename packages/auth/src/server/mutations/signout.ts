@@ -12,10 +12,7 @@ type ReturnType = {
   sessionId: GenericId<"Session">;
 } | null;
 
-export async function signOutImpl(
-  ctx: MutationCtx,
-  config: Provider.Config,
-): Promise<ReturnType> {
+export async function signOutImpl(ctx: MutationCtx, config: Provider.Config): Promise<ReturnType> {
   const db = authDb(ctx, config);
   const sessionId = await getAuthSessionId(ctx);
   if (sessionId == null) {

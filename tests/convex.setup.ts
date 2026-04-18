@@ -38,7 +38,11 @@ if (!process.env.AUTH_SECRET_ENCRYPTION_KEY) {
 }
 
 if (!process.env.JWT_PRIVATE_KEY || !process.env.JWKS) {
-  const keys = await generateKeyPair("RS256", { extractable: true });
+  // Match the alg used in `packages/auth/src/server/tokens.ts`.
+  const keys = await generateKeyPair("EdDSA", {
+    crv: "Ed25519",
+    extractable: true,
+  });
   process.env.JWT_PRIVATE_KEY = await exportPKCS8(keys.privateKey);
   const publicKey = await exportJWK(keys.publicKey);
   process.env.JWKS = JSON.stringify({ keys: [{ use: "sig", ...publicKey }] });

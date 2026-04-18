@@ -8,9 +8,7 @@
  */
 
 import * as arctic from "arctic";
-import {
-  ConvexError as ConvexErrorCtor,
-} from "convex/values";
+import { ConvexError as ConvexErrorCtor } from "convex/values";
 
 import { SHARED_COOKIE_OPTIONS } from "../cookies";
 import { envOptionalString, readConfigSync } from "../env";
@@ -30,15 +28,10 @@ type OAuthProviderConfigLike = {
   provider: OAuthRuntimeClient | null;
   profile?: (tokens: OAuthTokens) => Promise<OAuthProfile>;
   nonce?: boolean;
-  validateTokens?: (
-    tokens: OAuthTokens,
-    ctx: { nonce?: string },
-  ) => Promise<void>;
+  validateTokens?: (tokens: OAuthTokens, ctx: { nonce?: string }) => Promise<void>;
 };
 
-function failConvex(
-  data: OAuthErrorData,
-): never {
+function failConvex(data: OAuthErrorData): never {
   throw new ConvexErrorCtor(data);
 }
 
@@ -88,9 +81,7 @@ export interface CallbackResult {
 
 const COOKIE_TTL = 60 * 15; // 15 minutes
 const convexSiteUrl = readConfigSync(envOptionalString("CONVEX_SITE_URL"));
-const oauthCookiePrefix = !isLocalHost(convexSiteUrl ?? undefined)
-  ? "__Host-"
-  : "";
+const oauthCookiePrefix = !isLocalHost(convexSiteUrl ?? undefined) ? "__Host-" : "";
 
 function oauthCookieName(type: "state" | "pkce" | "nonce", providerId: string) {
   return oauthCookiePrefix + providerId + "OAuth" + type;
@@ -110,10 +101,7 @@ function createCookie(
   };
 }
 
-function clearCookie(
-  type: "state" | "pkce" | "nonce",
-  providerId: string,
-): OAuthCookie {
+function clearCookie(type: "state" | "pkce" | "nonce", providerId: string): OAuthCookie {
   return {
     name: oauthCookieName(type, providerId),
     value: "",
@@ -206,10 +194,7 @@ async function extractProfile(
   }
 
   if (typeof tokens.idToken === "string") {
-    const claims = arctic.decodeIdToken(tokens.idToken) as Record<
-      string,
-      unknown
-    >;
+    const claims = arctic.decodeIdToken(tokens.idToken) as Record<string, unknown>;
     return {
       id: (claims.sub as string) ?? crypto.randomUUID(),
       name: (claims.name as string) ?? undefined,
@@ -226,10 +211,7 @@ async function extractProfile(
   });
 }
 
-function validateProfileId(
-  providerId: string,
-  profile: OAuthProfile,
-): OAuthProfile {
+function validateProfileId(providerId: string, profile: OAuthProfile): OAuthProfile {
   if (typeof profile.id === "string" && profile.id) {
     return profile;
   }
@@ -252,14 +234,10 @@ export async function createOAuthAuthorizationURL(
   options?: { loginHint?: string; stateTransform?: (state: string) => string },
 ): Promise<AuthorizationResult> {
   if (oauthConfig.provider === null) {
-    throw new Error(
-      `OAuth provider "${providerId}" is missing a runtime client.`,
-    );
+    throw new Error(`OAuth provider "${providerId}" is missing a runtime client.`);
   }
   const rawState = arctic.generateState();
-  const state = options?.stateTransform
-    ? options.stateTransform(rawState)
-    : rawState;
+  const state = options?.stateTransform ? options.stateTransform(rawState) : rawState;
   const cookies: OAuthCookie[] = [];
   let codeVerifier: string | undefined;
 
@@ -328,11 +306,7 @@ export async function handleOAuthCallback(
     const storedState = cookies[stateCookieName];
     const returnedState = params.state;
 
-    if (
-      !storedState ||
-      !returnedState ||
-      !constantTimeEqual(storedState, returnedState)
-    ) {
+    if (!storedState || !returnedState || !constantTimeEqual(storedState, returnedState)) {
       return failConvex({
         code: "OAUTH_INVALID_STATE",
         message: "Invalid OAuth state. Please try signing in again.",
@@ -390,11 +364,7 @@ export async function handleOAuthCallback(
       responseCookies.push(clearCookie("nonce", providerId));
     }
 
-    const tokens = await exchangeCode(
-      oauthConfig.provider,
-      code,
-      codeVerifier,
-    );
+    const tokens = await exchangeCode(oauthConfig.provider, code, codeVerifier);
 
     if (oauthConfig.validateTokens !== undefined) {
       await tryConvex({

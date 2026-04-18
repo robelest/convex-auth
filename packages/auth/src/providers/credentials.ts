@@ -17,6 +17,7 @@
 import { GenericDataModel } from "convex/server";
 import { GenericId, Value } from "convex/values";
 
+import type { SessionIssuance } from "../server/sessions";
 import type {
   AuthProviderConfig,
   ConvexCredentialsConfig,
@@ -24,9 +25,7 @@ import type {
 } from "../server/types";
 
 /** Configuration for the {@link credentials} provider. */
-export interface CredentialsConfig<
-  DataModel extends GenericDataModel = GenericDataModel,
-> {
+export interface CredentialsConfig<DataModel extends GenericDataModel = GenericDataModel> {
   /** Stable provider identifier used in `signIn("<id>")`. */
   id?: string;
   /**
@@ -39,6 +38,17 @@ export interface CredentialsConfig<
   ) => Promise<{
     userId: GenericId<"User">;
     sessionId?: GenericId<"Session">;
+    /**
+     * TOTP step-up hint. `false` skips the `totpGetVerifiedByUserId` query;
+     * `true`/`undefined` falls back to it.
+     */
+    hasTotp?: boolean;
+    /**
+     * Pre-issued session from a combined verify+issue mutation. When set,
+     * the framework skips the second `callSignIn` mutation and finalizes
+     * the issuance directly on the action side.
+     */
+    issuance?: SessionIssuance;
   } | null>;
   /** Optional hashing helpers for password-style credential verification. */
   crypto?: {
@@ -68,9 +78,9 @@ export interface CredentialsConfig<
  * })
  * ```
  */
-export function credentials<
-  DataModel extends GenericDataModel = GenericDataModel,
->(config: CredentialsConfig<DataModel>): ConvexCredentialsConfig<DataModel> {
+export function credentials<DataModel extends GenericDataModel = GenericDataModel>(
+  config: CredentialsConfig<DataModel>,
+): ConvexCredentialsConfig<DataModel> {
   return {
     ...config,
     id: config.id ?? "credentials",

@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 
 import { auth } from "./auth/core";
-import { authMutation, authQuery } from "./functions";
+import { authUserMutation, authUserQuery } from "./functions";
 
 const passkeySummary = v.object({
   passkeyId: v.string(),
@@ -27,11 +27,7 @@ const apiKeySummary = v.object({
   scopes: v.array(apiKeyScope),
 });
 
-async function requireOwnedPasskey(
-  ctx: any,
-  userId: string,
-  passkeyId: string,
-) {
+async function requireOwnedPasskey(ctx: any, userId: string, passkeyId: string) {
   const passkeys = await auth.account.listPasskeys(ctx, { userId });
   const passkey = passkeys.find((item: any) => item._id === passkeyId);
   if (!passkey) {
@@ -54,7 +50,7 @@ async function requireOwnedApiKey(ctx: any, userId: string, keyId: string) {
   return key;
 }
 
-export const listPasskeys = authQuery({
+export const listPasskeys = authUserQuery({
   args: {},
   returns: v.array(passkeySummary),
   handler: async (ctx) => {
@@ -72,20 +68,16 @@ export const listPasskeys = authQuery({
   },
 });
 
-export const renamePasskey = authMutation({
+export const renamePasskey = authUserMutation({
   args: { passkeyId: v.string(), name: v.string() },
   returns: v.object({ passkeyId: v.string() }),
   handler: async (ctx, args) => {
     await requireOwnedPasskey(ctx, ctx.auth.userId, args.passkeyId);
-    return await auth.account.renamePasskey(
-      ctx,
-      args.passkeyId,
-      args.name.trim(),
-    );
+    return await auth.account.renamePasskey(ctx, args.passkeyId, args.name.trim());
   },
 });
 
-export const deletePasskey = authMutation({
+export const deletePasskey = authUserMutation({
   args: { passkeyId: v.string() },
   returns: v.object({ passkeyId: v.string() }),
   handler: async (ctx, args) => {
@@ -94,7 +86,7 @@ export const deletePasskey = authMutation({
   },
 });
 
-export const listApiKeys = authQuery({
+export const listApiKeys = authUserQuery({
   args: {},
   returns: v.array(apiKeySummary),
   handler: async (ctx) => {
@@ -116,7 +108,7 @@ export const listApiKeys = authQuery({
   },
 });
 
-export const createApiKey = authMutation({
+export const createApiKey = authUserMutation({
   args: {
     name: v.string(),
     issueRead: v.boolean(),
@@ -128,10 +120,7 @@ export const createApiKey = authMutation({
       ...(args.issueRead ? ["read"] : []),
       ...(args.issueWrite ? ["write"] : []),
     ];
-    const scopes =
-      scopeActions.length === 0
-        ? []
-        : [{ resource: "issues", actions: scopeActions }];
+    const scopes = scopeActions.length === 0 ? [] : [{ resource: "issues", actions: scopeActions }];
     return await auth.key.create(ctx, {
       userId: ctx.auth.userId,
       name: args.name.trim(),
@@ -140,7 +129,7 @@ export const createApiKey = authMutation({
   },
 });
 
-export const revokeApiKey = authMutation({
+export const revokeApiKey = authUserMutation({
   args: { keyId: v.string() },
   returns: v.object({ keyId: v.string() }),
   handler: async (ctx, args) => {

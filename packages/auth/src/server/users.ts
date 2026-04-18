@@ -25,17 +25,12 @@ type UserProvisioningPolicy = GroupConnectionPolicy["provisioning"]["user"];
 
 type UserProvisioningSource = "login" | "scim";
 
-function mergeExtend(
-  existing: unknown,
-  incoming: Record<string, unknown> | undefined,
-) {
+function mergeExtend(existing: unknown, incoming: Record<string, unknown> | undefined) {
   if (!incoming) {
     return undefined;
   }
   const existingRecord =
-    typeof existing === "object" &&
-    existing !== null &&
-    !Array.isArray(existing)
+    typeof existing === "object" && existing !== null && !Array.isArray(existing)
       ? (existing as Record<string, unknown>)
       : undefined;
   return existingRecord ? { ...existingRecord, ...incoming } : incoming;
@@ -119,13 +114,7 @@ export async function upsertUserAndAccount(
     opts?.provisioningUser,
     opts?.source ?? "login",
   );
-  const accountId = await createOrUpdateAccount(
-    ctx,
-    userId,
-    account,
-    args,
-    config,
-  );
+  const accountId = await createOrUpdateAccount(ctx, userId, account, args, config);
   return { userId, accountId };
 }
 
@@ -164,32 +153,25 @@ async function defaultCreateOrUpdateUser(
     },
   } = args;
   const emailVerified =
-    profileEmailVerified ??
-    (provider.type === "oauth" && provider.accountLinking !== "none");
+    profileEmailVerified ?? (provider.type === "oauth" && provider.accountLinking !== "none");
   const phoneVerified = profilePhoneVerified ?? false;
-  const shouldLinkViaEmail =
-    args.shouldLinkViaEmail || emailVerified || provider.type === "email";
-  const shouldLinkViaPhone =
-    args.shouldLinkViaPhone || phoneVerified || provider.type === "phone";
+  const shouldLinkViaEmail = args.shouldLinkViaEmail || emailVerified || provider.type === "email";
+  const shouldLinkViaPhone = args.shouldLinkViaPhone || phoneVerified || provider.type === "phone";
 
   let userId = existingUserId ?? existingUserIdOverride;
   if (existingUserId === null) {
-    const existingUserWithVerifiedEmailId =
+    const [emailLookup, phoneLookup] = await Promise.all([
       typeof profile.email === "string" && shouldLinkViaEmail
-        ? ((await uniqueUserWithVerifiedEmail(ctx, profile.email, config))
-            ?._id ?? null)
-        : null;
-
-    const existingUserWithVerifiedPhoneId =
+        ? uniqueUserWithVerifiedEmail(ctx, profile.email, config)
+        : Promise.resolve(null),
       typeof profile.phone === "string" && shouldLinkViaPhone
-        ? ((await uniqueUserWithVerifiedPhone(ctx, profile.phone, config))
-            ?._id ?? null)
-        : null;
+        ? uniqueUserWithVerifiedPhone(ctx, profile.phone, config)
+        : Promise.resolve(null),
+    ]);
+    const existingUserWithVerifiedEmailId = emailLookup?._id ?? null;
+    const existingUserWithVerifiedPhoneId = phoneLookup?._id ?? null;
 
-    if (
-      existingUserWithVerifiedEmailId !== null &&
-      existingUserWithVerifiedPhoneId !== null
-    ) {
+    if (existingUserWithVerifiedEmailId !== null && existingUserWithVerifiedPhoneId !== null) {
       log(
         LOG_LEVELS.DEBUG,
         `Found existing email and phone verified users, so not linking: email: ${existingUserWithVerifiedEmailId}, phone: ${existingUserWithVerifiedPhoneId}`,
@@ -208,10 +190,7 @@ async function defaultCreateOrUpdateUser(
       );
       userId = existingUserWithVerifiedPhoneId;
     } else {
-      log(
-        LOG_LEVELS.DEBUG,
-        "No existing verified users found, creating new user",
-      );
+      log(LOG_LEVELS.DEBUG, "No existing verified users found, creating new user");
       userId = null;
     }
 
@@ -247,10 +226,7 @@ async function defaultCreateOrUpdateUser(
   const existingOrLinkedUserId = userId;
   if (userId !== null) {
     const currentUserId = userId;
-    const currentUser = (await db.users.getById(currentUserId)) as Record<
-      string,
-      unknown
-    > | null;
+    const currentUser = (await db.users.getById(currentUserId)) as Record<string, unknown> | null;
     const mode = effectiveUserUpdateMode(source, provisioningUser);
     const patchData = buildUserPatchData({
       currentUser: currentUser ?? {},
@@ -276,8 +252,7 @@ async function defaultCreateOrUpdateUser(
     if (source === "login" && provisioningUser?.createOnSignIn === false) {
       throw new ConvexError({
         code: "NOT_AUTHORIZED",
-        message:
-          "This SSO connection does not allow creating users on sign-in.",
+        message: "This SSO connection does not allow creating users on sign-in.",
       });
     }
     userId = (await db.users.insert(userData)) as GenericId<"User">;
@@ -292,10 +267,7 @@ async function defaultCreateOrUpdateUser(
       ...args,
     });
   } else {
-    log(
-      LOG_LEVELS.DEBUG,
-      "No custom afterUserCreatedOrUpdated callback, skipping",
-    );
+    log(LOG_LEVELS.DEBUG, "No custom afterUserCreatedOrUpdated callback, skipping");
   }
   return userId;
 }
@@ -345,10 +317,7 @@ async function createOrUpdateAccount(
           secret: account.secret,
           extend: mergedExtend,
         })) as GenericId<"Account">);
-  if (
-    "existingAccount" in account &&
-    account.existingAccount.userId !== userId
-  ) {
+  if ("existingAccount" in account && account.existingAccount.userId !== userId) {
     await db.accounts.patch(accountId, { userId });
   }
   const accountPatchData: Record<string, unknown> = {};

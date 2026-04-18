@@ -148,10 +148,7 @@ test("custom oauth provider exchanges code with configurable token request", asy
   });
 
   expect(fetchMock).toHaveBeenCalledTimes(1);
-  const [url, init] = fetchMock.mock.calls[0] as unknown as [
-    string,
-    RequestInit,
-  ];
+  const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
   expect(url).toBe("https://open.tiktokapis.com/v2/oauth/token/");
   expect(init?.method).toBe("POST");
   expect(init?.headers).toBeInstanceOf(Headers);
@@ -160,9 +157,7 @@ test("custom oauth provider exchanges code with configurable token request", asy
   const body = init?.body as URLSearchParams;
   expect(body.get("grant_type")).toBe("authorization_code");
   expect(body.get("code")).toBe("oauth-code");
-  expect(body.get("redirect_uri")).toBe(
-    "https://app.example.com/api/auth/callback/tiktok",
-  );
+  expect(body.get("redirect_uri")).toBe("https://app.example.com/api/auth/callback/tiktok");
   expect(body.get("code_verifier")).toBe("oauth-verifier");
   expect(body.get("client_key")).toBe("tiktok-client-id");
   expect(body.get("client_secret")).toBe("tiktok-client-secret");
@@ -174,9 +169,7 @@ test("custom oauth provider exchanges code with configurable token request", asy
   expect(tokens.idToken).toBe("id-token");
   expect(tokens.accessTokenExpiresAt).toBeInstanceOf(Date);
   expect(tokens.scopes).toEqual(["identify", "email"]);
-  expect(tokens.raw).toEqual(
-    expect.objectContaining({ access_token: "access-token" }),
-  );
+  expect(tokens.raw).toEqual(expect.objectContaining({ access_token: "access-token" }));
 
   vi.unstubAllGlobals();
 });

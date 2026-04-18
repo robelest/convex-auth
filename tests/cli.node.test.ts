@@ -19,9 +19,7 @@ function expectProcessExitSilently(fn: () => unknown) {
 }
 
 function expectProcessExit(fn: () => unknown) {
-  const exit = vi.spyOn(process, "exit").mockImplementation(((
-    code?: string | number | null,
-  ) => {
+  const exit = vi.spyOn(process, "exit").mockImplementation(((code?: string | number | null) => {
     throw new Error(`process.exit:${code ?? ""}`);
   }) as never);
   try {
@@ -62,8 +60,7 @@ test("doesAlreadyMatchTemplate matches template with wildcard content", () => {
 });
 
 test("doesAlreadyMatchTemplate returns false for non-matching content", () => {
-  const template =
-    'import { defineApp } from "convex/server";\n\napp.use(auth);\n';
+  const template = 'import { defineApp } from "convex/server";\n\napp.use(auth);\n';
   const existing = "// completely different file\nconsole.log('hello');\n";
   expect(doesAlreadyMatchTemplate(existing, template)).toBe(false);
 });
@@ -71,41 +68,29 @@ test("doesAlreadyMatchTemplate returns false for non-matching content", () => {
 // ---- stripDeploymentTypePrefix ----
 
 test("stripDeploymentTypePrefix strips dev: prefix", () => {
-  expect(stripDeploymentTypePrefix("dev:tall-forest-1234")).toBe(
-    "tall-forest-1234",
-  );
+  expect(stripDeploymentTypePrefix("dev:tall-forest-1234")).toBe("tall-forest-1234");
 });
 
 test("stripDeploymentTypePrefix strips prod: prefix", () => {
-  expect(stripDeploymentTypePrefix("prod:happy-animal-5678")).toBe(
-    "happy-animal-5678",
-  );
+  expect(stripDeploymentTypePrefix("prod:happy-animal-5678")).toBe("happy-animal-5678");
 });
 
 test("stripDeploymentTypePrefix rejects untyped deployments", () => {
-  expectProcessExitSilently(() =>
-    stripDeploymentTypePrefix("tall-forest-1234"),
-  );
+  expectProcessExitSilently(() => stripDeploymentTypePrefix("tall-forest-1234"));
 });
 
 // ---- deploymentTypeFromAdminKey ----
 
 test("deploymentTypeFromAdminKey extracts prod type", () => {
-  expect(deploymentTypeFromAdminKey("prod:deploymentName|secretkey")).toBe(
-    "prod",
-  );
+  expect(deploymentTypeFromAdminKey("prod:deploymentName|secretkey")).toBe("prod");
 });
 
 test("deploymentTypeFromAdminKey extracts dev type", () => {
-  expect(deploymentTypeFromAdminKey("dev:deploymentName|secretkey")).toBe(
-    "dev",
-  );
+  expect(deploymentTypeFromAdminKey("dev:deploymentName|secretkey")).toBe("dev");
 });
 
 test("deploymentTypeFromAdminKey rejects untyped keys", () => {
-  expectProcessExitSilently(() =>
-    deploymentTypeFromAdminKey("legacyKeyWithoutColons"),
-  );
+  expectProcessExitSilently(() => deploymentTypeFromAdminKey("legacyKeyWithoutColons"));
 });
 
 test("readConvexDeployment allows self-hosted admin keys with explicit url", () => {
@@ -124,9 +109,7 @@ test("readConvexDeployment allows self-hosted admin keys with explicit url", () 
 
 test("isPreviewDeployKey identifies preview deploy keys", () => {
   // preview deploy key format: preview:team:project|key
-  expect(isPreviewDeployKey("preview:team-slug:project-slug|secretkey")).toBe(
-    true,
-  );
+  expect(isPreviewDeployKey("preview:team-slug:project-slug|secretkey")).toBe(true);
 });
 
 test("isPreviewDeployKey returns false for concrete preview deployment keys", () => {
@@ -164,10 +147,11 @@ test("generateKeys produces signing and secret-encryption keys", async () => {
 
   const jwk = jwks.keys[0];
   expect(jwk.use).toBe("sig");
-  expect(jwk.kty).toBe("RSA");
-  // RSA public key components
-  expect(typeof jwk.n).toBe("string");
-  expect(typeof jwk.e).toBe("string");
+  // Ed25519 signing keys — the CLI emits an OKP JWK with crv=Ed25519.
+  expect(jwk.kty).toBe("OKP");
+  expect(jwk.crv).toBe("Ed25519");
+  // OKP public key component — raw 32-byte public key, base64url-encoded.
+  expect(typeof jwk.x).toBe("string");
 
   expect(typeof keys.AUTH_SECRET_ENCRYPTION_KEY).toBe("string");
   expect(keys.AUTH_SECRET_ENCRYPTION_KEY.length).toBeGreaterThan(20);

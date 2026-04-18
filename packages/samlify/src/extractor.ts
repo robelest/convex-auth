@@ -9,9 +9,7 @@ function zipObject(arr1: string[], arr2: any[], skipDuplicated = true) {
       return res;
     }
     if (res[l] !== undefined) {
-      res[l] = Array.isArray(res[l])
-        ? res[l].concat(arr2[i])
-        : [res[l]].concat(arr2[i]);
+      res[l] = Array.isArray(res[l]) ? res[l].concat(arr2[i]) : [res[l]].concat(arr2[i]);
       return res;
     }
     res[l] = arr2[i];
@@ -65,9 +63,7 @@ function buildAttributeXPath(attributes) {
   if (attributes.length === 1) {
     return `/@${attributes[0]}`;
   }
-  const filters = attributes
-    .map((attribute) => `name()='${attribute}'`)
-    .join(" or ");
+  const filters = attributes.map((attribute) => `name()='${attribute}'`).join(" or ");
   return `/@*[${filters}]`;
 }
 
@@ -75,12 +71,7 @@ export const loginRequestFields: ExtractorFields = [
   {
     key: "request",
     localPath: ["AuthnRequest"],
-    attributes: [
-      "ID",
-      "IssueInstant",
-      "Destination",
-      "AssertionConsumerServiceURL",
-    ],
+    attributes: ["ID", "IssueInstant", "Destination", "AssertionConsumerServiceURL"],
   },
   {
     key: "issuer",
@@ -133,9 +124,7 @@ export const logoutResponseStatusFields = [
   },
 ];
 
-export const loginResponseFields: (assertion: any) => ExtractorFields = (
-  assertion,
-) => [
+export const loginResponseFields: (assertion: any) => ExtractorFields = (assertion) => [
   {
     key: "conditions",
     localPath: ["Assertion", "Conditions"],
@@ -307,31 +296,23 @@ export function extract(context: string, fields) {
       const fullLocalXPath = `${baseXPath}${indexPath}`;
       const parentNodes = select(baseXPath, targetDoc);
       // [uid, mail, edupersonaffiliation], ready for aggregate
-      const parentAttributes = select(fullLocalXPath, targetDoc).map(
-        (n: Attr) => n.value,
-      );
+      const parentAttributes = select(fullLocalXPath, targetDoc).map((n: Attr) => n.value);
       // [attribute, attributevalue]
-      const childXPath = buildAbsoluteXPath(
-        [last(localPath)].concat(attributePath),
-      );
+      const childXPath = buildAbsoluteXPath([last(localPath)].concat(attributePath));
       const childAttributeXPath = buildAttributeXPath(attributes);
       const fullChildXPath = `${childXPath}${childAttributeXPath}`;
       // [ 'test', 'test@example.com', [ 'users', 'examplerole1' ] ]
       const childAttributes = parentNodes.map((node) => {
         const nodeDoc = dom.parseFromString(node.toString());
         if (attributes.length === 0) {
-          const childValues = select(fullChildXPath, nodeDoc).map(
-            (n: Node) => n.nodeValue,
-          );
+          const childValues = select(fullChildXPath, nodeDoc).map((n: Node) => n.nodeValue);
           if (childValues.length === 1) {
             return childValues[0];
           }
           return childValues;
         }
         if (attributes.length > 0) {
-          const childValues = select(fullChildXPath, nodeDoc).map(
-            (n: Attr) => n.value,
-          );
+          const childValues = select(fullChildXPath, nodeDoc).map((n: Attr) => n.value);
           if (childValues.length === 1) {
             return childValues[0];
           }
@@ -391,8 +372,7 @@ export function extract(context: string, fields) {
       });
       return {
         ...result,
-        [key]:
-          attributeValues.length === 1 ? attributeValues[0] : attributeValues,
+        [key]: attributeValues.length === 1 ? attributeValues[0] : attributeValues,
       };
     }
     // case: single attribute
@@ -405,9 +385,7 @@ export function extract(context: string, fields) {
     */
     if (attributes.length === 1) {
       const fullPath = `${baseXPath}${attributeXPath}`;
-      const attributeValues = select(fullPath, targetDoc).map(
-        (n: Attr) => n.value,
-      );
+      const attributeValues = select(fullPath, targetDoc).map((n: Attr) => n.value);
       return {
         ...result,
         [key]: attributeValues[0],

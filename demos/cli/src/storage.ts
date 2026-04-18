@@ -17,9 +17,7 @@ async function readStorage(): Promise<StorageShape> {
   try {
     const raw = await readFile(STORAGE_PATH, "utf8");
     const parsed = JSON.parse(raw) as unknown;
-    return typeof parsed === "object" && parsed !== null
-      ? (parsed as StorageShape)
-      : {};
+    return typeof parsed === "object" && parsed !== null ? (parsed as StorageShape) : {};
   } catch {
     return {};
   }

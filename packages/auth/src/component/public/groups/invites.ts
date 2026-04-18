@@ -79,8 +79,7 @@ export const inviteCreate = mutation({
 
         for (const existingGroupInvite of existingGroupInvites) {
           const isExpired =
-            existingGroupInvite.expiresTime !== undefined &&
-            existingGroupInvite.expiresTime <= now;
+            existingGroupInvite.expiresTime !== undefined && existingGroupInvite.expiresTime <= now;
           if (isExpired) {
             await ctx.db.patch("GroupInvite", existingGroupInvite._id, {
               status: "expired",
@@ -89,8 +88,7 @@ export const inviteCreate = mutation({
           }
           throw new ConvexError({
             code: "DUPLICATE_INVITE",
-            message:
-              "A pending invite already exists for this email in this group",
+            message: "A pending invite already exists for this email in this group",
             email: args.email,
             groupId: args.groupId,
             existingInviteId: existingGroupInvite._id,
@@ -99,9 +97,7 @@ export const inviteCreate = mutation({
       } else {
         const existingPlatformInvites = await ctx.db
           .query("GroupInvite")
-          .withIndex("email_status", (q) =>
-            q.eq("email", args.email).eq("status", "pending"),
-          )
+          .withIndex("email_status", (q) => q.eq("email", args.email).eq("status", "pending"))
           .filter((q) => q.eq(q.field("groupId"), undefined))
           .collect();
 
@@ -260,9 +256,7 @@ export const inviteList = query({
     if (where.tokenHash !== undefined) {
       q = ctx.db
         .query("GroupInvite")
-        .withIndex("token_hash", (idx) =>
-          idx.eq("tokenHash", where.tokenHash!),
-        );
+        .withIndex("token_hash", (idx) => idx.eq("tokenHash", where.tokenHash!));
     } else if (where.groupId !== undefined && where.status !== undefined) {
       q = ctx.db
         .query("GroupInvite")
@@ -275,25 +269,18 @@ export const inviteList = query({
         .withIndex("email_status", (idx) =>
           idx.eq("email", where.email!).eq("status", where.status!),
         );
-    } else if (
-      where.invitedByUserId !== undefined &&
-      where.status !== undefined
-    ) {
+    } else if (where.invitedByUserId !== undefined && where.status !== undefined) {
       q = ctx.db
         .query("GroupInvite")
         .withIndex("invited_by_user_id_status", (idx) =>
-          idx
-            .eq("invitedByUserId", where.invitedByUserId!)
-            .eq("status", where.status!),
+          idx.eq("invitedByUserId", where.invitedByUserId!).eq("status", where.status!),
         );
     } else if (where.groupId !== undefined) {
       q = ctx.db
         .query("GroupInvite")
         .withIndex("group_id", (idx) => idx.eq("groupId", where.groupId!));
     } else if (where.status !== undefined) {
-      q = ctx.db
-        .query("GroupInvite")
-        .withIndex("status", (idx) => idx.eq("status", where.status!));
+      q = ctx.db.query("GroupInvite").withIndex("status", (idx) => idx.eq("status", where.status!));
     } else {
       q = ctx.db.query("GroupInvite");
     }
@@ -309,14 +296,10 @@ export const inviteList = query({
       q = q.filter((f) => f.eq(f.field("email"), where.email!));
     }
     if (where.invitedByUserId !== undefined) {
-      q = q.filter((f) =>
-        f.eq(f.field("invitedByUserId"), where.invitedByUserId!),
-      );
+      q = q.filter((f) => f.eq(f.field("invitedByUserId"), where.invitedByUserId!));
     }
     if (where.acceptedByUserId !== undefined) {
-      q = q.filter((f) =>
-        f.eq(f.field("acceptedByUserId"), where.acceptedByUserId!),
-      );
+      q = q.filter((f) => f.eq(f.field("acceptedByUserId"), where.acceptedByUserId!));
     }
     if (where.tokenHash !== undefined) {
       q = q.filter((f) => f.eq(f.field("tokenHash"), where.tokenHash!));
@@ -503,10 +486,7 @@ export const inviteAcceptByToken = mutation({
       const normalizedInviteEmail = invite.email.trim().toLowerCase();
       const normalizedUserEmail = user?.email?.trim().toLowerCase();
 
-      if (
-        normalizedUserEmail === undefined ||
-        normalizedUserEmail !== normalizedInviteEmail
-      ) {
+      if (normalizedUserEmail === undefined || normalizedUserEmail !== normalizedInviteEmail) {
         throw new ConvexError({
           code: "INVITE_EMAIL_MISMATCH",
           message: "Invite email does not match accepting user's email",
@@ -515,8 +495,7 @@ export const inviteAcceptByToken = mutation({
       }
     }
 
-    let membershipStatus: "joined" | "already_joined" | "not_applicable" =
-      "not_applicable";
+    let membershipStatus: "joined" | "already_joined" | "not_applicable" = "not_applicable";
     let memberId: Id<"GroupMember"> | undefined;
 
     if (invite.groupId !== undefined) {

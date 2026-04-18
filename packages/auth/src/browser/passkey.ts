@@ -41,8 +41,7 @@ type PasskeyAuthenticationOptions = {
 
 /** @internal */
 export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
-  const { proxy, convex, requireApiRefs, proxyFetch, setTokenAndMaybeWait } =
-    deps;
+  const { proxy, convex, requireApiRefs, proxyFetch, setTokenAndMaybeWait } = deps;
 
   const handleSignedInResult = async (
     result: SignInActionResult,
@@ -56,8 +55,7 @@ export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
       proxy
         ? {
             shouldStore: false as const,
-            tokens:
-              result.tokens === null ? null : { token: result.tokens.token },
+            tokens: result.tokens === null ? null : { token: result.tokens.token },
             waitForHandshake: true,
             context: { provider: "passkey", flow },
           }
@@ -76,17 +74,13 @@ export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
 
   return {
     isSupported: (): boolean => {
-      return (
-        typeof window !== "undefined" &&
-        typeof window.PublicKeyCredential !== "undefined"
-      );
+      return typeof window !== "undefined" && typeof window.PublicKeyCredential !== "undefined";
     },
 
     isAutofillSupported: async (): Promise<boolean> => {
       if (typeof window === "undefined") return false;
       if (typeof window.PublicKeyCredential === "undefined") return false;
-      const credential =
-        window.PublicKeyCredential as ConditionalMediationCredential;
+      const credential = window.PublicKeyCredential as ConditionalMediationCredential;
       if (typeof credential.isConditionalMediationAvailable !== "function") {
         return false;
       }
@@ -156,9 +150,7 @@ export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
 
       const response = credential.response as AuthenticatorAttestationResponse;
       const transports =
-        typeof response.getTransports === "function"
-          ? response.getTransports()
-          : undefined;
+        typeof response.getTransports === "function" ? response.getTransports() : undefined;
 
       const phase2Params = {
         flow: "registerVerify",
@@ -190,10 +182,7 @@ export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
       return handleSignedInResult(phase2Result, "registerVerify");
     },
 
-    authenticate: async (opts?: {
-      email?: string;
-      autofill?: boolean;
-    }): Promise<SignInResult> => {
+    authenticate: async (opts?: { email?: string; autofill?: boolean }): Promise<SignInResult> => {
       const phase1Params = {
         flow: "authOptions",
         email: opts?.email,

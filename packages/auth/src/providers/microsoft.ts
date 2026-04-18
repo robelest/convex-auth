@@ -18,10 +18,7 @@ import { MicrosoftEntraId } from "arctic";
 import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
 
 import { envOptionalString, readConfigSync } from "../server/env";
-import {
-  createArcticOAuthClient,
-  createOAuthProvider,
-} from "../server/oauth/factory";
+import { createArcticOAuthClient, createOAuthProvider } from "../server/oauth/factory";
 
 const DEFAULT_SCOPES = ["openid", "profile", "email"];
 
@@ -88,8 +85,7 @@ export function microsoft(config: MicrosoftConfig) {
       const idToken = tokens.idToken;
       const protectedHeader = decodeProtectedHeader(idToken);
       const tokenAlg = protectedHeader.alg;
-      const usesSymmetricAlg =
-        tokenAlg === "HS256" || tokenAlg === "HS384" || tokenAlg === "HS512";
+      const usesSymmetricAlg = tokenAlg === "HS256" || tokenAlg === "HS384" || tokenAlg === "HS512";
 
       const verification = await (usesSymmetricAlg
         ? jwtVerify(
@@ -125,9 +121,7 @@ export function microsoft(config: MicrosoftConfig) {
         verification.payload.aud.length > 1 &&
         verification.payload.azp !== config.clientId
       ) {
-        throw new Error(
-          "Microsoft OAuth authorized party does not match client ID.",
-        );
+        throw new Error("Microsoft OAuth authorized party does not match client ID.");
       }
     },
   });

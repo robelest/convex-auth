@@ -34,10 +34,7 @@ export function getPublicOidcConfig(config: unknown): Record<string, unknown> {
 }
 
 /** @internal */
-export function withOidcSecretState(
-  config: Record<string, unknown>,
-  hasClientSecret: boolean,
-) {
+export function withOidcSecretState(config: Record<string, unknown>, hasClientSecret: boolean) {
   return {
     ...config,
     hasClientSecret,

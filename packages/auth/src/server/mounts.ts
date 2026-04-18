@@ -232,9 +232,7 @@ type MountedGroupTarget = {
 };
 
 function requireSignedInUser(auth: Pick<AuthApi, "context">) {
-  return async (ctx: {
-    auth: import("convex/server").Auth;
-  }): Promise<string | null> => {
+  return async (ctx: { auth: import("convex/server").Auth }): Promise<string | null> => {
     return (await auth.context(ctx, { optional: true })).userId;
   };
 }
@@ -269,10 +267,7 @@ async function resolveMountedGroupTarget(
   }
 
   if (target.domain !== undefined) {
-    const resolved = await auth.group.sso.connection.getByDomain(
-      ctx as never,
-      target.domain,
-    );
+    const resolved = await auth.group.sso.connection.getByDomain(ctx as never, target.domain);
     if (resolved?.connection == null) {
       throw new ConvexError({
         code: "INVALID_PARAMETERS",
@@ -356,9 +351,7 @@ function createMountedAdminAuthorizer<TRequirement>(
     }
     const required = resolveRequiredAccess(options.permissions, permission);
     if (required === undefined) {
-      throw new Error(
-        `Missing permissions entry for mounted Group SSO permission: ${permission}`,
-      );
+      throw new Error(`Missing permissions entry for mounted Group SSO permission: ${permission}`);
     }
     await options.access(ctx, input, required);
     return { userId, ...resolved };
@@ -426,22 +419,17 @@ export function sso<
             await authorize(ctx, "sso.connection.create", {
               groupId: args.groupId,
             });
-            const created = await auth.group.sso.connection.create(
-              ctx as never,
-              {
-                groupId: args.groupId,
-                name: args.name,
-                slug: args.slug,
-                protocol: args.protocol,
-                status: args.status,
-              },
-            );
+            const created = await auth.group.sso.connection.create(ctx as never, {
+              groupId: args.groupId,
+              name: args.name,
+              slug: args.slug,
+              protocol: args.protocol,
+              status: args.status,
+            });
             if (args.domain) {
-              await auth.group.sso.connection.domain.set(
-                ctx as never,
-                created.connectionId,
-                [{ domain: args.domain, isPrimary: true }],
-              );
+              await auth.group.sso.connection.domain.set(ctx as never, created.connectionId, [
+                { domain: args.domain, isPrimary: true },
+              ]);
             }
             return {
               ...created,
@@ -455,10 +443,7 @@ export function sso<
             await authorize(ctx, "sso.connection.read", {
               connectionId: args.connectionId,
             });
-            return await auth.group.sso.connection.get(
-              ctx as never,
-              args.connectionId,
-            );
+            return await auth.group.sso.connection.get(ctx as never, args.connectionId);
           },
         }),
         getByDomain: queryGeneric({
@@ -467,10 +452,7 @@ export function sso<
             await authorize(ctx, "sso.connection.read", {
               domain: args.domain,
             });
-            return await auth.group.sso.connection.getByDomain(
-              ctx as never,
-              args.domain,
-            );
+            return await auth.group.sso.connection.getByDomain(ctx as never, args.domain);
           },
         }),
         list: queryGeneric({
@@ -485,10 +467,7 @@ export function sso<
             await authorize(ctx, "sso.connection.read", {
               groupId: args.where?.groupId,
             });
-            return await auth.group.sso.connection.list(
-              ctx as never,
-              args as never,
-            );
+            return await auth.group.sso.connection.list(ctx as never, args as never);
           },
         }),
         update: mutationGeneric({
@@ -504,11 +483,7 @@ export function sso<
             await authorize(ctx, "sso.connection.manage", {
               connectionId: args.connectionId,
             });
-            await auth.group.sso.connection.update(
-              ctx as never,
-              args.connectionId,
-              args.data,
-            );
+            await auth.group.sso.connection.update(ctx as never, args.connectionId, args.data);
             return { connectionId: args.connectionId };
           },
         }),
@@ -518,10 +493,7 @@ export function sso<
             await authorize(ctx, "sso.connection.manage", {
               connectionId: args.connectionId,
             });
-            return await auth.group.sso.connection.delete(
-              ctx as never,
-              args.connectionId,
-            );
+            return await auth.group.sso.connection.delete(ctx as never, args.connectionId);
           },
         }),
         status: queryGeneric({
@@ -530,10 +502,7 @@ export function sso<
             await authorize(ctx, "sso.connection.read", {
               connectionId: args.connectionId,
             });
-            return await auth.group.sso.connection.status(
-              ctx as never,
-              args.connectionId,
-            );
+            return await auth.group.sso.connection.status(ctx as never, args.connectionId);
           },
         }),
         domain: {
@@ -543,10 +512,7 @@ export function sso<
               await authorize(ctx, "sso.connection.read", {
                 connectionId: args.connectionId,
               });
-              return await auth.group.sso.connection.domain.list(
-                ctx as never,
-                args.connectionId,
-              );
+              return await auth.group.sso.connection.domain.list(ctx as never, args.connectionId);
             },
           }),
           status: queryGeneric({
@@ -555,10 +521,7 @@ export function sso<
               await authorize(ctx, "sso.domain.manage", {
                 connectionId: args.connectionId,
               });
-              return await auth.group.sso.connection.domain.status(
-                ctx as never,
-                args.connectionId,
-              );
+              return await auth.group.sso.connection.domain.status(ctx as never, args.connectionId);
             },
           }),
           validate: queryGeneric({
@@ -631,19 +594,14 @@ export function sso<
               id: v.string(),
               secret: v.optional(v.string()),
               authMethod: v.optional(
-                v.union(
-                  v.literal("client_secret_post"),
-                  v.literal("client_secret_basic"),
-                ),
+                v.union(v.literal("client_secret_post"), v.literal("client_secret_basic")),
               ),
             }),
             request: v.optional(
               v.object({
                 scopes: v.optional(v.array(v.string())),
                 loginHint: v.optional(v.string()),
-                authorizationParams: v.optional(
-                  v.record(v.string(), v.string()),
-                ),
+                authorizationParams: v.optional(v.record(v.string(), v.string())),
               }),
             ),
             security: v.optional(
@@ -685,10 +643,7 @@ export function sso<
             await authorize(ctx, "sso.connection.read", {
               connectionId: args.connectionId,
             });
-            return await auth.group.sso.oidc.get(
-              ctx as never,
-              args.connectionId,
-            );
+            return await auth.group.sso.oidc.get(ctx as never, args.connectionId);
           },
         }),
         validate: actionGeneric({
@@ -697,10 +652,7 @@ export function sso<
             await authorize(ctx, "sso.protocol.manage", {
               connectionId: args.connectionId,
             });
-            return await auth.group.sso.oidc.validate(
-              ctx as never,
-              args.connectionId,
-            );
+            return await auth.group.sso.oidc.validate(ctx as never, args.connectionId);
           },
         }),
         status: queryGeneric({
@@ -709,10 +661,7 @@ export function sso<
             await authorize(ctx, "sso.connection.read", {
               connectionId: args.connectionId,
             });
-            return await auth.group.sso.oidc.status(
-              ctx as never,
-              args.connectionId,
-            );
+            return await auth.group.sso.oidc.status(ctx as never, args.connectionId);
           },
         }),
       },
@@ -758,10 +707,7 @@ export function sso<
             await authorize(ctx, "sso.protocol.manage", {
               connectionId: args.connectionId,
             });
-            return await auth.group.sso.saml.validate(
-              ctx as never,
-              args.connectionId,
-            );
+            return await auth.group.sso.saml.validate(ctx as never, args.connectionId);
           },
         }),
         get: queryGeneric({
@@ -770,10 +716,7 @@ export function sso<
             await authorize(ctx, "sso.connection.read", {
               connectionId: args.connectionId,
             });
-            return await auth.group.sso.saml.get(
-              ctx as never,
-              args.connectionId,
-            );
+            return await auth.group.sso.saml.get(ctx as never, args.connectionId);
           },
         }),
         status: queryGeneric({
@@ -782,10 +725,7 @@ export function sso<
             await authorize(ctx, "sso.connection.read", {
               connectionId: args.connectionId,
             });
-            return await auth.group.sso.saml.status(
-              ctx as never,
-              args.connectionId,
-            );
+            return await auth.group.sso.saml.status(ctx as never, args.connectionId);
           },
         }),
         refresh: actionGeneric({
@@ -817,11 +757,7 @@ export function sso<
             await authorize(ctx, "sso.policy.manage", {
               groupId: args.groupId,
             });
-            return await auth.group.sso.policy.update(
-              ctx as never,
-              args.groupId,
-              args.patch,
-            );
+            return await auth.group.sso.policy.update(ctx as never, args.groupId, args.patch);
           },
         }),
         validate: queryGeneric({
@@ -830,10 +766,7 @@ export function sso<
             await authorize(ctx, "sso.policy.manage", {
               groupId: args.groupId,
             });
-            return await auth.group.sso.policy.validate(
-              ctx as never,
-              args.groupId,
-            );
+            return await auth.group.sso.policy.validate(ctx as never, args.groupId);
           },
         }),
       },
@@ -885,13 +818,10 @@ export function sso<
                 connectionId: args.connectionId,
               });
               const { userId } = authResult;
-              const result = await auth.group.sso.webhook.endpoint.create(
-                ctx as never,
-                {
-                  ...args,
-                  createdByUserId: args.createdByUserId ?? userId,
-                },
-              );
+              const result = await auth.group.sso.webhook.endpoint.create(ctx as never, {
+                ...args,
+                createdByUserId: args.createdByUserId ?? userId,
+              });
               return {
                 _id: result.endpointId,
                 connectionId: args.connectionId,
@@ -936,10 +866,7 @@ export function sso<
                 connectionId: endpoint.connectionId,
                 groupId: endpoint.groupId,
               });
-              return await auth.group.sso.webhook.endpoint.disable(
-                ctx as never,
-                args.endpointId,
-              );
+              return await auth.group.sso.webhook.endpoint.disable(ctx as never, args.endpointId);
             },
           }),
         },
@@ -1076,10 +1003,7 @@ export function scim<
           await authorize(ctx, "scim.manage", {
             connectionId: args.connectionId,
           });
-          return await auth.group.sso.scim.status(
-            ctx as never,
-            args.connectionId,
-          );
+          return await auth.group.sso.scim.status(ctx as never, args.connectionId);
         },
       }),
       validate: queryGeneric({
@@ -1088,10 +1012,7 @@ export function scim<
           await authorize(ctx, "scim.manage", {
             connectionId: args.connectionId,
           });
-          return await auth.group.sso.scim.validate(
-            ctx as never,
-            args.connectionId,
-          );
+          return await auth.group.sso.scim.validate(ctx as never, args.connectionId);
         },
       }),
     },
@@ -1158,10 +1079,8 @@ export function createAuthGroupSso<
     getDomainStatus: mountedSso.admin.connection.domain.status,
     validateDomains: mountedSso.admin.connection.domain.validate,
     setDomains: mountedSso.admin.connection.domain.set,
-    requestDomainVerification:
-      mountedSso.admin.connection.domain.verification.request,
-    confirmDomainVerification:
-      mountedSso.admin.connection.domain.verification.confirm,
+    requestDomainVerification: mountedSso.admin.connection.domain.verification.request,
+    confirmDomainVerification: mountedSso.admin.connection.domain.verification.confirm,
     configureOidc: mountedSso.admin.oidc.configure,
     getOidc: mountedSso.admin.oidc.get,
     getOidcStatus: mountedSso.admin.oidc.status,

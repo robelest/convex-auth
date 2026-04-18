@@ -34,25 +34,18 @@ function base64LoginRequest(
       rawSamlRequest = get(info, "context", null);
     } else {
       const nameIDFormat = spSetting.nameIDFormat;
-      const selectedNameIDFormat = Array.isArray(nameIDFormat)
-        ? nameIDFormat[0]
-        : nameIDFormat;
+      const selectedNameIDFormat = Array.isArray(nameIDFormat) ? nameIDFormat[0] : nameIDFormat;
       id = spSetting.generateID();
-      rawSamlRequest = libsaml.replaceTagsByValue(
-        libsaml.defaultLoginRequestTemplate.context,
-        {
-          ID: id,
-          Destination: base,
-          Issuer: metadata.sp.getEntityID(),
-          IssueInstant: new Date().toISOString(),
-          AssertionConsumerServiceURL: metadata.sp.getAssertionConsumerService(
-            binding.post,
-          ),
-          EntityID: metadata.sp.getEntityID(),
-          AllowCreate: spSetting.allowCreate,
-          NameIDFormat: selectedNameIDFormat,
-        } as any,
-      );
+      rawSamlRequest = libsaml.replaceTagsByValue(libsaml.defaultLoginRequestTemplate.context, {
+        ID: id,
+        Destination: base,
+        Issuer: metadata.sp.getEntityID(),
+        IssueInstant: new Date().toISOString(),
+        AssertionConsumerServiceURL: metadata.sp.getAssertionConsumerService(binding.post),
+        EntityID: metadata.sp.getEntityID(),
+        AllowCreate: spSetting.allowCreate,
+        NameIDFormat: selectedNameIDFormat,
+      } as any);
     }
     if (metadata.idp.isWantAuthnRequestsSigned()) {
       const {
@@ -74,8 +67,7 @@ function base64LoginRequest(
           signatureConfig: spSetting.signatureConfig || {
             prefix: "ds",
             location: {
-              reference:
-                "/*[local-name(.)='AuthnRequest']/*[local-name(.)='Issuer']",
+              reference: "/*[local-name(.)='AuthnRequest']/*[local-name(.)='Issuer']",
               action: "after",
             },
           },
@@ -113,9 +105,7 @@ async function base64LoginResponse(
     sp: entity.sp.entityMeta,
   };
   const nameIDFormat = idpSetting.nameIDFormat;
-  const selectedNameIDFormat = Array.isArray(nameIDFormat)
-    ? nameIDFormat[0]
-    : nameIDFormat;
+  const selectedNameIDFormat = Array.isArray(nameIDFormat) ? nameIDFormat[0] : nameIDFormat;
   if (metadata && metadata.idp && metadata.sp) {
     const base = metadata.sp.getAssertionConsumerService(binding.post);
     let rawSamlResponse: string;
@@ -148,9 +138,7 @@ async function base64LoginResponse(
       AttributeStatement: "",
     };
     if (idpSetting.loginResponseTemplate && customTagReplacement) {
-      const template = customTagReplacement(
-        idpSetting.loginResponseTemplate.context,
-      );
+      const template = customTagReplacement(idpSetting.loginResponseTemplate.context);
       rawSamlResponse = get(template, "context", null);
     } else {
       if (requestInfo !== null) {
@@ -180,8 +168,7 @@ async function base64LoginResponse(
         ...config,
         rawSamlMessage: rawSamlResponse,
         transformationAlgorithms: spSetting.transformationAlgorithms,
-        referenceTagXPath:
-          "/*[local-name(.)='Response']/*[local-name(.)='Assertion']",
+        referenceTagXPath: "/*[local-name(.)='Response']/*[local-name(.)='Assertion']",
         signatureConfig: {
           prefix: "ds",
           location: {
@@ -220,11 +207,7 @@ async function base64LoginResponse(
 
     if (idpSetting.isAssertionEncrypted) {
       // console.debug('idp is configured to do encryption');
-      const context = await libsaml.encryptAssertion(
-        entity.idp,
-        entity.sp,
-        rawSamlResponse,
-      );
+      const context = await libsaml.encryptAssertion(entity.idp, entity.sp, rawSamlResponse);
       if (encryptThenSign) {
         //need to decode it
         rawSamlResponse = utility.base64Decode(context) as string;
@@ -234,10 +217,7 @@ async function base64LoginResponse(
     }
 
     //sign after encrypting
-    if (
-      encryptThenSign &&
-      (spSetting.wantMessageSigned || !metadata.sp.isWantAssertionsSigned())
-    ) {
+    if (encryptThenSign && (spSetting.wantMessageSigned || !metadata.sp.isWantAssertionsSigned())) {
       rawSamlResponse = libsaml.constructSAMLSignature({
         ...config,
         rawSamlMessage: rawSamlResponse,
@@ -280,16 +260,12 @@ function base64LogoutRequest(
   };
   const initSetting = entity.init.entitySetting;
   const nameIDFormat = initSetting.nameIDFormat;
-  const selectedNameIDFormat = Array.isArray(nameIDFormat)
-    ? nameIDFormat[0]
-    : nameIDFormat;
+  const selectedNameIDFormat = Array.isArray(nameIDFormat) ? nameIDFormat[0] : nameIDFormat;
   let id: string = "";
   if (metadata && metadata.init && metadata.target) {
     let rawSamlRequest: string;
     if (initSetting.logoutRequestTemplate && customTagReplacement) {
-      const template = customTagReplacement(
-        initSetting.logoutRequestTemplate.context,
-      );
+      const template = customTagReplacement(initSetting.logoutRequestTemplate.context);
       id = get(template, "id", null);
       rawSamlRequest = get(template, "context", null);
     } else {
@@ -329,8 +305,7 @@ function base64LogoutRequest(
           signatureConfig: initSetting.signatureConfig || {
             prefix: "ds",
             location: {
-              reference:
-                "/*[local-name(.)='LogoutRequest']/*[local-name(.)='Issuer']",
+              reference: "/*[local-name(.)='LogoutRequest']/*[local-name(.)='Issuer']",
               action: "after",
             },
           },
@@ -365,9 +340,7 @@ function base64LogoutResponse(
   if (metadata && metadata.init && metadata.target) {
     let rawSamlResponse;
     if (initSetting.logoutResponseTemplate) {
-      const template = customTagReplacement(
-        initSetting.logoutResponseTemplate.context,
-      );
+      const template = customTagReplacement(initSetting.logoutResponseTemplate.context);
       id = template.id;
       rawSamlResponse = template.context;
     } else {
@@ -406,8 +379,7 @@ function base64LogoutResponse(
           signatureConfig: {
             prefix: "ds",
             location: {
-              reference:
-                "/*[local-name(.)='LogoutResponse']/*[local-name(.)='Issuer']",
+              reference: "/*[local-name(.)='LogoutResponse']/*[local-name(.)='Issuer']",
               action: "after",
             },
           },

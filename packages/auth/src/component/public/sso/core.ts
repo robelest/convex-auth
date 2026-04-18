@@ -123,10 +123,7 @@ export const groupConnectionGetByDomain = query({
     if (!domainRow) {
       return null;
     }
-    const connection = await ctx.db.get(
-      "GroupConnection",
-      domainRow.connectionId,
-    );
+    const connection = await ctx.db.get("GroupConnection", domainRow.connectionId);
     if (!connection) {
       return null;
     }
@@ -197,29 +194,30 @@ export const groupConnectionList = query({
     const order = args.order ?? "desc";
 
     let q;
-    if (where.groupId !== undefined) {
+    if (where.groupId !== undefined && where.status !== undefined) {
+      q = ctx.db
+        .query("GroupConnection")
+        .withIndex("group_id_status", (idx) =>
+          idx.eq("groupId", where.groupId!).eq("status", where.status!),
+        );
+    } else if (where.groupId !== undefined && where.slug !== undefined) {
+      q = ctx.db
+        .query("GroupConnection")
+        .withIndex("group_id_slug", (idx) =>
+          idx.eq("groupId", where.groupId!).eq("slug", where.slug!),
+        );
+    } else if (where.groupId !== undefined) {
       q = ctx.db
         .query("GroupConnection")
         .withIndex("group_id", (idx) => idx.eq("groupId", where.groupId!));
     } else if (where.slug !== undefined) {
-      q = ctx.db
-        .query("GroupConnection")
-        .withIndex("slug", (idx) => idx.eq("slug", where.slug!));
+      q = ctx.db.query("GroupConnection").withIndex("slug", (idx) => idx.eq("slug", where.slug!));
     } else if (where.status !== undefined) {
       q = ctx.db
         .query("GroupConnection")
         .withIndex("status", (idx) => idx.eq("status", where.status!));
     } else {
       q = ctx.db.query("GroupConnection");
-    }
-
-    if (where.groupId !== undefined && where.slug !== undefined) {
-      q = q.filter((f) => f.eq(f.field("slug"), where.slug!));
-    }
-    if (where.status !== undefined && where.groupId === undefined) {
-      // already handled by index in the dedicated branch
-    } else if (where.status !== undefined) {
-      q = q.filter((f) => f.eq(f.field("status"), where.status!));
     }
 
     q = q.order(order);

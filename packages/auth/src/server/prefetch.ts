@@ -6,11 +6,7 @@ import { jwtDecode } from "jwt-decode";
 
 import { log } from "./log";
 import type { SignInParams } from "./payloads";
-import type {
-  SignInAction,
-  SignInActionResult,
-  SignOutAction,
-} from "./runtime";
+import type { SignInAction, SignInActionResult, SignOutAction } from "./runtime";
 import type { Tokens } from "./types";
 import { isLocalHost } from "./url";
 
@@ -98,9 +94,7 @@ export type ServerOptions = {
    *
    * @defaultValue true
    */
-  shouldHandleCode?:
-    | ((request: Request) => boolean | Promise<boolean>)
-    | boolean;
+  shouldHandleCode?: ((request: Request) => boolean | Promise<boolean>) | boolean;
 };
 
 /**
@@ -139,10 +133,7 @@ const DERIVED_COOKIE_NAMESPACE_FALLBACK = "convexauth";
  * @param cookieNamespace - Optional namespace suffix for cookie isolation.
  * @returns An object with `token`, `refreshToken`, and `verifier` cookie names.
  */
-export function authCookieNames(
-  host?: string,
-  cookieNamespace?: string | null,
-) {
+export function authCookieNames(host?: string, cookieNamespace?: string | null) {
   const prefix = isLocalHost(host) ? "" : "__Host-";
   const namespace = normalizeCookieNamespace(cookieNamespace);
   const suffix = namespace === null ? "" : `_${namespace}`;
@@ -306,7 +297,6 @@ const JSON_HEADERS = { "Content-Type": "application/json" };
 
 type DecodedToken = { exp?: number; iat?: number; iss?: string };
 
-
 function decodeToken(token: string): DecodedToken | null {
   try {
     return jwtDecode<DecodedToken>(token);
@@ -352,10 +342,7 @@ function getProxyErrorBody(error: unknown) {
       };
 }
 
-function extractSignedInTokens(
-  result: SignInActionResult,
-  context: string,
-): Tokens | null {
+function extractSignedInTokens(result: SignInActionResult, context: string): Tokens | null {
   if (result.kind === "signedIn") {
     return result.tokens;
   }
@@ -387,25 +374,16 @@ function canParseUrl(value: string): boolean {
 }
 
 function serializeAuthCookie(cookie: AuthCookie): string {
-  const parts = [
-    `${cookie.name}=${cookie.value}`,
-    `Path=${cookie.options.path}`,
-  ];
+  const parts = [`${cookie.name}=${cookie.value}`, `Path=${cookie.options.path}`];
   if (cookie.options.httpOnly) parts.push("HttpOnly");
   if (cookie.options.secure) parts.push("Secure");
-  if (cookie.options.sameSite)
-    parts.push(`SameSite=${cookie.options.sameSite}`);
-  if (cookie.options.maxAge !== undefined)
-    parts.push(`Max-Age=${cookie.options.maxAge}`);
-  if (cookie.options.expires)
-    parts.push(`Expires=${cookie.options.expires.toUTCString()}`);
+  if (cookie.options.sameSite) parts.push(`SameSite=${cookie.options.sameSite}`);
+  if (cookie.options.maxAge !== undefined) parts.push(`Max-Age=${cookie.options.maxAge}`);
+  if (cookie.options.expires) parts.push(`Expires=${cookie.options.expires.toUTCString()}`);
   return parts.join("; ");
 }
 
-function buildRedirectResponse(
-  location: string,
-  cookies: AuthCookie[],
-): Response {
+function buildRedirectResponse(location: string, cookies: AuthCookie[]): Response {
   const headers = new Headers({ Location: location });
   for (const cookie of cookies) {
     headers.append("Set-Cookie", serializeAuthCookie(cookie));
@@ -423,8 +401,7 @@ function deriveCookieNamespaceFromUrl(url: string) {
 function normalizeIssuer(value: string) {
   if (!canParseUrl(value)) return value.replace(/\/+$/, "");
   const parsed = new URL(value);
-  const pathname =
-    parsed.pathname === "/" ? "" : parsed.pathname.replace(/\/+$/, "");
+  const pathname = parsed.pathname === "/" ? "" : parsed.pathname.replace(/\/+$/, "");
   return `${parsed.protocol}//${parsed.host}${pathname}`;
 }
 
@@ -434,8 +411,7 @@ function convexSiteIssuerFromCloudUrl(value: string) {
   if (!parsed.hostname.endsWith(".convex.cloud")) {
     return null;
   }
-  parsed.hostname =
-    parsed.hostname.slice(0, -".convex.cloud".length) + ".convex.site";
+  parsed.hostname = parsed.hostname.slice(0, -".convex.cloud".length) + ".convex.site";
   return normalizeIssuer(parsed.toString());
 }
 
@@ -494,8 +470,7 @@ export function server(options: ServerOptions) {
   const cookieConfig = { maxAge: options.cookieMaxAge ?? null };
   const verbose = options.verbose ?? false;
   const cookieNamespace =
-    normalizeCookieNamespace(options.cookieNamespace) ??
-    deriveCookieNamespaceFromUrl(convexUrl);
+    normalizeCookieNamespace(options.cookieNamespace) ?? deriveCookieNamespaceFromUrl(convexUrl);
   const acceptedIssuers = new Set(
     (options.acceptedIssuers ?? defaultAcceptedIssuersForUrl(convexUrl))
       .map(normalizeIssuer)
@@ -573,20 +548,16 @@ export function server(options: ServerOptions) {
       ): Promise<{ client: ConvexHttpClient; cookies: AuthCookies }> => {
         const client = createClient();
         const requestParams =
-          typeof args.params === "object" && args.params !== null
-            ? args.params
-            : undefined;
+          typeof args.params === "object" && args.params !== null ? args.params : undefined;
         const shouldAttachCurrentIdentity =
-          args.refreshToken === undefined &&
-          requestParams?.code === undefined;
+          args.refreshToken === undefined && requestParams?.code === undefined;
 
         if (!shouldAttachCurrentIdentity) {
           return { client, cookies: currentCookies };
         }
 
         const currentToken = currentCookies.token;
-        const decodedTokenValue =
-          currentToken === null ? null : decodeToken(currentToken);
+        const decodedTokenValue = currentToken === null ? null : decodeToken(currentToken);
         const hasValidCurrentToken =
           currentToken !== null &&
           decodedTokenValue?.exp !== undefined &&
@@ -676,12 +647,7 @@ export function server(options: ServerOptions) {
                       refreshToken: "dummy",
                     },
             }),
-            serializeAuthCookies(
-              nextCookies,
-              host,
-              cookieConfig,
-              cookieNamespace,
-            ),
+            serializeAuthCookies(nextCookies, host, cookieConfig, cookieNamespace),
           );
         }
         if (result.kind === "started") {
@@ -704,10 +670,7 @@ export function server(options: ServerOptions) {
       };
 
       const requestUrl = new URL(request.url);
-      const requestDispatch = !shouldProxyAuthAction(
-        requestUrl.pathname,
-        apiRoute,
-      )
+      const requestDispatch = !shouldProxyAuthAction(requestUrl.pathname, apiRoute)
         ? { kind: "invalidRoute" as const }
         : request.method !== "POST"
           ? { kind: "invalidMethod" as const }
@@ -716,18 +679,12 @@ export function server(options: ServerOptions) {
                 if (originHeader === null) {
                   return false;
                 }
-                const forwardedProtoHeader =
-                  request.headers.get("x-forwarded-proto");
+                const forwardedProtoHeader = request.headers.get("x-forwarded-proto");
                 const protocol =
                   forwardedProtoHeader !== null
                     ? (() => {
-                        const forwardedProto = forwardedProtoHeader
-                          .split(",")[0]
-                          ?.trim();
-                        if (
-                          forwardedProto !== undefined &&
-                          forwardedProto.length > 0
-                        ) {
+                        const forwardedProto = forwardedProtoHeader.split(",")[0]?.trim();
+                        if (forwardedProto !== undefined && forwardedProto.length > 0) {
                           return forwardedProto.endsWith(":")
                             ? forwardedProto
                             : `${forwardedProto}:`;
@@ -735,12 +692,9 @@ export function server(options: ServerOptions) {
                         return new URL(request.url).protocol;
                       })()
                     : new URL(request.url).protocol;
-                const requestHost =
-                  request.headers.get("host") ?? new URL(request.url).host;
+                const requestHost = request.headers.get("host") ?? new URL(request.url).host;
                 const hostCandidate = `${protocol}//${requestHost}`;
-                const host = canParseUrl(hostCandidate)
-                  ? new URL(hostCandidate).host
-                  : requestHost;
+                const host = canParseUrl(hostCandidate) ? new URL(hostCandidate).host : requestHost;
                 if (!canParseUrl(originHeader)) {
                   return true;
                 }
@@ -750,149 +704,97 @@ export function server(options: ServerOptions) {
             ? { kind: "invalidOrigin" as const }
             : { kind: "valid" as const };
 
-        let validationErrorResponse: Response | null = null;
-        if (requestDispatch.kind === "invalidRoute") {
-          validationErrorResponse = new Response("Invalid route", { status: 404 });
-        } else if (requestDispatch.kind === "invalidMethod") {
-          validationErrorResponse = new Response("Invalid method", { status: 405 });
-        } else if (requestDispatch.kind === "invalidOrigin") {
-          validationErrorResponse = new Response("Invalid origin", { status: 403 });
-        }
-        if (validationErrorResponse !== null) {
-          return validationErrorResponse;
-        }
+      let validationErrorResponse: Response | null = null;
+      if (requestDispatch.kind === "invalidRoute") {
+        validationErrorResponse = new Response("Invalid route", { status: 404 });
+      } else if (requestDispatch.kind === "invalidMethod") {
+        validationErrorResponse = new Response("Invalid method", { status: 405 });
+      } else if (requestDispatch.kind === "invalidOrigin") {
+        validationErrorResponse = new Response("Invalid origin", { status: 403 });
+      }
+      if (validationErrorResponse !== null) {
+        return validationErrorResponse;
+      }
 
-        let body: ProxyActionBody | null = null;
-        try {
-          const parsed = await request.json();
-          body =
-            typeof parsed === "object" && parsed !== null
-              ? (parsed as ProxyActionBody)
-              : null;
-        } catch {
-          body = null;
-        }
-        if (body === null) {
-          return new Response("Invalid request body", { status: 400 });
-        }
+      let body: ProxyActionBody | null = null;
+      try {
+        const parsed = await request.json();
+        body = typeof parsed === "object" && parsed !== null ? (parsed as ProxyActionBody) : null;
+      } catch {
+        body = null;
+      }
+      if (body === null) {
+        return new Response("Invalid request body", { status: 400 });
+      }
 
-        const action = body.action;
-        const args: ProxySignInArgs =
-          typeof body.args === "object" && body.args !== null
-            ? { ...(body.args as Record<string, unknown>) }
-            : {};
-        if (args.refreshToken === null) {
-          args.refreshToken = undefined;
-        }
-        const actionDispatch =
-          action === "auth:signIn"
-            ? { action: "sessionStart" as const }
-            : action === "auth:signOut"
-              ? { action: "sessionStop" as const }
-              : null;
-        if (actionDispatch === null) {
-          return new Response("Invalid action", { status: 400 });
-        }
+      const action = body.action;
+      const args: ProxySignInArgs =
+        typeof body.args === "object" && body.args !== null
+          ? { ...(body.args as Record<string, unknown>) }
+          : {};
+      if (args.refreshToken === null) {
+        args.refreshToken = undefined;
+      }
+      const actionDispatch =
+        action === "auth:signIn"
+          ? { action: "sessionStart" as const }
+          : action === "auth:signOut"
+            ? { action: "sessionStop" as const }
+            : null;
+      if (actionDispatch === null) {
+        return new Response("Invalid action", { status: 400 });
+      }
 
-        const host = request.headers.get("host") ?? new URL(request.url).host;
-        const currentCookies = parseAuthCookies(
-          request.headers.get("cookie"),
-          host,
-          cookieNamespace,
-        );
+      const host = request.headers.get("host") ?? new URL(request.url).host;
+      const currentCookies = parseAuthCookies(request.headers.get("cookie"), host, cookieNamespace);
 
-        if (actionDispatch.action === "sessionStart") {
-          // Determine refresh response
-          let refreshResponse: Response | null = null;
-          if (args.refreshToken === undefined) {
-            // passthrough
-            refreshResponse = null;
-          } else if (currentCookies.refreshToken === null) {
-            // refreshRequestedWithoutCookie
-            const currentToken = currentCookies.token;
-            const decodedToken =
-              currentToken === null ? null : decodeToken(currentToken);
-            if (
-              currentToken !== null &&
-              decodedToken?.exp !== undefined &&
-              decodedToken.iss !== undefined &&
-              acceptedIssuers.has(normalizeIssuer(decodedToken.iss)) &&
-              decodedToken.exp * 1000 > Date.now()
-            ) {
-              refreshResponse = jsonResponse({
-                tokens: { token: currentToken, refreshToken: "dummy" },
-              });
-            } else {
-              refreshResponse = jsonResponse({ tokens: null });
-            }
+      if (actionDispatch.action === "sessionStart") {
+        // Determine refresh response
+        let refreshResponse: Response | null = null;
+        if (args.refreshToken === undefined) {
+          // passthrough
+          refreshResponse = null;
+        } else if (currentCookies.refreshToken === null) {
+          // refreshRequestedWithoutCookie
+          const currentToken = currentCookies.token;
+          const decodedToken = currentToken === null ? null : decodeToken(currentToken);
+          if (
+            currentToken !== null &&
+            decodedToken?.exp !== undefined &&
+            decodedToken.iss !== undefined &&
+            acceptedIssuers.has(normalizeIssuer(decodedToken.iss)) &&
+            decodedToken.exp * 1000 > Date.now()
+          ) {
+            refreshResponse = jsonResponse({
+              tokens: { token: currentToken, refreshToken: "dummy" },
+            });
           } else {
-            // hydrateRefreshFromCookie
-            args.refreshToken = currentCookies.refreshToken ?? undefined;
-            refreshResponse = null;
-          }
-          if (refreshResponse !== null) {
-            return refreshResponse;
-          }
-
-          const { client, cookies: effectiveCookies } =
-            await hydrateProxySignInClient(currentCookies, args);
-
-          try {
-            const result = await runSignIn(client, args);
-            return toSignInProxyResponse(result, args, effectiveCookies, host);
-          } catch (error) {
-            return appendCookieHeaders(
-              jsonResponse(getProxyErrorBody(error), 400),
-              serializeAuthCookies(
-                {
-                  token: effectiveCookies.token,
-                  refreshToken: effectiveCookies.refreshToken,
-                  verifier: null,
-                },
-                host,
-                cookieConfig,
-                cookieNamespace,
-              ),
-            );
+            refreshResponse = jsonResponse({ tokens: null });
           }
         } else {
-          // sessionStop
-          try {
-            await runSignOut(currentCookies.token);
-          } catch (error) {
-            log(
-              "ERROR",
-              "[convex-auth/server] proxy sign-out failed",
-              error,
-            );
-            if (currentCookies.refreshToken !== null) {
-              try {
-                const refreshed = await runSignIn(createClient(), {
-                  refreshToken: currentCookies.refreshToken,
-                });
-                const refreshedTokens = extractSignedInTokens(
-                  refreshed,
-                  "sign-out fallback refresh",
-                );
-                if (refreshedTokens !== null) {
-                  await runSignOut(refreshedTokens.token);
-                }
-              } catch (fallbackError) {
-                log(
-                  "ERROR",
-                  "[convex-auth/server] proxy sign-out fallback failed",
-                  fallbackError,
-                );
-              }
-            }
-          }
+          // hydrateRefreshFromCookie
+          args.refreshToken = currentCookies.refreshToken ?? undefined;
+          refreshResponse = null;
+        }
+        if (refreshResponse !== null) {
+          return refreshResponse;
+        }
 
+        const { client, cookies: effectiveCookies } = await hydrateProxySignInClient(
+          currentCookies,
+          args,
+        );
+
+        try {
+          const result = await runSignIn(client, args);
+          return toSignInProxyResponse(result, args, effectiveCookies, host);
+        } catch (error) {
           return appendCookieHeaders(
-            jsonResponse(null),
+            jsonResponse(getProxyErrorBody(error), 400),
             serializeAuthCookies(
               {
-                token: null,
-                refreshToken: null,
+                token: effectiveCookies.token,
+                refreshToken: effectiveCookies.refreshToken,
                 verifier: null,
               },
               host,
@@ -901,6 +803,41 @@ export function server(options: ServerOptions) {
             ),
           );
         }
+      } else {
+        // sessionStop
+        try {
+          await runSignOut(currentCookies.token);
+        } catch (error) {
+          log("ERROR", "[convex-auth/server] proxy sign-out failed", error);
+          if (currentCookies.refreshToken !== null) {
+            try {
+              const refreshed = await runSignIn(createClient(), {
+                refreshToken: currentCookies.refreshToken,
+              });
+              const refreshedTokens = extractSignedInTokens(refreshed, "sign-out fallback refresh");
+              if (refreshedTokens !== null) {
+                await runSignOut(refreshedTokens.token);
+              }
+            } catch (fallbackError) {
+              log("ERROR", "[convex-auth/server] proxy sign-out fallback failed", fallbackError);
+            }
+          }
+        }
+
+        return appendCookieHeaders(
+          jsonResponse(null),
+          serializeAuthCookies(
+            {
+              token: null,
+              refreshToken: null,
+              verifier: null,
+            },
+            host,
+            cookieConfig,
+            cookieNamespace,
+          ),
+        );
+      }
     },
 
     /**
@@ -920,125 +857,128 @@ export function server(options: ServerOptions) {
       const createClient = () => new ConvexHttpClient(convexUrl);
       const logVerbose = (message: string) => {
         if (verbose) {
-          log(
-            "DEBUG",
-            `${new Date().toISOString()} [convex-auth/server] ${message}`,
-          );
+          log("DEBUG", `${new Date().toISOString()} [convex-auth/server] ${message}`);
         }
       };
-      const refreshWithToken = async (
-        refreshToken: string,
-      ): Promise<Tokens | null | undefined> => {
+      const refreshWithToken = async (refreshToken: string): Promise<Tokens | null | undefined> => {
         try {
-          const result = await createClient().action(signInActionRef, {
+          const result = (await createClient().action(signInActionRef, {
             refreshToken,
-          }) as SignInActionResult;
+          })) as SignInActionResult;
           const tokens = extractSignedInTokens(result, "token refresh");
           logVerbose(`Refreshed tokens, null=${tokens === null}`);
           return tokens;
         } catch (error) {
-          log(
-            "ERROR",
-            "[convex-auth/server] refresh-token exchange failed",
-            error,
-          );
+          log("ERROR", "[convex-auth/server] refresh-token exchange failed", error);
           if (getConvexErrorCode(error) === "INVALID_REFRESH_TOKEN") {
-            logVerbose(
-              "Refresh token rejected, clearing auth cookies",
-            );
+            logVerbose("Refresh token rejected, clearing auth cookies");
             return null;
           }
-          logVerbose(
-            "Token refresh failed transiently, keeping current cookies",
-          );
+          logVerbose("Token refresh failed transiently, keeping current cookies");
           return undefined;
         }
       };
 
       const host = request.headers.get("host") ?? new URL(request.url).host;
-      const currentCookies = parseAuthCookies(
-        request.headers.get("cookie"),
-        host,
-        cookieNamespace,
-      );
+      const currentCookies = parseAuthCookies(request.headers.get("cookie"), host, cookieNamespace);
       const currentToken = currentCookies.token;
 
-        const originHeader = request.headers.get("origin");
-        const forwardedProtoHeader = request.headers.get("x-forwarded-proto");
-        const protocol =
-          forwardedProtoHeader !== null
-            ? (() => {
-                const forwardedProto = forwardedProtoHeader
-                  .split(",")[0]
-                  ?.trim();
-                if (
-                  forwardedProto !== undefined &&
-                  forwardedProto.length > 0
-                ) {
-                  return forwardedProto.endsWith(":")
-                    ? forwardedProto
-                    : `${forwardedProto}:`;
-                }
-                return new URL(request.url).protocol;
-              })()
-            : new URL(request.url).protocol;
-        const requestHost =
-          request.headers.get("host") ?? new URL(request.url).host;
-        const hostCandidate = `${protocol}//${requestHost}`;
-        const normalizedHost = canParseUrl(hostCandidate)
-          ? new URL(hostCandidate).host
-          : requestHost;
-        const originUrl =
-          originHeader !== null && canParseUrl(originHeader)
-            ? new URL(originHeader)
-            : null;
-        const corsRequest =
-          originHeader !== null &&
-          (originUrl === null ||
-            originUrl.host !== normalizedHost ||
-            originUrl.protocol !== protocol);
-        if (corsRequest) {
-          return {
-            redirect: false,
-            cookies: [],
-            token: null,
+      const originHeader = request.headers.get("origin");
+      const forwardedProtoHeader = request.headers.get("x-forwarded-proto");
+      const protocol =
+        forwardedProtoHeader !== null
+          ? (() => {
+              const forwardedProto = forwardedProtoHeader.split(",")[0]?.trim();
+              if (forwardedProto !== undefined && forwardedProto.length > 0) {
+                return forwardedProto.endsWith(":") ? forwardedProto : `${forwardedProto}:`;
+              }
+              return new URL(request.url).protocol;
+            })()
+          : new URL(request.url).protocol;
+      const requestHost = request.headers.get("host") ?? new URL(request.url).host;
+      const hostCandidate = `${protocol}//${requestHost}`;
+      const normalizedHost = canParseUrl(hostCandidate) ? new URL(hostCandidate).host : requestHost;
+      const originUrl =
+        originHeader !== null && canParseUrl(originHeader) ? new URL(originHeader) : null;
+      const corsRequest =
+        originHeader !== null &&
+        (originUrl === null ||
+          originUrl.host !== normalizedHost ||
+          originUrl.protocol !== protocol);
+      if (corsRequest) {
+        return {
+          redirect: false,
+          cookies: [],
+          token: null,
+        } satisfies RefreshResult;
+      }
+
+      const requestUrl = new URL(request.url);
+      const code = requestUrl.searchParams.get("code");
+      const shouldHandleCodeOption = options.shouldHandleCode;
+      let shouldHandleCode: boolean;
+      if (shouldHandleCodeOption === undefined) {
+        shouldHandleCode = true;
+      } else if (typeof shouldHandleCodeOption === "function") {
+        const result = shouldHandleCodeOption(request);
+        shouldHandleCode = typeof result === "boolean" ? result : await result;
+      } else {
+        shouldHandleCode = shouldHandleCodeOption;
+      }
+
+      // Code exchange
+      let codeExchangeResult: RefreshResult | null = null;
+      if (
+        code !== null &&
+        request.method === "GET" &&
+        request.headers.get("accept")?.includes("text/html") &&
+        shouldHandleCode
+      ) {
+        const redirectUrl = new URL(requestUrl.toString());
+        try {
+          const result = (await createClient().action(signInActionRef, {
+            params: { code },
+            verifier: currentCookies.verifier ?? undefined,
+          })) as SignInActionResult;
+          const tokens = extractSignedInTokens(result, "code exchange");
+          redirectUrl.searchParams.delete("code");
+          const cookies = structuredAuthCookies(
+            {
+              token: tokens?.token ?? null,
+              refreshToken: tokens?.refreshToken ?? null,
+              verifier: null,
+            },
+            host,
+            cookieConfig,
+            cookieNamespace,
+          );
+          codeExchangeResult = {
+            redirect: true,
+            response: buildRedirectResponse(redirectUrl.toString(), cookies),
           } satisfies RefreshResult;
-        }
-
-        const requestUrl = new URL(request.url);
-        const code = requestUrl.searchParams.get("code");
-        const shouldHandleCodeOption = options.shouldHandleCode;
-        let shouldHandleCode: boolean;
-        if (shouldHandleCodeOption === undefined) {
-          shouldHandleCode = true;
-        } else if (typeof shouldHandleCodeOption === "function") {
-          const result = shouldHandleCodeOption(request);
-          shouldHandleCode =
-            typeof result === "boolean" ? result : await result;
-        } else {
-          shouldHandleCode = shouldHandleCodeOption;
-        }
-
-        // Code exchange
-        let codeExchangeResult: RefreshResult | null = null;
-        if (
-          code !== null &&
-          request.method === "GET" &&
-          request.headers.get("accept")?.includes("text/html") &&
-          shouldHandleCode
-        ) {
-          const redirectUrl = new URL(requestUrl.toString());
-          try {
-            const result = await createClient().action(signInActionRef, {
-              params: { code },
-              verifier: currentCookies.verifier ?? undefined,
-            }) as SignInActionResult;
-            const tokens = extractSignedInTokens(result, "code exchange");
+        } catch (error) {
+          log("ERROR", "[convex-auth/server] code exchange failed", error);
+          const terminalCodeExchangeError = [
+            "OAUTH_INVALID_STATE",
+            "OAUTH_PROVIDER_ERROR",
+            "OAUTH_MISSING_ID_TOKEN",
+            "OAUTH_INVALID_PROFILE",
+            "OAUTH_MISSING_VERIFIER",
+            "INVALID_VERIFIER",
+            "INVALID_VERIFICATION_CODE",
+          ].includes(getConvexErrorCode(error) ?? "");
+          if (!terminalCodeExchangeError) {
+            codeExchangeResult = {
+              redirect: false,
+              cookies: [],
+              token: currentCookies.token,
+            } satisfies RefreshResult;
+          } else {
             redirectUrl.searchParams.delete("code");
             const cookies = structuredAuthCookies(
               {
-                token: tokens?.token ?? null,
-                refreshToken: tokens?.refreshToken ?? null,
+                token: currentCookies.token,
+                refreshToken: currentCookies.refreshToken,
                 verifier: null,
               },
               host,
@@ -1047,163 +987,97 @@ export function server(options: ServerOptions) {
             );
             codeExchangeResult = {
               redirect: true,
-              response: buildRedirectResponse(
-                redirectUrl.toString(),
-                cookies,
-              ),
+              response: buildRedirectResponse(redirectUrl.toString(), cookies),
             } satisfies RefreshResult;
-          } catch (error) {
-            log(
-              "ERROR",
-              "[convex-auth/server] code exchange failed",
-              error,
-            );
-            const terminalCodeExchangeError = [
-              "OAUTH_INVALID_STATE",
-              "OAUTH_PROVIDER_ERROR",
-              "OAUTH_MISSING_ID_TOKEN",
-              "OAUTH_INVALID_PROFILE",
-              "OAUTH_MISSING_VERIFIER",
-              "INVALID_VERIFIER",
-              "INVALID_VERIFICATION_CODE",
-            ].includes(getConvexErrorCode(error) ?? "");
-            if (!terminalCodeExchangeError) {
-              codeExchangeResult = {
-                redirect: false,
-                cookies: [],
-                token: currentCookies.token,
-              } satisfies RefreshResult;
-            } else {
-              redirectUrl.searchParams.delete("code");
-              const cookies = structuredAuthCookies(
-                {
-                  token: currentCookies.token,
-                  refreshToken: currentCookies.refreshToken,
-                  verifier: null,
-                },
-                host,
-                cookieConfig,
-                cookieNamespace,
-              );
-              codeExchangeResult = {
-                redirect: true,
-                response: buildRedirectResponse(
-                  redirectUrl.toString(),
-                  cookies,
-                ),
-              } satisfies RefreshResult;
-            }
           }
         }
-        if (codeExchangeResult !== null) {
-          return codeExchangeResult;
-        }
+      }
+      if (codeExchangeResult !== null) {
+        return codeExchangeResult;
+      }
 
-        const { token, refreshToken } = currentCookies;
-        const isMalformedRefreshToken =
-          refreshToken !== null &&
-          (refreshToken.trim().length === 0 || refreshToken === "dummy");
-        if (isMalformedRefreshToken) {
-          logVerbose(
-            "Refresh token cookie malformed, clearing auth cookies",
-          );
-          return {
-            redirect: false,
-            cookies: structuredAuthCookies(
-              { token: null, refreshToken: null, verifier: null },
-              host,
-              cookieConfig,
-              cookieNamespace,
-            ),
-            token: null,
-          } satisfies RefreshResult;
-        }
+      const { token, refreshToken } = currentCookies;
+      const isMalformedRefreshToken =
+        refreshToken !== null && (refreshToken.trim().length === 0 || refreshToken === "dummy");
+      if (isMalformedRefreshToken) {
+        logVerbose("Refresh token cookie malformed, clearing auth cookies");
+        return {
+          redirect: false,
+          cookies: structuredAuthCookies(
+            { token: null, refreshToken: null, verifier: null },
+            host,
+            cookieConfig,
+            cookieNamespace,
+          ),
+          token: null,
+        } satisfies RefreshResult;
+      }
 
-        const decodedToken =
-          token === null ? null : decodeToken(token);
+      const decodedToken = token === null ? null : decodeToken(token);
+      if (
+        decodedToken?.iss !== undefined &&
+        !acceptedIssuers.has(normalizeIssuer(decodedToken.iss))
+      ) {
+        logVerbose("Access token issuer mismatch, clearing auth cookies");
+        return {
+          redirect: false,
+          cookies: structuredAuthCookies(
+            { token: null, refreshToken: null, verifier: null },
+            host,
+            cookieConfig,
+            cookieNamespace,
+          ),
+          token: null,
+        } satisfies RefreshResult;
+      }
+
+      // Determine token refresh strategy
+      let tokens: Tokens | null | undefined;
+      if (token === null && refreshToken === null) {
+        // none
+        logVerbose("No auth cookies found, skipping refresh");
+        tokens = undefined;
+      } else if (token === null && refreshToken !== null) {
+        // refreshOnly
+        logVerbose("Access token cookie missing, attempting refresh-token recovery");
+        tokens = await refreshWithToken(refreshToken);
+      } else if (token !== null && refreshToken === null) {
+        // accessOnly
         if (
-          decodedToken?.iss !== undefined &&
-          !acceptedIssuers.has(normalizeIssuer(decodedToken.iss))
+          decodedToken?.exp !== undefined &&
+          decodedToken.iss !== undefined &&
+          acceptedIssuers.has(normalizeIssuer(decodedToken.iss)) &&
+          decodedToken.exp * 1000 > Date.now()
         ) {
-          logVerbose(
-            "Access token issuer mismatch, clearing auth cookies",
-          );
-          return {
-            redirect: false,
-            cookies: structuredAuthCookies(
-              { token: null, refreshToken: null, verifier: null },
-              host,
-              cookieConfig,
-              cookieNamespace,
-            ),
-            token: null,
-          } satisfies RefreshResult;
-        }
-
-        // Determine token refresh strategy
-        let tokens: Tokens | null | undefined;
-        if (token === null && refreshToken === null) {
-          // none
-          logVerbose("No auth cookies found, skipping refresh");
+          logVerbose("Refresh token cookie missing but access token still valid");
           tokens = undefined;
-        } else if (token === null && refreshToken !== null) {
-          // refreshOnly
-          logVerbose(
-            "Access token cookie missing, attempting refresh-token recovery",
-          );
-          tokens = await refreshWithToken(refreshToken);
-        } else if (token !== null && refreshToken === null) {
-          // accessOnly
-          if (
-            decodedToken?.exp !== undefined &&
-            decodedToken.iss !== undefined &&
-            acceptedIssuers.has(normalizeIssuer(decodedToken.iss)) &&
-            decodedToken.exp * 1000 > Date.now()
-          ) {
-            logVerbose(
-              "Refresh token cookie missing but access token still valid",
+        } else {
+          logVerbose("Refresh token cookie missing and access token invalid, clearing");
+          tokens = null;
+        }
+      } else {
+        // both
+        if (decodedToken?.exp === undefined || decodedToken.iat === undefined) {
+          // undecodable
+          logVerbose("Failed to decode access token, attempting refresh-token recovery");
+          tokens = await refreshWithToken(refreshToken!);
+        } else {
+          // decoded
+          const totalTokenLifetimeMs = decodedToken.exp * 1000 - decodedToken.iat * 1000;
+          const minimumExpiration =
+            Date.now() +
+            Math.min(
+              REQUIRED_TOKEN_LIFETIME_MS,
+              Math.max(MINIMUM_REQUIRED_TOKEN_LIFETIME_MS, totalTokenLifetimeMs / 10),
             );
+          if (decodedToken.exp * 1000 > minimumExpiration) {
+            logVerbose("Token valid long enough, skipping refresh");
             tokens = undefined;
           } else {
-            logVerbose(
-              "Refresh token cookie missing and access token invalid, clearing",
-            );
-            tokens = null;
-          }
-        } else {
-          // both
-          if (
-            decodedToken?.exp === undefined ||
-            decodedToken.iat === undefined
-          ) {
-            // undecodable
-            logVerbose(
-              "Failed to decode access token, attempting refresh-token recovery",
-            );
             tokens = await refreshWithToken(refreshToken!);
-          } else {
-            // decoded
-            const totalTokenLifetimeMs =
-              decodedToken.exp * 1000 - decodedToken.iat * 1000;
-            const minimumExpiration =
-              Date.now() +
-              Math.min(
-                REQUIRED_TOKEN_LIFETIME_MS,
-                Math.max(
-                  MINIMUM_REQUIRED_TOKEN_LIFETIME_MS,
-                  totalTokenLifetimeMs / 10,
-                ),
-              );
-            if (decodedToken.exp * 1000 > minimumExpiration) {
-              logVerbose(
-                "Token valid long enough, skipping refresh",
-              );
-              tokens = undefined;
-            } else {
-              tokens = await refreshWithToken(refreshToken!);
-            }
           }
         }
+      }
 
       if (tokens === undefined) {
         return { redirect: false, cookies: [], token: currentToken };

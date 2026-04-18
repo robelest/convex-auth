@@ -82,15 +82,10 @@ function detectPackageRunner(): PackageRunner {
       }
     }
 
-    if (existsSync(path.join(dir, "pnpm-lock.yaml")))
-      return { cmd: "pnpm", args: ["exec"] };
-    if (
-      existsSync(path.join(dir, "bun.lockb")) ||
-      existsSync(path.join(dir, "bun.lock"))
-    )
+    if (existsSync(path.join(dir, "pnpm-lock.yaml"))) return { cmd: "pnpm", args: ["exec"] };
+    if (existsSync(path.join(dir, "bun.lockb")) || existsSync(path.join(dir, "bun.lock")))
       return { cmd: "bunx", args: [] };
-    if (existsSync(path.join(dir, "yarn.lock")))
-      return { cmd: "yarn", args: ["dlx"] };
+    if (existsSync(path.join(dir, "yarn.lock"))) return { cmd: "yarn", args: ["dlx"] };
 
     dir = path.dirname(dir);
   }
@@ -121,10 +116,7 @@ type CliOptions = {
   deploymentName?: string;
 };
 
-const flagDefs = new Map<
-  string,
-  { type: "string" | "boolean"; description: string }
->([
+const flagDefs = new Map<string, { type: "string" | "boolean"; description: string }>([
   [
     "site-url",
     {
@@ -145,8 +137,7 @@ const flagDefs = new Map<
     "variables",
     {
       type: "string",
-      description:
-        "Configure additional variables for interactive configuration.",
+      description: "Configure additional variables for interactive configuration.",
     },
   ],
   [
@@ -169,16 +160,14 @@ const flagDefs = new Map<
     "prod",
     {
       type: "boolean",
-      description:
-        "Set environment variables on this project's production deployment.",
+      description: "Set environment variables on this project's production deployment.",
     },
   ],
   [
     "preview-name",
     {
       type: "string",
-      description:
-        "Set environment variables on the preview deployment with the given name.",
+      description: "Set environment variables on the preview deployment with the given name.",
     },
   ],
   [
@@ -194,9 +183,7 @@ const flagDefs = new Map<
 
 function printHelp() {
   printBanner();
-  console.log(
-    "  Add code and set environment variables for @robelest/convex-auth.\n",
-  );
+  console.log("  Add code and set environment variables for @robelest/convex-auth.\n");
   console.log("  Full docs: https://auth.estifanos.com\n");
   console.log("  Options:\n");
   for (const [name, def] of flagDefs) {
@@ -270,15 +257,11 @@ function validateDeploymentSelectionOptions(options: CliOptions) {
     options.deploymentName !== undefined,
   ].filter(Boolean).length;
   if (selectionCount > 1) {
-    logErrorAndExit(
-      "Choose only one of --url, --prod, --preview-name, or --deployment-name.",
-    );
+    logErrorAndExit("Choose only one of --url, --prod, --preview-name, or --deployment-name.");
   }
 }
 
-function handleCancel(
-  value: unknown,
-): asserts value is Exclude<typeof value, symbol> {
+function handleCancel(value: unknown): asserts value is Exclude<typeof value, symbol> {
   if (p.isCancel(value)) {
     p.cancel("Setup cancelled.");
     process.exit(1);
@@ -300,15 +283,10 @@ async function runSetup(options: CliOptions) {
 
   const isNextjs = !!packageJson.dependencies?.next;
   const usesTypeScript = !!(
-    packageJson.dependencies?.typescript ||
-    packageJson.devDependencies?.typescript
+    packageJson.dependencies?.typescript || packageJson.devDependencies?.typescript
   );
-  const isVite = !!(
-    packageJson.dependencies?.vite || packageJson.devDependencies?.vite
-  );
-  const isExpo = !!(
-    packageJson.dependencies?.expo || packageJson.devDependencies?.expo
-  );
+  const isVite = !!(packageJson.dependencies?.vite || packageJson.devDependencies?.vite);
+  const isExpo = !!(packageJson.dependencies?.expo || packageJson.devDependencies?.expo);
   const config: ProjectConfig = {
     isNextjs,
     isVite,
@@ -418,8 +396,7 @@ async function configureSiteUrl(
 
   await configureEnvVar(config, {
     name: "SECONDARY_URL",
-    description:
-      "additional frontend URLs as a comma-separated list (optional)",
+    description: "additional frontend URLs as a comma-separated list (optional)",
     validate: (input) => {
       if (!input || input.trim() === "") {
         return undefined;
@@ -503,21 +480,13 @@ async function configureKeys(config: ProjectConfig) {
   logStep(config, "Configure signing and encryption keys");
   const s = p.spinner();
   s.start("Generating keys...");
-  const { JWT_PRIVATE_KEY, JWKS, AUTH_SECRET_ENCRYPTION_KEY } =
-    await generateKeys();
+  const { JWT_PRIVATE_KEY, JWKS, AUTH_SECRET_ENCRYPTION_KEY } = await generateKeys();
   s.stop("Keys generated.");
 
   const existingPrivateKey = backendEnvVar(config, "JWT_PRIVATE_KEY");
   const existingJwks = backendEnvVar(config, "JWKS");
-  const existingSecretEncryptionKey = backendEnvVar(
-    config,
-    "AUTH_SECRET_ENCRYPTION_KEY",
-  );
-  if (
-    existingPrivateKey !== "" ||
-    existingJwks !== "" ||
-    existingSecretEncryptionKey !== ""
-  ) {
+  const existingSecretEncryptionKey = backendEnvVar(config, "AUTH_SECRET_ENCRYPTION_KEY");
+  if (existingPrivateKey !== "" || existingJwks !== "" || existingSecretEncryptionKey !== "") {
     const shouldOverwrite = await p.confirm({
       message: `${printDeployment(config)} already has auth keys configured. Overwrite them?`,
       initialValue: false,
@@ -532,12 +501,9 @@ async function configureKeys(config: ProjectConfig) {
   s2.start("Setting keys on deployment...");
   await setEnvVarFromFile(config, "JWT_PRIVATE_KEY", JWT_PRIVATE_KEY);
   await setEnvVarFromFile(config, "JWKS", JWKS);
-  await setEnvVar(
-    config,
-    "AUTH_SECRET_ENCRYPTION_KEY",
-    AUTH_SECRET_ENCRYPTION_KEY,
-    { hideValue: true },
-  );
+  await setEnvVar(config, "AUTH_SECRET_ENCRYPTION_KEY", AUTH_SECRET_ENCRYPTION_KEY, {
+    hideValue: true,
+  });
   s2.stop("Keys configured.");
 }
 
@@ -546,12 +512,7 @@ async function configureKeys(config: ProjectConfig) {
 // ---------------------------------------------------------------------------
 
 function backendEnvVar(config: ProjectConfig, name: string): string {
-  const { file, args } = convexCmd(
-    "env",
-    "get",
-    ...deploymentArgs(config),
-    name,
-  );
+  const { file, args } = convexCmd("env", "get", ...deploymentArgs(config), name);
   return execFileSync(file, args, {
     stdio: "pipe",
     encoding: "utf-8",
@@ -564,14 +525,7 @@ async function setEnvVar(
   value: string,
   options?: { hideValue: boolean },
 ) {
-  const { file, args } = convexCmd(
-    "env",
-    "set",
-    ...deploymentArgs(config),
-    "--",
-    name,
-    value,
-  );
+  const { file, args } = convexCmd("env", "set", ...deploymentArgs(config), "--", name, value);
   execFileSync(file, args, {
     stdio: options?.hideValue ? "ignore" : "inherit",
   });
@@ -580,11 +534,7 @@ async function setEnvVar(
   }
 }
 
-async function setEnvVarFromFile(
-  config: ProjectConfig,
-  name: string,
-  value: string,
-) {
+async function setEnvVarFromFile(config: ProjectConfig, name: string, value: string) {
   const tmpDir = mkdtempSync(path.join(tmpdir(), "convex-auth-"));
   const tmpFile = path.join(tmpDir, `${name}.tmp`);
   try {
@@ -634,11 +584,7 @@ function deploymentArgs(config: ProjectConfig): string[] {
 
 function printDeployment(config: ProjectConfig): string {
   const { name, type } = config.deployment;
-  return (
-    (type !== null ? `${type} ` : "") +
-    "deployment" +
-    (name !== null ? ` ${name}` : "")
-  );
+  return (type !== null ? `${type} ` : "") + "deployment" + (name !== null ? ` ${name}` : "");
 }
 
 // ---------------------------------------------------------------------------
@@ -693,24 +639,17 @@ async function modifyTsConfig(config: ProjectConfig) {
   }
   const existingTsConfig = readFileSync(tsConfigPath, "utf8");
   const moduleResolutionPattern = /"moduleResolution"\s*:\s*"(\w+)"/;
-  const [, existingModuleResolution] =
-    existingTsConfig.match(moduleResolutionPattern) ?? [];
+  const [, existingModuleResolution] = existingTsConfig.match(moduleResolutionPattern) ?? [];
   const skipLibCheckPattern = /"skipLibCheck"\s*:\s*(\w+)/;
-  const [, existingSkipLibCheck] =
-    existingTsConfig.match(skipLibCheckPattern) ?? [];
-  if (
-    /Bundler/i.test(existingModuleResolution) &&
-    existingSkipLibCheck === "true"
-  ) {
+  const [, existingSkipLibCheck] = existingTsConfig.match(skipLibCheckPattern) ?? [];
+  if (/Bundler/i.test(existingModuleResolution) && existingSkipLibCheck === "true") {
     p.log.success(`${tsConfigPath} is already set up.`);
     return;
   }
 
   if (!compilerOptionsPattern.test(existingTsConfig)) {
     p.log.info(`Modify your ${tsConfigPath} to include the following:`);
-    p.log.message(
-      indent(`\n"moduleResolution": "Bundler",\n"skipLibCheck": true\n`),
-    );
+    p.log.message(indent(`\n"moduleResolution": "Bundler",\n"skipLibCheck": true\n`));
     const ready = await p.confirm({ message: "Ready to continue?" });
     handleCancel(ready);
     if (!ready) {
@@ -827,9 +766,7 @@ export const { signIn, signOut, store } = auth;
       }
     }
   } else {
-    const newAuthPath = config.usesTypeScript
-      ? `${authPath}.ts`
-      : `${authPath}.js`;
+    const newAuthPath = config.usesTypeScript ? `${authPath}.ts` : `${authPath}.js`;
     writeFileSync(newAuthPath, source);
     p.log.success(`Created ${newAuthPath}`);
   }
@@ -856,9 +793,7 @@ export const auth = createAuthContext(components.auth);
     if (doesAlreadyMatchTemplate(existing, sourceTemplate)) {
       p.log.success(`${existingPath} is already set up.`);
     } else {
-      p.log.info(
-        `You already have ${existingPath}. Make sure it uses createAuthContext:`,
-      );
+      p.log.info(`You already have ${existingPath}. Make sure it uses createAuthContext:`);
       p.log.message(indent(`\n${source}\n`));
       const ready = await p.confirm({ message: "Ready to continue?" });
       handleCancel(ready);
@@ -871,9 +806,7 @@ export const auth = createAuthContext(components.auth);
     if (!existsSync(authDir)) {
       mkdirSync(authDir, { recursive: true });
     }
-    const newPath = config.usesTypeScript
-      ? `${corePath}.ts`
-      : `${corePath}.js`;
+    const newPath = config.usesTypeScript ? `${corePath}.ts` : `${corePath}.js`;
     writeFileSync(newPath, source);
     p.log.success(`Created ${newPath}`);
   }
@@ -903,9 +836,7 @@ export default http;
     if (doesAlreadyMatchTemplate(existingHttp, sourceTemplate)) {
       p.log.success(`${existingHttpPath} is already set up.`);
     } else {
-      p.log.info(
-        `You already have ${existingHttpPath}. Make sure it includes auth.http.add:`,
-      );
+      p.log.info(`You already have ${existingHttpPath}. Make sure it includes auth.http.add:`);
       p.log.message(indent(`\n${source}\n`));
       const ready = await p.confirm({ message: "Ready to continue?" });
       handleCancel(ready);
@@ -915,9 +846,7 @@ export default http;
       }
     }
   } else {
-    const newHttpPath = config.usesTypeScript
-      ? `${httpPath}.ts`
-      : `${httpPath}.js`;
+    const newHttpPath = config.usesTypeScript ? `${httpPath}.ts` : `${httpPath}.js`;
     writeFileSync(newHttpPath, source);
     p.log.success(`Created ${newHttpPath}`);
   }
@@ -1117,14 +1046,10 @@ async function checkSourceControl(options: {
       .split("\n")
       .filter(
         (line) =>
-          !/\bpackage(-lock)?.json/.test(line) &&
-          !/\benv\.d\.ts$/.test(line) &&
-          line.length > 0,
+          !/\bpackage(-lock)?.json/.test(line) && !/\benv\.d\.ts$/.test(line) && line.length > 0,
       );
     if (changedFiles.length > 0) {
-      p.log.warn(
-        "There are unstaged or uncommitted changes in the working directory.",
-      );
+      p.log.warn("There are unstaged or uncommitted changes in the working directory.");
       const cont = await p.confirm({
         message: "Continue anyway?",
         initialValue: false,
@@ -1139,9 +1064,7 @@ async function checkSourceControl(options: {
     if (options.skipGitCheck) {
       return;
     }
-    p.log.warn(
-      "No source control detected. We recommend committing your current state first.",
-    );
+    p.log.warn("No source control detected. We recommend committing your current state first.");
     const cont = await p.confirm({ message: "Continue anyway?" });
     handleCancel(cont);
     if (!cont) {
@@ -1238,9 +1161,7 @@ export function readConvexDeployment(options: {
 
   loadEnvFiles();
   if (process.env.CONVEX_DEPLOYMENT) {
-    const type = getDeploymentTypeFromConfiguredDeployment(
-      process.env.CONVEX_DEPLOYMENT,
-    );
+    const type = getDeploymentTypeFromConfiguredDeployment(process.env.CONVEX_DEPLOYMENT);
     return {
       name: stripDeploymentTypePrefix(process.env.CONVEX_DEPLOYMENT),
       type,

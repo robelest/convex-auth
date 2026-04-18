@@ -1,7 +1,6 @@
 ---
 title: Group SSO RPC
-description:
-  App-owned client-callable group SSO RPC built from convex-auth server helpers.
+description: App-owned client-callable group SSO RPC built from convex-auth server helpers.
 ---
 
 <svelte:head>

@@ -1,12 +1,9 @@
 import { env } from "$env/dynamic/private";
 
 function requireSiteUrl() {
-  const siteUrl =
-    env.CONVEX_SITE_URL ?? env.VITE_CONVEX_URL?.replace(".cloud", ".site");
+  const siteUrl = env.CONVEX_SITE_URL ?? env.VITE_CONVEX_URL?.replace(".cloud", ".site");
   if (!siteUrl) {
-    throw new Error(
-      "Missing CONVEX_SITE_URL or VITE_CONVEX_URL for API proxying.",
-    );
+    throw new Error("Missing CONVEX_SITE_URL or VITE_CONVEX_URL for API proxying.");
   }
   return siteUrl;
 }
@@ -22,9 +19,6 @@ export async function proxyApiRequest(request: Request, path: string) {
   return await fetch(upstreamUrl, {
     method: request.method,
     headers,
-    body:
-      request.method === "GET" || request.method === "HEAD"
-        ? undefined
-        : await request.text(),
+    body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.text(),
   });
 }

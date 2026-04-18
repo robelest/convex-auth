@@ -28,10 +28,7 @@ type HttpContextCtx = HttpIdentityCtx & HttpQueryCtx;
 type HttpContextAuthLike = {
   user: {
     get: (ctx: HttpQueryCtx, userId: string) => Promise<UserDoc>;
-    getActiveGroup: (
-      ctx: HttpQueryCtx,
-      args: { userId: string },
-    ) => Promise<string | null>;
+    getActiveGroup: (ctx: HttpQueryCtx, args: { userId: string }) => Promise<string | null>;
   };
   member: {
     inspect: (
@@ -137,11 +134,7 @@ export type HttpAuthContextConfig<
    *
    * This callback runs only when authentication succeeds.
    */
-  resolve?: (
-    ctx: TCtx,
-    user: UserDoc,
-    auth: HttpAuthContext,
-  ) => Promise<TResolve> | TResolve;
+  resolve?: (ctx: TCtx, user: UserDoc, auth: HttpAuthContext) => Promise<TResolve> | TResolve;
   /**
    * Override or wrap HTTP auth resolution.
    *
@@ -152,11 +145,7 @@ export type HttpAuthContextConfig<
   authResolve?: (
     ctx: TCtx,
     fallback: () => Promise<HttpAuthContext | null>,
-  ) =>
-    | Promise<HttpAuthContext | null | undefined>
-    | HttpAuthContext
-    | null
-    | undefined;
+  ) => Promise<HttpAuthContext | null | undefined> | HttpAuthContext | null | undefined;
 };
 
 function createNotSignedInError() {
@@ -187,10 +176,8 @@ function buildCorsHeaders(
 
   return {
     ...(matchedOrigin ? { "Access-Control-Allow-Origin": matchedOrigin } : {}),
-    "Access-Control-Allow-Methods":
-      corsConfig?.methods ?? "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers":
-      corsConfig?.headers ?? "Content-Type,Authorization",
+    "Access-Control-Allow-Methods": corsConfig?.methods ?? "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    "Access-Control-Allow-Headers": corsConfig?.headers ?? "Content-Type,Authorization",
   };
 }
 
@@ -270,11 +257,8 @@ export function createHttpContext(auth: HttpContextAuthLike): {
     config?: HttpAuthContextConfig<Record<string, unknown>>,
   ) => {
     const fallback = () => resolveHttpAuthContext(auth, ctx, request);
-    const authOverride = config?.authResolve
-      ? await config.authResolve(ctx, fallback)
-      : undefined;
-    const resolved =
-      authOverride === undefined ? await fallback() : authOverride;
+    const authOverride = config?.authResolve ? await config.authResolve(ctx, fallback) : undefined;
+    const resolved = authOverride === undefined ? await fallback() : authOverride;
 
     if (resolved === null) {
       if (config?.optional !== true) {
@@ -287,9 +271,7 @@ export function createHttpContext(auth: HttpContextAuthLike): {
       };
     }
 
-    const extra = config?.resolve
-      ? await config.resolve(ctx, resolved.user, resolved)
-      : {};
+    const extra = config?.resolve ? await config.resolve(ctx, resolved.user, resolved) : {};
 
     return {
       ...resolved,
@@ -343,11 +325,7 @@ export function createHttpAction(
     },
   ) => {
     return httpActionGeneric(async (genericCtx, request) => {
-      const corsHeaders = buildCorsHeaders(
-        request,
-        options?.cors,
-        defaultOrigins,
-      );
+      const corsHeaders = buildCorsHeaders(request, options?.cors, defaultOrigins);
 
       try {
         const authHeader = request.headers.get("Authorization");
@@ -410,10 +388,7 @@ export function createHttpAction(
 
         if (
           options?.scope &&
-          !keyResult.value.scopes.can(
-            options.scope.resource,
-            options.scope.action,
-          )
+          !keyResult.value.scopes.can(options.scope.resource, options.scope.action)
         ) {
           return new Response(
             JSON.stringify({
@@ -499,11 +474,7 @@ export function createHttpRoute(
       path: routeConfig.path,
       method: "OPTIONS",
       handler: httpActionGeneric(async (_ctx, request) => {
-        const corsHeaders = buildCorsHeaders(
-          request,
-          routeConfig.cors,
-          defaultOrigins,
-        );
+        const corsHeaders = buildCorsHeaders(request, routeConfig.cors, defaultOrigins);
         return new Response(null, { status: 204, headers: corsHeaders });
       }),
     });
@@ -521,10 +492,7 @@ export function createHttpRoute(
 
 export function convertErrorsToResponse(
   errorStatusCode: number,
-  action: (
-    ctx: GenericActionCtx<GenericDataModel>,
-    request: Request,
-  ) => Promise<Response>,
+  action: (ctx: GenericActionCtx<GenericDataModel>, request: Request) => Promise<Response>,
 ) {
   return async (ctx: GenericActionCtx<GenericDataModel>, request: Request) => {
     try {
@@ -563,9 +531,7 @@ export function convertErrorsToResponse(
   };
 }
 
-export function getCookies(
-  request: Request,
-): Record<string, string | undefined> {
+export function getCookies(request: Request): Record<string, string | undefined> {
   return parseCookies(request.headers.get("Cookie") ?? "");
 }
 
@@ -576,10 +542,7 @@ export type SSORuntimeRoute = {
   rest: string[];
 };
 
-function parseConnectionRuntimeRoute(
-  pathname: string,
-  routeBase: string,
-): SSORuntimeRoute | null {
+function parseConnectionRuntimeRoute(pathname: string, routeBase: string): SSORuntimeRoute | null {
   const runtimePrefix = `${routeBase}/`;
   const runtimeParts = pathname.startsWith(runtimePrefix)
     ? pathname.slice(runtimePrefix.length).split("/").filter(Boolean)
@@ -607,8 +570,7 @@ export function addOpenIdRoutes(
     getJwks: () => string;
   },
 ) {
-  const cacheControl =
-    "public, max-age=15, stale-while-revalidate=15, stale-if-error=86400";
+  const cacheControl = "public, max-age=15, stale-while-revalidate=15, stale-if-error=86400";
 
   http.route({
     path: "/.well-known/openid-configuration",
@@ -649,10 +611,7 @@ export function addOpenIdRoutes(
 export function addAuthRoutes(
   http: HttpRouter,
   deps: {
-    handleSignIn: (
-      ctx: GenericActionCtx<GenericDataModel>,
-      request: Request,
-    ) => Promise<Response>;
+    handleSignIn: (ctx: GenericActionCtx<GenericDataModel>, request: Request) => Promise<Response>;
     handleCallback: (
       ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
@@ -766,10 +725,7 @@ export function addSSORoutes(
     method: "GET",
     handler: httpActionGeneric(
       deps.convertErrorsToResponse(400, async (ctx, request) => {
-        const route = parseConnectionRuntimeRoute(
-          new URL(request.url).pathname,
-          deps.routeBase,
-        );
+        const route = parseConnectionRuntimeRoute(new URL(request.url).pathname, deps.routeBase);
         if (!route) {
           throw new ConvexError({
             code: "INVALID_PARAMETERS",
@@ -814,10 +770,7 @@ export function addSSORoutes(
     method: "POST",
     handler: httpActionGeneric(
       deps.convertErrorsToResponse(400, async (ctx, request) => {
-        const route = parseConnectionRuntimeRoute(
-          new URL(request.url).pathname,
-          deps.routeBase,
-        );
+        const route = parseConnectionRuntimeRoute(new URL(request.url).pathname, deps.routeBase);
         if (route?.protocol === "saml" && route.rest.length === 1) {
           if (route.rest[0] === "acs") {
             return await deps.handleSamlAcs(ctx, request, route);
@@ -842,10 +795,7 @@ export function addSSORoutes(
     method: "PUT",
     handler: httpActionGeneric(
       deps.convertErrorsToResponse(400, async (ctx, request) => {
-        const route = parseConnectionRuntimeRoute(
-          new URL(request.url).pathname,
-          deps.routeBase,
-        );
+        const route = parseConnectionRuntimeRoute(new URL(request.url).pathname, deps.routeBase);
         if (route?.protocol === "scim" && route.rest[0] === "v2") {
           return await deps.handleScimRequest(ctx, request);
         }
@@ -862,10 +812,7 @@ export function addSSORoutes(
       pathPrefix: routePrefix,
       method,
       handler: httpActionGeneric(async (ctx, request) => {
-        const route = parseConnectionRuntimeRoute(
-          new URL(request.url).pathname,
-          deps.routeBase,
-        );
+        const route = parseConnectionRuntimeRoute(new URL(request.url).pathname, deps.routeBase);
         if (!route || route.protocol !== "scim" || route.rest[0] !== "v2") {
           return deps.scimError(404, "notFound", "SCIM resource not found.");
         }

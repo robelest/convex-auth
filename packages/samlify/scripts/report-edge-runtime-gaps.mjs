@@ -1,14 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
-const sourceExtensions = new Set([
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
-]);
+const sourceExtensions = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]);
 
 const trackedSpecifiers = new Map([
   ["node-rsa", "Replace with Oslo/WebCrypto wrapper"],
@@ -43,8 +36,7 @@ function findFileHits(filePath) {
   const lines = content.split(/\r?\n/);
   const hits = [];
 
-  const importRegex =
-    /\bimport\s+(?:type\s+)?(?:[^'";]+\s+from\s+)?['"]([^'"]+)['"]/g;
+  const importRegex = /\bimport\s+(?:type\s+)?(?:[^'";]+\s+from\s+)?['"]([^'"]+)['"]/g;
   const requireRegex = /\brequire\(\s*['"]([^'"]+)['"]\s*\)/g;
   const bufferRegex = /\bBuffer\b/g;
 

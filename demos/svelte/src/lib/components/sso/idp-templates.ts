@@ -39,8 +39,7 @@ export const idpTemplates: IdpTemplate[] = [
         type: "password",
       },
     ],
-    buildDiscoveryUrl: (v) =>
-      `https://${v.domain}.okta.com/.well-known/openid-configuration`,
+    buildDiscoveryUrl: (v) => `https://${v.domain}.okta.com/.well-known/openid-configuration`,
     helpText:
       "Okta Admin \u2192 Applications \u2192 your app \u2192 General tab \u2192 Client Credentials",
   },
@@ -68,8 +67,7 @@ export const idpTemplates: IdpTemplate[] = [
     ],
     buildDiscoveryUrl: (v) =>
       `https://login.microsoftonline.com/${v.tenantId}/v2.0/.well-known/openid-configuration`,
-    helpText:
-      "Azure Portal \u2192 App registrations \u2192 your app \u2192 Overview",
+    helpText: "Azure Portal \u2192 App registrations \u2192 your app \u2192 Overview",
   },
   {
     id: "google",
@@ -88,8 +86,7 @@ export const idpTemplates: IdpTemplate[] = [
         type: "password",
       },
     ],
-    buildDiscoveryUrl: () =>
-      "https://accounts.google.com/.well-known/openid-configuration",
+    buildDiscoveryUrl: () => "https://accounts.google.com/.well-known/openid-configuration",
     helpText: "Google Cloud Console \u2192 APIs & Services \u2192 Credentials",
   },
   {

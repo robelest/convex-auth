@@ -18,9 +18,7 @@ async function waitForSetAuthCalls(
 
 function createConvexMock() {
   const authRegistrations: Array<{
-    fetchToken: (args: {
-      forceRefreshToken: boolean;
-    }) => Promise<string | null | undefined>;
+    fetchToken: (args: { forceRefreshToken: boolean }) => Promise<string | null | undefined>;
     onChange?: (isAuthenticated: boolean) => void;
   }> = [];
   let authConfirmed = false;
@@ -40,18 +38,13 @@ function createConvexMock() {
     authRegistrations,
     triggerAuthChange(isAuthenticated: boolean) {
       authConfirmed = isAuthenticated;
-      authRegistrations[authRegistrations.length - 1]?.onChange?.(
-        isAuthenticated,
-      );
+      authRegistrations[authRegistrations.length - 1]?.onChange?.(isAuthenticated);
     },
   };
 }
 
 function createProxyRuntime(
-  fetchImpl: (
-    body: Record<string, unknown>,
-    proxyPath: string,
-  ) => Promise<Response>,
+  fetchImpl: (body: Record<string, unknown>, proxyPath: string) => Promise<Response>,
 ) {
   return {
     fetch: fetchImpl,
@@ -65,24 +58,22 @@ afterEach(() => {
 
 test("proxy mode re-syncs convex auth after sign in", async () => {
   const convex = createConvexMock();
-  const fetchMock = vi.fn(
-    async (_body: Record<string, unknown>, proxyPath: string) => {
-      expect(proxyPath).toBe("/api/auth");
-      return new Response(
-        JSON.stringify({
-          kind: "signedIn",
-          tokens: {
-            token: "fresh-token",
-            refreshToken: "dummy",
-          },
-        }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
+  const fetchMock = vi.fn(async (_body: Record<string, unknown>, proxyPath: string) => {
+    expect(proxyPath).toBe("/api/auth");
+    return new Response(
+      JSON.stringify({
+        kind: "signedIn",
+        tokens: {
+          token: "fresh-token",
+          refreshToken: "dummy",
         },
-      );
-    },
-  );
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  });
   const auth = client({
     convex,
     proxyPath: "/api/auth",
@@ -107,9 +98,7 @@ test("proxy mode re-syncs convex auth after sign in", async () => {
     | ((args: { forceRefreshToken: boolean }) => Promise<string | null>)
     | undefined;
   expect(latestFetchAccessToken).toBeDefined();
-  expect(await latestFetchAccessToken!({ forceRefreshToken: false })).toBe(
-    "fresh-token",
-  );
+  expect(await latestFetchAccessToken!({ forceRefreshToken: false })).toBe("fresh-token");
 
   expect(fetchMock).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -278,14 +267,9 @@ test("proxy signIn times out after rejection signal with no later confirmation",
   convex.triggerAuthChange(false);
 
   // eslint-disable-next-line jest/valid-expect -- rejection handler must be registered before advancing timers
-  const rejection = expect(signInPromise).rejects.toSatisfy(
-    (error: unknown) => {
-      return (
-        error instanceof ConvexError &&
-        error.data?.code === "AUTH_HANDSHAKE_TIMEOUT"
-      );
-    },
-  );
+  const rejection = expect(signInPromise).rejects.toSatisfy((error: unknown) => {
+    return error instanceof ConvexError && error.data?.code === "AUTH_HANDSHAKE_TIMEOUT";
+  });
   await vi.advanceTimersByTimeAsync(5001);
   await rejection;
 
@@ -327,14 +311,9 @@ test("proxy signIn times out when auth confirmation never arrives", async () => 
   });
 
   // eslint-disable-next-line jest/valid-expect -- rejection handler must be registered before advancing timers
-  const rejection2 = expect(signInPromise).rejects.toSatisfy(
-    (error: unknown) => {
-      return (
-        error instanceof ConvexError &&
-        error.data?.code === "AUTH_HANDSHAKE_TIMEOUT"
-      );
-    },
-  );
+  const rejection2 = expect(signInPromise).rejects.toSatisfy((error: unknown) => {
+    return error instanceof ConvexError && error.data?.code === "AUTH_HANDSHAKE_TIMEOUT";
+  });
   await vi.advanceTimersByTimeAsync(5001);
   await rejection2;
 
@@ -484,11 +463,7 @@ test("browser client preserves proxy defaults when runtime is partially overridd
   const convex = createConvexMock();
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input.url;
+      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     expect(url).toBe("https://example.com/api/auth");
     return new Response(
       JSON.stringify({

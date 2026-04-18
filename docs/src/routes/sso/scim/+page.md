@@ -1,7 +1,6 @@
 ---
 title: auth.group.sso.scim
-description:
-  SCIM 2.0 provisioning — configure directory sync and manage provisioned
+description: SCIM 2.0 provisioning — configure directory sync and manage provisioned
   identities.
 ---
 
@@ -64,8 +63,7 @@ const { token } = await auth.group.sso.scim.configure(ctx, {
       active: "active",
     },
     extraFields: {
-      department:
-        "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department",
+      department: "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department",
     },
   },
 });

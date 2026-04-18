@@ -4,12 +4,7 @@ import { decodeJwt } from "jose";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
 import { convexTest } from "./convex.setup";
-import {
-  expectSignedInResult,
-  signInViaMagicLink,
-  TEST_EMAIL,
-  TEST_PASSWORD,
-} from "./helpers";
+import { expectSignedInResult, signInViaMagicLink, TEST_EMAIL, TEST_PASSWORD } from "./helpers";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -33,17 +28,11 @@ test("sign in with email signs out existing user with different email", async ()
   const claims = decodeJwt(tokens!.token);
   const asMichal = t.withIdentity({ subject: claims.sub });
 
-  const newTokens = await signInViaMagicLink(
-    asMichal,
-    "email",
-    "michal@gmail.com",
-  );
+  const newTokens = await signInViaMagicLink(asMichal, "email", "michal@gmail.com");
 
   expect(newTokens).not.toBeNull();
 
-  expect(getUserIdFromToken(newTokens!.token)).not.toEqual(
-    getUserIdFromToken(tokens!.token),
-  );
+  expect(getUserIdFromToken(newTokens!.token)).not.toEqual(getUserIdFromToken(tokens!.token));
 
   const refreshedOldSession = expectSignedInResult(
     await t.action(api.auth.signIn, {
@@ -71,15 +60,9 @@ test("unverified password accounts are not auto-linked to email sign-in", async 
   const claims = decodeJwt(tokens!.token);
   const asUser = t.withIdentity({ subject: claims.sub });
 
-  const newTokens = await signInViaMagicLink(
-    asUser,
-    "email",
-    "linkme@gmail.com",
-  );
+  const newTokens = await signInViaMagicLink(asUser, "email", "linkme@gmail.com");
   expect(newTokens).not.toBeNull();
-  expect(getUserIdFromToken(newTokens!.token)).not.toEqual(
-    getUserIdFromToken(tokens!.token),
-  );
+  expect(getUserIdFromToken(newTokens!.token)).not.toEqual(getUserIdFromToken(tokens!.token));
 });
 
 test("automatic linking persists across repeated verified email sign-ins", async () => {
@@ -91,9 +74,7 @@ test("automatic linking persists across repeated verified email sign-ins", async
   const secondTokens = await signInViaMagicLink(t, "email", "repeat@gmail.com");
   expect(secondTokens).not.toBeNull();
 
-  expect(getUserIdFromToken(secondTokens!.token)).toEqual(
-    getUserIdFromToken(firstTokens!.token),
-  );
+  expect(getUserIdFromToken(secondTokens!.token)).toEqual(getUserIdFromToken(firstTokens!.token));
 });
 
 test("no linking to untrusted accounts", async () => {

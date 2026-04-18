@@ -3,13 +3,10 @@ import { Infer, v } from "convex/values";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
-import {
-  isSignInRateLimited,
-  recordFailedSignIn,
-  resetSignInRateLimit,
-} from "../limits";
+import { isSignInRateLimited, recordFailedSignIn, resetSignInRateLimit } from "../limits";
 import { LOG_LEVELS, log, maybeRedact } from "../log";
 import { Doc, MutationCtx } from "../types";
+import { withSpan } from "../utils/span";
 import { AUTH_STORE_REF } from "./store/refs";
 
 export const retrieveAccountWithCredentialsArgs = v.object({
@@ -48,19 +45,17 @@ export async function retrieveAccountWithCredentialsImpl(
 
     if (account.secret !== undefined) {
       const accountSecret = account.secret;
-      const limited = await isSignInRateLimited(
-        ctx,
-        existingAccount._id,
-        config,
-      );
+      const limited = await isSignInRateLimited(ctx, existingAccount._id, config);
       if (limited) {
         return "TooManyFailedAttempts" as const;
       }
 
-      const valid = await Provider.verify(
-        getProviderOrThrow(providerId),
-        accountSecret,
-        existingAccount.secret ?? "",
+      const valid = await withSpan("convex-auth.credentials.verify", { providerId }, () =>
+        Provider.verify(
+          getProviderOrThrow(providerId),
+          accountSecret,
+          existingAccount.secret ?? "",
+        ),
       );
       if (!valid) {
         await recordFailedSignIn(ctx, existingAccount._id, config);
@@ -70,9 +65,7 @@ export async function retrieveAccountWithCredentialsImpl(
       await resetSignInRateLimit(ctx, existingAccount._id, config);
     }
 
-    const user = (await db.users.getById(
-      existingAccount.userId,
-    )) as Doc<"User"> | null;
+    const user = (await db.users.getById(existingAccount.userId)) as Doc<"User"> | null;
 
     if (user === null) {
       log(
@@ -88,9 +81,7 @@ export async function retrieveAccountWithCredentialsImpl(
   }
 }
 
-export const callRetrieveAccountWithCredentials = async <
-  DataModel extends GenericDataModel,
->(
+export const callRetrieveAccountWithCredentials = async <DataModel extends GenericDataModel>(
   ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof retrieveAccountWithCredentialsArgs>,
 ): Promise<ReturnType> => {

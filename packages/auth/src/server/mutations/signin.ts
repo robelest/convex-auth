@@ -1,11 +1,13 @@
-import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import type { GenericDataModel } from "convex/server";
 import { GenericId, Infer, v } from "convex/values";
 
 import * as Provider from "../crypto";
 import { LOG_LEVELS } from "../log";
 import { log } from "../log";
-import { getAuthSessionId, issueSession } from "../sessions";
-import { MutationCtx, SessionInfo } from "../types";
+import { finalizeSessionIssuance, getAuthSessionId, issueSession } from "../sessions";
+import type { SessionIssuance } from "../sessions";
+import { GenericActionCtxWithAuthConfig, MutationCtx, SessionInfo } from "../types";
+import { withSpan } from "../utils/span";
 import { AUTH_STORE_REF } from "./store/refs";
 
 export const signInArgs = v.object({
@@ -14,36 +16,53 @@ export const signInArgs = v.object({
   generateTokens: v.boolean(),
 });
 
-type ReturnType = SessionInfo;
-
 export async function signInImpl(
   ctx: MutationCtx,
   args: Infer<typeof signInArgs>,
   config: Provider.Config,
-): Promise<ReturnType> {
-  log(LOG_LEVELS.DEBUG, "signInImpl args:", args);
-  const { userId, sessionId: existingSessionId, generateTokens } = args;
-  const typedUserId = userId as GenericId<"User">;
-  const replaceSessionId =
-    existingSessionId === undefined
-      ? ((await getAuthSessionId(ctx)) ?? undefined)
-      : undefined;
-  return await issueSession(ctx, config, {
-    userId: typedUserId,
-    existingSessionId: existingSessionId as GenericId<"Session"> | undefined,
-    replaceSessionId,
-    generateTokens,
-  });
+): Promise<SessionIssuance> {
+  return withSpan(
+    "convex-auth.mutations.signIn",
+    {
+      hasExistingSession: args.sessionId !== undefined,
+      generateTokens: args.generateTokens,
+    },
+    async () => {
+      log(LOG_LEVELS.DEBUG, "signInImpl args:", args);
+      const { userId, sessionId: existingSessionId, generateTokens } = args;
+      const typedUserId = userId as GenericId<"User">;
+      const replaceSessionId =
+        existingSessionId === undefined ? ((await getAuthSessionId(ctx)) ?? undefined) : undefined;
+      return await issueSession(ctx, config, {
+        userId: typedUserId,
+        existingSessionId: existingSessionId as GenericId<"Session"> | undefined,
+        replaceSessionId,
+        generateTokens,
+      });
+    },
+  );
 }
 
+/**
+ * Run the sign-in mutation, then sign the JWT on the action side.
+ *
+ * Splitting the work like this keeps the 5–30ms of RSA-2048 CPU out of the
+ * mutation transaction so the mutation can commit quickly even on a cold
+ * worker. The refresh-token string itself is cheap to compute and stays
+ * inside the mutation (returned on the {@link SessionIssuance}); only the
+ * JWT signing moves here.
+ *
+ * @internal
+ */
 export const callSignIn = async <DataModel extends GenericDataModel>(
-  ctx: GenericActionCtx<DataModel>,
+  ctx: GenericActionCtxWithAuthConfig<DataModel>,
   args: Infer<typeof signInArgs>,
-): Promise<ReturnType> => {
-  return ctx.runMutation(AUTH_STORE_REF, {
+): Promise<SessionInfo> => {
+  const issuance = (await ctx.runMutation(AUTH_STORE_REF, {
     args: {
       type: "signIn",
       ...args,
     },
-  }) as Promise<ReturnType>;
+  })) as SessionIssuance;
+  return await finalizeSessionIssuance(ctx.auth.config, issuance);
 };

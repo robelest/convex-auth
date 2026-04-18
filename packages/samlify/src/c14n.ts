@@ -16,11 +16,7 @@ export interface C14nNode {
   documentElement?: C14nNode;
   removeChild?: (child: C14nNode) => C14nNode;
   getAttribute?: (name: string) => string | null;
-  setAttributeNS?: (
-    namespace: string,
-    qualifiedName: string,
-    value: string,
-  ) => void;
+  setAttributeNS?: (namespace: string, qualifiedName: string, value: string) => void;
 }
 
 export interface C14nAttr {
@@ -82,10 +78,7 @@ function encodeSpecialCharactersInAttribute(attributeValue: string): string {
 }
 
 function encodeSpecialCharactersInText(text: string): string {
-  return text.replace(
-    /([&<>\r])/g,
-    (_str, item) => xmlSpecialToEncodedText[item],
-  );
+  return text.replace(/([&<>\r])/g, (_str, item) => xmlSpecialToEncodedText[item]);
 }
 
 function isElementNode(node: C14nNode): boolean {
@@ -164,10 +157,7 @@ function findDirectChildSignature(node: C14nNode): C14nNode | null {
   return null;
 }
 
-function findAllSignatures(
-  node: C14nNode,
-  matches: C14nNode[] = [],
-): C14nNode[] {
+function findAllSignatures(node: C14nNode, matches: C14nNode[] = []): C14nNode[] {
   if (
     isElementNode(node) &&
     node.localName === "Signature" &&
@@ -191,11 +181,7 @@ function getSignatureValueText(signatureNode: C14nNode): string | null {
   }
   for (let i = 0; i < signatureNode.childNodes.length; i++) {
     const child = signatureNode.childNodes[i];
-    if (
-      isElementNode(child) &&
-      child.localName === "SignatureValue" &&
-      child.childNodes
-    ) {
+    if (isElementNode(child) && child.localName === "SignatureValue" && child.childNodes) {
       for (let j = 0; j < child.childNodes.length; j++) {
         const textNode = child.childNodes[j];
         if (isTextNode(textNode) && typeof textNode.data === "string") {
@@ -263,13 +249,7 @@ export class ExclusiveCanonicalization {
     attrListToRender.sort(attrCompare);
     const res: string[] = [];
     for (const attr of attrListToRender) {
-      res.push(
-        " ",
-        attr.name,
-        '="',
-        encodeSpecialCharactersInAttribute(attr.value),
-        '"',
-      );
+      res.push(" ", attr.name, '="', encodeSpecialCharactersInAttribute(attr.value), '"');
     }
     return res.join("");
   }
@@ -318,11 +298,7 @@ export class ExclusiveCanonicalization {
 
         if (
           attr.prefix &&
-          !isPrefixInScope(
-            prefixesInScope,
-            attr.prefix,
-            attr.namespaceURI || "",
-          ) &&
+          !isPrefixInScope(prefixesInScope, attr.prefix, attr.namespaceURI || "") &&
           attr.prefix !== "xmlns" &&
           attr.prefix !== "xml"
         ) {
@@ -393,34 +369,21 @@ export class ExclusiveCanonicalization {
       return res.join("");
     }
 
-    throw new Error(
-      `Unable to exclusive canonicalize node type: ${node.nodeType}`,
-    );
+    throw new Error(`Unable to exclusive canonicalize node type: ${node.nodeType}`);
   }
 
   process(elem: C14nNode, options: C14nProcessOptions = {}): string {
-    let inclusiveNamespacesPrefixList =
-      options.inclusiveNamespacesPrefixList || [];
+    let inclusiveNamespacesPrefixList = options.inclusiveNamespacesPrefixList || [];
     const defaultNs = options.defaultNs || "";
     const defaultNsForPrefix = options.defaultNsForPrefix || {};
     const ancestorNamespaces = options.ancestorNamespaces || [];
 
     if (inclusiveNamespacesPrefixList.length === 0) {
-      const canonicalizationMethod = findChildren(
-        elem,
-        "CanonicalizationMethod",
-      );
+      const canonicalizationMethod = findChildren(elem, "CanonicalizationMethod");
       if (canonicalizationMethod.length !== 0) {
-        const inclusiveNamespaces = findChildren(
-          canonicalizationMethod[0],
-          "InclusiveNamespaces",
-        );
-        if (
-          inclusiveNamespaces.length !== 0 &&
-          inclusiveNamespaces[0].getAttribute
-        ) {
-          const prefixList =
-            inclusiveNamespaces[0].getAttribute("PrefixList") || "";
+        const inclusiveNamespaces = findChildren(canonicalizationMethod[0], "InclusiveNamespaces");
+        if (inclusiveNamespaces.length !== 0 && inclusiveNamespaces[0].getAttribute) {
+          const prefixList = inclusiveNamespaces[0].getAttribute("PrefixList") || "";
           inclusiveNamespacesPrefixList = prefixList.split(" ").filter(Boolean);
         }
       }
@@ -466,11 +429,7 @@ export class EnvelopedSignature {
   process(node: C14nNode, options: C14nProcessOptions = {}): C14nNode {
     if (options.signatureNode == null) {
       const signature = findDirectChildSignature(node);
-      if (
-        signature &&
-        signature.parentNode &&
-        signature.parentNode.removeChild
-      ) {
+      if (signature && signature.parentNode && signature.parentNode.removeChild) {
         signature.parentNode.removeChild(signature);
       }
       return node;
@@ -482,10 +441,7 @@ export class EnvelopedSignature {
       for (const nodeSignature of signatures) {
         const signatureValue = getSignatureValueText(nodeSignature);
         if (signatureValue && signatureValue === expectedSignatureValue) {
-          if (
-            nodeSignature.parentNode &&
-            nodeSignature.parentNode.removeChild
-          ) {
+          if (nodeSignature.parentNode && nodeSignature.parentNode.removeChild) {
             nodeSignature.parentNode.removeChild(nodeSignature);
           }
         }
@@ -514,9 +470,7 @@ export function getTransformByAlgorithm(algorithm: string): TransformAlgorithm {
     case "http://www.w3.org/2000/09/xmldsig#enveloped-signature":
       return new EnvelopedSignature();
     default:
-      throw new Error(
-        `canonicalization algorithm '${algorithm}' is not supported`,
-      );
+      throw new Error(`canonicalization algorithm '${algorithm}' is not supported`);
   }
 }
 

@@ -1,8 +1,5 @@
 function escapeXmlText(input: string): string {
-  return input
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return input.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function escapeXmlAttribute(input: string): string {
@@ -42,12 +39,7 @@ function renderElement(tagName: string, value: any): string {
 
   if (Array.isArray(value)) {
     value.forEach((item) => {
-      if (
-        item &&
-        typeof item === "object" &&
-        !Array.isArray(item) &&
-        item._attr
-      ) {
+      if (item && typeof item === "object" && !Array.isArray(item) && item._attr) {
         attrs += renderAttributes(item._attr);
         return;
       }

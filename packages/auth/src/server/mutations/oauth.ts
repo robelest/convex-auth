@@ -10,10 +10,7 @@ import type { AuthAccountExtend, AuthProfile } from "../payloads";
 import { accountExtendValidator, payloadRecordValidator } from "../payloads";
 import { generateRandomString, sha256 } from "../random";
 import { createSyntheticOAuthMaterializedConfig } from "../sso/oidc";
-import {
-  normalizeGroupConnectionPolicy,
-  resolveProvisionedRoleIds,
-} from "../sso/policy";
+import { normalizeGroupConnectionPolicy, resolveProvisionedRoleIds } from "../sso/policy";
 import {
   GROUP_OIDC_PROVIDER_PREFIX,
   GROUP_SAML_PROVIDER_PREFIX,
@@ -46,15 +43,11 @@ function normalizeAccountExtend(
   };
   if (provider.startsWith(GROUP_OIDC_PROVIDER_PREFIX)) {
     baseIdentity.type = "group-connection-oidc";
-    baseIdentity.connectionId = provider.slice(
-      GROUP_OIDC_PROVIDER_PREFIX.length,
-    );
+    baseIdentity.connectionId = provider.slice(GROUP_OIDC_PROVIDER_PREFIX.length);
   }
   if (provider.startsWith(GROUP_SAML_PROVIDER_PREFIX)) {
     baseIdentity.type = "group-connection-saml";
-    baseIdentity.connectionId = provider.slice(
-      GROUP_SAML_PROVIDER_PREFIX.length,
-    );
+    baseIdentity.connectionId = provider.slice(GROUP_SAML_PROVIDER_PREFIX.length);
   }
   const provided = accountExtend;
   const providedIdentity = provided?.identity;
@@ -76,8 +69,7 @@ export async function userOAuthImpl(
   config: Provider.Config,
 ): Promise<ReturnType> {
   log("DEBUG", "userOAuthImpl args:", args);
-  const { profile, provider, providerAccountId, signature, accountExtend } =
-    args;
+  const { profile, provider, providerAccountId, signature, accountExtend } = args;
   const typedProfile = profile as AuthProfile;
   const db = authDb(ctx, config);
   const connectionId = provider.startsWith(GROUP_OIDC_PROVIDER_PREFIX)
@@ -97,25 +89,18 @@ export async function userOAuthImpl(
       ? await getGroupConnection(ctx, config.component.public, connectionId)
       : null;
   const group =
-    connection !== null
-      ? await getGroup(ctx, config.component.public, connection.groupId)
-      : null;
-  const connectionPolicy = connection
-    ? normalizeGroupConnectionPolicy(group?.policy)
-    : null;
+    connection !== null ? await getGroup(ctx, config.component.public, connection.groupId) : null;
+  const connectionPolicy = connection ? normalizeGroupConnectionPolicy(group?.policy) : null;
 
   const existingScimIdentity =
     connectionId !== null &&
     existingAccount === null &&
     connectionPolicy?.provisioning.scimReuse.user === "externalId"
-      ? await ctx.runQuery(
-          config.component.public.groupConnectionScimIdentityGet,
-          {
-            connectionId,
-            resourceType: "user",
-            externalId: providerAccountId,
-          },
-        )
+      ? await ctx.runQuery(config.component.public.groupConnectionScimIdentityGet, {
+          connectionId,
+          resourceType: "user",
+          externalId: providerAccountId,
+        })
       : null;
 
   let verifier;
@@ -168,11 +153,7 @@ export async function userOAuthImpl(
           })
         : getProviderOrThrow(provider)) as AuthProviderMaterializedConfig,
       profile: profileForProvisioning as AuthProfile,
-      accountExtend: normalizeAccountExtend(
-        provider,
-        providerAccountId,
-        accountExtend,
-      ),
+      accountExtend: normalizeAccountExtend(provider, providerAccountId, accountExtend),
     },
     config,
     connectionPolicy?.provisioning.user
@@ -197,9 +178,7 @@ export async function userOAuthImpl(
       if (groupId) {
         const provisionedRoleIds = resolveProvisionedRoleIds({
           policy: connectionPolicy,
-          groups: Array.isArray(
-            (typedProfile as Record<string, unknown>).groups,
-          )
+          groups: Array.isArray((typedProfile as Record<string, unknown>).groups)
             ? ((typedProfile as Record<string, unknown>).groups as string[])
             : undefined,
           roles: Array.isArray((typedProfile as Record<string, unknown>).roles)
@@ -247,8 +226,7 @@ export async function userOAuthImpl(
 
   const code = generateRandomString(8, "0123456789");
   await db.verifiers.delete(verifier._id);
-  const existingVerificationCode =
-    await db.verificationCodes.getByAccountId(accountId);
+  const existingVerificationCode = await db.verificationCodes.getByAccountId(accountId);
   if (existingVerificationCode !== null) {
     await db.verificationCodes.delete(existingVerificationCode._id);
   }

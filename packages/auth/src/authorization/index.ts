@@ -51,10 +51,7 @@
  * @see {@link ConvexAuthConfig}
  */
 export function defineRoles<
-  const TRoles extends Record<
-    string,
-    { label?: string; grants: readonly string[] }
-  >,
+  const TRoles extends Record<string, { label?: string; grants: readonly string[] }>,
 >(
   roles: TRoles,
 ): {

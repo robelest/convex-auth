@@ -86,9 +86,7 @@ export const totpGetVerifiedByUserId = query({
   handler: async (ctx, { userId }) => {
     return await ctx.db
       .query("TotpFactor")
-      .withIndex("user_id_verified", (q) =>
-        q.eq("userId", userId).eq("verified", true),
-      )
+      .withIndex("user_id_verified", (q) => q.eq("userId", userId).eq("verified", true))
       .first();
   },
 });
@@ -189,6 +187,13 @@ export const totpMarkVerified = mutation({
   returns: v.null(),
   handler: async (ctx, { totpId, lastUsedAt }) => {
     await ctx.db.patch("TotpFactor", totpId, { verified: true, lastUsedAt });
+    const factor = await ctx.db.get("TotpFactor", totpId);
+    if (factor !== null) {
+      const user = await ctx.db.get("User", factor.userId);
+      if (user !== null && user.hasTotp !== true) {
+        await ctx.db.patch("User", factor.userId, { hasTotp: true });
+      }
+    }
     return null;
   },
 });
@@ -249,7 +254,20 @@ export const totpDelete = mutation({
   args: { totpId: v.id("TotpFactor") },
   returns: v.null(),
   handler: async (ctx, { totpId }) => {
+    const factor = await ctx.db.get("TotpFactor", totpId);
     await ctx.db.delete("TotpFactor", totpId);
+    if (factor !== null && factor.verified) {
+      const remaining = await ctx.db
+        .query("TotpFactor")
+        .withIndex("user_id_verified", (q) => q.eq("userId", factor.userId).eq("verified", true))
+        .first();
+      if (remaining === null) {
+        const user = await ctx.db.get("User", factor.userId);
+        if (user !== null && user.hasTotp === true) {
+          await ctx.db.patch("User", factor.userId, { hasTotp: false });
+        }
+      }
+    }
     return null;
   },
 });

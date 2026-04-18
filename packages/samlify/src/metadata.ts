@@ -65,11 +65,7 @@ export default class Metadata implements MetadataInterface {
         },
         {
           key: "singleLogoutService",
-          localPath: [
-            "EntityDescriptor",
-            "~SSODescriptor",
-            "SingleLogoutService",
-          ],
+          localPath: ["EntityDescriptor", "~SSODescriptor", "SingleLogoutService"],
           attributes: ["Binding", "Location"],
         },
         {
@@ -90,10 +86,7 @@ export default class Metadata implements MetadataInterface {
       delete this.meta.sharedCertificate;
     }
 
-    if (
-      Array.isArray(this.meta.entityDescriptor) &&
-      this.meta.entityDescriptor.length > 1
-    ) {
+    if (Array.isArray(this.meta.entityDescriptor) && this.meta.entityDescriptor.length > 1) {
       throw new Error("ERR_MULTIPLE_METADATA_ENTITYDESCRIPTOR");
     }
   }
@@ -155,9 +148,7 @@ export default class Metadata implements MetadataInterface {
       if (!(singleLogoutService instanceof Array)) {
         singleLogoutService = [singleLogoutService];
       }
-      const service = singleLogoutService.find(
-        (obj) => obj.binding === bindType,
-      );
+      const service = singleLogoutService.find((obj) => obj.binding === bindType);
       if (service) {
         return service.location;
       }

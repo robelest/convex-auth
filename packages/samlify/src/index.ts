@@ -1,10 +1,6 @@
 // version <= 1.25
-import IdentityProvider, {
-  IdentityProvider as IdentityProviderInstance,
-} from "./entity-idp";
-import ServiceProvider, {
-  ServiceProvider as ServiceProviderInstance,
-} from "./entity-sp";
+import IdentityProvider, { IdentityProvider as IdentityProviderInstance } from "./entity-idp";
+import ServiceProvider, { ServiceProvider as ServiceProviderInstance } from "./entity-sp";
 
 export { default as IdPMetadata } from "./metadata-idp";
 export { default as SPMetadata } from "./metadata-sp";

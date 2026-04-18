@@ -1,11 +1,6 @@
 import type { UserIdentity } from "convex/server";
 
-import type {
-  AuthContext,
-  AuthLike,
-  OptionalAuthContext,
-  UserDoc,
-} from "./auth-context";
+import type { AuthContext, AuthLike, OptionalAuthContext, UserDoc } from "./auth-context";
 import type { ComponentReadCtx as AuthQueryCtx } from "./componentContext";
 import { userIdFromIdentitySubject } from "./identity";
 
@@ -17,11 +12,8 @@ type AuthIdentityCtx = {
 
 type AuthContextResolverLike = {
   user: {
-    get: (ctx: AuthQueryCtx, userId: string) => Promise<UserDoc>;
-    getActiveGroup: (
-      ctx: AuthQueryCtx,
-      args: { userId: string },
-    ) => Promise<string | null>;
+    get: (ctx: AuthQueryCtx, userId: string) => Promise<UserDoc | null>;
+    getActiveGroup: (ctx: AuthQueryCtx, args: { userId: string }) => Promise<string | null>;
   };
   member: {
     inspect: (
@@ -36,9 +28,7 @@ type AuthContextResolverLike = {
 };
 
 /** @internal */
-export async function getSessionUserId(
-  ctx: AuthIdentityCtx,
-): Promise<string | null> {
+export async function getSessionUserId(ctx: AuthIdentityCtx): Promise<string | null> {
   const identity = await ctx.auth.getUserIdentity();
   if (identity === null) {
     return null;
@@ -51,9 +41,22 @@ export async function getAuthContextForUser(
   auth: AuthContextResolverLike,
   ctx: AuthQueryCtx,
   userId: string,
+  opts?: { group?: boolean },
 ): Promise<AuthContext> {
-  const user = await auth.user.get(ctx, userId);
-  const groupId = await auth.user.getActiveGroup(ctx, { userId });
+  if (opts?.group === false) {
+    const user = await auth.user.get(ctx, userId);
+    return {
+      userId: userId as AuthContext["userId"],
+      user: user as UserDoc,
+      groupId: null,
+      role: null,
+      grants: [],
+    };
+  }
+  const [user, groupId] = await Promise.all([
+    auth.user.get(ctx, userId),
+    auth.user.getActiveGroup(ctx, { userId }),
+  ]);
   let role: string | null = null;
   let grants: string[] = [];
   if (groupId) {
@@ -65,7 +68,7 @@ export async function getAuthContextForUser(
   }
   return {
     userId: userId as AuthContext["userId"],
-    user,
+    user: user as UserDoc,
     groupId,
     role,
     grants,
@@ -76,6 +79,7 @@ export async function getAuthContextForUser(
 export async function getAuthContext(
   auth: AuthLike,
   ctx: AuthIdentityCtx & AuthQueryCtx,
+  opts?: { group?: boolean },
 ): Promise<AuthContext | null> {
   const userId = await getSessionUserId(ctx);
   if (userId === null) {
@@ -85,6 +89,7 @@ export async function getAuthContext(
     auth as unknown as AuthContextResolverLike,
     ctx as AuthQueryCtx,
     userId,
+    opts,
   );
 }
 

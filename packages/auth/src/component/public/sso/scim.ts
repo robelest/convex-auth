@@ -53,9 +53,7 @@ export const groupConnectionScimConfigUpsert = mutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db
       .query("GroupConnectionScimConfig")
-      .withIndex("group_connection_id", (idx) =>
-        idx.eq("connectionId", args.connectionId),
-      )
+      .withIndex("group_connection_id", (idx) => idx.eq("connectionId", args.connectionId))
       .first();
     if (existing) {
       await ctx.db.patch(existing._id, args);
@@ -91,9 +89,7 @@ export const groupConnectionScimConfigGetByGroupConnection = query({
   handler: async (ctx, { connectionId }) => {
     return await ctx.db
       .query("GroupConnectionScimConfig")
-      .withIndex("group_connection_id", (idx) =>
-        idx.eq("connectionId", connectionId),
-      )
+      .withIndex("group_connection_id", (idx) => idx.eq("connectionId", connectionId))
       .first();
   },
 });
@@ -241,6 +237,53 @@ export const groupConnectionScimIdentityGetByGroupConnectionAndUser = query({
 });
 
 /**
+ * Batched variant of
+ * {@link groupConnectionScimIdentityGetByGroupConnectionAndUser}. Resolves
+ * SCIM identities for many users under the same connection in a single
+ * component round-trip.
+ *
+ * Used by large SCIM syncs that previously walked the user list one at a
+ * time — a 1000-user import was 1000 lookups. With this helper it's one.
+ *
+ * @param args.connectionId - The ID of the connection to scope to.
+ * @param args.userIds - One or more user ids to look up. Duplicates are
+ *   tolerated.
+ * @returns Array of `{ userId, identity }` pairs in the input order; when
+ *   a user has no SCIM identity under this connection, `identity` is `null`.
+ */
+export const groupConnectionScimIdentityGetByGroupConnectionAndUsers = query({
+  args: {
+    connectionId: v.id("GroupConnection"),
+    userIds: v.array(v.id("User")),
+  },
+  returns: v.array(
+    v.object({
+      userId: v.id("User"),
+      identity: v.union(vGroupConnectionScimIdentityDoc, v.null()),
+    }),
+  ),
+  handler: async (ctx, { connectionId, userIds }) => {
+    if (userIds.length === 0) return [];
+    const unique = Array.from(new Set(userIds));
+    const docs = await Promise.all(
+      unique.map((userId) =>
+        ctx.db
+          .query("GroupConnectionScimIdentity")
+          .withIndex("group_connection_id_user_id", (idx) =>
+            idx.eq("connectionId", connectionId).eq("userId", userId),
+          )
+          .first(),
+      ),
+    );
+    const byUserId = new Map(unique.map((id, i) => [id, docs[i] ?? null]));
+    return userIds.map((userId) => ({
+      userId,
+      identity: byUserId.get(userId) ?? null,
+    }));
+  },
+});
+
+/**
  * Retrieve the SCIM identity that is mapped to a specific group.
  *
  * Looks up a SCIM identity by its `mappedGroupId` field. This is used when
@@ -267,9 +310,7 @@ export const groupConnectionScimIdentityGetByMappedGroup = query({
   handler: async (ctx, { mappedGroupId }) => {
     return await ctx.db
       .query("GroupConnectionScimIdentity")
-      .withIndex("mapped_group_id", (idx) =>
-        idx.eq("mappedGroupId", mappedGroupId),
-      )
+      .withIndex("mapped_group_id", (idx) => idx.eq("mappedGroupId", mappedGroupId))
       .first();
   },
 });
@@ -300,9 +341,7 @@ export const groupConnectionScimIdentityListByGroupConnection = query({
   handler: async (ctx, { connectionId }) => {
     return await ctx.db
       .query("GroupConnectionScimIdentity")
-      .withIndex("group_connection_id", (idx) =>
-        idx.eq("connectionId", connectionId),
-      )
+      .withIndex("group_connection_id", (idx) => idx.eq("connectionId", connectionId))
       .collect();
   },
 });

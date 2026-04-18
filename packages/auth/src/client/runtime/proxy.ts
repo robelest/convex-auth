@@ -49,8 +49,7 @@ export function createProxyHelpers(args: { proxy: string | undefined }) {
 
   const resolveProxyUrl = () => {
     const origin =
-      typeof window !== "undefined" &&
-      typeof window.location?.origin === "string"
+      typeof window !== "undefined" && typeof window.location?.origin === "string"
         ? window.location.origin
         : typeof location !== "undefined" && typeof location.origin === "string"
           ? location.origin
@@ -102,9 +101,7 @@ export function createProxyHelpers(args: { proxy: string | undefined }) {
         "authError" in errorBody &&
         typeof (errorBody as Record<string, unknown>).authError === "object"
       ) {
-        throw new ConvexError(
-          (errorBody as Record<string, unknown>).authError as Value,
-        );
+        throw new ConvexError((errorBody as Record<string, unknown>).authError as Value);
       }
       throw new Error(
         ((errorBody as Record<string, unknown>).error as string) ??

@@ -121,17 +121,13 @@ test("group oidc login interoperates with zitadel through api-driven flow", asyn
   const { groupId } = await groupCreateRpc(convexClient, convexUserToken!, {
     name: `Zitadel Interop ${runId}`,
   });
-  const connectionCreated = await groupConnectionCreateRpc(
-    convexClient,
-    convexUserToken!,
-    {
-      groupId,
-      name: `Zitadel Interop ${runId}`,
-      slug: runId,
-      protocol: "oidc",
-      status: "active",
-    },
-  );
+  const connectionCreated = await groupConnectionCreateRpc(convexClient, convexUserToken!, {
+    groupId,
+    name: `Zitadel Interop ${runId}`,
+    slug: runId,
+    protocol: "oidc",
+    status: "active",
+  });
 
   const connectionId = connectionCreated.connectionId;
   expect(connectionId).toBeTruthy();
@@ -171,10 +167,7 @@ test("group oidc login interoperates with zitadel through api-driven flow", asyn
         name: `convex-auth-oidc-${runId}`,
         redirectUris: [connectionCallbackUrl],
         responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
-        grantTypes: [
-          "OIDC_GRANT_TYPE_AUTHORIZATION_CODE",
-          "OIDC_GRANT_TYPE_REFRESH_TOKEN",
-        ],
+        grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"],
         appType: "OIDC_APP_TYPE_WEB",
         authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
         postLogoutRedirectUris: [redirectTo],
@@ -260,9 +253,7 @@ test("group oidc login interoperates with zitadel through api-driven flow", asyn
 
   const signInResponse = await requestHttp(signInUrl);
   if (signInResponse.status !== 302) {
-    throw new Error(
-      `OIDC signin failed: ${signInResponse.status} ${await signInResponse.text()}`,
-    );
+    throw new Error(`OIDC signin failed: ${signInResponse.status} ${await signInResponse.text()}`);
   }
   expect(signInResponse.status).toBe(302);
   updateCookieJar(convexCookies, parseSetCookieHeaders(signInResponse));
@@ -282,9 +273,7 @@ test("group oidc login interoperates with zitadel through api-driven flow", asyn
   expect(authorizeResponse.status).toBeLessThan(400);
   const authRequestLocation = authorizeResponse.headers.get("location");
   if (!authRequestLocation) {
-    throw new Error(
-      "Authorize endpoint did not return an auth request redirect.",
-    );
+    throw new Error("Authorize endpoint did not return an auth request redirect.");
   }
 
   const authRequestLocationForHost = rewriteUrlForHostAccess(
@@ -292,10 +281,7 @@ test("group oidc login interoperates with zitadel through api-driven flow", asyn
     zitadelRuntimeBaseUrl,
     zitadelBaseUrl,
   );
-  const authRequestUrl = new URL(
-    authRequestLocationForHost,
-    `${zitadelBaseUrl}/`,
-  ).toString();
+  const authRequestUrl = new URL(authRequestLocationForHost, `${zitadelBaseUrl}/`).toString();
   const authRequestId = extractAuthRequestId(authRequestUrl);
 
   const authRequest = await requestJson<{ authRequest?: { id?: string } }>(
@@ -310,22 +296,19 @@ test("group oidc login interoperates with zitadel through api-driven flow", asyn
   );
   expect(authRequest.authRequest?.id).toBe(authRequestId);
 
-  const session = await requestJson<ZitadelCreateSessionResponse>(
-    `${zitadelBaseUrl}/v2/sessions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${loginToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        checks: {
-          user: { userId: zitadelUserId },
-          password: { password: zitadelUserPassword },
-        },
-      }),
+  const session = await requestJson<ZitadelCreateSessionResponse>(`${zitadelBaseUrl}/v2/sessions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${loginToken}`,
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({
+      checks: {
+        user: { userId: zitadelUserId },
+        password: { password: zitadelUserPassword },
+      },
+    }),
+  });
 
   const sessionId = session.sessionId ?? session.session_id;
   const sessionToken = session.sessionToken ?? session.session_token;
@@ -366,9 +349,7 @@ test("group oidc login interoperates with zitadel through api-driven flow", asyn
   expect(callbackResponse.status).toBe(302);
   const completionLocation = callbackResponse.headers.get("location");
   if (!completionLocation) {
-    throw new Error(
-      "Group Connection callback did not return completion redirect.",
-    );
+    throw new Error("Group Connection callback did not return completion redirect.");
   }
 
   const verificationCode = new URL(completionLocation).searchParams.get("code");
@@ -413,17 +394,13 @@ test("group saml login interoperates with zitadel through api-driven flow", asyn
     name: `SAML Interop ${runId}`,
   });
   // Step 3: Create group connection
-  const connectionCreated = await groupConnectionCreateRpc(
-    convexClient,
-    convexUserToken!,
-    {
-      groupId,
-      name: `SAML Interop ${runId}`,
-      slug: runId,
-      protocol: "saml",
-      status: "active",
-    },
-  );
+  const connectionCreated = await groupConnectionCreateRpc(convexClient, convexUserToken!, {
+    groupId,
+    name: `SAML Interop ${runId}`,
+    slug: runId,
+    protocol: "saml",
+    status: "active",
+  });
 
   const connectionId = connectionCreated.connectionId;
   expect(connectionId).toBeTruthy();
@@ -490,9 +467,7 @@ test("group saml login interoperates with zitadel through api-driven flow", asyn
   expect(samlAppId).toBeTruthy();
 
   // Step 7: Fetch ZITADEL IdP metadata XML
-  const idpMetadataResponse = await requestHttp(
-    `${zitadelBaseUrl}/saml/v2/metadata`,
-  );
+  const idpMetadataResponse = await requestHttp(`${zitadelBaseUrl}/saml/v2/metadata`);
   expect(idpMetadataResponse.status).toBe(200);
   const idpMetadataXml = await idpMetadataResponse.text();
   expect(idpMetadataXml).toContain("EntityDescriptor");
@@ -583,11 +558,7 @@ test("group saml login interoperates with zitadel through api-driven flow", asyn
       throw new Error("SAML signin did not return a redirect.");
     }
 
-    const ssoUrl = rewriteUrlForHostAccess(
-      signInLocation,
-      zitadelRuntimeBaseUrl,
-      zitadelBaseUrl,
-    );
+    const ssoUrl = rewriteUrlForHostAccess(signInLocation, zitadelRuntimeBaseUrl, zitadelBaseUrl);
     const ssoResponse = await requestHttp(ssoUrl);
     expect(ssoResponse.status).toBeGreaterThanOrEqual(300);
     expect(ssoResponse.status).toBeLessThan(400);
@@ -595,19 +566,12 @@ test("group saml login interoperates with zitadel through api-driven flow", asyn
     if (!loginLocation) {
       throw new Error("ZITADEL SSO did not redirect to login UI.");
     }
-    samlRequestId = extractSamlRequestIdFromLoginUrl(
-      loginLocation,
-      zitadelBaseUrl,
-    );
+    samlRequestId = extractSamlRequestIdFromLoginUrl(loginLocation, zitadelBaseUrl);
   } else if (signInResponse.status === 200) {
     // POST binding: parse the HTML form and submit it to ZITADEL SSO
     const html = await signInResponse.text();
     const { action, fields } = parseSamlPostFormFromHtml(html);
-    const ssoUrl = rewriteUrlForHostAccess(
-      action,
-      zitadelRuntimeBaseUrl,
-      zitadelBaseUrl,
-    );
+    const ssoUrl = rewriteUrlForHostAccess(action, zitadelRuntimeBaseUrl, zitadelBaseUrl);
     const formBody = buildFormBody(fields);
     const ssoResponse = await requestHttp(ssoUrl, {
       method: "POST",
@@ -620,14 +584,9 @@ test("group saml login interoperates with zitadel through api-driven flow", asyn
     if (!loginLocation) {
       throw new Error("ZITADEL SSO POST did not redirect to login UI.");
     }
-    samlRequestId = extractSamlRequestIdFromLoginUrl(
-      loginLocation,
-      zitadelBaseUrl,
-    );
+    samlRequestId = extractSamlRequestIdFromLoginUrl(loginLocation, zitadelBaseUrl);
   } else {
-    throw new Error(
-      `Unexpected SAML sign-in response status: ${signInResponse.status}`,
-    );
+    throw new Error(`Unexpected SAML sign-in response status: ${signInResponse.status}`);
   }
 
   expect(samlRequestId).toBeTruthy();
@@ -646,22 +605,19 @@ test("group saml login interoperates with zitadel through api-driven flow", asyn
   expect(samlRequestDetails.samlRequest?.id).toBe(samlRequestId);
 
   // Step 12: Create authenticated ZITADEL session
-  const session = await requestJson<ZitadelCreateSessionResponse>(
-    `${zitadelBaseUrl}/v2/sessions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${loginToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        checks: {
-          user: { userId: zitadelUserId },
-          password: { password: zitadelUserPassword },
-        },
-      }),
+  const session = await requestJson<ZitadelCreateSessionResponse>(`${zitadelBaseUrl}/v2/sessions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${loginToken}`,
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({
+      checks: {
+        user: { userId: zitadelUserId },
+        password: { password: zitadelUserPassword },
+      },
+    }),
+  });
   const sessionId = session.sessionId ?? session.session_id;
   const sessionToken = session.sessionToken ?? session.session_token;
   expect(sessionId).toBeTruthy();
@@ -695,15 +651,9 @@ test("group saml login interoperates with zitadel through api-driven flow", asyn
     // POST binding: submit SAMLResponse + RelayState as form POST to Convex ACS
     const { samlResponse, relayState } = postBinding;
     if (!samlResponse) {
-      throw new Error(
-        "ZITADEL SAML POST binding did not include samlResponse.",
-      );
+      throw new Error("ZITADEL SAML POST binding did not include samlResponse.");
     }
-    const acsUrl = rewriteUrlForHostAccess(
-      finalized.url,
-      zitadelRuntimeBaseUrl,
-      convexSiteUrl,
-    );
+    const acsUrl = rewriteUrlForHostAccess(finalized.url, zitadelRuntimeBaseUrl, convexSiteUrl);
     const formBody = buildFormBody({
       SAMLResponse: samlResponse,
       ...(relayState ? { RelayState: relayState } : {}),
@@ -718,11 +668,7 @@ test("group saml login interoperates with zitadel through api-driven flow", asyn
     });
   } else {
     // Redirect binding: GET the returned URL which includes SAMLResponse as query param
-    const acsUrl = rewriteUrlForHostAccess(
-      finalized.url,
-      zitadelRuntimeBaseUrl,
-      convexSiteUrl,
-    );
+    const acsUrl = rewriteUrlForHostAccess(finalized.url, zitadelRuntimeBaseUrl, convexSiteUrl);
     acsResponse = await requestHttp(acsUrl, {
       headers: { Cookie: cookieHeader(convexCookies) ?? "" },
     });

@@ -1,7 +1,6 @@
 ---
 title: auth.group.sso.policy
-description:
-  Group policy management — centralize account linking, SCIM reuse, JIT, and
+description: Group policy management — centralize account linking, SCIM reuse, JIT, and
   deprovision behavior.
 ---
 

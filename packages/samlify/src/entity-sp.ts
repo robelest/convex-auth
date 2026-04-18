@@ -64,20 +64,14 @@ export class ServiceProvider extends Entity {
   ): BindingContext | PostBindingContext | SimpleSignBindingContext {
     const nsBinding = namespace.binding;
     const protocol = nsBinding[binding];
-    if (
-      this.entityMeta.isAuthnRequestSigned() !==
-      idp.entityMeta.isWantAuthnRequestsSigned()
-    ) {
+    if (this.entityMeta.isAuthnRequestSigned() !== idp.entityMeta.isWantAuthnRequestsSigned()) {
       throw new Error("ERR_METADATA_CONFLICT_REQUEST_SIGNED_FLAG");
     }
 
     let context: any = null;
     switch (protocol) {
       case nsBinding.redirect:
-        return redirectBinding.loginRequestRedirectURL(
-          { idp, sp: this },
-          customTagReplacement,
-        );
+        return redirectBinding.loginRequestRedirectURL({ idp, sp: this }, customTagReplacement);
 
       case nsBinding.post:
         context = postBinding.base64LoginRequest(
@@ -89,10 +83,7 @@ export class ServiceProvider extends Entity {
 
       case nsBinding.simpleSign:
         // Object context = {id, context, signature, sigAlg}
-        context = simpleSignBinding.base64LoginRequest(
-          { idp, sp: this },
-          customTagReplacement,
-        );
+        context = simpleSignBinding.base64LoginRequest({ idp, sp: this }, customTagReplacement);
         break;
 
       default:

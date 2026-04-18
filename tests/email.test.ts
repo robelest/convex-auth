@@ -37,9 +37,7 @@ test("sign in with email", async () => {
   vi.unstubAllGlobals();
 
   expect(capturedInit).not.toBeNull();
-  expect(capturedInit.headers.Authorization).toBe(
-    `Bearer ${process.env.RESEND_API_KEY}`,
-  );
+  expect(capturedInit.headers.Authorization).toBe(`Bearer ${process.env.RESEND_API_KEY}`);
   expect(capturedInit.body).toBeTypeOf("string");
   expect(code).toBeTypeOf("string");
 
@@ -80,9 +78,7 @@ test("redirectTo with email", async () => {
   vi.unstubAllGlobals();
 
   expect(capturedInit).not.toBeNull();
-  expect(capturedInit.headers.Authorization).toBe(
-    `Bearer ${process.env.RESEND_API_KEY}`,
-  );
+  expect(capturedInit.headers.Authorization).toBe(`Bearer ${process.env.RESEND_API_KEY}`);
   expect(capturedInit.body).toBeTypeOf("string");
 
   // Custom URL via redirectTo

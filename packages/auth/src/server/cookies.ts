@@ -43,9 +43,5 @@ export function useRedirectToParam(
 
 function redirectToParamCookieName(providerId: string) {
   const convexSiteUrl = readConfigSync(envOptionalString("CONVEX_SITE_URL"));
-  return (
-    (!isLocalHost(convexSiteUrl ?? undefined) ? "__Host-" : "") +
-    providerId +
-    "RedirectTo"
-  );
+  return (!isLocalHost(convexSiteUrl ?? undefined) ? "__Host-" : "") + providerId + "RedirectTo";
 }

@@ -40,6 +40,7 @@ export default defineSchema({
     phone: v.optional(v.string()),
     phoneVerificationTime: v.optional(v.number()),
     isAnonymous: v.optional(v.boolean()),
+    hasTotp: v.optional(v.boolean()),
     extend: v.optional(v.any()),
   })
     .index("email", ["email"])
@@ -90,10 +91,7 @@ export default defineSchema({
   })
     .index("session_id", ["sessionId"])
     .index("session_id_first_used", ["sessionId", "firstUsedTime"])
-    .index("session_id_parent_refresh_token_id", [
-      "sessionId",
-      "parentRefreshTokenId",
-    ]),
+    .index("session_id_parent_refresh_token_id", ["sessionId", "parentRefreshTokenId"]),
 
   /**
    * Verification codes for OTP tokens, magic link tokens, and OAuth codes.
@@ -314,7 +312,9 @@ export default defineSchema({
   })
     .index("group_id", ["groupId"])
     .index("slug", ["slug"])
-    .index("status", ["status"]),
+    .index("status", ["status"])
+    .index("group_id_status", ["groupId", "status"])
+    .index("group_id_slug", ["groupId", "slug"]),
 
   /**
    * Verified or pending domains linked to an group connection record.

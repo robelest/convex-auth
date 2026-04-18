@@ -9,8 +9,7 @@ import type {
 } from "../types";
 import { patchGroupConnectionPolicy } from "./policy";
 
-const convexError = (data: { code: string; message: string }) =>
-  new ConvexError(data);
+const convexError = (data: { code: string; message: string }) => new ConvexError(data);
 
 type PolicyDeps = {
   config: ConvexAuthMaterializedConfig;
@@ -40,22 +39,14 @@ type PolicyDeps = {
 };
 
 export function createGroupPolicyDomain(deps: PolicyDeps) {
-  const {
-    config,
-    loadGroupPolicyOrThrow,
-    validateGroupConnectionPolicy,
-    recordGroupAuditEvent,
-  } = deps;
+  const { config, loadGroupPolicyOrThrow, validateGroupConnectionPolicy, recordGroupAuditEvent } =
+    deps;
 
   return {
     get: async (ctx: ComponentReadCtx, groupId: string) => {
       return await loadGroupPolicyOrThrow(ctx, groupId);
     },
-    update: async (
-      ctx: ComponentCtx,
-      groupId: string,
-      patch: GroupConnectionPolicyPatch,
-    ) => {
+    update: async (ctx: ComponentCtx, groupId: string, patch: GroupConnectionPolicyPatch) => {
       const group = await getGroup(ctx, config.component.public, groupId);
       if (!group) {
         throw convexError({

@@ -1,7 +1,4 @@
-import {
-  decodeBase64urlIgnorePadding,
-  encodeBase64urlNoPadding,
-} from "@oslojs/encoding";
+import { decodeBase64urlIgnorePadding, encodeBase64urlNoPadding } from "@oslojs/encoding";
 import {
   Constants,
   IdentityProvider,
@@ -117,16 +114,12 @@ export function createSamlPostBindingResponse(opts: {
 }
 
 /** @internal */
-export function decodeRelayState(
-  value: string | null,
-): Record<string, unknown> {
+export function decodeRelayState(value: string | null): Record<string, unknown> {
   if (!value) {
     return {};
   }
   try {
-    return JSON.parse(
-      new TextDecoder().decode(decodeBase64urlIgnorePadding(value)),
-    );
+    return JSON.parse(new TextDecoder().decode(decodeBase64urlIgnorePadding(value)));
   } catch {
     return {};
   }
@@ -148,9 +141,7 @@ export function encodeGroupSamlRelayState(value: GroupSamlRelayState) {
 }
 
 /** @internal */
-export function decodeGroupSamlRelayStateOrThrow(
-  value: string | null,
-): GroupSamlRelayState {
+export function decodeGroupSamlRelayStateOrThrow(value: string | null): GroupSamlRelayState {
   if (!value) {
     throw new Error("Missing SAML RelayState.");
   }
@@ -173,15 +164,12 @@ export function decodeGroupSamlRelayStateOrThrow(
     signature: decoded.signature,
     requestId: decoded.requestId,
     state: decoded.state,
-    redirectTo:
-      typeof decoded.redirectTo === "string" ? decoded.redirectTo : undefined,
+    redirectTo: typeof decoded.redirectTo === "string" ? decoded.redirectTo : undefined,
   };
 }
 
 /** @internal */
-export async function readRequestBody(
-  request: Request,
-): Promise<Record<string, string>> {
+export async function readRequestBody(request: Request): Promise<Record<string, string>> {
   const contentType = request.headers.get("Content-Type") ?? "";
   if (
     contentType.includes("application/x-www-form-urlencoded") ||
@@ -215,14 +203,9 @@ export async function readGroupConnectionSamlHttpRequest(
     body,
     query,
     binding,
-    relayState:
-      body.RelayState ?? url.searchParams.get("RelayState") ?? undefined,
-    hasSamlRequest: Boolean(
-      body.SAMLRequest ?? url.searchParams.get("SAMLRequest"),
-    ),
-    hasSamlResponse: Boolean(
-      body.SAMLResponse ?? url.searchParams.get("SAMLResponse"),
-    ),
+    relayState: body.RelayState ?? url.searchParams.get("RelayState") ?? undefined,
+    hasSamlRequest: Boolean(body.SAMLRequest ?? url.searchParams.get("SAMLRequest")),
+    hasSamlResponse: Boolean(body.SAMLResponse ?? url.searchParams.get("SAMLResponse")),
   };
 }
 
@@ -234,9 +217,7 @@ function getSamlSecurityConfig(config: unknown): SamlSecurityConfig {
 /** @internal */
 export function parseSamlIdpMetadata(metadata: string): ParsedSamlMetadata {
   const source = typeof metadata === "string" ? metadata : String(metadata);
-  const entityId =
-    source.match(/<[^>]*EntityDescriptor\b[^>]*\bentityID="([^"]+)"/i)?.[1] ??
-    null;
+  const entityId = source.match(/<[^>]*EntityDescriptor\b[^>]*\bentityID="([^"]+)"/i)?.[1] ?? null;
   if (!entityId) {
     throw new Error("SAML metadata is missing EntityDescriptor@entityID.");
   }
@@ -320,10 +301,7 @@ export function parseSamlIdpMetadata(metadata: string): ParsedSamlMetadata {
 }
 
 /** @internal */
-export function enforceSamlMetadataSize(opts: {
-  metadataXml: string;
-  config: unknown;
-}) {
+export function enforceSamlMetadataSize(opts: { metadataXml: string; config: unknown }) {
   const maxMetadataSize = getSamlSecurityConfig(opts.config).maxMetadataSize;
   if (
     typeof maxMetadataSize === "number" &&
@@ -335,25 +313,18 @@ export function enforceSamlMetadataSize(opts: {
 }
 
 /** @internal */
-export function parseSamlIdpMetadataChecked(opts: {
-  metadataXml: string;
-  config: unknown;
-}) {
+export function parseSamlIdpMetadataChecked(opts: { metadataXml: string; config: unknown }) {
   enforceSamlMetadataSize(opts);
   return parseSamlIdpMetadata(opts.metadataXml);
 }
 
 /** @internal */
-export function enforceSamlResponseSize(opts: {
-  request: GroupSamlHttpRequest;
-  config: unknown;
-}) {
+export function enforceSamlResponseSize(opts: { request: GroupSamlHttpRequest; config: unknown }) {
   const maxResponseSize = getSamlSecurityConfig(opts.config).maxResponseSize;
   if (typeof maxResponseSize !== "number" || maxResponseSize <= 0) {
     return;
   }
-  const encoded =
-    opts.request.body.SAMLResponse ?? opts.request.query.SAMLResponse;
+  const encoded = opts.request.body.SAMLResponse ?? opts.request.query.SAMLResponse;
   if (typeof encoded === "string" && encoded.length > maxResponseSize) {
     throw new Error("SAML response exceeds the configured size limit.");
   }
@@ -723,9 +694,7 @@ export async function parseGroupConnectionSamlLoginResponse(opts: {
     ...httpRequest,
     runtime,
     parsed,
-    relayState: decodeGroupSamlRelayStateOrThrow(
-      httpRequest.relayState ?? null,
-    ),
+    relayState: decodeGroupSamlRelayStateOrThrow(httpRequest.relayState ?? null),
   };
 }
 
@@ -781,16 +750,13 @@ export function enforceSamlAlgorithmPolicy(opts: {
     return;
   }
   const sigAlg =
-    opts.extract?.signature?.signatureAlgorithm ??
-    opts.extract?.response?.signatureAlgorithm;
+    opts.extract?.signature?.signatureAlgorithm ?? opts.extract?.response?.signatureAlgorithm;
   const digestAlg = opts.extract?.signature?.digestAlgorithm;
   if (
     (sigAlg && WEAK_SAML_ALGORITHMS.has(sigAlg)) ||
     (digestAlg && WEAK_SAML_ALGORITHMS.has(digestAlg))
   ) {
-    throw new Error(
-      "SAML response uses a rejected weak cryptographic algorithm.",
-    );
+    throw new Error("SAML response uses a rejected weak cryptographic algorithm.");
   }
 }
 
@@ -870,8 +836,7 @@ export function profileFromSamlExtract(
         .join(" ") ||
         undefined),
     roles: () => normalizeStringArray(resolveFirst(mapping?.roles)),
-    subject: () =>
-      resolveFirst(mapping?.subject) ?? (extract?.nameID as string | undefined),
+    subject: () => resolveFirst(mapping?.subject) ?? (extract?.nameID as string | undefined),
   } as const;
   const subject = fieldResolvers.subject() as string | undefined;
   if (subject === undefined) {

@@ -60,8 +60,7 @@ const namespace = {
   },
   authnContextClassRef: {
     password: "urn:oasis:names:tc:SAML:2.0:ac:classes:Password",
-    passwordProtectedTransport:
-      "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport",
+    passwordProtectedTransport: "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport",
   },
   format: {
     emailAddress: "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
@@ -72,8 +71,7 @@ const namespace = {
     kerberos: "urn:oasis:names:tc:SAML:2.0:nameid-format:kerberos",
     windowsDomainQualifiedName:
       "urn:oasis:names:tc:SAML:1.1:nameid-format:WindowsDomainQualifiedName",
-    x509SubjectName:
-      "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName",
+    x509SubjectName: "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName",
   },
   statusCode: {
     // permissible top-level status codes
@@ -83,10 +81,8 @@ const namespace = {
     versionMismatch: "urn:oasis:names:tc:SAML:2.0:status:VersionMismatch",
     // second-level status codes
     authFailed: "urn:oasis:names:tc:SAML:2.0:status:AuthnFailed",
-    invalidAttrNameOrValue:
-      "urn:oasis:names:tc:SAML:2.0:status:InvalidAttrNameOrValue",
-    invalidNameIDPolicy:
-      "urn:oasis:names:tc:SAML:2.0:status:InvalidNameIDPolicy",
+    invalidAttrNameOrValue: "urn:oasis:names:tc:SAML:2.0:status:InvalidAttrNameOrValue",
+    invalidNameIDPolicy: "urn:oasis:names:tc:SAML:2.0:status:InvalidNameIDPolicy",
     noAuthnContext: "urn:oasis:names:tc:SAML:2.0:status:NoAuthnContext",
     noAvailableIDP: "urn:oasis:names:tc:SAML:2.0:status:NoAvailableIDP",
     noPassive: "urn:oasis:names:tc:SAML:2.0:status:NoPassive",
@@ -95,14 +91,10 @@ const namespace = {
     proxyCountExceeded: "urn:oasis:names:tc:SAML:2.0:status:ProxyCountExceeded",
     requestDenied: "urn:oasis:names:tc:SAML:2.0:status:RequestDenied",
     requestUnsupported: "urn:oasis:names:tc:SAML:2.0:status:RequestUnsupported",
-    requestVersionDeprecated:
-      "urn:oasis:names:tc:SAML:2.0:status:RequestVersionDeprecated",
-    requestVersionTooHigh:
-      "urn:oasis:names:tc:SAML:2.0:status:RequestVersionTooHigh",
-    requestVersionTooLow:
-      "urn:oasis:names:tc:SAML:2.0:status:RequestVersionTooLow",
-    resourceNotRecognized:
-      "urn:oasis:names:tc:SAML:2.0:status:ResourceNotRecognized",
+    requestVersionDeprecated: "urn:oasis:names:tc:SAML:2.0:status:RequestVersionDeprecated",
+    requestVersionTooHigh: "urn:oasis:names:tc:SAML:2.0:status:RequestVersionTooHigh",
+    requestVersionTooLow: "urn:oasis:names:tc:SAML:2.0:status:RequestVersionTooLow",
+    resourceNotRecognized: "urn:oasis:names:tc:SAML:2.0:status:ResourceNotRecognized",
     tooManyResponses: "urn:oasis:names:tc:SAML:2.0:status:TooManyResponses",
     unknownAttrProfile: "urn:oasis:names:tc:SAML:2.0:status:UnknownAttrProfile",
     unknownPrincipal: "urn:oasis:names:tc:SAML:2.0:status:UnknownPrincipal",
@@ -132,8 +124,7 @@ const tags = {
     ProtocolBinding: "{ProtocolBinding}",
     SessionIndex: "{SessionIndex}",
     SubjectRecipient: "{SubjectRecipient}",
-    SubjectConfirmationDataNotOnOrAfter:
-      "{SubjectConfirmationDataNotOnOrAfter}",
+    SubjectConfirmationDataNotOnOrAfter: "{SubjectConfirmationDataNotOnOrAfter}",
     StatusCode: "{StatusCode}",
   },
   xmlTag: {
@@ -170,12 +161,9 @@ const algorithms = {
     },
   },
   digest: {
-    "http://www.w3.org/2000/09/xmldsig#rsa-sha1":
-      "http://www.w3.org/2000/09/xmldsig#sha1",
-    "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256":
-      "http://www.w3.org/2001/04/xmlenc#sha256",
-    "http://www.w3.org/2001/04/xmldsig-more#rsa-sha512":
-      "http://www.w3.org/2001/04/xmlenc#sha512",
+    "http://www.w3.org/2000/09/xmldsig#rsa-sha1": "http://www.w3.org/2000/09/xmldsig#sha1",
+    "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256": "http://www.w3.org/2001/04/xmlenc#sha256",
+    "http://www.w3.org/2001/04/xmldsig-more#rsa-sha512": "http://www.w3.org/2001/04/xmlenc#sha512",
   },
 };
 
@@ -213,18 +201,8 @@ const wording = {
 };
 
 const elementsOrder = {
-  default: [
-    "KeyDescriptor",
-    "NameIDFormat",
-    "SingleLogoutService",
-    "AssertionConsumerService",
-  ],
-  onelogin: [
-    "KeyDescriptor",
-    "NameIDFormat",
-    "SingleLogoutService",
-    "AssertionConsumerService",
-  ],
+  default: ["KeyDescriptor", "NameIDFormat", "SingleLogoutService", "AssertionConsumerService"],
+  onelogin: ["KeyDescriptor", "NameIDFormat", "SingleLogoutService", "AssertionConsumerService"],
   shibboleth: [
     "KeyDescriptor",
     "SingleLogoutService",
@@ -234,11 +212,4 @@ const elementsOrder = {
   ],
 };
 
-export {
-  namespace,
-  tags,
-  algorithms,
-  wording,
-  elementsOrder,
-  messageConfigurations,
-};
+export { namespace, tags, algorithms, wording, elementsOrder, messageConfigurations };

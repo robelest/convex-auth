@@ -6,9 +6,8 @@ type FontoxpathApi = {
   default?: FontoxpathApi;
 };
 
-const fontoxpath =
-  ((fontoxpathModule as FontoxpathApi).default ??
-    fontoxpathModule) as FontoxpathApi;
+const fontoxpath = ((fontoxpathModule as FontoxpathApi).default ??
+  fontoxpathModule) as FontoxpathApi;
 
 if (
   typeof fontoxpath.evaluateXPathToNodes !== "function" ||

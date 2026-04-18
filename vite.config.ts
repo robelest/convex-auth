@@ -175,8 +175,7 @@ export default defineConfig({
         ],
       },
       "cache:test": {
-        command:
-          "vp run cache:test:unit && vp run cache:test:samlify && vp run cache:test:interop",
+        command: "vp run cache:test:unit && vp run cache:test:samlify && vp run cache:test:interop",
         cache: true,
         input: [
           "convex/**",
@@ -252,13 +251,19 @@ export default defineConfig({
         },
         test: {
           name: "interop",
-          include: ["sso/**/*.node.test.ts"],
+          include: [
+            "sso/**/*.node.test.ts",
+            // Latency benchmarks — same Docker-backed setup as SSO tests
+            // (self-hosted Convex backend, real HTTP actions). Live under
+            // `tests/benchmarks/` so they're discoverable separately.
+            "benchmarks/**/*.node.test.ts",
+          ],
           environment: "node",
           globalSetup: ["./infra/docker/setup.node.ts"],
           setupFiles: ["./vitest.setup.ts"],
           server: { deps: { inline: ["convex-test"] } },
           fileParallelism: false,
-          testTimeout: 60000,
+          testTimeout: 120000,
           sequence: {
             groupOrder: 1,
           },

@@ -12,11 +12,7 @@ import { encodeBase64urlNoPadding } from "@oslojs/encoding";
 
 import { envOptionalString, readConfigSync } from "../server/env";
 import { createOAuthProvider } from "../server/oauth/factory";
-import type {
-  OAuthProfile,
-  OAuthRuntimeClient,
-  OAuthTokens,
-} from "../server/types";
+import type { OAuthProfile, OAuthRuntimeClient, OAuthTokens } from "../server/types";
 
 type ScopeSeparator = " " | ",";
 type PkceMode = "required" | "optional" | "never";
@@ -85,10 +81,7 @@ export interface CustomOAuthConfig {
   /** Optional profile loader that converts OAuth tokens into a normalized profile. */
   profile?: (tokens: OAuthTokens) => Promise<OAuthProfile>;
   /** Optional token validation hook for provider-specific checks. */
-  validateTokens?: (
-    tokens: OAuthTokens,
-    ctx: { nonce?: string },
-  ) => Promise<void>;
+  validateTokens?: (tokens: OAuthTokens, ctx: { nonce?: string }) => Promise<void>;
 }
 
 function defaultRedirectUri(providerId: string) {
@@ -109,9 +102,7 @@ function joinScopes(scopes: string[], separator: ScopeSeparator = " ") {
 }
 
 function createCodeChallenge(codeVerifier: string) {
-  return encodeBase64urlNoPadding(
-    sha256(new TextEncoder().encode(codeVerifier)),
-  );
+  return encodeBase64urlNoPadding(sha256(new TextEncoder().encode(codeVerifier)));
 }
 
 function createRuntimeClient(config: CustomOAuthConfig): OAuthRuntimeClient {
@@ -123,19 +114,11 @@ function createRuntimeClient(config: CustomOAuthConfig): OAuthRuntimeClient {
 
   return {
     pkce,
-    createAuthorizationURL({
-      state,
-      codeVerifier,
-      scopes: requestedScopes,
-      nonce,
-    }) {
+    createAuthorizationURL({ state, codeVerifier, scopes: requestedScopes, nonce }) {
       const url = new URL(authorization.url);
       const nextScopes = requestedScopes.length > 0 ? requestedScopes : scopes;
       url.searchParams.set("response_type", "code");
-      url.searchParams.set(
-        authorization.clientIdParam ?? "client_id",
-        config.clientId,
-      );
+      url.searchParams.set(authorization.clientIdParam ?? "client_id", config.clientId);
       url.searchParams.set("redirect_uri", redirectUri);
       url.searchParams.set("state", state);
       if (nextScopes.length > 0) {
@@ -146,17 +129,12 @@ function createRuntimeClient(config: CustomOAuthConfig): OAuthRuntimeClient {
       }
       if (codeVerifier !== undefined && pkce !== "never") {
         url.searchParams.set("code_challenge_method", "S256");
-        url.searchParams.set(
-          "code_challenge",
-          createCodeChallenge(codeVerifier),
-        );
+        url.searchParams.set("code_challenge", createCodeChallenge(codeVerifier));
       }
       if (nonce !== undefined) {
         url.searchParams.set("nonce", nonce);
       }
-      for (const [key, value] of Object.entries(
-        authorization.extraParams ?? {},
-      )) {
+      for (const [key, value] of Object.entries(authorization.extraParams ?? {})) {
         url.searchParams.set(key, value);
       }
       return url;
@@ -174,24 +152,14 @@ function createRuntimeClient(config: CustomOAuthConfig): OAuthRuntimeClient {
       if (token.includeScopes === true && scopes.length > 0) {
         body.set(
           token.scopeParam ?? "scope",
-          joinScopes(
-            scopes,
-            token.scopeSeparator ?? authorization.scopeSeparator,
-          ),
+          joinScopes(scopes, token.scopeSeparator ?? authorization.scopeSeparator),
         );
       }
       if (token.authMethod !== "basic") {
         body.set(token.clientIdParam ?? "client_id", config.clientId);
       }
-      if (
-        token.authMethod !== "basic" &&
-        token.authMethod !== "none" &&
-        config.clientSecret
-      ) {
-        body.set(
-          token.clientSecretParam ?? "client_secret",
-          config.clientSecret,
-        );
+      if (token.authMethod !== "basic" && token.authMethod !== "none" && config.clientSecret) {
+        body.set(token.clientSecretParam ?? "client_secret", config.clientSecret);
       }
       for (const [key, value] of Object.entries(token.extraParams ?? {})) {
         body.set(key, value);
@@ -221,18 +189,13 @@ function createRuntimeClient(config: CustomOAuthConfig): OAuthRuntimeClient {
 
       const raw = (await response.json()) as Record<string, unknown>;
       const rawScopes = typeof raw.scope === "string" ? raw.scope : undefined;
-      const expiresIn =
-        typeof raw.expires_in === "number" ? raw.expires_in : undefined;
+      const expiresIn = typeof raw.expires_in === "number" ? raw.expires_in : undefined;
       return {
-        accessToken:
-          typeof raw.access_token === "string" ? raw.access_token : undefined,
-        refreshToken:
-          typeof raw.refresh_token === "string" ? raw.refresh_token : undefined,
+        accessToken: typeof raw.access_token === "string" ? raw.access_token : undefined,
+        refreshToken: typeof raw.refresh_token === "string" ? raw.refresh_token : undefined,
         idToken: typeof raw.id_token === "string" ? raw.id_token : undefined,
         accessTokenExpiresAt:
-          expiresIn !== undefined
-            ? new Date(Date.now() + expiresIn * 1000)
-            : undefined,
+          expiresIn !== undefined ? new Date(Date.now() + expiresIn * 1000) : undefined,
         scopes: rawScopes
           ? rawScopes
               .split(/[\s,]+/)

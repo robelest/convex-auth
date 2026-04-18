@@ -49,26 +49,21 @@ export class IdentityProvider extends Entity {
         let attributeTemplate;
         if (
           !idpSetting.loginResponseTemplate.additionalTemplates ||
-          !idpSetting.loginResponseTemplate.additionalTemplates!
-            .attributeStatementTemplate
+          !idpSetting.loginResponseTemplate.additionalTemplates!.attributeStatementTemplate
         ) {
-          attributeStatementTemplate =
-            libsaml.defaultAttributeStatementTemplate;
+          attributeStatementTemplate = libsaml.defaultAttributeStatementTemplate;
         } else {
           attributeStatementTemplate =
-            idpSetting.loginResponseTemplate.additionalTemplates!
-              .attributeStatementTemplate!;
+            idpSetting.loginResponseTemplate.additionalTemplates!.attributeStatementTemplate!;
         }
         if (
           !idpSetting.loginResponseTemplate.additionalTemplates ||
-          !idpSetting.loginResponseTemplate.additionalTemplates!
-            .attributeTemplate
+          !idpSetting.loginResponseTemplate.additionalTemplates!.attributeTemplate
         ) {
           attributeTemplate = libsaml.defaultAttributeTemplate;
         } else {
           attributeTemplate =
-            idpSetting.loginResponseTemplate.additionalTemplates!
-              .attributeTemplate!;
+            idpSetting.loginResponseTemplate.additionalTemplates!.attributeTemplate!;
         }
         const replacement = {
           AttributeStatement: libsaml.attributeStatementBuilder(
@@ -159,9 +154,9 @@ export class IdentityProvider extends Entity {
     return {
       ...context,
       relayState,
-      entityEndpoint: (
-        sp.entityMeta as ServiceProviderMetadata
-      ).getAssertionConsumerService(binding) as string,
+      entityEndpoint: (sp.entityMeta as ServiceProviderMetadata).getAssertionConsumerService(
+        binding,
+      ) as string,
       type: "SAMLResponse",
     };
   }
@@ -172,11 +167,7 @@ export class IdentityProvider extends Entity {
    * @param binding Protocol binding
    * @param req RequesmessageSigningOrderst
    */
-  parseLoginRequest(
-    sp: ServiceProvider,
-    binding: string,
-    req: ESamlHttpRequest,
-  ) {
+  parseLoginRequest(sp: ServiceProvider, binding: string, req: ESamlHttpRequest) {
     const self = this;
     return flow({
       from: sp,

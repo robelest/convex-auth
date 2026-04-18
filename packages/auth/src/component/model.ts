@@ -64,10 +64,7 @@ export const vGroupConnectionJitProvisioningMode = v.union(
   v.literal("createUserAndMembership"),
 );
 
-export const vGroupConnectionDeprovisionMode = v.union(
-  v.literal("soft"),
-  v.literal("hard"),
-);
+export const vGroupConnectionDeprovisionMode = v.union(v.literal("soft"), v.literal("hard"));
 
 export const vGroupConnectionProfileUpdateMode = v.union(
   v.literal("never"),
@@ -81,15 +78,9 @@ export const vGroupConnectionProvisioningAuthority = v.union(
   v.literal("scim"),
 );
 
-export const vGroupConnectionGroupSyncMode = v.union(
-  v.literal("ignore"),
-  v.literal("sync"),
-);
+export const vGroupConnectionGroupSyncMode = v.union(v.literal("ignore"), v.literal("sync"));
 
-export const vGroupConnectionRoleSyncMode = v.union(
-  v.literal("ignore"),
-  v.literal("map"),
-);
+export const vGroupConnectionRoleSyncMode = v.union(v.literal("ignore"), v.literal("map"));
 
 export const vGroupConnectionStatus = v.union(
   v.literal("draft"),
@@ -97,10 +88,7 @@ export const vGroupConnectionStatus = v.union(
   v.literal("disabled"),
 );
 
-export const vGroupConnectionProtocol = v.union(
-  v.literal("oidc"),
-  v.literal("saml"),
-);
+export const vGroupConnectionProtocol = v.union(v.literal("oidc"), v.literal("saml"));
 
 export const vGroupConnectionPolicy = v.object({
   version: v.literal(1),
@@ -142,11 +130,7 @@ export const vGroupConnectionPolicy = v.object({
   extend: v.optional(v.any()),
 });
 
-export const vScimStatus = v.union(
-  v.literal("draft"),
-  v.literal("active"),
-  v.literal("disabled"),
-);
+export const vScimStatus = v.union(v.literal("draft"), v.literal("active"), v.literal("disabled"));
 
 export const vScimResourceType = v.union(v.literal("user"), v.literal("group"));
 
@@ -160,10 +144,7 @@ export const vAuditActorType = v.union(
 
 export const vAuditStatus = v.union(v.literal("success"), v.literal("failure"));
 
-export const vWebhookEndpointStatus = v.union(
-  v.literal("active"),
-  v.literal("disabled"),
-);
+export const vWebhookEndpointStatus = v.union(v.literal("active"), v.literal("disabled"));
 
 export const vWebhookDeliveryStatus = v.union(
   v.literal("pending"),
@@ -198,13 +179,9 @@ export const vApiKeyRateLimitState = v.object({
   lastAttemptTime: v.number(),
 });
 
-export const vGroupConnectionSecretKind = v.union(
-  v.literal("oidc_client_secret"),
-);
+export const vGroupConnectionSecretKind = v.union(v.literal("oidc_client_secret"));
 
-function vDocMeta<T extends (typeof TABLES)[keyof typeof TABLES]>(
-  tableName: T,
-) {
+function vDocMeta<T extends (typeof TABLES)[keyof typeof TABLES]>(tableName: T) {
   return {
     _id: v.id(tableName),
     _creationTime: v.number(),
@@ -220,6 +197,7 @@ export const vUserDoc = v.object({
   phone: v.optional(v.string()),
   phoneVerificationTime: v.optional(v.number()),
   isAnonymous: v.optional(v.boolean()),
+  hasTotp: v.optional(v.boolean()),
   extend: v.optional(v.any()),
 });
 

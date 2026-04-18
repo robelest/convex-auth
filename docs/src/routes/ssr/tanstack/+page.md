@@ -1,7 +1,6 @@
 ---
 title: TanStack Start
-description:
-  Integrate convex-auth SSR with TanStack Start using server functions.
+description: Integrate convex-auth SSR with TanStack Start using server functions.
 ---
 
 <svelte:head>
