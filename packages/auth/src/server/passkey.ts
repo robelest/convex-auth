@@ -37,13 +37,19 @@ import {
   parseAuthenticatorData,
   parseClientDataJSON,
 } from "@oslojs/webauthn";
+
+import type {
+  AuthTokens,
+  SignInPasskeyOptionsResult,
+  SignInSessionResult,
+} from "../shared/authResults";
 import { ConvexError } from "convex/values";
 
 import { authFlowError } from "../shared/errors";
 import { authDb } from "./db";
 import type { AuthErrorData } from "./errors";
 import { toConvexError } from "./errors";
-import { userIdFromIdentitySubject } from "./identity";
+import { getAuthenticatedUserIdOrNull } from "./identity";
 import { callSignIn, callVerifier } from "./mutations/index";
 import { GenericActionCtxWithAuthConfig, PasskeyProviderConfig } from "./types";
 import {
@@ -75,12 +81,8 @@ interface RpOptions {
 }
 
 type PasskeyResult =
-  | { kind: "signedIn"; signedIn: SessionInfo | null }
-  | {
-      kind: "passkeyOptions";
-      options: Record<string, unknown>;
-      verifier: string;
-    };
+  | SignInSessionResult<SessionInfo<AuthTokens | null> | null>
+  | SignInPasskeyOptionsResult;
 
 const PASSKEY_FLOW = {
   registerOptions: "registerOptions",
@@ -256,22 +258,21 @@ function requirePasskeyVerifier(verifier: string | undefined): string {
 }
 
 async function requireAuthenticatedUserId(ctx: EnrichedActionCtx): Promise<string> {
-  let identity;
   try {
-    identity = await ctx.auth.getUserIdentity();
+    const userId = await getAuthenticatedUserIdOrNull(ctx);
+    if (userId === null) {
+      throw convexError(
+        "PASSKEY_AUTH_REQUIRED",
+        "Sign in first, then add a passkey to your account.",
+      );
+    }
+    return userId;
   } catch {
     throw convexError(
       "PASSKEY_AUTH_REQUIRED",
       "Sign in first, then add a passkey to your account.",
     );
   }
-  if (identity === null) {
-    throw convexError(
-      "PASSKEY_AUTH_REQUIRED",
-      "Sign in first, then add a passkey to your account.",
-    );
-  }
-  return userIdFromIdentitySubject(identity.subject);
 }
 
 function resolveRegistrationPublicKeyBytes(
@@ -489,10 +490,10 @@ export async function handlePasskeyFx(
           userId,
           generateTokens: true,
         });
-      } catch {
-        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+      } catch (error) {
+        throw asConvexError(error, "INTERNAL_ERROR", "Failed to finalize passkey registration.");
       }
-      return { kind: "signedIn" as const, signedIn: signInResult };
+      return { kind: "signedIn" as const, session: signInResult };
     },
 
     authOptions: async () => {
@@ -628,8 +629,8 @@ export async function handlePasskeyFx(
           authenticatorData.signatureCounter,
           Date.now(),
         );
-      } catch {
-        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+      } catch (error) {
+        throw asConvexError(error, "INTERNAL_ERROR", "Failed to update passkey counter.");
       }
 
       let signInResult;
@@ -638,11 +639,11 @@ export async function handlePasskeyFx(
           userId: passkey.userId,
           generateTokens: true,
         });
-      } catch {
-        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+      } catch (error) {
+        throw asConvexError(error, "INTERNAL_ERROR", "Failed to finalize passkey sign-in.");
       }
 
-      return { kind: "signedIn" as const, signedIn: signInResult };
+      return { kind: "signedIn" as const, session: signInResult };
     },
   };
 

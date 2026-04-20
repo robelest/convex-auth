@@ -88,4 +88,5 @@ This is app-specific code. The canonical `convex-auth` setup only needs:
 
 - `convex/convex.config.ts`
 - `convex/auth.ts`
+- `convex/auth.config.ts`
 - `convex/http.ts`

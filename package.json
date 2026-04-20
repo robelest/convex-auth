@@ -45,6 +45,8 @@
     "deploy:docs": "vpx wrangler pages deploy ./docs/build --project-name=convex-auth",
     "deploy:demo": "vp exec convex deploy --cmd 'vp run build:demo' --cmd-url-env-var-name VITE_CONVEX_URL && vp run --filter svelte deploy",
     "publish:docs": "vp run build:docs && vp run deploy:docs",
+    "release:push": "pnpm dlx tsx scripts/release-push.ts",
+    "release:push:force": "pnpm dlx tsx scripts/release-push.ts --force",
     "dev:svelte": "vp run --filter svelte dev",
     "codegen:convex": "vp exec varlock run -- vp exec convex codegen && vp exec varlock run -- vp exec convex codegen --component-dir ./packages/auth/src/component",
     "codegen:convex:component": "vp exec varlock run -- vp exec convex codegen --component-dir ./packages/auth/src/component",
@@ -90,8 +92,10 @@
         "vitest"
       ]
     },
-    "allowBuilds": {
-      "esbuild": true
-    }
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp",
+      "workerd"
+    ]
   }
 }

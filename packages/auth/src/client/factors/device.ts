@@ -1,13 +1,13 @@
 import { ConvexError } from "convex/values";
 
 import type {
-  AuthSession,
   ConvexTransport,
   DeviceClient,
   DeviceCodeResult,
   SignInActionResult,
   SignInApiRef,
 } from "../core/types";
+import type { AuthTokens } from "../../shared/authResults";
 
 function isSignedInResult(
   result: SignInActionResult,
@@ -24,7 +24,7 @@ type DeviceDeps = {
     args:
       | {
           shouldStore: true;
-          tokens: AuthSession | null;
+          tokens: AuthTokens | null;
           waitForHandshake: boolean;
           context: { provider?: string; flow: string };
         }
@@ -92,18 +92,18 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
           continue;
         }
 
-        if (isSignedInResult(pollResult) && pollResult.tokens) {
+        if (isSignedInResult(pollResult) && pollResult.session) {
           if (proxy) {
             await setTokenAndMaybeWait({
               shouldStore: false,
-              tokens: pollResult.tokens === null ? null : { token: pollResult.tokens.token },
+              tokens: pollResult.session === null ? null : { token: pollResult.session.token },
               waitForHandshake: true,
               context: { provider: "device", flow: "poll" },
             });
           } else {
             await setTokenAndMaybeWait({
               shouldStore: true,
-              tokens: (pollResult.tokens as AuthSession | null) ?? null,
+              tokens: (pollResult.session as AuthTokens | null) ?? null,
               waitForHandshake: true,
               context: { provider: "device", flow: "poll" },
             });

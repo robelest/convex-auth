@@ -5,6 +5,17 @@ function readEnv(name: string): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function missingEnvMessage(name: string) {
+  switch (name) {
+    case "JWT_PRIVATE_KEY":
+    case "JWKS":
+    case "AUTH_SECRET_ENCRYPTION_KEY":
+      return `Missing environment variable \`${name}\`. Run the convex-auth setup wizard to generate and configure auth keys.`;
+    default:
+      return `Missing environment variable \`${name}\``;
+  }
+}
+
 /** @internal */
 export const readConfigSync = <A>(value: A) => value;
 
@@ -12,7 +23,7 @@ export const readConfigSync = <A>(value: A) => value;
 export const envString = (name: string) => {
   const value = readEnv(name);
   if (value === undefined) {
-    throw new Error(`Missing environment variable \`${name}\``);
+    throw new Error(missingEnvMessage(name));
   }
   return value;
 };
@@ -55,7 +66,7 @@ export function requireEnv(name: string) {
   } catch {
     throw new ConvexError({
       code: "MISSING_ENV_VAR",
-      message: `Missing environment variable \`${name}\``,
+      message: missingEnvMessage(name),
     });
   }
 }

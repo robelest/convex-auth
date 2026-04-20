@@ -21,13 +21,13 @@ async function groupAdmin(t: any) {
     provider: "anonymous",
   })) as {
     kind: string;
-    tokens?: { token: string; refreshToken: string } | null;
+    session?: { token: string; refreshToken: string } | null;
   };
-  if (result.kind !== "signedIn" || !result.tokens?.token) {
-    throw new Error(`Expected signedIn with token, got: ${JSON.stringify(result)}`);
+  if (result.kind !== "signedIn" || !result.session?.token) {
+    throw new Error(`Expected signedIn with session token, got: ${JSON.stringify(result)}`);
   }
-  const payload = parseJwtPayload(result.tokens.token);
-  if (!payload.sub || !payload.sub.includes("|")) {
+  const payload = parseJwtPayload(result.session.token);
+  if (!payload.sub) {
     throw new Error(`Missing expected subject claim: ${JSON.stringify(payload)}`);
   }
   return t.withIdentity({ subject: payload.sub });

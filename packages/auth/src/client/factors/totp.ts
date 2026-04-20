@@ -1,10 +1,5 @@
-import type {
-  AuthSession,
-  ConvexTransport,
-  SignInActionResult,
-  SignInApiRef,
-  TotpClient,
-} from "../core/types";
+import type { ConvexTransport, SignInActionResult, SignInApiRef, TotpClient } from "../core/types";
+import type { AuthTokens } from "../../shared/authResults";
 
 function isSignedInResult(
   result: SignInActionResult,
@@ -27,7 +22,7 @@ type TotpDeps = {
     args:
       | {
           shouldStore: true;
-          tokens: AuthSession | null;
+          tokens: AuthTokens | null;
           waitForHandshake: boolean;
           context: { provider?: string; flow: string };
         }
@@ -101,10 +96,10 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
           action: "auth:signIn",
           args: { provider: "totp", params, verifier: opts.verifier },
         })) as SignInActionResult;
-        if (isSignedInResult(result) && result.tokens) {
+        if (isSignedInResult(result) && result.session) {
           await setTokenAndMaybeWait({
             shouldStore: false,
-            tokens: result.tokens === null ? null : { token: result.tokens.token },
+            tokens: result.session === null ? null : { token: result.session.token },
             waitForHandshake: true,
             context: { provider: "totp", flow: "confirm" },
           });
@@ -117,10 +112,10 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
         params,
         verifier: opts.verifier,
       })) as unknown as SignInActionResult;
-      if (isSignedInResult(result) && result.tokens) {
+      if (isSignedInResult(result) && result.session) {
         await setTokenAndMaybeWait({
           shouldStore: true,
-          tokens: (result.tokens as AuthSession | null) ?? null,
+          tokens: (result.session as AuthTokens | null) ?? null,
           waitForHandshake: true,
           context: { provider: "totp", flow: "confirm" },
         });
@@ -138,10 +133,10 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
           action: "auth:signIn",
           args: { provider: "totp", params, verifier: opts.verifier },
         })) as SignInActionResult;
-        if (isSignedInResult(result) && result.tokens) {
+        if (isSignedInResult(result) && result.session) {
           await setTokenAndMaybeWait({
             shouldStore: false,
-            tokens: result.tokens === null ? null : { token: result.tokens.token },
+            tokens: result.session === null ? null : { token: result.session.token },
             waitForHandshake: true,
             context: { provider: "totp", flow: "verify" },
           });
@@ -154,10 +149,10 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
         params,
         verifier: opts.verifier,
       })) as unknown as SignInActionResult;
-      if (isSignedInResult(result) && result.tokens) {
+      if (isSignedInResult(result) && result.session) {
         await setTokenAndMaybeWait({
           shouldStore: true,
-          tokens: (result.tokens as AuthSession | null) ?? null,
+          tokens: (result.session as AuthTokens | null) ?? null,
           waitForHandshake: true,
           context: { provider: "totp", flow: "verify" },
         });

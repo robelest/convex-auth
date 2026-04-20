@@ -216,7 +216,7 @@ test("refresh keeps existing session when code exchange fails transiently", asyn
 test("refresh recovers from malformed access token with valid refresh token", async () => {
   vi.spyOn(ConvexHttpClient.prototype, "action").mockResolvedValue({
     kind: "signedIn",
-    tokens: {
+    session: {
       token: "new-jwt-token",
       refreshToken: "new-refresh-token",
     },
@@ -414,7 +414,7 @@ test("verify rejects unrelated issuer tokens", async () => {
 test("refresh keeps valid convex.site issuer token for convex.cloud URL", async () => {
   const actionSpy = vi.spyOn(ConvexHttpClient.prototype, "action").mockResolvedValue({
     kind: "signedIn",
-    tokens: {
+    session: {
       token: "unexpected-token",
       refreshToken: "unexpected-refresh-token",
     },
@@ -629,7 +629,7 @@ test("proxy signIn hydrates auth from refresh cookie for device verification", a
       if (typeof args === "object" && args !== null && "refreshToken" in args) {
         return {
           kind: "signedIn",
-          tokens: {
+          session: {
             token: "fresh-jwt-token",
             refreshToken: "fresh-refresh-token",
           },
@@ -641,7 +641,7 @@ test("proxy signIn hydrates auth from refresh cookie for device verification", a
         provider: "device",
         params: { flow: "verify", userCode: "ABCD-EFGH" },
       });
-      return { kind: "signedIn", tokens: null };
+      return { kind: "signedIn", session: null };
     });
 
   const auth = server({
@@ -677,7 +677,7 @@ test("proxy signIn hydrates auth from refresh cookie for device verification", a
   const response = await auth.proxy(request);
   expect(response.status).toBe(200);
   const result = await response.json();
-  expect(result).toMatchObject({ kind: "signedIn", tokens: null });
+  expect(result).toMatchObject({ kind: "signedIn", session: null });
   expect(actionSpy).toHaveBeenCalledTimes(2);
 
   const setCookie =
@@ -697,7 +697,7 @@ test("proxy signOut retries revocation via refresh token", async () => {
       if (typeof args === "object" && args !== null && "refreshToken" in args) {
         return {
           kind: "signedIn",
-          tokens: {
+          session: {
             token: "fresh-jwt-token",
             refreshToken: "fresh-refresh-token",
           },

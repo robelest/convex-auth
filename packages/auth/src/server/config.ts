@@ -2,6 +2,7 @@ import {
   AuthAuthorizationConfig,
   AuthProviderConfig,
   AuthProviderMaterializedConfig,
+  AuthTelemetryConfig,
   ConvexAuthConfig,
 } from "./types";
 
@@ -23,6 +24,7 @@ export function configDefaults(config_: ConvexAuthConfig) {
   return {
     ...config,
     authorization: normalizeAuthorizationConfig(config.authorization),
+    telemetry: normalizeTelemetryConfig(config.telemetry),
     extraProviders: materializeProviders(extraProviders),
   };
 }
@@ -106,4 +108,20 @@ function normalizeAuthorizationConfig(
     ]),
   );
   return { roles };
+}
+
+function normalizeTelemetryConfig(telemetry: ConvexAuthConfig["telemetry"]): AuthTelemetryConfig {
+  const normalized: AuthTelemetryConfig = {
+    includeIdentity: telemetry?.includeIdentity ?? "none",
+    identityFields: telemetry?.identityFields ?? {},
+    ...(telemetry?.hashIdentity ? { hashIdentity: telemetry.hashIdentity } : {}),
+  };
+
+  if (normalized.includeIdentity === "hashed" && normalized.hashIdentity === undefined) {
+    throw new Error(
+      'Convex Auth telemetry with `includeIdentity: "hashed"` requires a `hashIdentity` function.',
+    );
+  }
+
+  return normalized;
 }

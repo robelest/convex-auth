@@ -4,7 +4,7 @@ import { decodeJwt } from "jose";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
 import { convexTest } from "./convex.setup";
-import { expectSignedInResult, signInViaMagicLink, TEST_EMAIL, TEST_PASSWORD } from "./helpers";
+import { expectSignInSession, signInViaMagicLink, TEST_EMAIL, TEST_PASSWORD } from "./helpers";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -14,7 +14,7 @@ test("sign in with email signs out existing user with different email", async ()
   const t = convexTest(schema);
 
   // 1. Sign up without email verification
-  const tokens = expectSignedInResult(
+  const tokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
       params: {
@@ -26,7 +26,7 @@ test("sign in with email signs out existing user with different email", async ()
   );
 
   const claims = decodeJwt(tokens!.token);
-  const asMichal = t.withIdentity({ subject: claims.sub });
+  const asMichal = t.withIdentity({ subject: claims.sub, sid: claims.sid as any });
 
   const newTokens = await signInViaMagicLink(asMichal, "email", "michal@gmail.com");
 
@@ -34,7 +34,7 @@ test("sign in with email signs out existing user with different email", async ()
 
   expect(getUserIdFromToken(newTokens!.token)).not.toEqual(getUserIdFromToken(tokens!.token));
 
-  const refreshedOldSession = expectSignedInResult(
+  const refreshedOldSession = expectSignInSession(
     await t.action(api.auth.signIn, {
       refreshToken: tokens!.refreshToken,
       params: {},
@@ -46,7 +46,7 @@ test("sign in with email signs out existing user with different email", async ()
 test("unverified password accounts are not auto-linked to email sign-in", async () => {
   const t = convexTest(schema);
 
-  const tokens = expectSignedInResult(
+  const tokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
       params: {
@@ -58,7 +58,7 @@ test("unverified password accounts are not auto-linked to email sign-in", async 
   );
 
   const claims = decodeJwt(tokens!.token);
-  const asUser = t.withIdentity({ subject: claims.sub });
+  const asUser = t.withIdentity({ subject: claims.sub, sid: claims.sid as any });
 
   const newTokens = await signInViaMagicLink(asUser, "email", "linkme@gmail.com");
   expect(newTokens).not.toBeNull();
@@ -91,5 +91,5 @@ test("no linking to untrusted accounts", async () => {
 });
 
 function getUserIdFromToken(token: string) {
-  return decodeJwt(token).sub!.split("|")[0];
+  return decodeJwt(token).sub!;
 }

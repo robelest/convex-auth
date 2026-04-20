@@ -40,7 +40,7 @@ type SignInArgs =
 const authSignIn = makeFunctionReference<
   "action",
   SignInArgs,
-  { kind: string; signedIn?: unknown; verifier?: string }
+  { kind: string; session?: unknown; verifier?: string }
 >("auth:signIn");
 
 /**

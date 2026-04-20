@@ -10,22 +10,22 @@ export const RESEND_API_URL = "https://api.resend.com/emails";
 export const MOCK_EMAIL_ID = "email_123";
 
 /**
- * Assert that a sign-in result has kind "signedIn" and return the tokens.
- * Returns `null` when the server indicates no active session (tokens absent).
+ * Assert that a sign-in result has kind "signedIn" and return the session tokens.
+ * Returns `null` when the server indicates no active session.
  */
-export function expectSignedInResult(result: {
+export function expectSignInSession(result: {
   kind: string;
-  tokens?: { token: string; refreshToken: string } | null;
+  session?: { token: string; refreshToken: string } | null;
 }) {
   expect(result.kind).toBe("signedIn");
-  return result.kind === "signedIn" ? (result.tokens ?? null) : null;
+  return result.kind === "signedIn" ? (result.session ?? null) : null;
 }
 
 export function subjectToUserId(subject: unknown) {
   if (typeof subject !== "string" || subject.length === 0) {
     throw new Error("Expected subject claim");
   }
-  return subject.split("|")[0] ?? subject;
+  return subject;
 }
 
 /**
@@ -59,5 +59,5 @@ export async function signInViaMagicLink(
   const result = await t.action(api.auth.signIn, {
     params: { code },
   });
-  return expectSignedInResult(result);
+  return expectSignInSession(result);
 }

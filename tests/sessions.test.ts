@@ -4,7 +4,7 @@ import { decodeJwt } from "jose";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
 import { convexTest, TestConvex } from "./convex.setup";
-import { expectSignedInResult, TEST_EMAIL, TEST_PASSWORD } from "./helpers";
+import { expectSignInSession, TEST_EMAIL, TEST_PASSWORD } from "./helpers";
 
 const savedEnv: Record<string, string | undefined> = {};
 
@@ -30,7 +30,7 @@ afterEach(() => {
 test("session refresh", async () => {
   vi.useFakeTimers();
   const t = convexTest(schema);
-  const initialTokens = expectSignedInResult(
+  const initialTokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
       params: {
@@ -45,7 +45,7 @@ test("session refresh", async () => {
   const TWO_HOURS_MS = 1000 * 60 * 60 * 2;
   vi.advanceTimersByTime(TWO_HOURS_MS);
 
-  const tokens = expectSignedInResult(
+  const tokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       refreshToken,
       params: {},
@@ -58,7 +58,7 @@ test("session refresh", async () => {
 test("refreshed access token gets a unique jti", async () => {
   const t = convexTest(schema);
 
-  const initialTokens = expectSignedInResult(
+  const initialTokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
       params: {
@@ -70,7 +70,7 @@ test("refreshed access token gets a unique jti", async () => {
   );
   const { refreshToken } = initialTokens!;
 
-  const refreshedTokens = expectSignedInResult(
+  const refreshedTokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       refreshToken,
       params: {},
@@ -78,11 +78,15 @@ test("refreshed access token gets a unique jti", async () => {
   );
 
   const firstJti = decodeJwt(initialTokens!.token).jti;
-  const refreshedJti = decodeJwt(refreshedTokens!.token).jti;
+  const firstClaims = decodeJwt(initialTokens!.token);
+  const refreshedClaims = decodeJwt(refreshedTokens!.token);
+  const refreshedJti = refreshedClaims.jti;
 
   expect(typeof firstJti).toBe("string");
   expect(typeof refreshedJti).toBe("string");
   expect(refreshedJti).not.toEqual(firstJti);
+  expect(refreshedClaims.sub).toEqual(firstClaims.sub);
+  expect(refreshedClaims.sid).toEqual(firstClaims.sid);
 });
 
 test("refresh token expiration", async () => {
@@ -90,7 +94,7 @@ test("refresh token expiration", async () => {
   const ONE_DAY_MS = 1000 * 60 * 60 * 24;
   setEnv("AUTH_SESSION_INACTIVE_DURATION_MS", `${ONE_DAY_MS}`);
   const t = convexTest(schema);
-  const initialTokens = expectSignedInResult(
+  const initialTokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
       params: {
@@ -104,7 +108,7 @@ test("refresh token expiration", async () => {
 
   vi.advanceTimersByTime(2 * ONE_DAY_MS);
 
-  const tokens = expectSignedInResult(
+  const tokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       refreshToken,
       params: {},
@@ -115,7 +119,7 @@ test("refresh token expiration", async () => {
 });
 
 async function exchangeToken(t: TestConvex<typeof schema>, refreshToken: string) {
-  const newTokens = expectSignedInResult(
+  const newTokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       refreshToken,
       params: {},
@@ -127,7 +131,7 @@ async function exchangeToken(t: TestConvex<typeof schema>, refreshToken: string)
 test("refresh token reuse detection", async () => {
   vi.useFakeTimers();
   const t = convexTest(schema);
-  const initialTokens = expectSignedInResult(
+  const initialTokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
       params: {
@@ -177,7 +181,7 @@ test("refresh token reuse detection", async () => {
 test("refresh token reuse with racing requests", async () => {
   vi.useFakeTimers();
   const t = convexTest(schema);
-  const initialTokens = expectSignedInResult(
+  const initialTokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
       params: {
@@ -214,7 +218,7 @@ test("refresh token reuse with racing requests", async () => {
 test("refresh token invalidate subtree", async () => {
   vi.useFakeTimers();
   const t = convexTest(schema);
-  const initialTokens = expectSignedInResult(
+  const initialTokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
       params: {
@@ -270,7 +274,7 @@ test("session expiration", async () => {
   const ONE_DAY_MS = 1000 * 60 * 60 * 24;
   setEnv("AUTH_SESSION_TOTAL_DURATION_MS", `${ONE_DAY_MS}`);
   const t = convexTest(schema);
-  const initialTokens = expectSignedInResult(
+  const initialTokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
       params: {
@@ -284,7 +288,7 @@ test("session expiration", async () => {
 
   vi.advanceTimersByTime(2 * ONE_DAY_MS);
 
-  const refreshedTokens = expectSignedInResult(
+  const refreshedTokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       refreshToken,
       params: {},

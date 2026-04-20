@@ -269,7 +269,7 @@ test("credentials sign-in keeps the no-token contract when authorize pre-issues 
 
   expect(result).toEqual({
     kind: "signedIn",
-    signedIn: {
+    session: {
       userId: "user1",
       sessionId: "session1",
       tokens: null,

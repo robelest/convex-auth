@@ -41,8 +41,8 @@ management API, expose it explicitly from your Convex app. See the
 >   namespaces for Convex code.
 > - `api.auth.group.*` is optional public RPC only after you expose app-owned
 >   group SSO wrappers.
-> - The frontend auth client only needs `api.auth.signIn`, `api.auth.signOut`,
->   and `api.auth.store`.
+> - The frontend auth client only needs `api.auth.signIn` and
+>   `api.auth.signOut`.
 
 For the common case, create a single app-owned file such as
 `convex/auth/group.ts` and export the group SSO helpers your app needs.

@@ -40,7 +40,6 @@ frontend auth client still only depends on:
 
 - `api.auth.signIn`
 - `api.auth.signOut`
-- `api.auth.store`
 
 ## Recommended app file
 

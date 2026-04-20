@@ -24,9 +24,9 @@ export interface SimpleResponse {
   text: () => Promise<string>;
 }
 
-export interface ConvexSessionStartResult {
+export interface ConvexSignInResult {
   kind: string;
-  tokens?: { token: string; refreshToken: string } | null;
+  session?: { token: string; refreshToken: string } | null;
 }
 
 export interface InteropRuntime {

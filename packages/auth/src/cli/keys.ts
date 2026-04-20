@@ -12,7 +12,7 @@ export async function generateKeys() {
     const publicKey = await exportJWK(keys.publicKey);
     const jwks = JSON.stringify({ keys: [{ use: "sig", ...publicKey }] });
     return {
-      JWT_PRIVATE_KEY: `${privateKey.trimEnd().replace(/\n/g, " ")}`,
+      JWT_PRIVATE_KEY: privateKey.trimEnd(),
       JWKS: jwks,
       AUTH_SECRET_ENCRYPTION_KEY: randomBytes(32).toString("base64url"),
     };

@@ -12,9 +12,10 @@ import { createTOTPKeyURI, verifyTOTPWithGracePeriod } from "@oslojs/otp";
 import { ConvexError } from "convex/values";
 
 import { authFlowError } from "../shared/errors";
+import type { AuthTokens, SignInSessionResult, SignInTotpSetupResult } from "../shared/authResults";
 import type { AuthErrorData } from "./errors";
 import { toConvexError } from "./errors";
-import { userIdFromIdentitySubject } from "./identity";
+import { getAuthenticatedUserIdOrNull } from "./identity";
 import { callSignIn, callVerifier } from "./mutations/index";
 import { GenericActionCtxWithAuthConfig, TotpProviderConfig } from "./types";
 import {
@@ -33,14 +34,8 @@ import {
 type EnrichedActionCtx = GenericActionCtxWithAuthConfig<AuthDataModel>;
 
 type TotpResult =
-  | { kind: "signedIn"; signedIn: SessionInfo | null }
-  | {
-      kind: "totpSetup";
-      uri: string;
-      secret: string;
-      verifier: string;
-      totpId: string;
-    };
+  | SignInSessionResult<SessionInfo<AuthTokens | null> | null>
+  | SignInTotpSetupResult;
 
 const TOTP_FLOWS = ["setup", "confirm", "verify"] as const;
 
@@ -122,19 +117,21 @@ function resolveTotpDispatch(
 }
 
 async function requireAuthenticatedUserId(ctx: EnrichedActionCtx): Promise<string> {
-  let identity;
   try {
-    identity = await ctx.auth.getUserIdentity();
+    const userId = await getAuthenticatedUserIdOrNull(ctx);
+    if (userId === null) {
+      throw convexError(
+        "TOTP_AUTH_REQUIRED",
+        "Sign in first, then set up two-factor authentication.",
+      );
+    }
+    return userId;
   } catch (error) {
+    if (error instanceof ConvexError) {
+      throw error;
+    }
     throw asConvexError(error, "INTERNAL_ERROR", String(error));
   }
-  if (identity === null) {
-    throw convexError(
-      "TOTP_AUTH_REQUIRED",
-      "Sign in first, then set up two-factor authentication.",
-    );
-  }
-  return userIdFromIdentitySubject(identity.subject);
 }
 
 /** @internal */
@@ -205,10 +202,12 @@ export const handleTotp = async (
 
       return {
         kind: "totpSetup" as const,
-        uri,
-        secret: base32Secret,
+        totpSetup: {
+          uri,
+          secret: base32Secret,
+          totpId,
+        },
         verifier,
-        totpId,
       };
     },
 
@@ -253,7 +252,7 @@ export const handleTotp = async (
       } catch (error) {
         throw asConvexError(error, "INTERNAL_ERROR", String(error));
       }
-      return { kind: "signedIn" as const, signedIn: signInResult };
+      return { kind: "signedIn" as const, session: signInResult };
     },
 
     verify: async () => {
@@ -293,7 +292,7 @@ export const handleTotp = async (
       } catch (error) {
         throw asConvexError(error, "INTERNAL_ERROR", String(error));
       }
-      return { kind: "signedIn" as const, signedIn: signInResult };
+      return { kind: "signedIn" as const, session: signInResult };
     },
   };
 

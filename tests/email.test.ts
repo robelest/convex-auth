@@ -3,7 +3,7 @@ import schema from "@convex/schema";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
 import { convexTest } from "./convex.setup";
-import { expectSignedInResult, MOCK_EMAIL_ID, RESEND_API_URL } from "./helpers";
+import { expectSignInSession, MOCK_EMAIL_ID, RESEND_API_URL } from "./helpers";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -45,7 +45,7 @@ test("sign in with email", async () => {
     throw new Error("Expected email sign-in code to be captured");
   }
 
-  const tokens = expectSignedInResult(
+  const tokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       params: { code },
     }),

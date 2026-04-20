@@ -3,7 +3,8 @@
   "compilerOptions": {
     "outDir": "./dist/",
     "rootDir": "./src/",
-    "stripInternal": true
+    "stripInternal": true,
+    "types": ["node"]
   },
   "include": ["src/server/**/*", "src/providers/**/*"]
 }

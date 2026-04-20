@@ -91,5 +91,7 @@ yarn dlx convex deploy --cmd 'yarn build'
   handles this)
 - Provider secrets (`AUTH_*_ID`, `AUTH_*_SECRET`) are configured
 - `CONVEX_SITE_URL` is auto-provided by Convex
+- `convex/auth.config.ts` trusts `process.env.CONVEX_SITE_URL` with
+  `applicationID: "convex"`
 - OAuth callback URLs are registered with your providers pointing to
   `CONVEX_SITE_URL`

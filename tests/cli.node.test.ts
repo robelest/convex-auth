@@ -132,11 +132,10 @@ test("isPreviewDeployKey returns false for keys without pipe separator", () => {
 test("generateKeys produces signing and secret-encryption keys", async () => {
   const keys = await generateKeys();
 
-  // JWT_PRIVATE_KEY should be a PEM-encoded PKCS8 private key (spaces replace newlines)
+  // JWT_PRIVATE_KEY should be a PEM-encoded PKCS8 private key.
   expect(keys.JWT_PRIVATE_KEY).toContain("-----BEGIN PRIVATE KEY-----");
   expect(keys.JWT_PRIVATE_KEY).toContain("-----END PRIVATE KEY-----");
-  // The CLI collapses newlines to spaces for env var storage
-  expect(keys.JWT_PRIVATE_KEY).not.toContain("\n");
+  expect(keys.JWT_PRIVATE_KEY).toContain("\n");
 
   // JWKS should be valid JSON with a "keys" array
   const jwks = JSON.parse(keys.JWKS) as {

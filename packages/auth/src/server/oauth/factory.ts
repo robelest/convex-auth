@@ -39,16 +39,13 @@ export interface OAuthProviderConfig {
 function normalizeTokens(tokens: OAuth2Tokens): OAuthTokens {
   const raw = tokens.data as Record<string, unknown>;
   const rawScopes = typeof raw.scope === "string" ? raw.scope : undefined;
+  const expiresInSeconds = typeof raw.expires_in === "number" ? raw.expires_in : undefined;
   return {
     accessToken: typeof raw.access_token === "string" ? raw.access_token : undefined,
     refreshToken: typeof raw.refresh_token === "string" ? raw.refresh_token : undefined,
     idToken: typeof raw.id_token === "string" ? raw.id_token : undefined,
     accessTokenExpiresAt:
-      typeof tokens.accessTokenExpiresAt === "function"
-        ? tokens.accessTokenExpiresAt()
-        : typeof raw.expires_in === "number"
-          ? new Date(Date.now() + raw.expires_in * 1000)
-          : undefined,
+      expiresInSeconds === undefined ? undefined : new Date(Date.now() + expiresInSeconds * 1000),
     scopes: rawScopes
       ? rawScopes
           .split(/[,\s]+/)

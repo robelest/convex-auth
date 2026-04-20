@@ -15,6 +15,9 @@ Eliminate per-handler auth boilerplate with `auth.ctx()`. Set up once, and every
 query/mutation gets `ctx.auth.userId`, `ctx.auth.groupId`, `ctx.auth.role`, and
 `ctx.auth.grants` automatically.
 
+Use this for DB-backed authorization state. For native Convex identity claims
+already present on the JWT, prefer `ctx.auth.getUserIdentity()`.
+
 Requires [`convex-helpers`](https://github.com/get-convex/convex-helpers).
 
 This is optional app code layered on top of the minimal auth setup. You do not
@@ -62,11 +65,31 @@ export const list = query({
 });
 ```
 
+## Identity vs enrichment
+
+Use `ctx.auth.getUserIdentity()` when you want the native Convex identity
+surface directly from the JWT:
+
+- `subject`
+- `tokenIdentifier`
+- `email`
+- `name`
+- `pictureUrl`
+
+Use `auth.ctx()` when you want auth state enriched from Convex Auth tables:
+
+- `ctx.auth.userId`
+- `ctx.auth.user`
+- `ctx.auth.groupId`
+- `ctx.auth.role`
+- `ctx.auth.grants`
+
 The canonical `convex-auth` integration uses:
 
 - `convex/convex.config.ts` — component registration
-- `convex/auth.ts` — provider config, exports `signIn`/`signOut`/`store`
+- `convex/auth.ts` — provider config, exports `signIn`/`signOut` plus the internal `store` runtime mutation
 - `convex/auth/core.ts` — lightweight context for queries/mutations
+- `convex/auth.config.ts` — native Convex JWT trust config
 - `convex/http.ts` — OAuth callbacks and JWKS routes
 
 ## When to use `core` vs `auth`
@@ -81,7 +104,7 @@ lookups inside Convex functions.
 
 Use `convex/auth.ts` only for the full runtime surface.
 
-- Exporting `signIn`, `signOut`, and `store`
+- Exporting `signIn`, `signOut`, and the internal `store` runtime mutation
 - Registering HTTP routes with `auth.http.add(http)`
 - Calling `auth.http.context(ctx, request)`
 - Passing the full auth runtime into higher-level server helpers such as group SSO setup
@@ -115,15 +138,15 @@ const authCtx = auth.ctx({
 
 ## What's on `ctx.auth`
 
-| Property            | Type                            | Description                      |
-| ------------------- | ------------------------------- | -------------------------------- |
-| `userId`            | `string`                        | Authenticated user's document ID |
-| `user`              | `object \| null`                | Full user document               |
-| `groupId`           | `string \| null`                | Active group ID                  |
-| `role`              | `string \| null`                | Primary role for active group    |
-| `grants`            | `string[]`                      | Resolved grants for active group |
-| `getUserIdentity()` | `Promise<UserIdentity \| null>` | Native Convex method (preserved) |
-| `...extra`          | varies                          | Whatever `resolve()` returns     |
+| Property            | Type                            | Description                            |
+| ------------------- | ------------------------------- | -------------------------------------- |
+| `userId`            | `string`                        | Authenticated user's document ID       |
+| `user`              | `object \| null`                | Full user document                     |
+| `groupId`           | `string \| null`                | Active group ID                        |
+| `role`              | `string \| null`                | Primary role for active group          |
+| `grants`            | `string[]`                      | Resolved grants for active group       |
+| `getUserIdentity()` | `Promise<UserIdentity \| null>` | Native Convex identity from JWT claims |
+| `...extra`          | varies                          | Whatever `resolve()` returns           |
 
 ## Testing with `convex-test`
 

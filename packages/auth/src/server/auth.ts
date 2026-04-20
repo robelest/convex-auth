@@ -11,7 +11,7 @@ import type { AuthApiRefs } from "../client/index";
 import {
   createPublicAuthContext,
   createAuthContextCustomization,
-  assertAuthResolverContext,
+  createAuthContextFacade,
 } from "./auth-context";
 import type {
   AuthConfig,
@@ -21,12 +21,9 @@ import type {
   InferAuth,
   OptionalAuthContext,
   UserDoc,
+  _AuthContextFacade,
   _AuthContextResolver,
   _AuthContextFactory,
-  _AuthContextCustomization,
-  _AuthResolverCtx,
-  _PublicAuthContextConfig,
-  _ResolvedAuthContext,
 } from "./auth-context";
 import { Auth as AuthFactory } from "./runtime";
 import type {
@@ -56,13 +53,7 @@ export { createPublicAuthContext, createAuthContextCustomization };
 // Use internal aliases for the private types from auth-context
 type AuthContextResolver = _AuthContextResolver;
 type AuthContextFactory = _AuthContextFactory;
-type AuthContextCustomization<TAuth> = _AuthContextCustomization<TAuth>;
-type AuthResolverCtx = _AuthResolverCtx;
-type PublicAuthContextConfig<
-  TResolve extends Record<string, unknown>,
-  TCtx,
-> = _PublicAuthContextConfig<TResolve, TCtx>;
-type ResolvedAuthContext<TResolve> = _ResolvedAuthContext<TResolve>;
+type AuthContextFacade = _AuthContextFacade;
 
 // ============================================================================
 // Types
@@ -145,26 +136,12 @@ export type AuthApiBase<TAuthorization extends AuthAuthorizationConfig | undefin
   key: ReturnType<typeof AuthFactory>["auth"]["key"];
   http: ReturnType<typeof AuthFactory>["auth"]["http"];
   /**
-   * Zero-round-trip helper: parse the current user id from the JWT subject
-   * claim. No component read, no cache lookup. Returns `null` when
-   * unauthenticated.
-   *
-   * Prefer this over `auth.context(ctx)` when a handler only needs the
-   * user's id (audit logging, early guards, routing). For the full user
-   * document, follow up with `auth.user.get(ctx, userId)` — cached per
-   * request.
-   *
-   * @example
-   * ```ts
-   * const userId = await auth.getUserId(ctx);
-   * if (!userId) throw new Error("Not signed in");
-   * ```
-   */
-  getUserId: ReturnType<typeof AuthFactory>["auth"]["session"]["userId"];
-  /**
    * Resolve the current request's auth context. Framework-agnostic — use
    * this in fluent-convex middleware, custom wrappers, or anywhere you
    * need the current `{ userId, user, groupId, role, grants }` object.
+   *
+   * This is the authorization-enrichment path. For native identity claims
+   * already present on the JWT, prefer `ctx.auth.getUserIdentity()`.
    *
    * Throws a structured `ConvexError` when unauthenticated by default.
    * Pass `{ optional: true }` to get a null-shaped auth object instead.
@@ -343,20 +320,6 @@ export type AuthApi<TAuthorization extends AuthAuthorizationConfig | undefined =
       sso: PublicGroupSsoApi;
     };
   };
-
-type PublicContextFactory = <
-  TCtx,
-  TResolve extends Record<string, unknown> = Record<string, never>,
->(
-  ctx: TCtx,
-  config?: PublicAuthContextConfig<TResolve, TCtx>,
-) => Promise<ResolvedAuthContext<TResolve>>;
-
-type PublicContextCustomizationFactory = <
-  TResolve extends Record<string, unknown> = Record<string, never>,
->(
-  config?: AuthContextConfig<TResolve, AuthResolverCtx>,
-) => AuthContextCustomization<ResolvedAuthContext<TResolve>>;
 
 /**
  * The return type of {@link createAuth}.
@@ -618,25 +581,6 @@ export function createAuth<
     key: authResult.auth.key,
     http: authResult.auth.http,
 
-    /**
-     * Zero-round-trip helper: parse the current user id straight from the
-     * JWT. No component read. Returns `null` when unauthenticated.
-     *
-     * Prefer this over `auth.context(ctx)` when you only need the user's
-     * id. For the full user document, follow up with
-     * `auth.user.get(ctx, userId)` (cached per-request).
-     */
-    getUserId: authResult.auth.session.userId,
-
-    context: ((ctx, config) => {
-      assertAuthResolverContext(ctx);
-      return createPublicAuthContext(authResult.auth, ctx, config);
-    }) as PublicContextFactory as AuthContextResolver,
-
-    ctx: ((config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>) =>
-      createAuthContextCustomization(
-        authResult.auth,
-        config,
-      )) as PublicContextCustomizationFactory as AuthContextFactory,
+    ...(createAuthContextFacade(authResult.auth as AuthLike) as AuthContextFacade),
   } as unknown as ConvexAuthResult<P, TAuthorization>;
 }

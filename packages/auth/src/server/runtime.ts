@@ -10,6 +10,7 @@ import type { Value } from "convex/values";
 import { v } from "convex/values";
 import { serialize as serializeCookie } from "cookie";
 
+import type { AuthTokens, SignInFlowResult } from "../shared/authResults";
 import { redirectToParamCookie, useRedirectToParam } from "./cookies";
 import { createCoreDomains } from "./core";
 import { GetProviderOrThrowFunc } from "./crypto";
@@ -51,7 +52,6 @@ import type {
   FunctionReferenceFromExport,
   OAuthMaterializedConfig,
   SSOProviderConfig,
-  Tokens,
 } from "./types";
 import { MutationCtx } from "./types";
 import { siteUrlsFromEnv } from "./url";
@@ -71,32 +71,7 @@ const convexError = (data: Record<string, Value>) => new ConvexError(data);
 export type SignInAction = FunctionReferenceFromExport<ReturnType<typeof Auth>["signIn"]>;
 
 /** @internal */
-export type SignInActionResult =
-  | { kind: "signedIn"; tokens: Tokens | null }
-  | { kind: "redirect"; redirect: string; verifier: string }
-  | { kind: "started" }
-  | {
-      kind: "passkeyOptions";
-      options: Record<string, unknown>;
-      verifier: string;
-    }
-  | { kind: "totpRequired"; verifier: string }
-  | {
-      kind: "totpSetup";
-      totpSetup: { uri: string; secret: string; totpId: string };
-      verifier: string;
-    }
-  | {
-      kind: "deviceCode";
-      deviceCode: {
-        deviceCode: string;
-        userCode: string;
-        verificationUri: string;
-        verificationUriComplete: string;
-        expiresIn: number;
-        interval: number;
-      };
-    };
+export type SignInActionResult = SignInFlowResult<AuthTokens | null>;
 /**
  * The type of the signOut Convex Action returned from the auth() helper.
  *
@@ -506,49 +481,16 @@ export function Auth(config_: ConvexAuthConfig) {
           },
         );
         const resultMap: Record<string, (r: any) => SignInActionResult> = {
-          redirect: (r) => ({
-            kind: "redirect" as const,
-            redirect: r.redirect,
-            verifier: r.verifier,
-          }),
+          redirect: (r) => r,
           signedIn: (r) => ({
             kind: "signedIn" as const,
-            tokens: r.signedIn?.tokens ?? null,
+            session: r.session?.tokens ?? null,
           }),
-          refreshTokens: (r) => ({
-            kind: "signedIn" as const,
-            tokens: r.signedIn?.tokens ?? null,
-          }),
-          started: () => ({ kind: "started" as const }),
-          passkeyOptions: (r) => ({
-            kind: "passkeyOptions" as const,
-            options: r.options,
-            verifier: r.verifier,
-          }),
-          totpRequired: (r) => ({
-            kind: "totpRequired" as const,
-            verifier: r.verifier,
-          }),
-          totpSetup: (r) => ({
-            kind: "totpSetup" as const,
-            totpSetup: {
-              uri: r.uri,
-              secret: r.secret,
-              totpId: r.totpId,
-            },
-            verifier: r.verifier,
-          }),
-          deviceCode: (r) => ({
-            kind: "deviceCode" as const,
-            deviceCode: {
-              deviceCode: r.deviceCode,
-              userCode: r.userCode,
-              verificationUri: r.verificationUri,
-              verificationUriComplete: r.verificationUriComplete,
-              expiresIn: r.expiresIn,
-              interval: r.interval,
-            },
-          }),
+          started: (r) => r,
+          passkeyOptions: (r) => r,
+          totpRequired: (r) => r,
+          totpSetup: (r) => r,
+          deviceCode: (r) => r,
         };
         const handler = resultMap[result.kind];
         if (!handler) {

@@ -1,6 +1,7 @@
 import type { GenericDataModel } from "convex/server";
 import { GenericId, Infer, v } from "convex/values";
 
+import type { AuthTokens } from "../../shared/authResults";
 import type * as Provider from "../crypto";
 import { authDb } from "../db";
 import { log, maybeRedact } from "../log";
@@ -9,21 +10,22 @@ import {
   REFRESH_TOKEN_REUSE_WINDOW_MS,
   refreshTokenExpirationTime,
 } from "../refresh";
+import { REFRESH_TOKEN_DIVIDER } from "../refresh";
 import { finalizeSessionIssuance } from "../sessions";
 import type { SessionIssuance } from "../sessions";
-import { REFRESH_TOKEN_DIVIDER } from "../refresh";
-import { GenericActionCtxWithAuthConfig, type MutationCtx, type SessionInfo } from "../types";
-import { withSpan } from "../utils/span";
+import { buildRefreshIdentityAttributes } from "../telemetry";
+import {
+  GenericActionCtxWithAuthConfig,
+  type Doc,
+  type MutationCtx,
+  type SessionInfo,
+} from "../types";
+import { setActiveSpanAttributes, withSpan } from "../utils/span";
 import { AUTH_STORE_REF } from "./store/refs";
 
 export const refreshSessionArgs = v.object({
   refreshToken: v.string(),
 });
-
-type RefreshResult = null | {
-  token: string;
-  refreshToken: string;
-};
 
 /**
  * Exchange a refresh token and mint the next pair of session IDs + refresh
@@ -40,55 +42,96 @@ export async function refreshSessionImpl(
 ): Promise<SessionIssuance | null> {
   const db = authDb(ctx, config);
 
-  return withSpan("convex-auth.refresh.session", { hasRefreshToken: true }, async () => {
-    try {
-      let refreshTokenId: GenericId<"RefreshToken">;
-      let sessionId: GenericId<"Session">;
+  return withSpan(
+    "convex-auth.refresh.session",
+    { hasRefreshToken: true, "auth.flow": "refresh" },
+    async () => {
       try {
-        ({ refreshTokenId, sessionId } = parseRefreshToken(args.refreshToken));
-      } catch {
-        throw new RefreshFailure("Failed to parse refresh token");
-      }
+        let refreshTokenId: GenericId<"RefreshToken">;
+        let sessionId: GenericId<"Session">;
+        try {
+          ({ refreshTokenId, sessionId } = parseRefreshToken(args.refreshToken));
+        } catch {
+          throw new RefreshFailure("parse_failure", "Failed to parse refresh token");
+        }
 
-      log(
-        "DEBUG",
-        `refreshSessionImpl args: Token ID: ${maybeRedact(refreshTokenId)} Session ID: ${maybeRedact(sessionId)}`,
-      );
+        log(
+          "DEBUG",
+          `refreshSessionImpl args: Token ID: ${maybeRedact(refreshTokenId)} Session ID: ${maybeRedact(sessionId)}`,
+        );
 
-      let exchanged;
-      try {
-        exchanged = await db.refreshTokens.exchange({
-          refreshTokenId,
-          sessionId,
-          now: Date.now(),
-          refreshTokenExpirationTime: refreshTokenExpirationTime(config),
-          reuseWindowMs: REFRESH_TOKEN_REUSE_WINDOW_MS,
+        let exchanged;
+        try {
+          exchanged = await db.refreshTokens.exchange({
+            refreshTokenId,
+            sessionId,
+            now: Date.now(),
+            refreshTokenExpirationTime: refreshTokenExpirationTime(config),
+            reuseWindowMs: REFRESH_TOKEN_REUSE_WINDOW_MS,
+          });
+        } catch {
+          throw new RefreshFailure("exchange_failure", "Failed to exchange refresh token");
+        }
+
+        if (exchanged === null) {
+          setActiveSpanAttributes({ "auth.refresh.result": "null" });
+          return null;
+        }
+
+        setActiveSpanAttributes({
+          "auth.refresh.result": "success",
+          ...(await buildRefreshIdentityAttributes(ctx, config, {
+            userId: exchanged.userId,
+            sessionId: exchanged.sessionId,
+            refreshTokenId: exchanged.refreshTokenId,
+          })),
         });
-      } catch {
-        throw new RefreshFailure("Failed to exchange refresh token");
-      }
 
-      if (exchanged === null) {
-        return null;
-      }
+        const user = (await db.users.getById(exchanged.userId)) as Doc<"User"> | null;
 
-      return {
-        userId: exchanged.userId as GenericId<"User">,
-        sessionId: exchanged.sessionId as GenericId<"Session">,
-        refreshToken: `${exchanged.refreshTokenId as string}${REFRESH_TOKEN_DIVIDER}${exchanged.sessionId as string}`,
-      } satisfies SessionIssuance;
-    } catch (e) {
-      if (e instanceof RefreshFailure) {
-        log("DEBUG", e.reason);
-        return null;
+        return {
+          userId: exchanged.userId as GenericId<"User">,
+          sessionId: exchanged.sessionId as GenericId<"Session">,
+          identity: {
+            subject: exchanged.userId as GenericId<"User">,
+            sessionId: exchanged.sessionId as GenericId<"Session">,
+            ...(typeof user?.name === "string" ? { name: user.name } : null),
+            ...(typeof user?.email === "string" ? { email: user.email } : null),
+            ...(user?.emailVerificationTime !== undefined
+              ? { emailVerified: true }
+              : user?.email !== undefined
+                ? { emailVerified: false }
+                : null),
+            ...(typeof user?.image === "string" ? { picture: user.image } : null),
+            ...(typeof user?.phone === "string" ? { phoneNumber: user.phone } : null),
+            ...(user?.phoneVerificationTime !== undefined
+              ? { phoneNumberVerified: true }
+              : user?.phone !== undefined
+                ? { phoneNumberVerified: false }
+                : null),
+          },
+          refreshToken: `${exchanged.refreshTokenId as string}${REFRESH_TOKEN_DIVIDER}${exchanged.sessionId as string}`,
+        } satisfies SessionIssuance;
+      } catch (e) {
+        if (e instanceof RefreshFailure) {
+          setActiveSpanAttributes({
+            "auth.refresh.result": e.code,
+            "auth.refresh.failure_reason": e.reason,
+          });
+          log("DEBUG", e.reason);
+          return null;
+        }
+        throw e;
       }
-      throw e;
-    }
-  });
+    },
+  );
 }
 
 class RefreshFailure extends Error {
-  constructor(public reason: string) {
+  constructor(
+    public code: "parse_failure" | "exchange_failure",
+    public reason: string,
+  ) {
     super(reason);
   }
 }
@@ -103,7 +146,7 @@ class RefreshFailure extends Error {
 export const callRefreshSession = async <DataModel extends GenericDataModel>(
   ctx: GenericActionCtxWithAuthConfig<DataModel>,
   args: Infer<typeof refreshSessionArgs>,
-): Promise<RefreshResult> => {
+): Promise<SessionInfo<AuthTokens> | null> => {
   const issuance = (await ctx.runMutation(AUTH_STORE_REF, {
     args: {
       type: "refreshSession",
@@ -113,6 +156,5 @@ export const callRefreshSession = async <DataModel extends GenericDataModel>(
   if (issuance === null || issuance.refreshToken === null) {
     return null;
   }
-  const finalized: SessionInfo = await finalizeSessionIssuance(ctx.auth.config, issuance);
-  return finalized.tokens;
+  return (await finalizeSessionIssuance(ctx.auth.config, issuance)) as SessionInfo<AuthTokens>;
 };

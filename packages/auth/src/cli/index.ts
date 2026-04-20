@@ -303,6 +303,7 @@ async function runSetup(options: CliOptions) {
   await configureConvexConfig(config);
   await initializeAuth(config);
   await initializeAuthCore(config);
+  await initializeAuthConfig(config);
   await configureHttp(config);
 
   if (options.variables !== undefined) {
@@ -807,6 +808,48 @@ export const auth = createAuthContext(components.auth);
       mkdirSync(authDir, { recursive: true });
     }
     const newPath = config.usesTypeScript ? `${corePath}.ts` : `${corePath}.js`;
+    writeFileSync(newPath, source);
+    p.log.success(`Created ${newPath}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Step 6: auth.config.ts
+// ---------------------------------------------------------------------------
+
+async function initializeAuthConfig(config: ProjectConfig) {
+  logStep(config, "Initialize auth.config file");
+  const sourceTemplate = `\
+export default {$$
+  providers: [$$
+    {$$
+      domain: process.env.CONVEX_SITE_URL,$$
+      applicationID: "convex",$$
+    },$$
+  ],$$
+};
+`;
+  const source = templateToSource(sourceTemplate);
+  const authConfigPath = path.join(config.convexFolderPath, "auth.config");
+  const existingPath = existingNonEmptySourcePath(authConfigPath);
+  if (existingPath !== null) {
+    const existing = readFileSync(existingPath, "utf8");
+    if (doesAlreadyMatchTemplate(existing, sourceTemplate)) {
+      p.log.success(`${existingPath} is already set up.`);
+    } else {
+      p.log.info(
+        `You already have ${existingPath}. Make sure it trusts CONVEX_SITE_URL as the Convex auth issuer:`,
+      );
+      p.log.message(indent(`\n${source}\n`));
+      const ready = await p.confirm({ message: "Ready to continue?" });
+      handleCancel(ready);
+      if (!ready) {
+        p.cancel("Setup cancelled.");
+        process.exit(1);
+      }
+    }
+  } else {
+    const newPath = config.usesTypeScript ? `${authConfigPath}.ts` : `${authConfigPath}.js`;
     writeFileSync(newPath, source);
     p.log.success(`Created ${newPath}`);
   }

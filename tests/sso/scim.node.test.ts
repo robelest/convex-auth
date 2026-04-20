@@ -19,7 +19,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { expect, test } from "vite-plus/test";
 
 import {
-  type ConvexSessionStartResult,
+  type ConvexSignInResult,
   getInteropRuntime,
   groupAuditListRpc,
   groupCreateRpc,
@@ -234,11 +234,11 @@ test("SCIM → Convex: direct SCIM server protocol validation", async () => {
     skipConvexDeploymentUrlCheck: true,
     logger: false,
   });
-  const sessionStart = (await convexClient.action(api.auth.signIn, {
+  const signInResult = (await convexClient.action(api.auth.signIn, {
     provider: "anonymous",
-  })) as ConvexSessionStartResult;
-  expect(sessionStart.kind).toBe("signedIn");
-  const convexUserToken = sessionStart.tokens?.token;
+  })) as ConvexSignInResult;
+  expect(signInResult.kind).toBe("signedIn");
+  const convexUserToken = signInResult.session?.token;
   expect(convexUserToken).toBeTruthy();
   if (!convexUserToken) {
     throw new Error("Anonymous sign-in did not return a user token.");

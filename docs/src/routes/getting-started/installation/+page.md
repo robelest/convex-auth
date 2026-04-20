@@ -81,14 +81,15 @@ The wizard handles everything:
 - `convex.config.ts`
 - `auth.ts` — provider config + sign-in actions
 - `auth/core.ts` — lightweight context for queries and mutations
+- `auth.config.ts` — native Convex JWT trust config
 - `http.ts`
 
 ## API layers
 
 <CardGrid>
   <Card title="Client auth flow">
-    <code>signIn</code>, <code>signOut</code>, and <code>store</code> are the only required client-callable auth
-    functions. Frontends use them through <code>client({'{'} convex, api: api.auth {'}'}).</code>
+    Frontends use <code>client({'{'} convex, api: api.auth {'}'})</code>. The public client contract is
+    <code>signIn</code> + <code>signOut</code>; <code>store</code> is internal runtime plumbing.
   </Card>
   <Card title="Server helpers">
     `auth.user.*`, `auth.group.sso.*`, and `auth.group.sso.scim.*` are server-side helpers for
@@ -133,6 +134,9 @@ export { auth };
 export const { signIn, signOut, store } = auth;
 ```
 
+`store` stays exported so the auth runtime can wire its internal mutation
+reference, but frontend apps should pass only `api.auth` into the client SDK.
+
 ### 3. Create the auth context
 
 ```ts
@@ -146,7 +150,24 @@ export const auth = createAuthContext(components.auth);
 Queries and mutations import `auth` from `./auth/core` — this keeps provider
 and crypto code out of your query bundles entirely.
 
-### 4. Wire up HTTP routes
+### 4. Trust the Convex Auth JWT issuer
+
+```ts
+// convex/auth.config.ts
+export default {
+  providers: [
+    {
+      domain: process.env.CONVEX_SITE_URL,
+      applicationID: "convex",
+    },
+  ],
+};
+```
+
+`CONVEX_SITE_URL` is provided automatically by Convex. This file is what makes
+`ctx.auth.getUserIdentity()` work against tokens issued by Convex Auth.
+
+### 5. Wire up HTTP routes
 
 ```ts
 // convex/http.ts

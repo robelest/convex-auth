@@ -1,6 +1,14 @@
 import { GenericId, ConvexError, type Value } from "convex/values";
 
 import { authFlowError } from "../shared/errors";
+import type {
+  AuthTokens,
+  SignInFlowResult,
+  SignInRedirectResult,
+  SignInSessionResult,
+  SignInStartResult,
+  SignInTotpChallengeResult,
+} from "../shared/authResults";
 import { handleDevice } from "./device";
 import { envOptionalString, readConfigSync } from "./env";
 import { requireEnv } from "./env";
@@ -28,13 +36,7 @@ import {
   GenericActionCtxWithAuthConfig,
   PhoneConfig,
 } from "./types";
-import {
-  AuthDataModel,
-  SessionInfo,
-  SessionInfoWithTokens,
-  Tokens,
-  queryTotpVerifiedByUserId,
-} from "./types";
+import { AuthDataModel, SessionInfo, queryTotpVerifiedByUserId } from "./types";
 import type { OAuthMaterializedConfig } from "./types";
 import { withSpan } from "./utils/span";
 
@@ -42,33 +44,7 @@ const DEFAULT_EMAIL_VERIFICATION_CODE_DURATION_S = 60 * 60 * 24; // 24 hours
 
 type EnrichedActionCtx = GenericActionCtxWithAuthConfig<AuthDataModel>;
 
-type SignInResult =
-  | { kind: "signedIn"; signedIn: SessionInfo | null }
-  | { kind: "refreshTokens"; signedIn: { tokens: Tokens } }
-  | { kind: "started"; started: true }
-  | { kind: "redirect"; redirect: string; verifier: string }
-  | {
-      kind: "passkeyOptions";
-      options: Record<string, unknown>;
-      verifier: string;
-    }
-  | { kind: "totpRequired"; verifier: string }
-  | {
-      kind: "totpSetup";
-      uri: string;
-      secret: string;
-      verifier: string;
-      totpId: string;
-    }
-  | {
-      kind: "deviceCode";
-      deviceCode: string;
-      userCode: string;
-      verificationUri: string;
-      verificationUriComplete: string;
-      expiresIn: number;
-      interval: number;
-    };
+type SignInResult = SignInFlowResult<SessionInfo<AuthTokens | null> | null>;
 
 type VerificationParams = {
   email?: string;
@@ -109,8 +85,19 @@ const describeUnknown = (value: unknown) => {
   return json ?? Object.prototype.toString.call(value);
 };
 
-const asConvexError = (error: unknown, code: string, message: string): ConvexError<AuthErrorData> =>
-  error instanceof ConvexError ? error : toConvexError(authFlowError(code, message));
+const asConvexError = (
+  error: unknown,
+  code: string,
+  message: string,
+): ConvexError<AuthErrorData> => {
+  if (error instanceof ConvexError) {
+    return error;
+  }
+  if (error instanceof Error) {
+    return toConvexError(authFlowError(code, error.message || message));
+  }
+  return toConvexError(authFlowError(code, `${message} ${describeUnknown(error)}`.trim()));
+};
 
 const asCredentialsError = (error: unknown): ConvexError<AuthErrorData> => {
   if (error instanceof ConvexError) {
@@ -170,11 +157,11 @@ async function signInFx(
     async () => {
       if (provider === null && args.refreshToken) {
         try {
-          const tokens = await callRefreshSession(ctx, { refreshToken: args.refreshToken! });
-          if (tokens === null) {
-            return { kind: "signedIn" as const, signedIn: null };
+          const session = await callRefreshSession(ctx, { refreshToken: args.refreshToken! });
+          if (session === null) {
+            return { kind: "signedIn" as const, session: null };
           }
-          return { kind: "refreshTokens" as const, signedIn: { tokens } };
+          return { kind: "signedIn" as const, session };
         } catch (error) {
           throw asConvexError(error, "INTERNAL_ERROR", "Failed to refresh session.");
         }
@@ -188,7 +175,7 @@ async function signInFx(
             generateTokens: true,
             allowExtraProviders: options.allowExtraProviders,
           });
-          return { kind: "signedIn" as const, signedIn: result };
+          return { kind: "signedIn" as const, session: result };
         } catch (error) {
           throw asConvexError(error, "INTERNAL_ERROR", "Failed to verify sign-in code.");
         }
@@ -244,9 +231,7 @@ async function handleEmailAndPhoneProviderFx(
     generateTokens: boolean;
     allowExtraProviders: boolean;
   },
-): Promise<
-  { kind: "started"; started: true } | { kind: "signedIn"; signedIn: SessionInfoWithTokens }
-> {
+): Promise<SignInStartResult | SignInSessionResult<SessionInfo<AuthTokens>>> {
   return withSpan(`convex-auth.signin.${provider.type}`, {}, async () => {
     const normalizedParams = normalizeVerificationParams(args.params);
     if (args.params?.code !== undefined) {
@@ -268,7 +253,7 @@ async function handleEmailAndPhoneProviderFx(
       }
       return {
         kind: "signedIn" as const,
-        signedIn: result as SessionInfoWithTokens,
+        session: result as SessionInfo<AuthTokens>,
       };
     }
 
@@ -345,7 +330,7 @@ async function handleEmailAndPhoneProviderFx(
       }
     }
 
-    return { kind: "started" as const, started: true as const };
+    return { kind: "started" as const };
   });
 }
 
@@ -358,9 +343,7 @@ async function handleCredentialsFx(
   options: {
     generateTokens: boolean;
   },
-): Promise<
-  { kind: "signedIn"; signedIn: SessionInfo | null } | { kind: "totpRequired"; verifier: string }
-> {
+): Promise<SignInSessionResult<SessionInfo<AuthTokens | null> | null> | SignInTotpChallengeResult> {
   return withSpan("convex-auth.signin.credentials", {}, async () => {
     let result;
     try {
@@ -377,7 +360,7 @@ async function handleCredentialsFx(
       throw asCredentialsError(error);
     }
     if (result === null) {
-      return { kind: "signedIn" as const, signedIn: null };
+      return { kind: "signedIn" as const, session: null };
     }
 
     const hintedHasTotp = (result as unknown as { hasTotp?: boolean }).hasTotp;
@@ -440,7 +423,7 @@ async function handleCredentialsFx(
               refreshToken: options.generateTokens ? preIssuedIssuance.refreshToken : null,
             }),
         );
-        return { kind: "signedIn" as const, signedIn: idsAndTokens };
+        return { kind: "signedIn" as const, session: idsAndTokens };
       } catch (error) {
         throw asConvexError(error, "INTERNAL_ERROR", "Failed to finalize sign-in.");
       }
@@ -461,7 +444,7 @@ async function handleCredentialsFx(
     } catch (error) {
       throw asConvexError(error, "INTERNAL_ERROR", "Failed to complete sign-in.");
     }
-    return { kind: "signedIn" as const, signedIn: idsAndTokens };
+    return { kind: "signedIn" as const, session: idsAndTokens };
   });
 }
 
@@ -475,10 +458,7 @@ async function handleOAuthProviderFx(
   options: {
     allowExtraProviders: boolean;
   },
-): Promise<
-  | { kind: "signedIn"; signedIn: SessionInfoWithTokens | null }
-  | { kind: "redirect"; redirect: string; verifier: string }
-> {
+): Promise<SignInSessionResult<SessionInfo<AuthTokens> | null> | SignInRedirectResult> {
   return withSpan(`convex-auth.signin.oauth`, { provider: provider.id }, async () => {
     if (args.params?.code !== undefined) {
       let result;
@@ -494,7 +474,7 @@ async function handleOAuthProviderFx(
       }
       return {
         kind: "signedIn" as const,
-        signedIn: result as SessionInfoWithTokens | null,
+        session: result as SessionInfo<AuthTokens> | null,
       };
     }
 

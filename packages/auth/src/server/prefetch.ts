@@ -4,10 +4,10 @@ import { ConvexError } from "convex/values";
 import { parse, serialize } from "cookie";
 import { jwtDecode } from "jwt-decode";
 
+import type { AuthTokens } from "../shared/authResults";
 import { log } from "./log";
 import type { SignInParams } from "./payloads";
 import type { SignInAction, SignInActionResult, SignOutAction } from "./runtime";
-import type { Tokens } from "./types";
 import { isLocalHost } from "./url";
 
 const signInActionRef: SignInAction = makeFunctionReference("auth:signIn");
@@ -342,9 +342,9 @@ function getProxyErrorBody(error: unknown) {
       };
 }
 
-function extractSignedInTokens(result: SignInActionResult, context: string): Tokens | null {
+function extractSignedInTokens(result: SignInActionResult, context: string): AuthTokens | null {
   if (result.kind === "signedIn") {
-    return result.tokens;
+    return result.session;
   }
   throw new Error(`Invalid \`auth:signIn\` result for ${context}`);
 }
@@ -574,7 +574,7 @@ export function server(options: ServerOptions) {
           return { client, cookies: currentCookies };
         }
 
-        let refreshedTokens: Tokens | null = null;
+        let refreshedTokens: AuthTokens | null = null;
         try {
           const result = await runSignIn(createClient(), {
             refreshToken: currentCookies.refreshToken,
@@ -625,25 +625,25 @@ export function server(options: ServerOptions) {
         }
         if (result.kind === "signedIn") {
           const nextCookies =
-            result.tokens === null
+            result.session === null
               ? {
                   token: currentCookies.token,
                   refreshToken: currentCookies.refreshToken,
                   verifier: null,
                 }
               : {
-                  token: result.tokens.token,
-                  refreshToken: result.tokens.refreshToken,
+                  token: result.session.token,
+                  refreshToken: result.session.refreshToken,
                   verifier: null,
                 };
           return appendCookieHeaders(
             jsonResponse({
               kind: "signedIn",
-              tokens:
-                result.tokens === null
+              session:
+                result.session === null
                   ? null
                   : {
-                      token: result.tokens.token,
+                      token: result.session.token,
                       refreshToken: "dummy",
                     },
             }),
@@ -737,7 +737,7 @@ export function server(options: ServerOptions) {
       }
       const actionDispatch =
         action === "auth:signIn"
-          ? { action: "sessionStart" as const }
+          ? { action: "signInStart" as const }
           : action === "auth:signOut"
             ? { action: "sessionStop" as const }
             : null;
@@ -748,7 +748,7 @@ export function server(options: ServerOptions) {
       const host = request.headers.get("host") ?? new URL(request.url).host;
       const currentCookies = parseAuthCookies(request.headers.get("cookie"), host, cookieNamespace);
 
-      if (actionDispatch.action === "sessionStart") {
+      if (actionDispatch.action === "signInStart") {
         // Determine refresh response
         let refreshResponse: Response | null = null;
         if (args.refreshToken === undefined) {
@@ -860,7 +860,9 @@ export function server(options: ServerOptions) {
           log("DEBUG", `${new Date().toISOString()} [convex-auth/server] ${message}`);
         }
       };
-      const refreshWithToken = async (refreshToken: string): Promise<Tokens | null | undefined> => {
+      const refreshWithToken = async (
+        refreshToken: string,
+      ): Promise<AuthTokens | null | undefined> => {
         try {
           const result = (await createClient().action(signInActionRef, {
             refreshToken,
@@ -1032,7 +1034,7 @@ export function server(options: ServerOptions) {
       }
 
       // Determine token refresh strategy
-      let tokens: Tokens | null | undefined;
+      let tokens: AuthTokens | null | undefined;
       if (token === null && refreshToken === null) {
         // none
         logVerbose("No auth cookies found, skipping refresh");

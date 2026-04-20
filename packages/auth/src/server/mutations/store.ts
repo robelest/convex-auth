@@ -82,7 +82,9 @@ export const storeImpl = async (
   const args = fnArgs.args;
   const config = services.config;
   const getProviderOrThrow = services.providerRegistry.getProviderOrThrow;
-  log(LOG_LEVELS.DEBUG, `\`auth:store\` type: ${args.type}`);
+  if (args.type !== "refreshSession") {
+    log(LOG_LEVELS.DEBUG, `\`auth:store\` type: ${args.type}`);
+  }
 
   const handlers: Record<string, (a: typeof args) => Promise<unknown>> = {
     signIn: (a) => signInImpl(ctx, a as Infer<typeof signInArgs> & { type: string }, config),

@@ -3,6 +3,7 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
+    "types": ["node"],
     "paths": {
       "@robelest/convex-auth/authorization": ["./src/authorization/index"],
       "@robelest/convex-auth/component": ["./src/component/index"],

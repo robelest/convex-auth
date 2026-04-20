@@ -6,7 +6,6 @@ import {
   type AuthApiRefs,
   type AuthClient,
   type AuthFlowContext,
-  type AuthSession,
   type AuthState,
   type ClientAdapterDeps,
   type ActionTransport,
@@ -20,6 +19,7 @@ import {
   type SignInActionResult,
   type SignInResult,
 } from "./core/types";
+import type { AuthTokens } from "../shared/authResults";
 import { createHandshakeError } from "./errors";
 import { createDeviceClient } from "./factors/device";
 import { createTotpClient } from "./factors/totp";
@@ -512,7 +512,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     args:
       | {
           shouldStore: true;
-          tokens: AuthSession | null;
+          tokens: AuthTokens | null;
           requireHandshake?: boolean;
           resyncConvexAuth?: boolean;
         }
@@ -578,7 +578,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     args:
       | {
           shouldStore: true;
-          tokens: AuthSession | null;
+          tokens: AuthTokens | null;
           waitForHandshake: boolean;
           context: AuthFlowContext;
         }
@@ -592,7 +592,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     const { waitForHandshake, context, ...tokenArgs } = args;
     await setToken({
       ...(tokenArgs as
-        | { shouldStore: true; tokens: AuthSession | null }
+        | { shouldStore: true; tokens: AuthTokens | null }
         | { shouldStore: false; tokens: { token: string } | null }),
       requireHandshake: waitForHandshake,
     });
@@ -639,13 +639,13 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     if (result.kind !== "signedIn") {
       throw new Error("Code exchange did not return tokens.");
     }
-    const { tokens } = result as Extract<SignInActionResult, { kind: "signedIn" }>;
+    const { session } = result as Extract<SignInActionResult, { kind: "signedIn" }>;
     await setToken({
       shouldStore: true,
-      tokens: (tokens as AuthSession | null) ?? null,
+      tokens: (session as AuthTokens | null) ?? null,
       resyncConvexAuth: opts?.resyncConvexAuth,
     });
-    return tokens !== null;
+    return session !== null;
   };
 
   const normalizeDeviceCodeResult = (device_code: unknown): DeviceCodeResult => {
@@ -764,13 +764,13 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
           resultOptions.shouldStore
             ? {
                 shouldStore: true as const,
-                tokens: result.tokens,
+                tokens: result.session,
                 waitForHandshake: true,
                 context: { provider, flow },
               }
             : {
                 shouldStore: false as const,
-                tokens: result.tokens === null ? null : { token: result.tokens.token },
+                tokens: result.session === null ? null : { token: result.session.token },
                 waitForHandshake: true,
                 context: { provider, flow },
               },
@@ -889,10 +889,10 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
               }) as Promise<SignInActionResult>,
             isRetriableProxyRefreshError,
           );
-          if (isSignedInResult(result) && result.tokens) {
+          if (isSignedInResult(result) && result.session) {
             await setToken({
               shouldStore: false,
-              tokens: { token: result.tokens.token },
+              tokens: { token: result.session.token },
               resyncConvexAuth: false,
             });
           } else {

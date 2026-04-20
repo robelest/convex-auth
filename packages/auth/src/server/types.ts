@@ -25,6 +25,7 @@ import {
 } from "../component/model";
 import schema from "../component/schema";
 import type { CredentialsConfig } from "../providers/credentials";
+import type { AuthTokens } from "../shared/authResults";
 
 // ============================================================================
 // Utility types
@@ -64,6 +65,48 @@ export type AuthRoleDefinition = {
  */
 export type AuthAuthorizationConfig = {
   roles: Record<string, AuthRoleDefinition>;
+};
+
+/** Identity enrichment mode for auth telemetry spans. */
+export type AuthTelemetryIdentityMode = "none" | "hashed" | "raw";
+
+/** Individual identity fields that can be attached to telemetry spans. */
+export type AuthTelemetryIdentityFields = {
+  userId?: boolean;
+  sessionId?: boolean;
+  refreshTokenId?: boolean;
+  email?: boolean;
+  tokenIdentifier?: boolean;
+};
+
+/** Names of identity fields that can be attached to telemetry spans. */
+export type AuthTelemetryIdentityField = keyof AuthTelemetryIdentityFields;
+
+/**
+ * Telemetry enrichment config for auth spans.
+ *
+ * Defaults to privacy-safe behavior with no identity fields attached.
+ */
+export type AuthTelemetryConfig = {
+  /**
+   * Whether to include no identity values, hashed values, or raw values.
+   *
+   * @defaultValue "none"
+   */
+  includeIdentity?: AuthTelemetryIdentityMode;
+  /**
+   * Opt-in identity fields to attach to telemetry spans.
+   *
+   * Ignored when `includeIdentity` is `"none"`.
+   */
+  identityFields?: AuthTelemetryIdentityFields;
+  /**
+   * Required when `includeIdentity` is `"hashed"`.
+   *
+   * Use this to provide an application-defined hashing strategy for
+   * correlating auth spans without exposing raw identifiers.
+   */
+  hashIdentity?: (value: string, field: AuthTelemetryIdentityField) => string;
 };
 
 /**
@@ -361,6 +404,13 @@ export type ConvexAuthConfig = {
       }
     >;
   };
+  /**
+   * Optional OpenTelemetry enrichment for auth spans.
+   *
+   * Defaults to no identity attributes. Set `includeIdentity` to `"hashed"`
+   * or `"raw"` to opt into richer correlation.
+   */
+  telemetry?: AuthTelemetryConfig;
 };
 
 /**
@@ -1002,7 +1052,7 @@ export type ConvexAuthMaterializedConfig = {
   providers: AuthProviderMaterializedConfig[];
 } & Pick<
   ConvexAuthConfig,
-  "component" | "session" | "jwt" | "signIn" | "callbacks" | "authorization" | "sso"
+  "component" | "session" | "jwt" | "signIn" | "callbacks" | "authorization" | "sso" | "telemetry"
 >;
 
 /**
@@ -1568,21 +1618,23 @@ export type QueryCtx = GenericQueryCtx<AuthDataModel>;
 /** A document from any table in the auth component schema. */
 export type Doc<T extends TableNamesInDataModel<AuthDataModel>> = GenericDoc<AuthDataModel, T>;
 
-/** A pair of JWT access token and refresh token. */
-export type Tokens = { token: string; refreshToken: string };
-
 /** Session information returned after authentication. */
-export type SessionInfo = {
+export type SessionInfo<TTokens = AuthTokens | null> = {
   userId: GenericId<"User">;
   sessionId: GenericId<"Session">;
-  tokens: Tokens | null;
+  tokens: TTokens;
 };
 
-/** Session information with guaranteed non-null tokens. */
-export type SessionInfoWithTokens = {
-  userId: GenericId<"User">;
+/** Canonical identity claims mirrored into access tokens for Convex auth. */
+export type SessionTokenIdentityClaims = {
+  subject: GenericId<"User">;
   sessionId: GenericId<"Session">;
-  tokens: Tokens;
+  name?: string;
+  email?: string;
+  emailVerified?: boolean;
+  picture?: string;
+  phoneNumber?: string;
+  phoneNumberVerified?: boolean;
 };
 
 // ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ import { decodeJwt } from "jose";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
 import { convexTest } from "./convex.setup";
-import { expectSignedInResult, signInViaMagicLink, subjectToUserId } from "./helpers";
+import { expectSignInSession, signInViaMagicLink, subjectToUserId } from "./helpers";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -13,7 +13,7 @@ afterEach(() => {
 
 test("sign in anonymously", async () => {
   const t = convexTest(schema);
-  const tokens = expectSignedInResult(
+  const tokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "anonymous",
     }),
@@ -23,13 +23,13 @@ test("sign in anonymously", async () => {
 
 test("anonymous sign-in is not auto-converted during email sign-in", async () => {
   const t = convexTest(schema);
-  const tokens = expectSignedInResult(
+  const tokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "anonymous",
     }),
   );
   const claims = decodeJwt(tokens!.token);
-  const asAnonymous = t.withIdentity({ subject: claims.sub });
+  const asAnonymous = t.withIdentity({ subject: claims.sub, sid: claims.sid as any });
   const newTokens = await signInViaMagicLink(asAnonymous, "email", "mike@gmail.com");
   expect(newTokens).not.toBeNull();
 

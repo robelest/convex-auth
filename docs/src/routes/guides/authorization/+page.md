@@ -98,16 +98,37 @@ but people change email addresses and some providers do not guarantee one.
 If your app persists admin or support access outside memberships, store that
 state by `userId`.
 
-## Why email is not on `getUserIdentity()`
+## What `getUserIdentity()` includes
 
 `ctx.auth.getUserIdentity()` returns Convex identity claims from the JWT. The
-token subject is `userId|sessionId`, and email is stored on the user document.
+token subject is the stable auth user id, and the token also mirrors common
+profile claims such as `email`, `name`, and `picture` when they exist on the
+user record.
 
-This is intentional. Email can change, some providers do not guarantee one, and
-sessions should stay valid even if profile fields change.
+Use those claims when you want native Convex auth ergonomics in backend code.
+For the freshest profile data, prefer `ctx.auth.user` or `auth.user.viewer(ctx)`.
 
 In app code, resolve authentication once with `auth.ctx()` and then use
 `ctx.auth.userId` / `ctx.auth.user` in handlers.
+
+## App-level denied sessions
+
+Provider authentication and app authorization are separate decisions. If a user
+successfully signs in but your app-level gate denies access (for example an
+allowlist or billing check), call `auth.signOut()` immediately.
+
+This clears the active session on both the client and the server, prevents the
+browser from continuing to refresh a session your app does not intend to use,
+and gives you a clean denied-state UI.
+
+```ts
+if (access.authenticated && !access.allowed) {
+  await auth.signOut();
+}
+```
+
+Keep the denial reason or email you want to display in local UI state before
+signing out if the page needs to survive the unauthenticated rerender.
 
 ## Authorization pattern
 

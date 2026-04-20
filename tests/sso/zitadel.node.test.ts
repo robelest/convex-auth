@@ -7,7 +7,7 @@ import { expect, test } from "vite-plus/test";
 import {
   buildFormBody,
   cookieHeader,
-  type ConvexSessionStartResult,
+  type ConvexSignInResult,
   extractAuthRequestId,
   extractSamlRequestIdFromLoginUrl,
   getInteropRuntime,
@@ -109,12 +109,12 @@ test("group oidc login interoperates with zitadel through api-driven flow", asyn
     logger: false,
   });
 
-  const sessionStart = (await convexClient.action(api.auth.signIn, {
+  const signInResult = (await convexClient.action(api.auth.signIn, {
     provider: "anonymous",
-  })) as ConvexSessionStartResult;
+  })) as ConvexSignInResult;
 
-  expect(sessionStart.kind).toBe("signedIn");
-  const convexUserToken = sessionStart.tokens?.token;
+  expect(signInResult.kind).toBe("signedIn");
+  const convexUserToken = signInResult.session?.token;
   expect(convexUserToken).toBeTruthy();
 
   const runId = randomSlug("zitadel-interop");
@@ -358,11 +358,11 @@ test("group oidc login interoperates with zitadel through api-driven flow", asyn
   const exchanged = (await convexClient.action(api.auth.signIn, {
     params: { code: verificationCode! },
     verifier,
-  })) as ConvexSessionStartResult;
+  })) as ConvexSignInResult;
 
   expect(exchanged.kind).toBe("signedIn");
-  expect(exchanged.tokens?.token).toBeTruthy();
-  expect(exchanged.tokens?.refreshToken).toBeTruthy();
+  expect(exchanged.session?.token).toBeTruthy();
+  expect(exchanged.session?.refreshToken).toBeTruthy();
 });
 
 test("group saml login interoperates with zitadel through api-driven flow", async () => {
@@ -381,12 +381,12 @@ test("group saml login interoperates with zitadel through api-driven flow", asyn
   });
 
   // Step 1: Get admin bearer token via anonymous sign-in
-  const sessionStart = (await convexClient.action(api.auth.signIn, {
+  const signInResult = (await convexClient.action(api.auth.signIn, {
     provider: "anonymous",
-  })) as ConvexSessionStartResult;
+  })) as ConvexSignInResult;
 
-  expect(sessionStart.kind).toBe("signedIn");
-  const convexUserToken = sessionStart.tokens?.token;
+  expect(signInResult.kind).toBe("signedIn");
+  const convexUserToken = signInResult.session?.token;
   expect(convexUserToken).toBeTruthy();
 
   const runId = randomSlug("saml-interop");
@@ -687,9 +687,9 @@ test("group saml login interoperates with zitadel through api-driven flow", asyn
   const exchanged = (await convexClient.action(api.auth.signIn, {
     params: { code: verificationCode! },
     verifier,
-  })) as ConvexSessionStartResult;
+  })) as ConvexSignInResult;
 
   expect(exchanged.kind).toBe("signedIn");
-  expect(exchanged.tokens?.token).toBeTruthy();
-  expect(exchanged.tokens?.refreshToken).toBeTruthy();
+  expect(exchanged.session?.token).toBeTruthy();
+  expect(exchanged.session?.refreshToken).toBeTruthy();
 }, 60_000);

@@ -27,10 +27,10 @@ test("token invite acceptance allows matching unverified email", async () => {
   });
   expect(signUpResult.kind).toBe("signedIn");
   if (signUpResult.kind !== "signedIn") {
-    throw new Error("Expected password signUp to return signedIn result");
+    throw new Error("Expected password signUp to return an immediate session");
   }
 
-  const claims = decodeJwt(signUpResult.tokens!.token);
+  const claims = decodeJwt(signUpResult.session!.token);
   const token = "invite-token-unverified";
   const inviteId = await createInvite(t, {
     token,
@@ -68,10 +68,10 @@ test("token invite acceptance still rejects mismatched email", async () => {
   });
   expect(signUpResult.kind).toBe("signedIn");
   if (signUpResult.kind !== "signedIn") {
-    throw new Error("Expected password signUp to return signedIn result");
+    throw new Error("Expected password signUp to return an immediate session");
   }
 
-  const claims = decodeJwt(signUpResult.tokens!.token);
+  const claims = decodeJwt(signUpResult.session!.token);
   const token = "invite-token-mismatch";
   await createInvite(t, {
     token,
@@ -118,7 +118,7 @@ test("proxy sign up can immediately accept invite", async () => {
           }
 
           if (payload.args?.refreshToken === true) {
-            return new Response(JSON.stringify({ kind: "signedIn", tokens: null }), {
+            return new Response(JSON.stringify({ kind: "signedIn", session: null }), {
               status: 200,
               headers: { "Content-Type": "application/json" },
             });

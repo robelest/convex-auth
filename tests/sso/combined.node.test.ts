@@ -7,7 +7,7 @@ import { expect, test } from "vite-plus/test";
 import {
   buildFormBody,
   cookieHeader,
-  type ConvexSessionStartResult,
+  type ConvexSignInResult,
   extractAuthRequestId,
   extractSamlRequestIdFromLoginUrl,
   getInteropRuntime,
@@ -111,11 +111,7 @@ function parseUserIdFromToken(token: string) {
   if (!subject) {
     throw new Error("JWT subject missing.");
   }
-  const [userId] = subject.split("|");
-  if (!userId) {
-    throw new Error(`Invalid JWT subject: ${subject}`);
-  }
-  return userId;
+  return subject;
 }
 
 async function startGroupConnectionContext(prefix: string, protocol: "oidc" | "saml") {
@@ -125,11 +121,11 @@ async function startGroupConnectionContext(prefix: string, protocol: "oidc" | "s
     logger: false,
   });
 
-  const sessionStart = (await convexClient.action(api.auth.signIn, {
+  const signInResult = (await convexClient.action(api.auth.signIn, {
     provider: "anonymous",
-  })) as ConvexSessionStartResult;
-  expect(sessionStart.kind).toBe("signedIn");
-  const convexUserToken = sessionStart.tokens?.token;
+  })) as ConvexSignInResult;
+  expect(signInResult.kind).toBe("signedIn");
+  const convexUserToken = signInResult.session?.token;
   expect(convexUserToken).toBeTruthy();
   if (!convexUserToken) {
     throw new Error("Anonymous sign-in did not return a user token.");
@@ -434,11 +430,11 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
   const exchanged = (await convexClient.action(api.auth.signIn, {
     params: { code: verificationCode! },
     verifier,
-  })) as ConvexSessionStartResult;
+  })) as ConvexSignInResult;
   expect(exchanged.kind).toBe("signedIn");
-  expect(exchanged.tokens?.token).toBeTruthy();
+  expect(exchanged.session?.token).toBeTruthy();
 
-  const signedInUserId = parseUserIdFromToken(exchanged.tokens!.token);
+  const signedInUserId = parseUserIdFromToken(exchanged.session!.token);
   expect(signedInUserId).toBe(provisionedUserId);
 
   const auditEvents = (await groupAuditListRpc(convexClient, convexUserToken, {
@@ -710,11 +706,11 @@ test("SCIM + SAML reuses provisioned userId", async () => {
   const exchanged = (await convexClient.action(api.auth.signIn, {
     params: { code: verificationCode! },
     verifier,
-  })) as ConvexSessionStartResult;
+  })) as ConvexSignInResult;
   expect(exchanged.kind).toBe("signedIn");
-  expect(exchanged.tokens?.token).toBeTruthy();
+  expect(exchanged.session?.token).toBeTruthy();
 
-  const signedInUserId = parseUserIdFromToken(exchanged.tokens!.token);
+  const signedInUserId = parseUserIdFromToken(exchanged.session!.token);
   expect(signedInUserId).toBe(provisionedUserId);
 
   const auditEvents = (await groupAuditListRpc(convexClient, convexUserToken, {

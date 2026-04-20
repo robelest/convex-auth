@@ -51,23 +51,23 @@ export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
       return { kind: "started" as const };
     }
 
-    const signingIn = await setTokenAndMaybeWait(
+    const sessionEstablished = await setTokenAndMaybeWait(
       proxy
         ? {
             shouldStore: false as const,
-            tokens: result.tokens === null ? null : { token: result.tokens.token },
+            tokens: result.session === null ? null : { token: result.session.token },
             waitForHandshake: true,
             context: { provider: "passkey", flow },
           }
         : {
             shouldStore: true as const,
-            tokens: result.tokens,
+            tokens: result.session,
             waitForHandshake: true,
             context: { provider: "passkey", flow },
           },
     );
 
-    return signingIn
+    return sessionEstablished
       ? ({ kind: "signedIn" as const } as SignInResult)
       : ({ kind: "started" as const } as SignInResult);
   };

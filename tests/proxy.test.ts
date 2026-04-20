@@ -63,7 +63,7 @@ test("proxy mode re-syncs convex auth after sign in", async () => {
     return new Response(
       JSON.stringify({
         kind: "signedIn",
-        tokens: {
+        session: {
           token: "fresh-token",
           refreshToken: "dummy",
         },
@@ -143,7 +143,7 @@ test("proxy signIn waits for Convex auth confirmation", async () => {
           new Response(
             JSON.stringify({
               kind: "signedIn",
-              tokens: {
+              session: {
                 token: "fresh-token",
                 refreshToken: "dummy",
               },
@@ -191,7 +191,7 @@ test("proxy signIn tolerates transient auth false before confirmation", async ()
           new Response(
             JSON.stringify({
               kind: "signedIn",
-              tokens: {
+              session: {
                 token: "fresh-token",
                 refreshToken: "dummy",
               },
@@ -242,7 +242,7 @@ test("proxy signIn times out after rejection signal with no later confirmation",
           new Response(
             JSON.stringify({
               kind: "signedIn",
-              tokens: {
+              session: {
                 token: "fresh-token",
                 refreshToken: "dummy",
               },
@@ -290,7 +290,7 @@ test("proxy signIn times out when auth confirmation never arrives", async () => 
           new Response(
             JSON.stringify({
               kind: "signedIn",
-              tokens: {
+              session: {
                 token: "fresh-token",
                 refreshToken: "dummy",
               },
@@ -333,7 +333,7 @@ test("proxy refresh does not re-register Convex auth", async () => {
           new Response(
             JSON.stringify({
               kind: "signedIn",
-              tokens: {
+              session: {
                 token: "fresh-token",
                 refreshToken: "dummy",
               },
@@ -370,7 +370,7 @@ test("proxy refresh retries transient failures before succeeding", async () => {
     return new Response(
       JSON.stringify({
         kind: "signedIn",
-        tokens: {
+        session: {
           token: "fresh-token",
           refreshToken: "dummy",
         },
@@ -412,7 +412,7 @@ test("proxy client can call protected mutation immediately after signIn", async 
           new Response(
             JSON.stringify({
               kind: "signedIn",
-              tokens: {
+              session: {
                 token: "fresh-token",
                 refreshToken: "dummy",
               },
@@ -468,7 +468,7 @@ test("browser client preserves proxy defaults when runtime is partially overridd
     return new Response(
       JSON.stringify({
         kind: "signedIn",
-        tokens: {
+        session: {
           token: "fresh-token",
           refreshToken: "dummy",
         },
@@ -518,7 +518,7 @@ test("empty SSR token is treated as signed out", () => {
     runtime: {
       proxy: createProxyRuntime(
         async () =>
-          new Response(JSON.stringify({ kind: "signedIn", tokens: null }), {
+          new Response(JSON.stringify({ kind: "signedIn", session: null }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           }),

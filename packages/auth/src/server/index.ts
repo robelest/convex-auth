@@ -7,6 +7,8 @@
  * @module
  */
 
+import "./convexIdentity";
+
 export { createAuth } from "./auth";
 export type {
   AuthApi,

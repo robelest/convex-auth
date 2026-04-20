@@ -43,9 +43,9 @@ type DeviceCodeResult = {
   interval: number;
 };
 
-type SignedInResult = {
+type SignInSessionResult = {
   kind: "signedIn";
-  tokens: {
+  session: {
     token: string;
     refreshToken?: string;
   } | null;
@@ -100,11 +100,11 @@ function isDeviceCodeResult(value: unknown): value is DeviceCodeResult {
   );
 }
 
-function isSignedInResult(value: unknown): value is SignedInResult {
+function isSignedInResult(value: unknown): value is SignInSessionResult {
   return (
     isRecord(value) &&
     value.kind === "signedIn" &&
-    (value.tokens === null || isRecord(value.tokens))
+    (value.session === null || isRecord(value.session))
   );
 }
 
@@ -137,10 +137,10 @@ async function refreshSessionIfNeeded(client: ConvexHttpClient) {
   const result = await client.action(api.auth.signIn, {
     refreshToken: session.refreshToken,
   });
-  if (isSignedInResult(result) && result.tokens) {
-    await writeStoredSession(result.tokens);
-    client.setAuth(result.tokens.token);
-    return result.tokens;
+  if (isSignedInResult(result) && result.session) {
+    await writeStoredSession(result.session);
+    client.setAuth(result.session.token);
+    return result.session;
   }
   return session;
 }
@@ -193,8 +193,8 @@ async function doAuthLogin() {
         provider: "device",
         params: { flow: "poll", deviceCode: code.deviceCode },
       });
-      if (isSignedInResult(pollResult) && pollResult.tokens) {
-        await writeStoredSession(pollResult.tokens);
+      if (isSignedInResult(pollResult) && pollResult.session) {
+        await writeStoredSession(pollResult.session);
         s2.stop("Approved!");
         p.log.success("Login complete. Session stored locally.");
         return;

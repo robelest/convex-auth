@@ -173,3 +173,45 @@ test("custom oauth provider exchanges code with configurable token request", asy
 
   vi.unstubAllGlobals();
 });
+
+test("custom oauth provider leaves access token expiry undefined when expires_in is omitted", async () => {
+  vi.unstubAllGlobals();
+  const fetchMock = vi.fn(async () => {
+    return new Response(
+      JSON.stringify({
+        access_token: "access-token",
+        refresh_token: "refresh-token",
+        scope: "identify,email",
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+
+  const provider = custom({
+    id: "github-like",
+    clientId: "client-id",
+    clientSecret: "client-secret",
+    redirectUri: "https://app.example.com/api/auth/callback/github-like",
+    authorization: {
+      url: "https://example.com/oauth/authorize",
+    },
+    token: {
+      url: "https://example.com/oauth/token",
+    },
+  });
+
+  const tokens = await provider.provider!.validateAuthorizationCode({
+    code: "oauth-code",
+  });
+
+  expect(tokens.accessToken).toBe("access-token");
+  expect(tokens.refreshToken).toBe("refresh-token");
+  expect(tokens.accessTokenExpiresAt).toBeUndefined();
+  expect(tokens.scopes).toEqual(["identify", "email"]);
+
+  vi.unstubAllGlobals();
+});

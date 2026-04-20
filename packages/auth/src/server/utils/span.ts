@@ -82,3 +82,21 @@ export function withSpanSync<T>(name: string, attributes: Attributes, fn: () => 
     }
   });
 }
+
+/**
+ * Attach attributes to the current active span when tracing is enabled.
+ */
+export function setActiveSpanAttributes(attributes: Attributes): void {
+  if (!isTracingActive()) {
+    return;
+  }
+  const span = trace.getActiveSpan();
+  if (!span) {
+    return;
+  }
+  for (const [key, value] of Object.entries(attributes)) {
+    if (value !== undefined) {
+      span.setAttribute(key, value);
+    }
+  }
+}

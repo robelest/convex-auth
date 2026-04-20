@@ -76,7 +76,7 @@ authorization model.
 
 - `signIn` — Action for client sign-in
 - `signOut` — Action for client sign-out
-- `store` — Mutation for session token exchange
+- `store` — Internal runtime mutation for session token exchange
 - `auth.user.*` — User helpers
 - `auth.session.*` — Session helpers
 - `auth.account.*` — Account helpers
@@ -96,8 +96,8 @@ authorization model.
 
 <CardGrid>
   <Card title="Auth-flow actions">
-    <code>signIn</code>, <code>signOut</code>, and <code>store</code> are the app-facing Convex functions used by
-    the frontend auth client.
+    <code>signIn</code> and <code>signOut</code> are the app-facing Convex functions used by the frontend auth
+    client.
   </Card>
   <Card title="Helper namespaces">
     <code>auth.*</code>, <code>auth.group.sso.*</code>, and <code>auth.group.sso.scim.*</code> are server-side helper APIs for

@@ -54,9 +54,9 @@ const benchPasswordBatch = makeFunctionReference<
 type SignInEnvelope = {
   kind: string;
   // Shape varies slightly across deployments — in current Convex runtime
-  // the tokens sit at the top level of a `signedIn`-kind result.
+  // the session tokens sit at the top level of a `signedIn`-kind result.
   tokens?: { token: string; refreshToken: string } | null;
-  signedIn?: { tokens: { token: string; refreshToken: string } | null } | null;
+  session?: { tokens: { token: string; refreshToken: string } | null } | null;
 };
 
 const N_ITERATIONS = Number.parseInt(process.env.BENCH_ITERATIONS ?? "20", 10);
@@ -126,7 +126,7 @@ beforeAll(async () => {
     provider: "password",
     params: { email: BENCH_EMAIL, password: PASSWORD, flow: "signUp" },
   })) as SignInEnvelope;
-  const tokens = result.tokens ?? result.signedIn?.tokens ?? null;
+  const tokens = result.session ?? null;
   if (result.kind !== "signedIn" || tokens === null) {
     throw new Error(`Unable to create bench password account: ${JSON.stringify(result)}`);
   }

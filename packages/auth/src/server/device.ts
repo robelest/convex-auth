@@ -4,10 +4,15 @@
 
 import { ConvexError } from "convex/values";
 
+import type {
+  AuthTokens,
+  SignInDeviceCodeResult,
+  SignInSessionResult,
+} from "../shared/authResults";
 import { AuthFlowError, authFlowError } from "../shared/errors";
 import { requireEnv } from "./env";
 import { toConvexError } from "./errors";
-import { userIdFromIdentitySubject } from "./identity";
+import { getAuthenticatedUserIdOrNull } from "./identity";
 import { callSignIn } from "./mutations/index";
 import { generateRandomString, sha256 } from "./random";
 import type { DeviceProviderConfig, GenericActionCtxWithAuthConfig } from "./types";
@@ -37,16 +42,8 @@ type DeviceParams = {
 };
 
 type DeviceResult =
-  | {
-      kind: "deviceCode";
-      deviceCode: string;
-      userCode: string;
-      verificationUri: string;
-      verificationUriComplete: string;
-      expiresIn: number;
-      interval: number;
-    }
-  | { kind: "signedIn"; signedIn: SessionInfo | null };
+  | SignInDeviceCodeResult
+  | SignInSessionResult<SessionInfo<AuthTokens | null> | null>;
 
 const deviceError = authFlowError;
 
@@ -85,12 +82,14 @@ async function handleCreate(
 
   return {
     kind: "deviceCode" as const,
-    deviceCode,
-    userCode,
-    verificationUri,
-    verificationUriComplete: `${verificationUri}?code=${encodeURIComponent(userCode)}`,
-    expiresIn: provider.expiresIn,
-    interval: provider.interval,
+    deviceCode: {
+      deviceCode,
+      userCode,
+      verificationUri,
+      verificationUriComplete: `${verificationUri}?code=${encodeURIComponent(userCode)}`,
+      expiresIn: provider.expiresIn,
+      interval: provider.interval,
+    },
   };
 }
 
@@ -143,7 +142,7 @@ async function handlePoll(ctx: EnrichedActionCtx, params: DeviceParams): Promise
     sessionId: doc.sessionId,
     generateTokens: true,
   });
-  return { kind: "signedIn" as const, signedIn: signInResult };
+  return { kind: "signedIn" as const, session: signInResult };
 }
 
 async function handleDeviceVerify(
@@ -154,12 +153,10 @@ async function handleDeviceVerify(
     throw deviceError("DEVICE_INVALID_USER_CODE", "Missing `userCode` parameter for verify flow.");
   }
 
-  const identity = await ctx.auth.getUserIdentity();
-  if (identity === null) {
+  const userId = await getAuthenticatedUserIdOrNull(ctx);
+  if (userId === null) {
     throw deviceError("NOT_SIGNED_IN", "You must be signed in to authorize a device.");
   }
-
-  const userId = userIdFromIdentitySubject(identity.subject);
   const doc = await queryDeviceByUserCode(ctx, params.userCode);
   if (doc === null) {
     throw deviceError("DEVICE_INVALID_USER_CODE", "Invalid or expired user code.");
@@ -180,7 +177,7 @@ async function handleDeviceVerify(
     generateTokens: false,
   });
   await mutateDeviceAuthorize(ctx, doc._id, signInResult.userId, signInResult.sessionId);
-  return { kind: "signedIn" as const, signedIn: null };
+  return { kind: "signedIn" as const, session: null };
 }
 
 /** @internal */

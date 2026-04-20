@@ -1,6 +1,6 @@
 {
   "name": "@robelest/convex-auth",
-  "version": "0.0.4-preview.29",
+  "version": "0.0.4-preview.30",
   "description": "Authentication for Convex",
   "keywords": [
     "auth",
@@ -27,7 +27,10 @@
     "!dist/schema.d.ts.map"
   ],
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/server/convexIdentity.ts",
+    "./dist/server/convexIdentity.js"
+  ],
   "exports": {
     "./_generated/component.js": {
       "types": "./dist/component/_generated/component.d.ts"
@@ -118,7 +121,7 @@
     "@oslojs/encoding": "^1.1.0",
     "@oslojs/otp": "^1.1.0",
     "@oslojs/webauthn": "^1.0.0",
-    "@robelest/samlify": "workspace:*",
+    "@robelest/samlify": "^0.0.1-preview.2",
     "arctic": "^3.7.0",
     "cookie": "^1.1.1",
     "fluent-convex": "^0.12.3",

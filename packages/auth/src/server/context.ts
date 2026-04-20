@@ -2,7 +2,7 @@ import type { UserIdentity } from "convex/server";
 
 import type { AuthContext, AuthLike, OptionalAuthContext, UserDoc } from "./auth-context";
 import type { ComponentReadCtx as AuthQueryCtx } from "./componentContext";
-import { userIdFromIdentitySubject } from "./identity";
+import { getAuthenticatedUserIdOrNull } from "./identity";
 
 type AuthIdentityCtx = {
   auth: {
@@ -29,11 +29,7 @@ type AuthContextResolverLike = {
 
 /** @internal */
 export async function getSessionUserId(ctx: AuthIdentityCtx): Promise<string | null> {
-  const identity = await ctx.auth.getUserIdentity();
-  if (identity === null) {
-    return null;
-  }
-  return userIdFromIdentitySubject(identity.subject);
+  return await getAuthenticatedUserIdOrNull(ctx);
 }
 
 /** @internal */

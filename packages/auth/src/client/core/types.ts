@@ -1,6 +1,12 @@
 import type { FunctionReference } from "convex/server";
 import type { ConvexError, Value } from "convex/values";
 
+import type {
+  AuthTokens,
+  DeviceCodePayload as SharedDeviceCodeResult,
+  SignInFlowResult,
+} from "../../shared/authResults";
+
 /**
  * Structural interface for any Convex client.
  * Satisfied by `ConvexClient` (`convex/browser`),
@@ -89,7 +95,7 @@ export interface ClientAdapterDeps {
     args:
       | {
           shouldStore: true;
-          tokens: AuthSession | null;
+          tokens: AuthTokens | null;
           waitForHandshake: boolean;
           context: { provider?: string; flow: string };
         }
@@ -106,37 +112,9 @@ export interface ClientAdapterFactories {
   passkey?: (deps: ClientAdapterDeps) => PasskeyClient;
 }
 
-export type AuthSession = {
-  token: string;
-  refreshToken: string;
-};
+export type SignInActionResult = SignInFlowResult<AuthTokens | null>;
 
-export type SignInActionResult =
-  | { kind: "signedIn"; tokens: AuthSession | null }
-  | { kind: "redirect"; redirect: string; verifier: string }
-  | { kind: "started" }
-  | {
-      kind: "passkeyOptions";
-      options: Record<string, unknown>;
-      verifier: string;
-    }
-  | { kind: "totpRequired"; verifier: string }
-  | {
-      kind: "totpSetup";
-      totpSetup: { uri: string; secret: string; totpId: string };
-      verifier: string;
-    }
-  | {
-      kind: "deviceCode";
-      deviceCode: {
-        deviceCode: string;
-        userCode: string;
-        verificationUri: string;
-        verificationUriComplete: string;
-        expiresIn: number;
-        interval: number;
-      };
-    };
+export type DeviceCodeResult = SharedDeviceCodeResult;
 
 /**
  * Device code response returned when signing in with the `"device"` provider.
@@ -144,25 +122,10 @@ export type SignInActionResult =
  * The device displays the `userCode` (or `verificationUriComplete`) and
  * polls via `auth.device.poll()` until the user authorizes.
  */
-export type DeviceCodeResult = {
-  /** High-entropy device code used for polling (keep secret). */
-  deviceCode: string;
-  /** Short human-readable code the user enters (e.g. "WDJB-MJHT"). */
-  userCode: string;
-  /** Base verification URL (e.g. "https://myapp.com/device"). */
-  verificationUri: string;
-  /** Verification URL with user code pre-filled as `?code=XXXX-XXXX`. */
-  verificationUriComplete: string;
-  /** Lifetime of the codes in seconds. */
-  expiresIn: number;
-  /** Minimum polling interval in seconds. */
-  interval: number;
-};
-
 /**
  * Result of a `signIn` call.
  *
- * - `kind: "signedIn"` — credentials were accepted and the user is authenticated.
+ * - `kind: "signedIn"` — credentials were accepted and a client session is now available.
  * - `kind: "redirect"` — OAuth flow initiated; redirect the user to `redirect.toString()`.
  * - `kind: "totpRequired"` — credentials valid but 2FA is needed; call `auth.totp.verify()`.
  * - `kind: "deviceCode"` — device flow initiated; display the code and poll via `auth.device.poll()`.
@@ -208,7 +171,6 @@ export type AuthApiRefs<
 > = {
   signIn: FunctionReference<"action", "public", Record<string, Value>, unknown>;
   signOut: FunctionReference<"action", "public", Record<string, Value>, unknown>;
-  store: FunctionReference<"mutation", "public", Record<string, Value>, unknown>;
   /** @internal Set automatically by `createAuth` — do not set manually. */
   _capabilities?: {
     passkey: HasPasskey;

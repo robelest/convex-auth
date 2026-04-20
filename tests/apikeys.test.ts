@@ -506,7 +506,8 @@ test("auth.context returns auth state from a session identity", async () => {
       auth: {
         ...ctx.auth,
         getUserIdentity: async () => ({
-          subject: `${userId}|session_123`,
+          subject: userId,
+          sid: "session_123",
           issuer: "https://example.com",
         }),
       },
@@ -656,7 +657,8 @@ test("auth.http.context prefers session auth over API key when both are present"
       auth: {
         ...ctx.auth,
         getUserIdentity: async () => ({
-          subject: `${userId}|session_456`,
+          subject: userId,
+          sid: "session_456",
           issuer: "https://example.com",
         }),
       },

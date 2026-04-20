@@ -25,7 +25,7 @@ Your app registers the auth component and wires four files:
   </Card>
   <Card title="auth.ts">
     <code>createAuth(components.auth, {'{'}providers{'}'})</code> — configures providers and
-    exports <code>signIn</code>, <code>signOut</code>, <code>store</code>.
+    exports <code>signIn</code>, <code>signOut</code>, and the internal runtime mutation <code>store</code>.
   </Card>
   <Card title="auth/core.ts">
     <code>createAuthContext(components.auth)</code> — lightweight auth context for
@@ -66,7 +66,7 @@ The component owns its own isolated tables:
 For subsequent requests:
 
 - Queries/mutations call `ctx.auth.getUserIdentity()` which returns
-  `{ subject: "userId|sessionId" }`
+  `{ subject: "userId", sid: "sessionId", email?, name?, picture? }`
 - `auth.ctx()` / `auth.context(ctx)` resolves
   `{ userId, user, groupId, role, grants }`
 
@@ -82,7 +82,8 @@ For subsequent requests:
 
 `createAuth(components.auth, config)` returns an object with:
 
-- **Actions**: `signIn`, `signOut`, `store` — the client-facing auth flow
+- **Actions**: `signIn`, `signOut` — the client-facing auth flow
+- **Internal runtime**: `store` — session token exchange used internally by the auth runtime
 - **Helpers**: `auth.user.*`, `auth.session.*`, `auth.group.*`, etc. —
   server-side primitives
 - **HTTP**: `auth.http.add(http)` — registers OAuth callbacks and JWKS
@@ -105,6 +106,18 @@ import { google, password } from "@robelest/convex-auth/providers";
 export const { signIn, signOut, store } = createAuth(components.auth, {
   providers: [google({ clientId, clientSecret }), password()],
 });
+```
+
+```ts
+// convex/auth.config.ts — native Convex JWT trust
+export default {
+  providers: [
+    {
+      domain: process.env.CONVEX_SITE_URL,
+      applicationID: "convex",
+    },
+  ],
+};
 ```
 
 ```ts
@@ -138,6 +151,9 @@ import from `auth/core.ts` never load provider, OAuth, or crypto code.
 | `@robelest/convex-auth/core`        | Context resolution only (~2KB)              | `convex/functions.ts` — query/mutation wrappers |
 | `@robelest/convex-auth/providers/*` | Individual provider                         | Only in `convex/auth.ts`                        |
 
+Your app also needs `convex/auth.config.ts` so Convex trusts the JWT issuer
+used by Convex Auth.
+
 ## Where `ctx.auth` comes from
 
 Neither `createAuth` nor `createAuthContext` mutate every Convex handler
@@ -163,7 +179,8 @@ rejected before your handler runs.
 
 | Layer                 | What it is                                                        | Typical usage                                                                 |
 | --------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Auth-flow actions     | Required client-callable functions exported from `convex/auth.ts` | `api.auth.signIn`, `api.auth.signOut`, `api.auth.store`                       |
+| Auth-flow actions     | Required client-callable functions exported from `convex/auth.ts` | `api.auth.signIn`, `api.auth.signOut`                                         |
+| Internal auth action  | Internal runtime mutation exported from `convex/auth.ts`          | `internal.auth.store`                                                         |
 | Helper namespaces     | Server-side helper APIs returned by `createAuth(...)`             | `auth.member.require(ctx, ...)`, `auth.group.sso.connection.create(ctx, ...)` |
 | Mounted group SSO RPC | Optional app-owned public RPC for group SSO admin UI              | `api.auth.group.createConnection`, `api.auth.group.configureScim`             |
 

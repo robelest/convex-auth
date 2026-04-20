@@ -5,11 +5,11 @@ import { decodeJwt } from "jose";
 import { expect, test } from "vite-plus/test";
 
 import { convexTest } from "./convex.setup";
-import { expectSignedInResult, subjectToUserId, TEST_EMAIL, TEST_PASSWORD } from "./helpers";
+import { expectSignInSession, subjectToUserId, TEST_EMAIL, TEST_PASSWORD } from "./helpers";
 
 test("sign up with password", async () => {
   const t = convexTest(schema);
-  const tokens = expectSignedInResult(
+  const tokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
       params: {
@@ -22,7 +22,7 @@ test("sign up with password", async () => {
 
   expect(tokens).not.toBeNull();
 
-  const tokens2 = expectSignedInResult(
+  const tokens2 = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
       params: {
@@ -47,9 +47,14 @@ test("sign up with password", async () => {
   // the session lifetime.
 
   const claims = decodeJwt(tokens!.token);
-  await t.withIdentity({ subject: claims.sub }).action(api.auth.signOut);
+  expect(claims.sub).toBeDefined();
+  expect(claims.sid).toBeDefined();
+  expect(claims.email).toBe(TEST_EMAIL);
+  expect(claims.email_verified).toBe(false);
 
-  const refreshedFromFirstSession = expectSignedInResult(
+  await t.withIdentity({ subject: claims.sub, sid: claims.sid as any }).action(api.auth.signOut);
+
+  const refreshedFromFirstSession = expectSignInSession(
     await t.action(api.auth.signIn, {
       refreshToken: tokens!.refreshToken,
       params: {},
@@ -57,7 +62,7 @@ test("sign up with password", async () => {
   );
   expect(refreshedFromFirstSession).toBeNull();
 
-  const refreshedFromSecondSession = expectSignedInResult(
+  const refreshedFromSecondSession = expectSignInSession(
     await t.action(api.auth.signIn, {
       refreshToken: tokens2!.refreshToken,
       params: {},
@@ -66,9 +71,9 @@ test("sign up with password", async () => {
   expect(refreshedFromSecondSession).not.toBeNull();
 
   const claims2 = decodeJwt(tokens2!.token);
-  await t.withIdentity({ subject: claims2.sub }).action(api.auth.signOut);
+  await t.withIdentity({ subject: claims2.sub, sid: claims2.sid as any }).action(api.auth.signOut);
 
-  const refreshedAfterSecondSignOut = expectSignedInResult(
+  const refreshedAfterSecondSignOut = expectSignInSession(
     await t.action(api.auth.signIn, {
       refreshToken: tokens2!.refreshToken,
       params: {},
@@ -79,7 +84,7 @@ test("sign up with password", async () => {
 
 test("sign up with password keeps email unverified by default", async () => {
   const t = convexTest(schema);
-  const tokens = expectSignedInResult(
+  const tokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
       params: {

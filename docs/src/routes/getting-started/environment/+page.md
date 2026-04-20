@@ -27,6 +27,20 @@ These are set automatically by the CLI setup wizard.
 | ----------------- | ------------------------------------------------------------- |
 | `CONVEX_SITE_URL` | HTTP actions URL. Used as JWT issuer and OAuth callback base. |
 
+Your `convex/auth.config.ts` should trust this same value as the native Convex
+JWT issuer:
+
+```ts
+export default {
+  providers: [
+    {
+      domain: process.env.CONVEX_SITE_URL,
+      applicationID: "convex",
+    },
+  ],
+};
+```
+
 ## Provider
 
 | Pattern                  | Example              |

@@ -19,17 +19,17 @@ backed builders such as `authQuery`, `authMutation`, or `authAction`.
 
 | Method       | Signature                    | Returns                  | Description                                                                                         |
 | ------------ | ---------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------- |
-| `current`    | `(ctx)`                      | `Id<"Session"> \| null`  | Returns the current session ID from the JWT, or `null` if not authenticated.                        |
 | `invalidate` | `(ctx, { userId, except? })` | `{ userId, except }`     | Invalidates all sessions for a user. Pass `except` as an array of session IDs to keep those active. |
 | `get`        | `(ctx, sessionId)`           | `Doc<"Session"> \| null` | Fetches a session document by ID.                                                                   |
 | `list`       | `(ctx, { userId })`          | `Doc<"Session">[]`       | Lists all sessions for a user.                                                                      |
 
 ## Examples
 
-### Get the current session
+### Read the current session ID from native identity
 
 ```ts
-const sessionId = await auth.session.current(ctx);
+const identity = await ctx.auth.getUserIdentity();
+const sessionId = identity?.sid;
 ```
 
 ### Invalidate all other sessions
@@ -37,8 +37,9 @@ const sessionId = await auth.session.current(ctx);
 This is useful for a "sign out everywhere else" feature:
 
 ```ts
-const sessionId = await auth.session.current(ctx);
-if (sessionId === null) {
+const identity = await ctx.auth.getUserIdentity();
+const sessionId = identity?.sid;
+if (!sessionId) {
   throw new Error("Current session missing");
 }
 

@@ -6,8 +6,9 @@ import { LOG_LEVELS } from "../log";
 import { log } from "../log";
 import { finalizeSessionIssuance, getAuthSessionId, issueSession } from "../sessions";
 import type { SessionIssuance } from "../sessions";
+import { buildSignInIdentityAttributes } from "../telemetry";
 import { GenericActionCtxWithAuthConfig, MutationCtx, SessionInfo } from "../types";
-import { withSpan } from "../utils/span";
+import { setActiveSpanAttributes, withSpan } from "../utils/span";
 import { AUTH_STORE_REF } from "./store/refs";
 
 export const signInArgs = v.object({
@@ -24,6 +25,7 @@ export async function signInImpl(
   return withSpan(
     "convex-auth.mutations.signIn",
     {
+      "auth.flow": "signIn",
       hasExistingSession: args.sessionId !== undefined,
       generateTokens: args.generateTokens,
     },
@@ -33,12 +35,20 @@ export async function signInImpl(
       const typedUserId = userId as GenericId<"User">;
       const replaceSessionId =
         existingSessionId === undefined ? ((await getAuthSessionId(ctx)) ?? undefined) : undefined;
-      return await issueSession(ctx, config, {
+      const issuance = await issueSession(ctx, config, {
         userId: typedUserId,
         existingSessionId: existingSessionId as GenericId<"Session"> | undefined,
         replaceSessionId,
         generateTokens,
       });
+      setActiveSpanAttributes({
+        "auth.signin.result": "success",
+        ...(await buildSignInIdentityAttributes(ctx, config, {
+          userId: issuance.userId,
+          sessionId: issuance.sessionId,
+        })),
+      });
+      return issuance;
     },
   );
 }

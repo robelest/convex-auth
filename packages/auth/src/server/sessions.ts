@@ -3,11 +3,17 @@ import { GenericId } from "convex/values";
 
 import { authDb } from "./db";
 import { envOptionalNumber, readConfigSync } from "./env";
+import { getAuthenticatedSessionIdOrNull } from "./identity";
 import { LOG_LEVELS, log, maybeRedact } from "./log";
 import { REFRESH_TOKEN_DIVIDER, refreshTokenExpirationTime } from "./refresh";
 import { generateToken } from "./tokens";
-import { TOKEN_SUB_CLAIM_DIVIDER } from "./tokens";
-import { ConvexAuthConfig, Doc, MutationCtx, SessionInfo } from "./types";
+import {
+  ConvexAuthConfig,
+  Doc,
+  MutationCtx,
+  SessionInfo,
+  SessionTokenIdentityClaims,
+} from "./types";
 import { withSpan } from "./utils/span";
 
 const DEFAULT_SESSION_TOTAL_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
@@ -31,12 +37,38 @@ const encodeRefreshToken = (
 export type SessionIssuance = {
   userId: GenericId<"User">;
   sessionId: GenericId<"Session">;
+  identity: SessionTokenIdentityClaims;
   /**
    * Encoded refresh token (`${refreshTokenId}|${sessionId}`), or `null` when
    * the caller opted out of refresh-token issuance (e.g. TOTP step-up).
    */
   refreshToken: string | null;
 };
+
+function buildSessionIdentity(
+  userId: GenericId<"User">,
+  sessionId: GenericId<"Session">,
+  user: Doc<"User"> | null,
+): SessionTokenIdentityClaims {
+  return {
+    subject: userId,
+    sessionId,
+    ...(typeof user?.name === "string" ? { name: user.name } : null),
+    ...(typeof user?.email === "string" ? { email: user.email } : null),
+    ...(user?.emailVerificationTime !== undefined
+      ? { emailVerified: true }
+      : user?.email !== undefined
+        ? { emailVerified: false }
+        : null),
+    ...(typeof user?.image === "string" ? { picture: user.image } : null),
+    ...(typeof user?.phone === "string" ? { phoneNumber: user.phone } : null),
+    ...(user?.phoneVerificationTime !== undefined
+      ? { phoneNumberVerified: true }
+      : user?.phone !== undefined
+        ? { phoneNumberVerified: false }
+        : null),
+  };
+}
 
 /**
  * Convert a {@link SessionIssuance} returned from a mutation into the
@@ -62,10 +94,7 @@ export async function finalizeSessionIssuance(
           tokens: null,
         };
       }
-      const token = await generateToken(
-        { userId: issuance.userId, sessionId: issuance.sessionId },
-        config,
-      );
+      const token = await generateToken({ identity: issuance.identity }, config);
       log(
         LOG_LEVELS.DEBUG,
         `Generated token ${maybeRedact(token)} and refresh token ${maybeRedact(issuance.refreshToken)} for session ${maybeRedact(issuance.sessionId)}`,
@@ -102,9 +131,11 @@ export async function issueSession(
   });
   const sessionId = issued.sessionId as GenericId<"Session">;
   const refreshTokenId = issued.refreshTokenId as GenericId<"RefreshToken"> | undefined;
+  const user = (await db.users.getById(issued.userId)) as Doc<"User"> | null;
   return {
     userId: issued.userId as GenericId<"User">,
     sessionId,
+    identity: buildSessionIdentity(issued.userId as GenericId<"User">, sessionId, user),
     refreshToken:
       args.generateTokens && refreshTokenId !== undefined
         ? encodeRefreshToken(refreshTokenId, sessionId)
@@ -116,18 +147,17 @@ export async function issueSession(
 export async function generateTokensForSession(
   config: ConvexAuthConfig,
   args: {
-    userId: GenericId<"User">;
-    sessionId: GenericId<"Session">;
+    identity: SessionTokenIdentityClaims;
     refreshTokenId: GenericId<"RefreshToken">;
   },
 ) {
   const result = {
-    token: await generateToken({ userId: args.userId, sessionId: args.sessionId }, config),
-    refreshToken: encodeRefreshToken(args.refreshTokenId, args.sessionId),
+    token: await generateToken({ identity: args.identity }, config),
+    refreshToken: encodeRefreshToken(args.refreshTokenId, args.identity.sessionId),
   };
   log(
     LOG_LEVELS.DEBUG,
-    `Generated token ${maybeRedact(result.token)} and refresh token ${maybeRedact(args.refreshTokenId)} for session ${maybeRedact(args.sessionId)}`,
+    `Generated token ${maybeRedact(result.token)} and refresh token ${maybeRedact(args.refreshTokenId)} for session ${maybeRedact(args.identity.sessionId)}`,
   );
   return result;
 }
@@ -146,14 +176,9 @@ export async function deleteSession(
 /**
  * Return the current session ID from the auth identity subject.
  *
- * Internal helper used by auth runtime internals and `auth.session.current`.
+ * Internal helper used by auth runtime internals.
  */
 /** @internal */
 export async function getAuthSessionId(ctx: { auth: Auth }) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (identity === null) {
-    return null;
-  }
-  const [, sessionId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
-  return sessionId as GenericId<"Session">;
+  return await getAuthenticatedSessionIdOrNull(ctx);
 }

@@ -3,7 +3,7 @@ import schema from "@convex/schema";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
 import { convexTest } from "./convex.setup";
-import { expectSignedInResult, TEST_EMAIL, TEST_PASSWORD } from "./helpers";
+import { expectSignInSession, TEST_EMAIL, TEST_PASSWORD } from "./helpers";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -53,7 +53,7 @@ test("rate limit on password", async () => {
   // But if we wait a little bit, we can try again
   vi.advanceTimersByTime(8 * MINUTE_MS);
 
-  const tokens = expectSignedInResult(
+  const tokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
       params: {

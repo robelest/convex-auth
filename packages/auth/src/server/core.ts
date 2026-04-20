@@ -8,7 +8,6 @@ import { cached, ctxCacheHas, invalidateCtxCache } from "./ctxCache";
 import { buildScopeChecker, checkKeyRateLimit, generateApiKey, hashApiKey } from "./keys";
 import type { AuthProfile, SignInParams } from "./payloads";
 import { generateRandomString, sha256 } from "./random";
-import { TOKEN_SUB_CLAIM_DIVIDER } from "./constants";
 import type {
   AuthProviderConfig,
   Doc,
@@ -391,60 +390,6 @@ export function createCoreDomains(deps: CoreDeps) {
 
   const session = {
     /**
-     * Resolve the current session's ID from the JWT.
-     *
-     * Extracts the `sessionId` portion of the `subject` claim in the
-     * identity token returned by `ctx.auth.getUserIdentity()`. The subject
-     * is encoded as `userId<divider>sessionId`, so this splits on the
-     * divider and returns the second segment.
-     *
-     * Returns `null` when there is no authenticated identity (i.e. no
-     * valid session JWT).
-     *
-     * @param ctx - Convex query, mutation, or action context (must include `auth`).
-     * @returns The current session's document ID, or `null` if unauthenticated.
-     *
-     * @example
-     * ```ts
-     * const sessionId = await auth.session.current(ctx);
-     * if (!sessionId) throw new Error("Not signed in");
-     * ```
-     */
-    current: async (ctx: { auth: Auth }) => {
-      const identity = await ctx.auth.getUserIdentity();
-      if (identity === null) return null;
-      const [, sessionId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
-      return sessionId as GenericId<"Session">;
-    },
-    /**
-     * Resolve the current user's ID from the JWT **without any component
-     * round-trip**. Parses the `subject` claim on the identity token and
-     * returns the `userId` half.
-     *
-     * Use this for trivial "who is asking?" checks that don't need the
-     * full user document or membership — e.g. early authorization guards,
-     * audit logging, or passing through into a downstream query. For the
-     * actual user doc, follow up with `auth.user.get(ctx, userId)` (which
-     * is cached per-request).
-     *
-     * Returns `null` when there is no authenticated identity.
-     *
-     * @param ctx - Convex query, mutation, or action context.
-     * @returns The current user's document ID, or `null` if unauthenticated.
-     *
-     * @example
-     * ```ts
-     * const userId = await auth.session.userId(ctx);
-     * if (!userId) throw new Error("Not signed in");
-     * ```
-     */
-    userId: async (ctx: { auth: Auth }) => {
-      const identity = await ctx.auth.getUserIdentity();
-      if (identity === null) return null;
-      const [userId] = identity.subject.split(TOKEN_SUB_CLAIM_DIVIDER);
-      return (userId ?? null) as GenericId<"User"> | null;
-    },
-    /**
      * Invalidate (sign out) all sessions for a given user.
      *
      * Marks every session belonging to `userId` as invalid so that
@@ -463,7 +408,8 @@ export function createCoreDomains(deps: CoreDeps) {
      *
      * @example Sign out everywhere except the current session
      * ```ts
-     * const sessionId = await auth.session.current(ctx);
+     * const identity = await ctx.auth.getUserIdentity();
+     * const sessionId = identity?.sid;
      * await auth.session.invalidate(ctx, {
      *   userId,
      *   except: sessionId ? [sessionId] : [],
@@ -786,15 +732,15 @@ export function createCoreDomains(deps: CoreDeps) {
      * @param args.accountId - Optional account document ID to sign in with directly.
      * @param args.params - Optional provider-specific parameters forwarded to the sign-in flow.
      * @returns `{ userId, sessionId }` when sign-in succeeds immediately, or `null`
-     *   when the provider does not produce an immediate signed-in result.
+     *   when the provider does not produce an immediate session.
      *
      * @example
      * ```ts
-     * const signedIn = await auth.provider.signIn(ctx, passwordProvider, {
+     * const session = await auth.provider.signIn(ctx, passwordProvider, {
      *   params: { email: "alice@example.com", password: "secret" },
      * });
      *
-     * if (!signedIn) {
+     * if (!session) {
      *   throw new Error("Provider requires another auth step");
      * }
      * ```

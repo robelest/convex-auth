@@ -235,7 +235,7 @@ export type AuthContextConfig<
    * Attach additional derived fields to the auth context after the base auth
    * context is resolved.
    *
-   * This callback runs only when a user is authenticated.
+   * This callback runs only when an authenticated user context is available.
    */
   resolve?: (ctx: TCtx, user: UserDoc, auth: AuthContext) => Promise<TResolve> | TResolve;
   /**
@@ -298,8 +298,14 @@ export type InferAuth<
   },
 > = Awaited<ReturnType<T["input"]>>["ctx"]["auth"];
 
+export type AuthContextFacade = {
+  context: AuthContextResolver;
+  ctx: AuthContextFactory;
+};
+
 // Re-export types that auth.ts needs for its own type definitions
 export type {
+  AuthContextFacade as _AuthContextFacade,
   AuthContextResolver as _AuthContextResolver,
   AuthContextFactory as _AuthContextFactory,
   AuthContextCustomization as _AuthContextCustomization,
@@ -432,5 +438,20 @@ export function createAuthContextCustomization<
         args: {},
       };
     },
+  };
+}
+
+/**
+ * Build the shared public auth-context facade used by both `createAuth()` and
+ * `createAuthContext()`.
+ */
+export function createAuthContextFacade(auth: AuthLike): AuthContextFacade {
+  return {
+    context: ((ctx, config) => {
+      assertAuthResolverContext(ctx);
+      return createPublicAuthContext(auth, ctx, config);
+    }) as AuthContextResolver,
+    ctx: ((config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>) =>
+      createAuthContextCustomization(auth, config)) as AuthContextFactory,
   };
 }
