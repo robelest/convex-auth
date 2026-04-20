@@ -61,10 +61,6 @@ jobs:
     permissions:
       contents: read
 
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-
     steps:
       - uses: actions/checkout@v4
 
@@ -77,7 +73,14 @@ jobs:
             args: ['--frozen-lockfile']
 
       - name: Deploy docs site
-        run: vp run publish:docs
+        run: vp run build:docs
+
+      - name: Deploy docs site to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy ./docs/build --project-name=convex-auth
 
   deploy-demo:
     needs: publish
@@ -87,8 +90,6 @@ jobs:
       contents: read
 
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
       PUBLIC_DEPLOYMENT_ENV: production
 
@@ -104,7 +105,15 @@ jobs:
             args: ['--frozen-lockfile']
 
       - name: Deploy demo backend and site
-        run: vp run deploy:demo
+        run: vp exec convex deploy --cmd 'vp run build:demo' --cmd-url-env-var-name VITE_CONVEX_URL
+
+      - name: Deploy demo site to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: demos/svelte
+          command: deploy
 
   github-release:
     needs: [publish, deploy-docs, deploy-demo]
