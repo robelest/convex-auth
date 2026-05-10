@@ -1,0 +1,55 @@
+name: Deploy Docs
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy. Defaults to the current branch."
+        required: false
+        type: string
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "packages/auth/src/**"
+      - "packages/auth/package.json"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/deploy-docs.yml"
+
+concurrency:
+  group: deploy-docs-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-docs:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: 24.15.0
+          cache: true
+          run-install: |
+            args: ['--frozen-lockfile']
+
+      - name: Build docs site
+        run: vp run build:docs
+
+      - name: Deploy docs site to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: npm
+          wranglerVersion: 4.83.0
+          command: pages deploy ./docs/build --project-name=convex-auth

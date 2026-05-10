@@ -1,4 +1,4 @@
-name: Release
+name: Release Package
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - "v*"
 
 concurrency:
-  group: release-${{ github.workflow }}-${{ github.ref }}
+  group: release-package-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -54,69 +54,8 @@ jobs:
         working-directory: packages/auth
         run: vp exec npm publish --tag "$NPM_DIST_TAG"
 
-  deploy-docs:
-    needs: publish
-    runs-on: ubuntu-latest
-    environment: production
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version: 24.15.0
-          cache: true
-          run-install: |
-            args: ['--frozen-lockfile']
-
-      - name: Deploy docs site
-        run: vp run build:docs
-
-      - name: Deploy docs site to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy ./docs/build --project-name=convex-auth
-
-  deploy-demo:
-    needs: publish
-    runs-on: ubuntu-latest
-    environment: production
-    permissions:
-      contents: read
-
-    env:
-      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-      PUBLIC_DEPLOYMENT_ENV: production
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version: 24.15.0
-          cache: true
-          run-install: |
-            args: ['--frozen-lockfile']
-
-      - name: Deploy demo backend and site
-        run: vp exec convex deploy --cmd 'vp run build:demo' --cmd-url-env-var-name VITE_CONVEX_URL
-
-      - name: Deploy demo site to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: demos/svelte
-          command: deploy
-
   github-release:
-    needs: [publish, deploy-docs, deploy-demo]
+    needs: publish
     runs-on: ubuntu-latest
     permissions:
       contents: write
