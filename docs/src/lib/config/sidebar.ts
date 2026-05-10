@@ -25,6 +25,7 @@ export const sidebar: SidebarGroup[] = [
       { title: "Context Enrichment", slug: "/integration/context" },
       { title: "Fluent Convex", slug: "/integration/fluent-convex" },
       { title: "Device Flow (RFC 8628)", slug: "/guides/device-flow" },
+      { title: "Native Apps", slug: "/guides/native-apps" },
       { title: "Production Deploy", slug: "/guides/production" },
     ],
   },
@@ -34,6 +35,7 @@ export const sidebar: SidebarGroup[] = [
       { title: "SSO Overview", slug: "/sso/overview" },
       { title: "Group SSO RPC", slug: "/sso/rpc" },
       { title: "auth.group.sso.connection", slug: "/sso/connection" },
+      { title: "auth.group.sso.policy", slug: "/sso/policy" },
       { title: "auth.group.sso.oidc", slug: "/sso/oidc" },
       { title: "auth.group.sso.saml", slug: "/sso/saml" },
       { title: "auth.group.sso.scim", slug: "/sso/scim" },
@@ -64,6 +66,7 @@ export const sidebar: SidebarGroup[] = [
       { title: "Error Codes", slug: "/reference/errors" },
       { title: "CLI Reference", slug: "/reference/cli" },
       { title: "Architecture", slug: "/reference/architecture" },
+      { title: ".well-known", slug: "/reference/well-known" },
     ],
   },
 ];
