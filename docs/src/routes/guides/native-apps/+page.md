@@ -18,10 +18,10 @@ other) frontend.
 
 ## What you'll wire up
 
-| Side       | What                                            |
-| ---------- | ----------------------------------------------- |
-| Native app | iOS Associated Domains + Android intent filters |
-| Frontend   | `apple-app-site-association` + `assetlinks.json`|
+| Side       | What                                             |
+| ---------- | ------------------------------------------------ |
+| Native app | iOS Associated Domains + Android intent filters  |
+| Frontend   | `apple-app-site-association` + `assetlinks.json` |
 
 ## iOS
 
@@ -35,17 +35,13 @@ other) frontend.
 
 ```js
 // app.config.js
-const passkeyDomain = process.env.SITE_URL
-  ? new URL(process.env.SITE_URL).hostname
-  : null;
+const passkeyDomain = process.env.SITE_URL ? new URL(process.env.SITE_URL).hostname : null;
 
 module.exports = {
   expo: {
     ios: {
       bundleIdentifier: "com.example.app",
-      ...(passkeyDomain
-        ? { associatedDomains: [`webcredentials:${passkeyDomain}`] }
-        : {}),
+      ...(passkeyDomain ? { associatedDomains: [`webcredentials:${passkeyDomain}`] } : {}),
     },
   },
 };
@@ -58,22 +54,25 @@ For local development, append `?mode=developer` to bypass AASA verification
 associatedDomains: [`webcredentials:${passkeyDomain}?mode=developer`],
 ```
 
-### 3. Serve AASA from the frontend
+### 3. Serve AASA from the app origin
 
-Set `IOS_APP_IDS` on the SvelteKit (or other) host:
+Set `IOS_APP_IDS` on the Convex deployment or on the frontend/edge host that
+serves `/.well-known/*`:
 
 ```bash
 IOS_APP_IDS="ABC123DEF.com.example.app"
 ```
 
-Then add the route:
+`auth.http()` serves the route automatically from Convex. If your frontend owns
+the app origin, proxy `/.well-known/apple-app-site-association` to Convex or
+adapt the same helper in your framework route:
 
 ```ts
 // src/routes/.well-known/apple-app-site-association/+server.ts
-import { generateAppleAppSiteAssociation } from "@robelest/convex-auth/server";
+import { wellKnown } from "@robelest/convex-auth/server";
 
 export const GET = () => {
-  const r = generateAppleAppSiteAssociation();
+  const r = wellKnown("apple-app-site-association");
   if (r === null) return new Response(null, { status: 404 });
   return new Response(r.body, { status: r.status, headers: r.headers });
 };
@@ -133,7 +132,7 @@ module.exports = {
 };
 ```
 
-### 3. Serve `assetlinks.json` from the frontend
+### 3. Serve `assetlinks.json` from the app origin
 
 Set `ANDROID_APP_LINKS`:
 
@@ -141,14 +140,16 @@ Set `ANDROID_APP_LINKS`:
 ANDROID_APP_LINKS="com.example.app:AA:BB:CC:DD:EE:FF:..."
 ```
 
-Then add the route:
+`auth.http()` serves the route automatically from Convex. If your frontend owns
+the app origin, proxy `/.well-known/assetlinks.json` to Convex or adapt the
+same helper in your framework route:
 
 ```ts
 // src/routes/.well-known/assetlinks.json/+server.ts
-import { generateAssetLinks } from "@robelest/convex-auth/server";
+import { wellKnown } from "@robelest/convex-auth/server";
 
 export const GET = () => {
-  const r = generateAssetLinks();
+  const r = wellKnown("assetlinks.json");
   if (r === null) return new Response(null, { status: 404 });
   return new Response(r.body, { status: r.status, headers: r.headers });
 };
@@ -171,10 +172,10 @@ Your WebAuthn RP ID must match the AASA / `assetlinks.json` host. The
 convex-auth `passkey()` provider derives the RP ID from `SITE_URL` by
 default:
 
-| `SITE_URL`               | RP ID         |
-| ------------------------ | ------------- |
-| `https://app.example.com`| `app.example.com` |
-| `http://localhost:5173`  | `localhost`   |
+| `SITE_URL`                | RP ID             |
+| ------------------------- | ----------------- |
+| `https://app.example.com` | `app.example.com` |
+| `http://localhost:5173`   | `localhost`       |
 
 You can override with `passkey({ rpId: "example.com" })` if you want passkeys
 to work across subdomains (the AASA / `assetlinks.json` must then live at

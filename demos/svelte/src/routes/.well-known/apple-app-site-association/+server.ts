@@ -1,11 +1,11 @@
-import { generateAppleAppSiteAssociation } from "@robelest/convex-auth/server";
+import { wellKnown } from "@robelest/convex-auth/server";
 
 import type { RequestHandler } from "@sveltejs/kit";
 
 export const prerender = false;
 
 export const GET: RequestHandler = () => {
-  const result = generateAppleAppSiteAssociation();
+  const result = wellKnown("apple-app-site-association");
   if (result === null) {
     return new Response(null, { status: 404 });
   }

@@ -20,14 +20,14 @@ import { FlowSignal } from "./errors";
 import {
   addAuthRoutes,
   addOpenIdRoutes,
-  addWebAuthnRoute,
+  addWellKnownRoutes,
   convertErrorsToResponse,
   createHttpAction,
   createHttpContext,
   createHttpRoute,
   getCookies,
 } from "./http";
-import { generateWebAuthnConfig } from "./wellknown";
+import { wellKnown } from "./wellknown";
 import { logError, log, LOG_LEVELS } from "./log";
 import {
   callCreateAccountFromCredentials,
@@ -107,7 +107,8 @@ function appendRoutePrefix(siteUrl: string, prefix: string) {
 }
 
 function authSiteUrlFromEnv() {
-  const siteUrl = readConfigSync(envOptionalString("CONVEX_AUTH_SITE_URL")) ?? requireEnv("CONVEX_SITE_URL");
+  const siteUrl =
+    readConfigSync(envOptionalString("CONVEX_AUTH_SITE_URL")) ?? requireEnv("CONVEX_SITE_URL");
   const prefix = normalizeRoutePrefix(
     readConfigSync(envOptionalString("CONVEX_AUTH_HTTP_PREFIX")) ?? "/auth",
   );
@@ -330,11 +331,8 @@ export function Auth(config_: ConvexAuthConfig) {
       getJwks: () => requireEnv("JWKS"),
     });
 
-    addWebAuthnRoute(protocolHttp as unknown as HttpRouter, {
-      getResponse: () => {
-        const r = generateWebAuthnConfig();
-        return r === null ? null : { body: r.body, headers: r.headers };
-      },
+    addWellKnownRoutes(protocolHttp as unknown as HttpRouter, {
+      getResponse: (endpoint) => wellKnown(endpoint),
     });
 
     addGroupHttpRuntime({
@@ -496,10 +494,13 @@ export function Auth(config_: ConvexAuthConfig) {
      *
      * The following routes are handled always:
      *
-     * - `/.well-known/openid-configuration`
-     * - `/.well-known/jwks.json`
-     * - `/.well-known/webauthn` (returns 404 unless `WEBAUTHN_ALT_ORIGINS` or
-     *   `SECONDARY_URL` is set)
+     * - `/.well-known/apple-app-site-association`
+     * - `/.well-known/assetlinks.json`
+     * - `/.well-known/webauthn`
+     * - `/.well-known/change-password`
+     * - `/.well-known/security.txt`
+     * - `<prefix>/.well-known/openid-configuration`
+     * - `<prefix>/.well-known/jwks.json`
      *
      * The following routes are handled if OAuth is configured:
      *
@@ -521,12 +522,8 @@ export function Auth(config_: ConvexAuthConfig) {
         getJwks: () => requireEnv("JWKS"),
       });
 
-      addWebAuthnRoute(http, {
-        routeBase: routePrefix,
-        getResponse: () => {
-          const r = generateWebAuthnConfig();
-          return r === null ? null : { body: r.body, headers: r.headers };
-        },
+      addWellKnownRoutes(http, {
+        getResponse: (endpoint) => wellKnown(endpoint),
       });
 
       addGroupHttpRuntime({
@@ -816,7 +813,10 @@ export function Auth(config_: ConvexAuthConfig) {
       return await serializeHttpResponse(response);
     },
   });
-  const http = Object.assign((options?: AuthHttpRouteOptions) => request.router(options), httpDelegate);
+  const http = Object.assign(
+    (options?: AuthHttpRouteOptions) => request.router(options),
+    httpDelegate,
+  );
 
   // ---------------------------------------------------------------------------
   // Lifecycle-aware deletion helpers exposed on `ctx.auth.{account,passkey,totp}`.
@@ -948,9 +948,7 @@ export function Auth(config_: ConvexAuthConfig) {
         }
         const provider = args.provider !== undefined ? getProviderOrThrow(args.provider) : null;
         const authSiteUrl =
-          provider?.type === "oauth" || provider?.type === "sso"
-            ? getAuthSiteUrl(ctx)
-            : undefined;
+          provider?.type === "oauth" || provider?.type === "sso" ? getAuthSiteUrl(ctx) : undefined;
         const result = await services.signIn.signIn(
           enrichCtx(ctx) as unknown as Parameters<typeof services.signIn.signIn>[0],
           provider,

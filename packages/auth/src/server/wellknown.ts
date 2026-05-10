@@ -1,19 +1,15 @@
 /**
- * Content generators for cross-platform `.well-known` endpoints.
+ * Content generator for cross-platform `.well-known` endpoints.
  *
- * These helpers produce the exact response shape expected by Apple, Google,
- * browsers, and password managers. Each helper reads convention env vars but
- * accepts explicit overrides; if neither is set, it returns `null` so the
- * caller can serve a 404.
+ * The helper produces the exact response shape expected by Apple, Google,
+ * browsers, and password managers. It reads convention env vars but accepts
+ * explicit overrides; if an endpoint is not configured, it returns `null` so
+ * the caller can serve a 404.
  *
- * The library serves `/.well-known/openid-configuration` and `/.well-known/jwks.json`
- * from the Convex backend (`CONVEX_SITE_URL`). The endpoints in this module
- * must be served from the WebAuthn RP ID host (typically `SITE_URL` — the
- * frontend domain), so they're shipped as framework-agnostic generators that
- * apps wire into their own route handlers (SvelteKit `+server.ts`, Next.js
- * route handlers, Cloudflare Workers, Express, etc.). One exception:
- * `generateWebAuthnConfig` can also be served from Convex via
- * {@link addWebAuthnRoute} when RP ID equals `CONVEX_SITE_URL` host.
+ * These endpoints must be reachable from the public app/RP ID origin at root
+ * `/.well-known/*`. `auth.http()` serves them from Convex; apps using a
+ * separate frontend domain should route those root paths to Convex or adapt
+ * this helper in their framework route handlers.
  *
  * @module
  */
@@ -21,11 +17,61 @@
 import { envOptionalNumber, envOptionalString } from "./env";
 import { normalizeUrl } from "./url";
 
-/** Uniform shape returned by every generator. Adapt to any framework. */
+/** Uniform shape returned by the well-known helper. Adapt to any framework. */
 export type WellKnownResponse = {
   status: number;
   headers: Record<string, string>;
   body: string;
+};
+
+export type WellKnownEndpoint =
+  | "apple-app-site-association"
+  | "assetlinks.json"
+  | "webauthn"
+  | "security.txt"
+  | "change-password";
+
+export type WellKnownOptions = {
+  /** Options for `/.well-known/apple-app-site-association`. */
+  appleAppSiteAssociation?: {
+    /** Override `IOS_APP_IDS`; e.g., `["ABC123DEF.com.example.app"]`. */
+    appIds?: string[];
+    /** Override `IOS_APPLINK_PATHS`; default `["/auth/*", "/callback/*"]`. */
+    applinkPaths?: string[];
+  };
+  /** Options for `/.well-known/assetlinks.json`. */
+  assetLinks?: {
+    apps?: Array<{ packageName: string; sha256Fingerprints: string[] }>;
+  };
+  /** Options for `/.well-known/webauthn`. */
+  webAuthn?: {
+    /** Override `WEBAUTHN_ALT_ORIGINS`. */
+    origins?: string[];
+  };
+  /** Options for `/.well-known/security.txt`. */
+  securityTxt?: {
+    /** Override `SECURITY_CONTACT`. Should be a `mailto:` or `https:` URI. */
+    contact?: string;
+    /** Override `SECURITY_TXT_EXPIRES_DAYS`. Default 365 days from now. */
+    expiresInDays?: number;
+    /** RFC 5646 language tags, e.g., `["en"]`. */
+    preferredLanguages?: string[];
+    /** Optional canonical URL of the security.txt file (for signed copies). */
+    canonical?: string;
+    /** Optional public key URL for encrypted reports. */
+    encryption?: string;
+    /** Optional acknowledgments URL. */
+    acknowledgments?: string;
+    /** Optional policy URL. */
+    policy?: string;
+    /** Optional hiring URL. */
+    hiring?: string;
+  };
+  /** Options for `/.well-known/change-password`. */
+  changePassword?: {
+    /** Override `CHANGE_PASSWORD_URL`. */
+    targetUrl?: string;
+  };
 };
 
 const STATIC_CACHE = "public, max-age=300, stale-while-revalidate=3600, stale-if-error=86400";
@@ -49,40 +95,13 @@ function ok(body: string, contentType: string): WellKnownResponse {
   };
 }
 
-/**
- * Generate `/.well-known/apple-app-site-association` (AASA) content.
- *
- * Required for native iOS passkeys (`webcredentials`), Universal Links
- * (`applinks`), and Sign in with Apple. Apple's CDN fetches this file from
- * the WebAuthn RP ID host on app install/update; the file MUST be served as
- * `application/json` at the exact path with no `.json` extension and no
- * redirects.
- *
- * Reads {@link IOS_APP_IDS} (comma-separated `TEAMID.bundle.id` entries) and
- * {@link IOS_APPLINK_PATHS} (comma-separated path patterns, default `/auth/*,/callback/*`).
- *
- * @example Hosting in SvelteKit
- * ```ts
- * // src/routes/.well-known/apple-app-site-association/+server.ts
- * import { generateAppleAppSiteAssociation } from "@robelest/convex-auth/server";
- * export const GET = () => {
- *   const r = generateAppleAppSiteAssociation();
- *   if (!r) return new Response(null, { status: 404 });
- *   return new Response(r.body, { status: r.status, headers: r.headers });
- * };
- * ```
- */
-export function generateAppleAppSiteAssociation(opts?: {
-  /** Override `IOS_APP_IDS`; e.g., `["ABC123DEF.com.example.app"]`. */
-  appIds?: string[];
-  /** Override `IOS_APPLINK_PATHS`; default `["/auth/*", "/callback/*"]`. */
-  applinkPaths?: string[];
-}): WellKnownResponse | null {
+function appleAppSiteAssociationResponse(
+  opts?: WellKnownOptions["appleAppSiteAssociation"],
+): WellKnownResponse | null {
   const appIds = opts?.appIds ?? parseList(envOptionalString("IOS_APP_IDS"));
   if (appIds.length === 0) return null;
 
-  const applinkPaths =
-    opts?.applinkPaths ?? parseList(envOptionalString("IOS_APPLINK_PATHS"));
+  const applinkPaths = opts?.applinkPaths ?? parseList(envOptionalString("IOS_APPLINK_PATHS"));
   const components =
     applinkPaths.length > 0
       ? applinkPaths.map((path) => ({ "/": path }))
@@ -115,17 +134,15 @@ export function generateAppleAppSiteAssociation(opts?: {
  *
  * @example Direct config
  * ```ts
- * generateAssetLinks({
+ * wellKnown("assetlinks.json", { assetLinks: {
  *   apps: [{
  *     packageName: "com.example.app",
  *     sha256Fingerprints: ["AA:BB:CC:..."],
  *   }],
- * });
+ * }});
  * ```
  */
-export function generateAssetLinks(opts?: {
-  apps?: Array<{ packageName: string; sha256Fingerprints: string[] }>;
-}): WellKnownResponse | null {
+function assetLinksResponse(opts?: WellKnownOptions["assetLinks"]): WellKnownResponse | null {
   const apps = opts?.apps ?? parseAndroidAppLinksEnv(envOptionalString("ANDROID_APP_LINKS"));
   if (apps.length === 0) return null;
 
@@ -176,10 +193,7 @@ function parseAndroidAppLinksEnv(
  * Reads {@link WEBAUTHN_ALT_ORIGINS}; falls back to `SECONDARY_URL` parsed
  * from the existing site URL convention.
  */
-export function generateWebAuthnConfig(opts?: {
-  /** Override `WEBAUTHN_ALT_ORIGINS`. */
-  origins?: string[];
-}): WellKnownResponse | null {
+function webAuthnResponse(opts?: WellKnownOptions["webAuthn"]): WellKnownResponse | null {
   const explicit = opts?.origins;
   const fromEnv = parseList(envOptionalString("WEBAUTHN_ALT_ORIGINS"));
   const fromSecondary = parseList(envOptionalString("SECONDARY_URL")).map(normalizeUrl);
@@ -197,24 +211,7 @@ export function generateWebAuthnConfig(opts?: {
  * (e.g., `mailto:security@example.com` or `https://example.com/security`) and
  * optional {@link SECURITY_TXT_EXPIRES_DAYS} (default 365).
  */
-export function generateSecurityTxt(opts?: {
-  /** Override `SECURITY_CONTACT`. Should be a `mailto:` or `https:` URI. */
-  contact?: string;
-  /** Override `SECURITY_TXT_EXPIRES_DAYS`. Default 365 days from now. */
-  expiresInDays?: number;
-  /** RFC 5646 language tags, e.g., `["en"]`. */
-  preferredLanguages?: string[];
-  /** Optional canonical URL of the security.txt file (for signed copies). */
-  canonical?: string;
-  /** Optional public key URL for encrypted reports. */
-  encryption?: string;
-  /** Optional acknowledgments URL. */
-  acknowledgments?: string;
-  /** Optional policy URL. */
-  policy?: string;
-  /** Optional hiring URL. */
-  hiring?: string;
-}): WellKnownResponse | null {
+function securityTxtResponse(opts?: WellKnownOptions["securityTxt"]): WellKnownResponse | null {
   const contact = opts?.contact ?? envOptionalString("SECURITY_CONTACT");
   if (contact === undefined || contact.length === 0) return null;
 
@@ -245,10 +242,9 @@ export function generateSecurityTxt(opts?: {
  *
  * Reads {@link CHANGE_PASSWORD_URL}.
  */
-export function generateChangePasswordRedirect(opts?: {
-  /** Override `CHANGE_PASSWORD_URL`. */
-  targetUrl?: string;
-}): WellKnownResponse | null {
+function changePasswordResponse(
+  opts?: WellKnownOptions["changePassword"],
+): WellKnownResponse | null {
   const target = opts?.targetUrl ?? envOptionalString("CHANGE_PASSWORD_URL");
   if (target === undefined || target.length === 0) return null;
   return {
@@ -259,4 +255,44 @@ export function generateChangePasswordRedirect(opts?: {
     },
     body: "",
   };
+}
+
+/**
+ * Generate a standard `/.well-known/*` response.
+ *
+ * @param endpoint The well-known endpoint name, without the `/.well-known/` prefix.
+ * @param options Optional explicit configuration. When omitted, the helper reads
+ * convention environment variables for the selected endpoint.
+ * @returns A framework-neutral response descriptor, or `null` when the endpoint
+ * is not configured.
+ *
+ * @example
+ * ```ts
+ * import { wellKnown } from "@robelest/convex-auth/server";
+ *
+ * export const GET = () => {
+ *   const r = wellKnown("assetlinks.json");
+ *   if (r === null) return new Response(null, { status: 404 });
+ *   return new Response(r.body, { status: r.status, headers: r.headers });
+ * };
+ * ```
+ */
+export function wellKnown(
+  endpoint: WellKnownEndpoint,
+  options?: WellKnownOptions,
+): WellKnownResponse | null {
+  switch (endpoint) {
+    case "apple-app-site-association":
+      return appleAppSiteAssociationResponse(options?.appleAppSiteAssociation);
+    case "assetlinks.json":
+      return assetLinksResponse(options?.assetLinks);
+    case "webauthn":
+      return webAuthnResponse(options?.webAuthn);
+    case "security.txt":
+      return securityTxtResponse(options?.securityTxt);
+    case "change-password":
+      return changePasswordResponse(options?.changePassword);
+  }
+  const _exhaustive: never = endpoint;
+  return _exhaustive;
 }

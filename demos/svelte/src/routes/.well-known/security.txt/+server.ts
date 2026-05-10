@@ -1,11 +1,11 @@
-import { generateSecurityTxt } from "@robelest/convex-auth/server";
+import { wellKnown } from "@robelest/convex-auth/server";
 
 import type { RequestHandler } from "@sveltejs/kit";
 
 export const prerender = false;
 
 export const GET: RequestHandler = () => {
-  const result = generateSecurityTxt();
+  const result = wellKnown("security.txt");
   if (result === null) {
     return new Response(null, { status: 404 });
   }

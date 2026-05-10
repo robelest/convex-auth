@@ -17,6 +17,7 @@ import {
 } from "./context";
 import { logError } from "./log";
 import type { CorsConfig, HttpKeyContext } from "./types";
+import type { WellKnownEndpoint, WellKnownResponse } from "./wellknown";
 
 type HttpIdentityCtx = {
   auth: {
@@ -613,37 +614,40 @@ export function addOpenIdRoutes(
   });
 }
 
-/**
- * Register `/.well-known/webauthn` on the Convex backend.
- *
- * Useful when the WebAuthn RP ID matches the `CONVEX_SITE_URL` host. Apps
- * whose RP ID is the frontend domain should host this endpoint themselves
- * (see {@link generateWebAuthnConfig} from `@robelest/convex-auth/server`).
- *
- * Returns 404 when no alternative origins are configured (no
- * `WEBAUTHN_ALT_ORIGINS` and no `SECONDARY_URL`).
- */
-export function addWebAuthnRoute(
+/** Register root `/.well-known/*` app discovery routes on an HTTP router. */
+export function addWellKnownRoutes(
   http: HttpRouter,
   deps: {
-    /** Returns the response body or null if not configured. */
-    getResponse: () => { body: string; headers: Record<string, string> } | null;
-    routeBase?: string;
+    getResponse: (endpoint: WellKnownEndpoint) => WellKnownResponse | null;
   },
 ) {
-  const routeBase = deps.routeBase ?? "";
+  const routes: Array<{ endpoint: WellKnownEndpoint; path: string }> = [
+    {
+      endpoint: "apple-app-site-association",
+      path: "/.well-known/apple-app-site-association",
+    },
+    { endpoint: "assetlinks.json", path: "/.well-known/assetlinks.json" },
+    { endpoint: "webauthn", path: "/.well-known/webauthn" },
+    { endpoint: "change-password", path: "/.well-known/change-password" },
+    { endpoint: "security.txt", path: "/.well-known/security.txt" },
+  ];
 
-  http.route({
-    path: `${routeBase}/.well-known/webauthn`,
-    method: "GET",
-    handler: httpActionGeneric(async () => {
-      const result = deps.getResponse();
-      if (result === null) {
-        return new Response(null, { status: 404 });
-      }
-      return new Response(result.body, { status: 200, headers: result.headers });
-    }),
-  });
+  for (const route of routes) {
+    http.route({
+      path: route.path,
+      method: "GET",
+      handler: httpActionGeneric(async () => {
+        const result = deps.getResponse(route.endpoint);
+        if (result === null) {
+          return new Response(null, { status: 404 });
+        }
+        return new Response(result.body, {
+          status: result.status,
+          headers: result.headers,
+        });
+      }),
+    });
+  }
 }
 
 export function addAuthRoutes(

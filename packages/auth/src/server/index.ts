@@ -47,14 +47,8 @@ export {
   shouldProxyAuthAction,
   structuredAuthCookies,
 } from "./prefetch";
-export type { WellKnownResponse } from "./wellknown";
-export {
-  generateAppleAppSiteAssociation,
-  generateAssetLinks,
-  generateChangePasswordRedirect,
-  generateSecurityTxt,
-  generateWebAuthnConfig,
-} from "./wellknown";
+export { wellKnown } from "./wellknown";
+export type { WellKnownEndpoint, WellKnownOptions, WellKnownResponse } from "./wellknown";
 export type {
   AfterCtx,
   AuthCallbackContext,

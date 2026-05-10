@@ -1,10 +1,4 @@
-import {
-  generateAppleAppSiteAssociation,
-  generateAssetLinks,
-  generateChangePasswordRedirect,
-  generateSecurityTxt,
-  generateWebAuthnConfig,
-} from "@robelest/convex-auth/server";
+import { wellKnown } from "@robelest/convex-auth/server";
 import { afterEach, beforeEach, expect, test } from "vite-plus/test";
 
 const ENV_KEYS = [
@@ -40,12 +34,12 @@ afterEach(() => {
 // ---- AASA ----
 
 test("AASA returns null when neither env nor opts provided", () => {
-  expect(generateAppleAppSiteAssociation()).toBeNull();
+  expect(wellKnown("apple-app-site-association")).toBeNull();
 });
 
 test("AASA reads IOS_APP_IDS and falls back to default applink paths", () => {
   process.env.IOS_APP_IDS = "ABC123DEF.com.example.app,ABC123DEF.com.example.staging";
-  const r = generateAppleAppSiteAssociation();
+  const r = wellKnown("apple-app-site-association");
   expect(r).not.toBeNull();
   const body = JSON.parse(r!.body) as {
     applinks: { details: Array<{ appIDs: string[]; components: Array<{ "/": string }> }> };
@@ -69,19 +63,18 @@ test("AASA reads IOS_APP_IDS and falls back to default applink paths", () => {
 test("AASA respects IOS_APPLINK_PATHS override", () => {
   process.env.IOS_APP_IDS = "T1.com.example.app";
   process.env.IOS_APPLINK_PATHS = "/invite/*,/share/*";
-  const r = generateAppleAppSiteAssociation();
+  const r = wellKnown("apple-app-site-association");
   const body = JSON.parse(r!.body) as {
     applinks: { details: Array<{ components: Array<{ "/": string }> }> };
   };
-  expect(body.applinks.details[0]!.components).toEqual([
-    { "/": "/invite/*" },
-    { "/": "/share/*" },
-  ]);
+  expect(body.applinks.details[0]!.components).toEqual([{ "/": "/invite/*" }, { "/": "/share/*" }]);
 });
 
 test("AASA opts.appIds overrides env", () => {
   process.env.IOS_APP_IDS = "T1.com.example.env";
-  const r = generateAppleAppSiteAssociation({ appIds: ["T2.com.example.code"] });
+  const r = wellKnown("apple-app-site-association", {
+    appleAppSiteAssociation: { appIds: ["T2.com.example.code"] },
+  });
   const body = JSON.parse(r!.body) as { webcredentials: { apps: string[] } };
   expect(body.webcredentials.apps).toEqual(["T2.com.example.code"]);
 });
@@ -89,12 +82,12 @@ test("AASA opts.appIds overrides env", () => {
 // ---- assetlinks ----
 
 test("assetlinks returns null when nothing configured", () => {
-  expect(generateAssetLinks()).toBeNull();
+  expect(wellKnown("assetlinks.json")).toBeNull();
 });
 
 test("assetlinks parses ANDROID_APP_LINKS env", () => {
   process.env.ANDROID_APP_LINKS = "com.example.app:AA:BB:CC;com.example.staging:DD:EE:FF";
-  const r = generateAssetLinks();
+  const r = wellKnown("assetlinks.json");
   expect(r).not.toBeNull();
   const body = JSON.parse(r!.body) as Array<{
     relation: string[];
@@ -113,8 +106,10 @@ test("assetlinks parses ANDROID_APP_LINKS env", () => {
 
 test("assetlinks opts.apps overrides env", () => {
   process.env.ANDROID_APP_LINKS = "com.example.env:AA";
-  const r = generateAssetLinks({
-    apps: [{ packageName: "com.example.code", sha256Fingerprints: ["AA:BB"] }],
+  const r = wellKnown("assetlinks.json", {
+    assetLinks: {
+      apps: [{ packageName: "com.example.code", sha256Fingerprints: ["AA:BB"] }],
+    },
   });
   const body = JSON.parse(r!.body) as Array<{ target: { package_name: string } }>;
   expect(body).toHaveLength(1);
@@ -122,8 +117,10 @@ test("assetlinks opts.apps overrides env", () => {
 });
 
 test("assetlinks output is a top-level array, not an object", () => {
-  const r = generateAssetLinks({
-    apps: [{ packageName: "com.example.app", sha256Fingerprints: ["AA"] }],
+  const r = wellKnown("assetlinks.json", {
+    assetLinks: {
+      apps: [{ packageName: "com.example.app", sha256Fingerprints: ["AA"] }],
+    },
   });
   expect(r!.body.startsWith("[")).toBe(true);
 });
@@ -131,19 +128,19 @@ test("assetlinks output is a top-level array, not an object", () => {
 // ---- webauthn ----
 
 test("webauthn returns null when no origins configured", () => {
-  expect(generateWebAuthnConfig()).toBeNull();
+  expect(wellKnown("webauthn")).toBeNull();
 });
 
 test("webauthn reads WEBAUTHN_ALT_ORIGINS", () => {
   process.env.WEBAUTHN_ALT_ORIGINS = "https://staging.example.com,https://app2.example.com";
-  const r = generateWebAuthnConfig();
+  const r = wellKnown("webauthn");
   const body = JSON.parse(r!.body) as { origins: string[] };
   expect(body.origins).toEqual(["https://staging.example.com", "https://app2.example.com"]);
 });
 
 test("webauthn falls back to SECONDARY_URL", () => {
   process.env.SECONDARY_URL = "https://staging.example.com/,https://localhost:5173/";
-  const r = generateWebAuthnConfig();
+  const r = wellKnown("webauthn");
   const body = JSON.parse(r!.body) as { origins: string[] };
   expect(body.origins).toEqual(["https://staging.example.com", "https://localhost:5173"]);
 });
@@ -151,14 +148,14 @@ test("webauthn falls back to SECONDARY_URL", () => {
 test("webauthn WEBAUTHN_ALT_ORIGINS takes precedence over SECONDARY_URL", () => {
   process.env.WEBAUTHN_ALT_ORIGINS = "https://override.example.com";
   process.env.SECONDARY_URL = "https://secondary.example.com";
-  const r = generateWebAuthnConfig();
+  const r = wellKnown("webauthn");
   const body = JSON.parse(r!.body) as { origins: string[] };
   expect(body.origins).toEqual(["https://override.example.com"]);
 });
 
 test("webauthn opts.origins overrides env", () => {
   process.env.WEBAUTHN_ALT_ORIGINS = "https://env.example.com";
-  const r = generateWebAuthnConfig({ origins: ["https://code.example.com"] });
+  const r = wellKnown("webauthn", { webAuthn: { origins: ["https://code.example.com"] } });
   const body = JSON.parse(r!.body) as { origins: string[] };
   expect(body.origins).toEqual(["https://code.example.com"]);
 });
@@ -166,12 +163,12 @@ test("webauthn opts.origins overrides env", () => {
 // ---- security.txt ----
 
 test("security.txt returns null without contact", () => {
-  expect(generateSecurityTxt()).toBeNull();
+  expect(wellKnown("security.txt")).toBeNull();
 });
 
 test("security.txt has unexpired Expires field in ISO 8601", () => {
   process.env.SECURITY_CONTACT = "mailto:security@example.com";
-  const r = generateSecurityTxt();
+  const r = wellKnown("security.txt");
   expect(r!.headers["Content-Type"]).toBe("text/plain; charset=utf-8");
   expect(r!.body).toContain("Contact: mailto:security@example.com");
   const expiresMatch = /Expires: (.+)$/m.exec(r!.body);
@@ -184,7 +181,7 @@ test("security.txt has unexpired Expires field in ISO 8601", () => {
 test("security.txt SECURITY_TXT_EXPIRES_DAYS controls expiry", () => {
   process.env.SECURITY_CONTACT = "mailto:security@example.com";
   process.env.SECURITY_TXT_EXPIRES_DAYS = "30";
-  const r = generateSecurityTxt();
+  const r = wellKnown("security.txt");
   const expires = new Date(/Expires: (.+)$/m.exec(r!.body)![1]!);
   const days = (expires.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
   expect(days).toBeGreaterThan(29);
@@ -193,13 +190,15 @@ test("security.txt SECURITY_TXT_EXPIRES_DAYS controls expiry", () => {
 
 test("security.txt includes optional fields", () => {
   process.env.SECURITY_CONTACT = "mailto:security@example.com";
-  const r = generateSecurityTxt({
-    preferredLanguages: ["en", "de"],
-    canonical: "https://example.com/.well-known/security.txt",
-    encryption: "https://example.com/pgp.txt",
-    acknowledgments: "https://example.com/hall-of-fame",
-    policy: "https://example.com/security-policy",
-    hiring: "https://example.com/jobs",
+  const r = wellKnown("security.txt", {
+    securityTxt: {
+      preferredLanguages: ["en", "de"],
+      canonical: "https://example.com/.well-known/security.txt",
+      encryption: "https://example.com/pgp.txt",
+      acknowledgments: "https://example.com/hall-of-fame",
+      policy: "https://example.com/security-policy",
+      hiring: "https://example.com/jobs",
+    },
   });
   expect(r!.body).toContain("Preferred-Languages: en, de");
   expect(r!.body).toContain("Canonical: https://example.com/.well-known/security.txt");
@@ -212,12 +211,12 @@ test("security.txt includes optional fields", () => {
 // ---- change-password ----
 
 test("change-password returns null when not configured", () => {
-  expect(generateChangePasswordRedirect()).toBeNull();
+  expect(wellKnown("change-password")).toBeNull();
 });
 
 test("change-password emits 302 with Location header from env", () => {
   process.env.CHANGE_PASSWORD_URL = "https://app.example.com/settings/security";
-  const r = generateChangePasswordRedirect();
+  const r = wellKnown("change-password");
   expect(r!.status).toBe(302);
   expect(r!.headers.Location).toBe("https://app.example.com/settings/security");
   expect(r!.body).toBe("");
@@ -225,6 +224,8 @@ test("change-password emits 302 with Location header from env", () => {
 
 test("change-password opts.targetUrl overrides env", () => {
   process.env.CHANGE_PASSWORD_URL = "https://env.example.com/sec";
-  const r = generateChangePasswordRedirect({ targetUrl: "https://code.example.com/sec" });
+  const r = wellKnown("change-password", {
+    changePassword: { targetUrl: "https://code.example.com/sec" },
+  });
   expect(r!.headers.Location).toBe("https://code.example.com/sec");
 });

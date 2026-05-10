@@ -1,4 +1,4 @@
-import { generateChangePasswordRedirect } from "@robelest/convex-auth/server";
+import { wellKnown } from "@robelest/convex-auth/server";
 
 import type { RequestHandler } from "@sveltejs/kit";
 
@@ -14,7 +14,7 @@ export const GET: RequestHandler = ({ url }) => {
     process.env.CHANGE_PASSWORD_URL && process.env.CHANGE_PASSWORD_URL.length > 0
       ? process.env.CHANGE_PASSWORD_URL
       : new URL(DEFAULT_CHANGE_PASSWORD_PATH, url.origin).toString();
-  const result = generateChangePasswordRedirect({ targetUrl: target });
+  const result = wellKnown("change-password", { changePassword: { targetUrl: target } });
   if (result === null) {
     return new Response(null, { status: 404 });
   }

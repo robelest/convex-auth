@@ -1,11 +1,11 @@
-import { generateWebAuthnConfig } from "@robelest/convex-auth/server";
+import { wellKnown } from "@robelest/convex-auth/server";
 
 import type { RequestHandler } from "@sveltejs/kit";
 
 export const prerender = false;
 
 export const GET: RequestHandler = () => {
-  const result = generateWebAuthnConfig();
+  const result = wellKnown("webauthn");
   if (result === null) {
     return new Response(null, { status: 404 });
   }
