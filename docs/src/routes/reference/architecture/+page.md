@@ -150,6 +150,8 @@ import from `auth/core.ts` never load provider, OAuth, or crypto code.
 | ----------------------------------- | ------------------------------------------- | ----------------------------------------------- |
 | `@robelest/convex-auth/server`      | Everything (providers, OAuth, crypto, HTTP) | `convex/auth.ts` — signIn/signOut exports       |
 | `@robelest/convex-auth/core`        | Context resolution only (~2KB)              | `convex/functions.ts` — query/mutation wrappers |
+| `@robelest/convex-auth/browser`     | Browser client defaults                     | Web apps and SSR client hydration               |
+| `@robelest/convex-auth/expo`        | Expo SecureStore, AuthSession, passkeys     | Expo / React Native apps                        |
 | `@robelest/convex-auth/providers/*` | Individual provider                         | Only in `convex/auth.ts`                        |
 
 Your app also needs `convex/auth.config.ts` so Convex trusts the JWT issuer
@@ -197,11 +199,11 @@ part of the current stable surface yet.
 
 Every auth path resolves to the same `userId`:
 
-| Access pattern                     | How `userId` is available                                    |
-| ---------------------------------- | ------------------------------------------------------------ |
-| Browser (password, OAuth, passkey) | `ctx.auth.userId` via `auth.ctx()`                           |
-| Group SSO (OIDC / SAML)            | Same as browser - SSO completes as a session                 |
-| Device flow (CLI / IoT)            | Same as browser - device poll returns session tokens         |
+| Access pattern                     | How `userId` is available                                       |
+| ---------------------------------- | --------------------------------------------------------------- |
+| Browser (password, OAuth, passkey) | `ctx.auth.userId` via `auth.ctx()`                              |
+| Group SSO (OIDC / SAML)            | Same as browser - SSO completes as a session                    |
+| Device flow (CLI / IoT)            | Same as browser - device poll returns session tokens            |
 | API key (machine / automation)     | `ctx.key.userId` or `auth.request.context(ctx, request).userId` |
 
 The `userId` is the single shared anchor — server logic works regardless of how

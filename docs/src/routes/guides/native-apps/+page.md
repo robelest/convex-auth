@@ -18,10 +18,35 @@ other) frontend.
 
 ## What you'll wire up
 
-| Side       | What                                             |
-| ---------- | ------------------------------------------------ |
-| Native app | iOS Associated Domains + Android intent filters  |
-| Frontend   | `apple-app-site-association` + `assetlinks.json` |
+| Side       | What                                                        |
+| ---------- | ----------------------------------------------------------- |
+| Native app | Expo auth client + iOS Associated Domains + Android intents |
+| App origin | `apple-app-site-association` + `assetlinks.json`            |
+
+## Use the Expo client
+
+Import the client from `@robelest/convex-auth/expo` in native apps. This
+entrypoint uses Expo-native defaults: SecureStore token persistence,
+`expo-auth-session` OAuth launching, and native passkey support.
+
+```tsx
+import { api } from "../convex/_generated/api";
+import { client } from "@robelest/convex-auth/expo";
+
+import { convex } from "./convex";
+
+export const auth = client({
+  convex,
+  api: api.auth,
+  authSession: {
+    scheme: "myapp",
+    redirectUri: "myapp://auth",
+  },
+});
+```
+
+Do not use `@robelest/convex-auth/browser` in native Expo code. The Expo
+entrypoint falls back to the browser client automatically when running on web.
 
 ## iOS
 
