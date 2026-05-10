@@ -50,6 +50,6 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          packageManager: npm
+          workingDirectory: demos/svelte
           wranglerVersion: 4.83.0
-          command: pages deploy ./docs/build --project-name=convex-auth
+          command: pages deploy ../../docs/build --project-name=convex-auth
