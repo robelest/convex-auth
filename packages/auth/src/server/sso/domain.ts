@@ -1,7 +1,7 @@
 import { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError } from "convex/values";
 
-import type { ComponentCtx, ComponentReadCtx } from "../componentContext";
+import type { ComponentCtx, ComponentReadCtx } from "../component/context";
 import { retryWithBackoff } from "../utils/retry";
 
 import {
@@ -1690,7 +1690,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
                   source: { kind: "connection", id: connection._id },
                 });
                 return {
-                  signInPath: `${requireEnv("CONVEX_SITE_URL")}/api/auth/connections/${connection._id}/saml/signin`,
+                  signInPath: `${requireEnv("CONVEX_SITE_URL")}/connections/${connection._id}/saml/signin`,
                   callbackPath: urls.acsUrl,
                   providerId: groupSamlProviderId(connection._id),
                 };

@@ -7,7 +7,7 @@ import type {
   SignInActionResult,
   SignInApiRef,
 } from "../core/types";
-import type { AuthTokens } from "../../shared/authResults";
+import type { AuthTokens } from "../../shared/results";
 
 function isSignedInResult(
   result: SignInActionResult,

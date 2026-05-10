@@ -15,8 +15,8 @@
 
 import { GitHub as ArcticGitHub } from "arctic";
 
-import { envOptionalString, readConfigSync } from "../server/env";
 import { createArcticOAuthClient, createOAuthProvider } from "../server/oauth/factory";
+import { defaultOAuthRedirectUri } from "./redirect";
 
 const DEFAULT_SCOPES = ["user:email"];
 
@@ -39,7 +39,7 @@ export interface GitHubConfig {
   clientId: string;
   /** OAuth app client secret from GitHub. */
   clientSecret: string;
-  /** Optional callback URL override. Defaults to `CUSTOM_AUTH_SITE_URL` or `CONVEX_SITE_URL` plus `/api/auth/callback/github`. */
+  /** Optional callback URL override. Defaults to the auth site URL plus `/callback/github`. */
   redirectUri?: string;
   /** Optional OAuth scopes. Defaults to `user:email`. */
   scopes?: string[];
@@ -68,17 +68,17 @@ export interface GitHubConfig {
  * ```
  */
 export function github(config: GitHubConfig) {
+  const scopes = config.scopes ?? DEFAULT_SCOPES;
+  const createProvider = () =>
+    new ArcticGitHub(
+      config.clientId,
+      config.clientSecret,
+      config.redirectUri ?? defaultOAuthRedirectUri("github"),
+    );
   return createOAuthProvider({
     id: "github",
-    provider: createArcticOAuthClient(
-      new ArcticGitHub(
-        config.clientId,
-        config.clientSecret,
-        config.redirectUri ?? defaultRedirectUri("github"),
-      ),
-      { pkce: "never" },
-    ),
-    scopes: config.scopes ?? DEFAULT_SCOPES,
+    provider: createArcticOAuthClient(createProvider, { pkce: "never" }),
+    scopes,
     accountLinking: config.accountLinking,
     profile: async (tokens) => {
       if (!tokens.accessToken) {
@@ -122,17 +122,4 @@ export function github(config: GitHubConfig) {
       };
     },
   });
-}
-
-function defaultRedirectUri(providerId: string) {
-  const rootUrl =
-    readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ??
-    readConfigSync(envOptionalString("CONVEX_SITE_URL"));
-  if (!rootUrl) {
-    throw new Error(
-      `Missing CONVEX_SITE_URL while configuring ${providerId} OAuth provider. ` +
-        "Set CONVEX_SITE_URL or pass redirectUri explicitly.",
-    );
-  }
-  return `${rootUrl}/api/auth/callback/${providerId}`;
 }

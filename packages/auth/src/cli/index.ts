@@ -104,6 +104,7 @@ function convexCmd(...subArgs: string[]): { file: string; args: string[] } {
 // ---------------------------------------------------------------------------
 
 type CliOptions = {
+  command: "setup" | "doctor" | "urls" | "keys";
   siteUrl?: string;
   secondaryUrl?: string;
   variables?: string;
@@ -185,6 +186,11 @@ function printHelp() {
   printBanner();
   console.log("  Add code and set environment variables for @robelest/convex-auth.\n");
   console.log("  Full docs: https://auth.estifanos.com\n");
+  console.log("  Commands:\n");
+  console.log("    setup                         Scaffold files and set env vars");
+  console.log("    doctor                        Verify env, files, and mounted auth endpoints");
+  console.log("    urls                          Print auth endpoint and provider callback URLs");
+  console.log("    keys                          Generate signing/encryption keys\n");
   console.log("  Options:\n");
   for (const [name, def] of flagDefs) {
     const flag = def.type === "boolean" ? `--${name}` : `--${name} <value>`;
@@ -194,7 +200,15 @@ function printHelp() {
 }
 
 function parseArgs(argv: string[]): CliOptions {
-  const args = argv.slice(2);
+  const rawArgs = argv.slice(2);
+  const knownCommands = new Set(["setup", "doctor", "urls", "keys"]);
+  const firstArg = rawArgs[0];
+  const command = knownCommands.has(firstArg ?? "")
+    ? (firstArg as CliOptions["command"])
+    : "setup";
+  const args = command === "setup" && !knownCommands.has(firstArg ?? "")
+    ? rawArgs
+    : rawArgs.slice(1);
 
   const strings = new Map<string, string>();
   const booleans = new Set<string>();
@@ -236,6 +250,7 @@ function parseArgs(argv: string[]): CliOptions {
   }
 
   return {
+    command,
     siteUrl: strings.get("site-url"),
     secondaryUrl: strings.get("secondary-url"),
     variables: strings.get("variables"),
@@ -302,9 +317,9 @@ async function runSetup(options: CliOptions) {
   await modifyTsConfig(config);
   await configureConvexConfig(config);
   await initializeAuth(config);
+  await initializeHttp(config);
   await initializeAuthCore(config);
   await initializeAuthConfig(config);
-  await configureHttp(config);
 
   if (options.variables !== undefined) {
     await configureOtherVariables(config, options.variables);
@@ -315,11 +330,85 @@ async function runSetup(options: CliOptions) {
   p.outro("Done! Happy building.");
 }
 
-export const runCli = async (argv = process.argv) => {
+async function runDoctor(options: CliOptions) {
+  validateDeploymentSelectionOptions(options);
+  printBanner();
+  p.intro("Checking Convex Auth setup...");
+  const convexJson = readConvexJson();
+  const convexFolderPath = convexJson.functions ?? "convex";
+  const configPath = existingNonEmptySourcePath(path.join(convexFolderPath, "convex.config"));
+  const authPath = existingNonEmptySourcePath(path.join(convexFolderPath, "auth"));
+  const authConfigPath = existingNonEmptySourcePath(path.join(convexFolderPath, "auth.config"));
+
+  if (configPath === null) p.log.warn("Missing convex.config.ts/js.");
+  else p.log.success(`Found ${configPath}`);
+  if (authPath === null) p.log.warn("Missing auth.ts/js.");
+  else p.log.success(`Found ${authPath}`);
+  if (authConfigPath === null) p.log.warn("Missing auth.config.ts/js.");
+  else p.log.success(`Found ${authConfigPath}`);
+
+  p.outro("Doctor checks complete.");
+}
+
+async function runUrls(options: CliOptions) {
+  validateDeploymentSelectionOptions(options);
+  printBanner();
+  const deployment = readConvexDeployment(options);
+  const siteUrl =
+    deployment.options.url ?? process.env.CONVEX_SITE_URL ?? "https://<deployment>.convex.site";
+  const authSiteUrl = `${siteUrl.replace(/\/$/, "")}/auth`;
+  p.log.info("Convex Auth URLs:");
+  p.log.message(
+    [
+      `Issuer: ${authSiteUrl}`,
+      `OpenID configuration: ${authSiteUrl}/.well-known/openid-configuration`,
+      `JWKS: ${authSiteUrl}/.well-known/jwks.json`,
+      `OAuth sign-in base: ${authSiteUrl}/signin/<provider>`,
+      `OAuth callback base: ${authSiteUrl}/callback/<provider>`,
+      `SSO connections base: ${authSiteUrl}/connections/<connectionId>`,
+    ].join("\n"),
+  );
+}
+
+async function runKeys(options: CliOptions) {
+  validateDeploymentSelectionOptions(options);
+  printBanner();
+  const convexJson = readConvexJson();
+  const deployment = readConvexDeployment(options);
+  await configureKeys({
+    isExpo: false,
+    isNextjs: false,
+    isVite: false,
+    usesTypeScript: true,
+    convexFolderPath: convexJson.functions ?? "convex",
+    deployment,
+    step: 1,
+  });
+}
+
+/**
+ * Run the interactive Convex Auth setup wizard.
+ *
+ * Parses CLI flags, detects the target Convex deployment, configures required
+ * environment variables, and scaffolds the expected auth files in the current
+ * project.
+ *
+ * @param argv - Process arguments. Defaults to `process.argv`.
+ * @returns A promise that resolves when setup completes successfully.
+ */
+const runCli = async (argv = process.argv) => {
   const options = parseArgs(argv);
-  await runSetup(options);
+  if (options.command === "setup") await runSetup(options);
+  else if (options.command === "doctor") await runDoctor(options);
+  else if (options.command === "urls") await runUrls(options);
+  else if (options.command === "keys") await runKeys(options);
 };
 
+/**
+ * Run the Convex Auth CLI and exit the process on failure.
+ *
+ * @param argv - Process arguments. Defaults to `process.argv`.
+ */
 export function runCliMain(argv = process.argv) {
   runCli(argv).catch((err) => {
     console.error(err);
@@ -774,7 +863,44 @@ export const { signIn, signOut, store } = auth;
 }
 
 // ---------------------------------------------------------------------------
-// Step 5b: auth/core.ts (lightweight context for queries/mutations)
+// Step 5b: http.ts (auth protocol routes)
+// ---------------------------------------------------------------------------
+
+async function initializeHttp(config: ProjectConfig) {
+  logStep(config, "Initialize HTTP auth routes");
+  const sourceTemplate = `\
+import { auth } from "./auth";
+
+export default auth.http();
+`;
+  const source = templateToSource(sourceTemplate);
+  const httpPath = path.join(config.convexFolderPath, "http");
+  const existingPath = existingNonEmptySourcePath(httpPath);
+  if (existingPath !== null) {
+    const existing = readFileSync(existingPath, "utf8");
+    if (doesAlreadyMatchTemplate(existing, sourceTemplate)) {
+      p.log.success(`${existingPath} is already set up.`);
+    } else {
+      p.log.info(
+        `You already have ${existingPath}. Make sure it mounts Convex Auth protocol routes:`,
+      );
+      p.log.message(indent(`\n${source}\n`));
+      const ready = await p.confirm({ message: "Ready to continue?" });
+      handleCancel(ready);
+      if (!ready) {
+        p.cancel("Setup cancelled.");
+        process.exit(1);
+      }
+    }
+  } else {
+    const newPath = config.usesTypeScript ? `${httpPath}.ts` : `${httpPath}.js`;
+    writeFileSync(newPath, source);
+    p.log.success(`Created ${newPath}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Step 5c: auth/core.ts (lightweight context for queries/mutations)
 // ---------------------------------------------------------------------------
 
 async function initializeAuthCore(config: ProjectConfig) {
@@ -823,7 +949,7 @@ async function initializeAuthConfig(config: ProjectConfig) {
 export default {$$
   providers: [$$
     {$$
-      domain: process.env.CONVEX_SITE_URL,$$
+      domain: process.env.CONVEX_SITE_URL + "/auth",$$
       applicationID: "convex",$$
     },$$
   ],$$
@@ -852,46 +978,6 @@ export default {$$
     const newPath = config.usesTypeScript ? `${authConfigPath}.ts` : `${authConfigPath}.js`;
     writeFileSync(newPath, source);
     p.log.success(`Created ${newPath}`);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Step 7: http.ts
-// ---------------------------------------------------------------------------
-
-async function configureHttp(config: ProjectConfig) {
-  logStep(config, "Configure http file");
-  const sourceTemplate = `\
-import { httpRouter } from "convex/server";
-import { auth } from "./auth";
-
-const http = httpRouter();
-
-auth.http.add(http);
-
-export default http;
-`;
-  const source = templateToSource(sourceTemplate);
-  const httpPath = path.join(config.convexFolderPath, "http");
-  const existingHttpPath = existingNonEmptySourcePath(httpPath);
-  if (existingHttpPath !== null) {
-    const existingHttp = readFileSync(existingHttpPath, "utf8");
-    if (doesAlreadyMatchTemplate(existingHttp, sourceTemplate)) {
-      p.log.success(`${existingHttpPath} is already set up.`);
-    } else {
-      p.log.info(`You already have ${existingHttpPath}. Make sure it includes auth.http.add:`);
-      p.log.message(indent(`\n${source}\n`));
-      const ready = await p.confirm({ message: "Ready to continue?" });
-      handleCancel(ready);
-      if (!ready) {
-        p.cancel("Setup cancelled.");
-        process.exit(1);
-      }
-    }
-  } else {
-    const newHttpPath = config.usesTypeScript ? `${httpPath}.ts` : `${httpPath}.js`;
-    writeFileSync(newHttpPath, source);
-    p.log.success(`Created ${newHttpPath}`);
   }
 }
 
@@ -1029,6 +1115,7 @@ async function configureOtherVariables(config: ProjectConfig, json: string) {
 // Template helpers
 // ---------------------------------------------------------------------------
 
+/** @internal */
 export function doesAlreadyMatchTemplate(existing: string, template: string) {
   const regex = new RegExp(
     template
@@ -1040,6 +1127,7 @@ export function doesAlreadyMatchTemplate(existing: string, template: string) {
   return regex.test(existing);
 }
 
+/** @internal */
 export function templateToSource(template: string) {
   return template.replace(/\$\$/g, "");
 }
@@ -1168,6 +1256,7 @@ function loadEnvFiles() {
 // Deployment selection
 // ---------------------------------------------------------------------------
 
+/** @internal */
 export function readConvexDeployment(options: {
   url?: string;
   adminKey?: string;
@@ -1217,6 +1306,7 @@ export function readConvexDeployment(options: {
   );
 }
 
+/** @internal */
 export function stripDeploymentTypePrefix(deployment: string) {
   const [type, name] = deployment.split(":");
   if ((type !== "prod" && type !== "dev" && type !== "preview") || !name) {
@@ -1247,6 +1337,7 @@ function deploymentNameFromAdminKey(adminKey: string) {
     : null;
 }
 
+/** @internal */
 export function deploymentTypeFromAdminKey(adminKey: string) {
   const type = adminKey.split(":")[0];
   if (type === "prod" || type === "dev" || type === "preview") {
@@ -1258,6 +1349,7 @@ export function deploymentTypeFromAdminKey(adminKey: string) {
   );
 }
 
+/** @internal */
 export function isPreviewDeployKey(adminKey: string) {
   const parts = adminKey.split("|");
   if (parts.length === 1) {

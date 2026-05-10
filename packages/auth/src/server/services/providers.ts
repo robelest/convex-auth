@@ -4,7 +4,7 @@ import { LOG_LEVELS, type LogLevel } from "../../shared/log";
 import { listAvailableProviders, configDefaults } from "../config";
 import type { GetProviderOrThrowFunc } from "../crypto";
 
-export type ProviderRegistryService = {
+type ProviderRegistryService = {
   readonly getProviderOrThrow: GetProviderOrThrowFunc;
 };
 

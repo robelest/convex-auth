@@ -26,6 +26,15 @@ type ArcticOAuthProviderWithPkce = {
   validateAuthorizationCode(code: string, codeVerifier: string): Promise<OAuth2Tokens>;
 };
 
+type ArcticOAuthProviderFactory = () =>
+  | ArcticOAuthProviderWithoutPkce
+  | ArcticOAuthProviderWithPkce;
+
+/**
+ * Internal provider config used to materialize OAuth providers for the auth runtime.
+ *
+ * @internal
+ */
 export interface OAuthProviderConfig {
   readonly id: string;
   readonly provider: OAuthRuntimeClient;
@@ -56,25 +65,35 @@ function normalizeTokens(tokens: OAuth2Tokens): OAuthTokens {
   };
 }
 
+/**
+ * Adapt an Arctic OAuth provider to Convex Auth's internal OAuth runtime contract.
+ *
+ * @internal
+ */
 export function createArcticOAuthClient(
-  provider: ArcticOAuthProviderWithoutPkce,
+  provider: ArcticOAuthProviderWithoutPkce | (() => ArcticOAuthProviderWithoutPkce),
   options?: { pkce?: Extract<ArcticPkceMode, "never"> },
 ): OAuthRuntimeClient;
 export function createArcticOAuthClient(
-  provider: ArcticOAuthProviderWithPkce,
+  provider: ArcticOAuthProviderWithPkce | (() => ArcticOAuthProviderWithPkce),
   options?: { pkce?: Extract<ArcticPkceMode, "required" | "optional"> },
 ): OAuthRuntimeClient;
 export function createArcticOAuthClient(
-  provider: ArcticOAuthProviderWithoutPkce | ArcticOAuthProviderWithPkce,
+  provider:
+    | ArcticOAuthProviderWithoutPkce
+    | ArcticOAuthProviderWithPkce
+    | ArcticOAuthProviderFactory,
   options?: { pkce?: ArcticPkceMode },
 ): OAuthRuntimeClient {
+  const getProvider = () => (typeof provider === "function" ? provider() : provider);
   const pkce =
-    options?.pkce ?? (provider.createAuthorizationURL.length >= 3 ? "required" : "never");
+    options?.pkce ?? (getProvider().createAuthorizationURL.length >= 3 ? "required" : "never");
   return {
     pkce,
     createAuthorizationURL({ state, codeVerifier, scopes, nonce }) {
+      const provider = getProvider();
       const url =
-        pkce === "required"
+        pkce !== "never"
           ? (
               provider as {
                 createAuthorizationURL(state: string, codeVerifier: string, scopes: string[]): URL;
@@ -91,8 +110,9 @@ export function createArcticOAuthClient(
       return url;
     },
     async validateAuthorizationCode({ code, codeVerifier }) {
+      const provider = getProvider();
       const tokens =
-        pkce === "required"
+        pkce !== "never"
           ? await (
               provider as {
                 validateAuthorizationCode(
@@ -111,6 +131,11 @@ export function createArcticOAuthClient(
   };
 }
 
+/**
+ * Materialize a validated OAuth provider definition for internal auth runtime use.
+ *
+ * @internal
+ */
 export function createOAuthProvider(config: OAuthProviderConfig): OAuthMaterializedConfig {
   if (
     !config.provider ||

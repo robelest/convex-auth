@@ -202,6 +202,41 @@ createAuth(components.auth, {
 });
 ```
 
+The password provider supports five flows, all single-word camelCase. Pass
+the flow name in `params.flow` when calling `signIn`:
+
+| Flow      | Authenticated? | Required params                         | Notes                                                    |
+| --------- | -------------- | --------------------------------------- | -------------------------------------------------------- |
+| `signUp`  | No             | `email`, `password`                     | Creates a new account                                    |
+| `signIn`  | No             | `email`, `password`                     | Authenticate existing user                               |
+| `reset`   | No             | `email`                                 | Sends an OTP via the configured `reset` email provider   |
+| `verify`  | No             | `email`, `code`, `newPassword?`         | Verifies an OTP. With `newPassword`, completes a `reset` |
+| `change`  | Yes            | `email`, `currentPassword`, `newPassword` | Authenticated change. Other sessions invalidated         |
+
+`reset` and `verify` (with `newPassword`) require a `reset` email provider in
+the config; `verify` (without `newPassword`) requires a `verify` email provider.
+The OTP scope is enforced server-side — a `reset`-issued OTP refuses to verify
+without `newPassword`, and a signup-issued OTP refuses with one.
+
+```ts
+// Forgot password
+auth.signIn("password", { provider: "password", params: { email, flow: "reset" } });
+auth.signIn("password", { params: { email, code, newPassword, flow: "verify" } });
+
+// Change password (authenticated)
+auth.signIn("password", { params: { email, currentPassword, newPassword, flow: "change" } });
+```
+
+To enable `reset` and post-signup email verification, pass an email provider:
+
+```ts
+import { password, email } from "@robelest/convex-auth/providers";
+
+const emailProvider = email({ from: "noreply@example.com", send: ... });
+
+password({ reset: emailProvider, verify: emailProvider });
+```
+
 ## Magic Links (Email)
 
 ```ts

@@ -36,7 +36,7 @@ export const myGroups = authQuery({
 
 ## Raw HTTP fallback
 
-Most apps do not need `auth.http.context(...)`. Keep it for raw `httpAction`
+Most apps do not need `auth.request.context(...)`. Keep it for raw `httpAction`
 handlers that intentionally accept either a browser session or an API key in the
 same endpoint.
 
@@ -45,7 +45,7 @@ http.route({
   path: "/api/data",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const authContext = await auth.http.context(ctx, request, {
+    const authContext = await auth.request.context(ctx, request, {
       optional: true,
     });
     if (authContext.userId === null) {
@@ -68,7 +68,7 @@ http.route({
 | Browser (password, email, passkey, OAuth) | `ctx.auth.userId` via `auth.ctx()`                           |
 | Group SSO (OIDC/SAML)                     | Same as browser - SSO completes as a session                 |
 | Device flow (RFC 8628, CLI/TV)            | Same as browser - device poll returns session tokens         |
-| API key (machine/automation)              | `ctx.key.userId` or `auth.http.context(ctx, request).userId` |
+| API key (machine/automation)              | `ctx.key.userId` or `auth.request.context(ctx, request).userId` |
 
 ## Composing primitives
 
@@ -88,13 +88,13 @@ const handler = authQuery({
 });
 
 // API key HTTP endpoint
-const apiHandler = auth.http.action(async (ctx) => {
+const apiHandler = auth.request.action(async (ctx) => {
   return getMyGroups(ctx, ctx.key.userId);
 });
 
 // Any HTTP action (session or API key)
 const flexHandler = httpAction(async (ctx, request) => {
-  const authContext = await auth.http.context(ctx, request);
+  const authContext = await auth.request.context(ctx, request);
   return Response.json(await getMyGroups(ctx, authContext.userId));
 });
 ```

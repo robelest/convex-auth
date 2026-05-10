@@ -48,6 +48,7 @@
     "release:push": "pnpm dlx tsx scripts/release-push.ts",
     "release:push:force": "pnpm dlx tsx scripts/release-push.ts --force",
     "dev:svelte": "vp run --filter svelte dev",
+    "dev:expo": "vp run --filter expo start",
     "codegen:convex": "vp exec varlock run -- vp exec convex codegen && vp exec varlock run -- vp exec convex codegen --component-dir ./packages/auth/src/component",
     "codegen:convex:component": "vp exec varlock run -- vp exec convex codegen --component-dir ./packages/auth/src/component",
     "prepare": "vp config"

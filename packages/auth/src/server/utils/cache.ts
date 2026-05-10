@@ -9,7 +9,7 @@ interface CacheEntry<V> {
   expiresAt: number;
 }
 
-export interface CacheOptions<K, V> {
+interface CacheOptions<K, V> {
   /** Maximum number of entries before the oldest is evicted. */
   capacity: number;
   /** Time-to-live in milliseconds. */

@@ -2,7 +2,7 @@
  * Benchmark-only Convex functions.
  *
  * These are deployed alongside the app for use by
- * `tests/benchmarks/**\/*.node.test.ts` against the local Docker backend.
+ * benchmark `node.test.ts` files against the local Docker backend.
  * The goal is to measure *backend-side* wall time of sign-in flows — so we
  * can separate Convex runtime cost from HTTP / network RTT that a plain
  * client-side `Date.now()` around `ConvexHttpClient.action()` would
@@ -27,10 +27,6 @@ import { action } from "./_generated/server";
 
 const signInResultValidator = v.any();
 
-// Reference `auth:signIn` by string path so the auto-generated `api` type
-// doesn't need to resolve this file's own export shapes before typechecking
-// (which would be circular). The path matches the `auth` module's exported
-// `signIn` action — see `convex/auth.ts`.
 type SignInArgs =
   | { provider: "anonymous" }
   | {

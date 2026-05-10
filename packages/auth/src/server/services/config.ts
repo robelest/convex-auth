@@ -1,7 +1,7 @@
 import { configDefaults } from "../config";
 import type { ConvexAuthConfig } from "../types";
 
-export type AuthConfigService = {
+type AuthConfigService = {
   readonly config: ReturnType<typeof configDefaults>;
 };
 

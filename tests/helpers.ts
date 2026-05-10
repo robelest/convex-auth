@@ -1,7 +1,7 @@
 import { api } from "@convex/_generated/api";
 import { expect, vi } from "vite-plus/test";
 
-import type { TestConvexForDataModel } from "./convex.setup";
+import type { TestConvexForDataModel } from "./convex/setup";
 
 // Shared test constants
 export const TEST_EMAIL = "sarah@gmail.com";
@@ -60,4 +60,31 @@ export async function signInViaMagicLink(
     params: { code },
   });
   return expectSignInSession(result);
+}
+
+/**
+ * Stub `fetch` so calls to Resend capture and return the OTP code embedded in
+ * the email body. Returns a getter for the captured code and a teardown.
+ */
+export function stubResendCapture() {
+  let code = "";
+  let captured: { headers?: Record<string, string>; body?: unknown } | null = null;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input, init) => {
+      if (typeof input === "string" && input === RESEND_API_URL) {
+        captured = init as { headers?: Record<string, string>; body?: unknown };
+        const rawBody = (init as { body?: unknown }).body;
+        const body = typeof rawBody === "string" ? rawBody : "";
+        code = body.match(/\?code=([^\s\\]+)/)?.[1] ?? "";
+        return new Response(JSON.stringify({ id: MOCK_EMAIL_ID }), { status: 200 });
+      }
+      throw new Error("Unexpected fetch");
+    }),
+  );
+  return {
+    code: () => code,
+    captured: () => captured,
+    restore: () => vi.unstubAllGlobals(),
+  };
 }

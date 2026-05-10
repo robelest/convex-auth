@@ -1,6 +1,6 @@
 import { ConvexError } from "convex/values";
 
-import type { ComponentCtx, ComponentReadCtx } from "../componentContext";
+import type { ComponentCtx, ComponentReadCtx } from "../component/context";
 import { getGroup } from "../contract";
 import type {
   ConvexAuthMaterializedConfig,

@@ -36,9 +36,7 @@
       await navigator.clipboard.writeText(displayToken);
       copied = true;
       setTimeout(() => { copied = false; }, 2000);
-    } catch {
-      // silently fail
-    }
+    } catch {}
   }
 </script>
 

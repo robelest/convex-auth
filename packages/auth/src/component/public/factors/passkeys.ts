@@ -105,6 +105,37 @@ export const passkeyGetByCredentialId = query({
 });
 
 /**
+ * Get a single passkey by its document ID.
+ *
+ * Performs a direct point lookup on the `Passkey` table. Returns `null`
+ * when no passkey exists with the given ID (e.g. it was already deleted).
+ * Useful when callers already hold a passkey ID and need to inspect the
+ * document — for example to capture the owning `userId` before deletion.
+ *
+ * @param passkeyId - The `_id` of the `Passkey` document to retrieve.
+ * @returns The `Passkey` document, or `null` if no passkey exists with the
+ *   given ID.
+ *
+ * @example
+ * ```ts
+ * const passkey = await ctx.runQuery(
+ *   components.auth.factors.passkeys.passkeyGetById,
+ *   { passkeyId },
+ * );
+ * if (passkey === null) {
+ *   throw new Error("Passkey not found");
+ * }
+ * ```
+ */
+export const passkeyGetById = query({
+  args: { passkeyId: v.id("Passkey") },
+  returns: v.union(vPasskeyDoc, v.null()),
+  handler: async (ctx, { passkeyId }) => {
+    return await ctx.db.get("Passkey", passkeyId);
+  },
+});
+
+/**
  * List all passkeys registered to a user.
  *
  * Retrieves every `Passkey` document associated with the given user via

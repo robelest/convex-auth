@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 
 import { auth } from "./auth/core";
-import { authUserMutation, authUserQuery } from "./functions";
+import { authUserMutation, authUserQuery, requireUserId } from "./functions";
 
 const passkeySummary = v.object({
   passkeyId: v.string(),
@@ -54,8 +54,9 @@ export const listPasskeys = authUserQuery({
   args: {},
   returns: v.array(passkeySummary),
   handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
     const passkeys = await auth.account.listPasskeys(ctx, {
-      userId: ctx.auth.userId,
+      userId,
     });
     return passkeys.map((passkey: any) => ({
       passkeyId: passkey._id,
@@ -72,7 +73,8 @@ export const renamePasskey = authUserMutation({
   args: { passkeyId: v.string(), name: v.string() },
   returns: v.object({ passkeyId: v.string() }),
   handler: async (ctx, args) => {
-    await requireOwnedPasskey(ctx, ctx.auth.userId, args.passkeyId);
+    const userId = await requireUserId(ctx);
+    await requireOwnedPasskey(ctx, userId, args.passkeyId);
     return await auth.account.renamePasskey(ctx, args.passkeyId, args.name.trim());
   },
 });
@@ -81,7 +83,8 @@ export const deletePasskey = authUserMutation({
   args: { passkeyId: v.string() },
   returns: v.object({ passkeyId: v.string() }),
   handler: async (ctx, args) => {
-    await requireOwnedPasskey(ctx, ctx.auth.userId, args.passkeyId);
+    const userId = await requireUserId(ctx);
+    await requireOwnedPasskey(ctx, userId, args.passkeyId);
     return await auth.account.deletePasskey(ctx, args.passkeyId);
   },
 });
@@ -90,8 +93,9 @@ export const listApiKeys = authUserQuery({
   args: {},
   returns: v.array(apiKeySummary),
   handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
     const result = await auth.key.list(ctx, {
-      where: { userId: ctx.auth.userId },
+      where: { userId },
       orderBy: "lastUsedAt",
       order: "desc",
       limit: 20,
@@ -116,13 +120,14 @@ export const createApiKey = authUserMutation({
   },
   returns: v.object({ keyId: v.string(), secret: v.string() }),
   handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
     const scopeActions = [
       ...(args.issueRead ? ["read"] : []),
       ...(args.issueWrite ? ["write"] : []),
     ];
     const scopes = scopeActions.length === 0 ? [] : [{ resource: "issues", actions: scopeActions }];
     return await auth.key.create(ctx, {
-      userId: ctx.auth.userId,
+      userId,
       name: args.name.trim(),
       scopes,
     });
@@ -133,7 +138,8 @@ export const revokeApiKey = authUserMutation({
   args: { keyId: v.string() },
   returns: v.object({ keyId: v.string() }),
   handler: async (ctx, args) => {
-    await requireOwnedApiKey(ctx, ctx.auth.userId, args.keyId);
+    const userId = await requireUserId(ctx);
+    await requireOwnedApiKey(ctx, userId, args.keyId);
     return await auth.key.revoke(ctx, args.keyId);
   },
 });

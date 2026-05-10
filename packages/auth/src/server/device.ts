@@ -8,7 +8,7 @@ import type {
   AuthTokens,
   SignInDeviceCodeResult,
   SignInSessionResult,
-} from "../shared/authResults";
+} from "../shared/results";
 import { AuthFlowError, authFlowError } from "../shared/errors";
 import { requireEnv } from "./env";
 import { toConvexError } from "./errors";

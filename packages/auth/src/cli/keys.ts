@@ -2,6 +2,15 @@ import { randomBytes } from "node:crypto";
 
 import { exportJWK, exportPKCS8, generateKeyPair } from "jose";
 
+/**
+ * Generate a fresh JWT signing keypair, JWKS payload, and secret-encryption key.
+ *
+ * Used by the Convex Auth setup wizard to provision required environment
+ * variables on a target Convex deployment.
+ *
+ * @returns Generated `JWT_PRIVATE_KEY`, `JWKS`, and `AUTH_SECRET_ENCRYPTION_KEY` values.
+ * @internal
+ */
 export async function generateKeys() {
   try {
     const keys = await generateKeyPair("EdDSA", {

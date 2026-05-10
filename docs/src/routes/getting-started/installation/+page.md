@@ -134,8 +134,9 @@ export { auth };
 export const { signIn, signOut, store } = auth;
 ```
 
-`store` stays exported so the auth runtime can wire its internal mutation
-reference, but frontend apps should pass only `api.auth` into the client SDK.
+`store` and `http` stay exported so the auth runtime can cross the Convex
+component boundary without storing env-backed provider secrets in component
+tables. Frontend apps should pass only `api.auth` into the client SDK.
 
 ### 3. Create the auth context
 
@@ -157,7 +158,7 @@ and crypto code out of your query bundles entirely.
 export default {
   providers: [
     {
-      domain: process.env.CONVEX_SITE_URL,
+      domain: `${process.env.CONVEX_SITE_URL}/auth`,
       applicationID: "convex",
     },
   ],
@@ -167,16 +168,15 @@ export default {
 `CONVEX_SITE_URL` is provided automatically by Convex. This file is what makes
 `ctx.auth.getUserIdentity()` work against tokens issued by Convex Auth.
 
-### 5. Wire up HTTP routes
+### 5. Auth HTTP routes
+
+Mount the app-side auth protocol alias from `convex/http.ts`. This keeps OAuth
+secrets in deployment env vars while the component still owns auth storage and
+state.
 
 ```ts
 // convex/http.ts
-import { httpRouter } from "convex/server";
 import { auth } from "./auth";
 
-const http = httpRouter();
-auth.http.add(http);
-export default http;
+export default auth.http();
 ```
-
-`auth.http.add` registers OAuth callbacks and JWKS endpoints in one call.

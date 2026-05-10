@@ -1,5 +1,5 @@
 import type { ConvexTransport, SignInActionResult, SignInApiRef, TotpClient } from "../core/types";
-import type { AuthTokens } from "../../shared/authResults";
+import type { AuthTokens } from "../../shared/results";
 
 function isSignedInResult(
   result: SignInActionResult,
@@ -85,8 +85,10 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
     },
 
     confirm: async (opts: { code: string; verifier: string; totpId: string }): Promise<void> => {
+      // Server-side `verify` discriminates by `totpId` presence — with it,
+      // it completes a first-time enrollment confirmation.
       const params: Record<string, unknown> = {
-        flow: "confirm",
+        flow: "verify",
         code: opts.code,
         totpId: opts.totpId,
       };

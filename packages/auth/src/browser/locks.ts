@@ -1,6 +1,6 @@
 import { localMutex } from "../client/runtime/mutex";
 
-export interface BrowserLocksService {
+interface BrowserLocksService {
   readonly withKey: <T>(key: string, callback: () => Promise<T>) => Promise<T>;
 }
 

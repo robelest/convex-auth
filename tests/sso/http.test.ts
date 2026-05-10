@@ -3,7 +3,7 @@ import schema from "@convex/schema";
 import { ConvexError } from "convex/values";
 import { expect, test } from "vite-plus/test";
 
-import { convexTest } from "../convex.setup";
+import { convexTest } from "../convex/setup";
 
 function parseJwtPayload(token: string): { sub?: string } {
   const payload = token.split(".")[1];
@@ -47,7 +47,7 @@ test("group SSO control-plane HTTP endpoints are not exposed", async () => {
 test("group management RPC is available when group SSO helpers are mounted", async () => {
   const t = convexTest(schema);
   const asAdmin = await groupAdmin(t);
-  const { groupId } = await asAdmin.mutation(api.groups.createGroup, {
+  const { groupId } = await asAdmin.mutation(api.groups.create, {
     name: "Mounted group SSO API group",
   });
   const created = await asAdmin.mutation(api.auth.group.createConnection, {
@@ -70,7 +70,7 @@ test("group management RPC is available when group SSO helpers are mounted", asy
   });
 
   const metadataResponse = await t.fetch(
-    `/api/auth/connections/${created.connectionId}/saml/metadata`,
+    `/connections/${created.connectionId}/saml/metadata`,
     { method: "GET" },
   );
   expect([400, 404, 500]).toContain(metadataResponse.status);
@@ -79,7 +79,7 @@ test("group management RPC is available when group SSO helpers are mounted", asy
 test("group metadata query returns service provider setup values", async () => {
   const t = convexTest(schema);
   const asAdmin = await groupAdmin(t);
-  const { groupId } = await asAdmin.mutation(api.groups.createGroup, {
+  const { groupId } = await asAdmin.mutation(api.groups.create, {
     name: "Mounted SAML metadata group",
   });
   const created = await asAdmin.mutation(api.auth.group.createConnection, {
@@ -95,16 +95,16 @@ test("group metadata query returns service provider setup values", async () => {
   });
 
   expect(metadata).toContain("EntityDescriptor");
-  expect(metadata).toContain(`/api/auth/connections/${created.connectionId}/saml/metadata`);
-  expect(metadata).toContain(`/api/auth/connections/${created.connectionId}/saml/acs`);
-  expect(metadata).toContain(`/api/auth/connections/${created.connectionId}/saml/slo`);
+  expect(metadata).toContain(`/connections/${created.connectionId}/saml/metadata`);
+  expect(metadata).toContain(`/connections/${created.connectionId}/saml/acs`);
+  expect(metadata).toContain(`/connections/${created.connectionId}/saml/slo`);
 });
 
 test("disableWebhookEndpoint authorizes against the endpoint connection", async () => {
   const t = convexTest(schema);
   const asAdmin = await groupAdmin(t);
   const asOtherUser = await groupAdmin(t);
-  const { groupId } = await asAdmin.mutation(api.groups.createGroup, {
+  const { groupId } = await asAdmin.mutation(api.groups.create, {
     name: "Webhook auth group",
   });
 

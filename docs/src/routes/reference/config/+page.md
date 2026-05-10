@@ -34,11 +34,22 @@ const auth = createAuth(components.auth, {
     durationMs: 60 * 1000, // 1 minute
   },
   signIn: {
-    max_failed_attempts_per_hour: 10,
+    maxFailedAttemptsPerHour: 10,
   },
   callbacks: {
-    afterUserCreatedOrUpdated: async (ctx, { userId, existingUser }) => {
-      /* ... */
+    async after(ctx, event) {
+      if (event.kind === "userCreated") {
+        // post-signup work, e.g. trigger an onboarding workflow
+      }
+      if (event.kind === "passwordChanged") {
+        // audit log, security email, etc.
+      }
+    },
+    async before(ctx, event) {
+      if (event.kind === "redirect") {
+        return safeRedirect(event.redirectTo);
+      }
+      // returning undefined falls back to the default behavior
     },
   },
   authorization: {
@@ -60,8 +71,9 @@ const auth = createAuth(components.auth, {
 | `session.totalDurationMs`             | `number`               | 30 days  | Maximum session lifetime                |
 | `session.inactiveDurationMs`          | `number`               | varies   | Inactive session timeout                |
 | `jwt.durationMs`                      | `number`               | 60s      | JWT token lifetime                      |
-| `signIn.max_failed_attempts_per_hour` | `number`               | 10       | Rate limit for failed sign-in attempts  |
-| `callbacks.afterUserCreatedOrUpdated` | `function`             | —        | Post-sign-in hook                       |
+| `signIn.maxFailedAttemptsPerHour`     | `number`               | 10       | Rate limit for failed sign-in attempts  |
+| `callbacks.before`                    | `function`             | —        | Intercept `redirect` / `link`. Return `undefined` for default. |
+| `callbacks.after`                     | `function`             | —        | Notification for lifecycle events: `userCreated`, `signedIn`, `passwordChanged`, `passkeyAdded`, `totpEnrolled`, `emailVerified`, `phoneVerified`, `accountLinked`, `signedOut`, `sessionsInvalidated`, `userUpdated`. |
 | `authorization.roles`                 | `Record<string, Role>` | `{}`     | App-defined role definitions and grants |
 
 > **Note:** Email transport is configured via `email({ from, send })` in the
@@ -84,7 +96,7 @@ authorization model.
 - `auth.member.*` — Membership helpers
 - `auth.invite.*` — Invite helpers
 - `auth.key.*` — API key helpers
-- `auth.http.*` — HTTP route helpers
+- `auth.request.*` — HTTP route helpers
 - `auth.group.sso.*` — inbound group SSO helpers (only when `sso()` is in
   providers)
 - `auth.group.sso.scim.*` — SCIM provisioning helpers (only when `sso()` is in

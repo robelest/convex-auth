@@ -8,12 +8,12 @@ import type {
   SignInSessionResult,
   SignInStartResult,
   SignInTotpChallengeResult,
-} from "../shared/authResults";
+} from "../shared/results";
 import { handleDevice } from "./device";
 import { envOptionalString, readConfigSync } from "./env";
 import { requireEnv } from "./env";
 import type { AuthErrorData } from "./errors";
-import { toConvexError } from "./errors";
+import { FlowSignal, toConvexError } from "./errors";
 import { log } from "./log";
 import {
   callCreateVerificationCode,
@@ -125,6 +125,7 @@ export async function signInImpl(
   options: {
     generateTokens: boolean;
     allowExtraProviders: boolean;
+    authSiteUrl?: string;
     resolveSsoProtocol?: (ctx: EnrichedActionCtx, connectionId: string) => Promise<"oidc" | "saml">;
   },
 ): Promise<SignInResult> {
@@ -144,6 +145,7 @@ async function signInFx(
   options: {
     generateTokens: boolean;
     allowExtraProviders: boolean;
+    authSiteUrl?: string;
     resolveSsoProtocol?: (ctx: EnrichedActionCtx, connectionId: string) => Promise<"oidc" | "saml">;
   },
 ): Promise<SignInResult> {
@@ -292,6 +294,7 @@ async function handleEmailAndPhoneProviderFx(
     let destination: string;
     try {
       destination = await redirectAbsoluteUrl(
+        ctx,
         ctx.auth.config,
         (args.params ?? {}) as { redirectTo: unknown },
       );
@@ -357,6 +360,15 @@ async function handleCredentialsFx(
           ),
       );
     } catch (error) {
+      // `ctx.auth.provider.signIn` raises a `FlowSignal` when the inner
+      // sign-in resolves to a non-`signedIn` shape (e.g. `started` after
+      // sending an OTP email). Surface the carried result unchanged so the
+      // outer signIn action returns the original kind to the client.
+      if (error instanceof FlowSignal) {
+        return error.result as unknown as Awaited<
+          ReturnType<typeof handleCredentialsFx>
+        >;
+      }
       throw asCredentialsError(error);
     }
     if (result === null) {
@@ -457,6 +469,7 @@ async function handleOAuthProviderFx(
   },
   options: {
     allowExtraProviders: boolean;
+    authSiteUrl?: string;
   },
 ): Promise<SignInSessionResult<SessionInfo<AuthTokens> | null> | SignInRedirectResult> {
   return withSpan(`convex-auth.signin.oauth`, { provider: provider.id }, async () => {
@@ -478,10 +491,11 @@ async function handleOAuthProviderFx(
       };
     }
 
-    const redirect = new URL(
-      (readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ?? requireEnv("CONVEX_SITE_URL")) +
-        `/api/auth/signin/${provider.id}`,
-    );
+      const authSiteUrl =
+        options.authSiteUrl ??
+        readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ??
+        requireEnv("CONVEX_SITE_URL");
+      const redirect = new URL(`${authSiteUrl.replace(/\/$/, "")}/signin/${provider.id}`);
     let verifier: string;
     try {
       verifier = await callVerifier(ctx);
@@ -517,6 +531,7 @@ async function handleSsoProviderFx(
   },
   options: {
     resolveSsoProtocol?: (ctx: EnrichedActionCtx, connectionId: string) => Promise<"oidc" | "saml">;
+    authSiteUrl?: string;
   },
 ): Promise<{ kind: "redirect"; redirect: string; verifier: string }> {
   return withSpan("convex-auth.signin.sso", {}, async () => {
@@ -564,8 +579,12 @@ async function handleSsoProviderFx(
       throw asConvexError(error, "INTERNAL_ERROR", "Failed to create verifier.");
     }
     const siteUrl =
-      readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ?? requireEnv("CONVEX_SITE_URL");
-    const redirect = new URL(`${siteUrl}/api/auth/connections/${connectionId}/${protocol}/signin`);
+      options.authSiteUrl ??
+      readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ??
+      requireEnv("CONVEX_SITE_URL");
+    const redirect = new URL(
+      `${siteUrl.replace(/\/$/, "")}/connections/${connectionId}/${protocol}/signin`,
+    );
     redirect.searchParams.set("code", verifier);
 
     if (typeof args.params?.redirectTo === "string") {

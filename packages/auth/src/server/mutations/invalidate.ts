@@ -36,9 +36,19 @@ export async function invalidateSessionsImpl(
   const exceptSet = new Set(except ?? []);
   const typedUserId = userId as GenericId<"User">;
   const sessions = (await authDb(ctx, config).sessions.listByUser(typedUserId)) as Doc<"Session">[];
+  const deleted: GenericId<"Session">[] = [];
   await Promise.all(
-    sessions.map((session) =>
-      exceptSet.has(session._id) ? Promise.resolve() : deleteSession(ctx, session, config),
-    ),
+    sessions.map(async (session) => {
+      if (exceptSet.has(session._id)) return;
+      await deleteSession(ctx, session, config);
+      deleted.push(session._id);
+    }),
   );
+  if (deleted.length > 0) {
+    await config.callbacks?.after?.(ctx, {
+      kind: "sessionsInvalidated",
+      userId: typedUserId,
+      sessionIds: deleted,
+    });
+  }
 }

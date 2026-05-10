@@ -30,18 +30,6 @@ export function configDefaults(config_: ConvexAuthConfig) {
 }
 
 /**
- * Materialize a single provider config into its runtime form.
- */
-export function materializeProvider(provider: AuthProviderConfig) {
-  const config = {
-    providers: [provider],
-    component: {},
-  } as unknown as ConvexAuthConfig;
-  materializeAndDefaultProviders(config);
-  return config.providers[0] as AuthProviderMaterializedConfig;
-}
-
-/**
  * List available provider IDs for error messages.
  */
 export function listAvailableProviders(

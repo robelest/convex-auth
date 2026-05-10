@@ -6,7 +6,7 @@ import { client } from "@robelest/convex-auth/client";
 import { decodeJwt } from "jose";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
-import { convexTest, type TestConvexForDataModel } from "./convex.setup";
+import { convexTest, type TestConvexForDataModel } from "./convex/setup";
 import { subjectToUserId } from "./helpers";
 
 afterEach(() => {

@@ -4,7 +4,7 @@ import schema from "@convex/schema";
 import { ConvexError } from "convex/values";
 import { expect, test, vi } from "vite-plus/test";
 
-import { convexTest } from "./convex.setup";
+import { convexTest } from "./convex/setup";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -493,7 +493,7 @@ test("scopes.can full wildcard grants everything", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// auth.context / auth.http.context
+// auth.context / auth.request.context
 // ---------------------------------------------------------------------------
 
 test("auth.context returns auth state from a session identity", async () => {
@@ -545,7 +545,7 @@ test("auth.context optional returns null-shaped auth when unauthenticated", asyn
   });
 });
 
-test("auth.http.context returns userId from API key Bearer header", async () => {
+test("auth.request.context returns userId from API key Bearer header", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
@@ -561,7 +561,7 @@ test("auth.http.context returns userId from API key Bearer header", async () => 
     const request = new Request("https://example.com/api/data", {
       headers: { Authorization: `Bearer ${secret}` },
     });
-    const authContext = await auth.http.context(ctx, request);
+    const authContext = await auth.request.context(ctx, request);
     return {
       userId: authContext.userId,
       source: authContext.source,
@@ -576,12 +576,12 @@ test("auth.http.context returns userId from API key Bearer header", async () => 
   });
 });
 
-test("auth.http.context optional returns null-shaped auth with no session and no header", async () => {
+test("auth.request.context optional returns null-shaped auth with no session and no header", async () => {
   const t = convexTest(schema);
 
   const resolved = await t.run(async (ctx) => {
     const request = new Request("https://example.com/api/data");
-    return await auth.http.context(ctx, request, { optional: true });
+    return await auth.request.context(ctx, request, { optional: true });
   });
 
   expect(resolved).toEqual({
@@ -595,14 +595,14 @@ test("auth.http.context optional returns null-shaped auth with no session and no
   });
 });
 
-test("auth.http.context optional returns null-shaped auth with invalid Bearer key", async () => {
+test("auth.request.context optional returns null-shaped auth with invalid Bearer key", async () => {
   const t = convexTest(schema);
 
   const resolved = await t.run(async (ctx) => {
     const request = new Request("https://example.com/api/data", {
       headers: { Authorization: "Bearer sk_not_a_real_key" },
     });
-    return await auth.http.context(ctx, request, { optional: true });
+    return await auth.request.context(ctx, request, { optional: true });
   });
 
   expect(resolved).toEqual({
@@ -616,7 +616,7 @@ test("auth.http.context optional returns null-shaped auth with invalid Bearer ke
   });
 });
 
-test("auth.http.context optional returns null-shaped auth with revoked key", async () => {
+test("auth.request.context optional returns null-shaped auth with revoked key", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
@@ -629,7 +629,7 @@ test("auth.http.context optional returns null-shaped auth with revoked key", asy
     const request = new Request("https://example.com/api/data", {
       headers: { Authorization: `Bearer ${secret}` },
     });
-    return await auth.http.context(ctx, request, { optional: true });
+    return await auth.request.context(ctx, request, { optional: true });
   });
 
   expect(resolved).toEqual({
@@ -643,7 +643,7 @@ test("auth.http.context optional returns null-shaped auth with revoked key", asy
   });
 });
 
-test("auth.http.context prefers session auth over API key when both are present", async () => {
+test("auth.request.context prefers session auth over API key when both are present", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
@@ -666,7 +666,7 @@ test("auth.http.context prefers session auth over API key when both are present"
     const request = new Request("https://example.com/api/data", {
       headers: { Authorization: `Bearer ${secret}` },
     });
-    const authContext = await auth.http.context(sessionCtx as any, request);
+    const authContext = await auth.request.context(sessionCtx as any, request);
     return {
       userId: authContext.userId,
       source: authContext.source,
@@ -681,13 +681,13 @@ test("auth.http.context prefers session auth over API key when both are present"
   });
 });
 
-test("auth.http.context throws when required auth is missing", async () => {
+test("auth.request.context throws when required auth is missing", async () => {
   const t = convexTest(schema);
 
   await expect(
     t.run(async (ctx) => {
       const request = new Request("https://example.com/api/data");
-      return await auth.http.context(ctx, request);
+      return await auth.request.context(ctx, request);
     }),
   ).rejects.toThrow(ConvexError);
 });

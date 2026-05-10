@@ -17,8 +17,8 @@
 
 import { Apple as ArcticApple } from "arctic";
 
-import { envOptionalString, readConfigSync } from "../server/env";
 import { createArcticOAuthClient, createOAuthProvider } from "../server/oauth/factory";
+import { defaultOAuthRedirectUri } from "./redirect";
 
 const DEFAULT_SCOPES = ["name", "email"];
 
@@ -32,7 +32,7 @@ export interface AppleConfig {
   keyId: string;
   /** Apple private key PEM contents or bytes. */
   privateKey: string | Uint8Array;
-  /** Optional callback URL override. Defaults to `CUSTOM_AUTH_SITE_URL` or `CONVEX_SITE_URL` plus `/api/auth/callback/apple`. */
+  /** Optional callback URL override. Defaults to the auth site URL plus `/callback/apple`. */
   redirectUri?: string;
   /** Optional OAuth scopes. Defaults to `name email`. */
   scopes?: string[];
@@ -60,34 +60,23 @@ export interface AppleConfig {
  * ```
  */
 export function apple(config: AppleConfig) {
+  const privateKey =
+    typeof config.privateKey === "string"
+      ? config.privateKey
+      : new TextDecoder().decode(config.privateKey);
+  const scopes = config.scopes ?? DEFAULT_SCOPES;
+  const createProvider = () =>
+    new ArcticApple(
+      config.clientId,
+      config.teamId,
+      config.keyId,
+      new TextEncoder().encode(privateKey),
+      config.redirectUri ?? defaultOAuthRedirectUri("apple"),
+    );
   return createOAuthProvider({
     id: "apple",
-    provider: createArcticOAuthClient(
-      new ArcticApple(
-        config.clientId,
-        config.teamId,
-        config.keyId,
-        typeof config.privateKey === "string"
-          ? new TextEncoder().encode(config.privateKey)
-          : config.privateKey,
-        config.redirectUri ?? defaultRedirectUri("apple"),
-      ),
-      { pkce: "never" },
-    ),
-    scopes: config.scopes ?? DEFAULT_SCOPES,
+    provider: createArcticOAuthClient(createProvider, { pkce: "never" }),
+    scopes,
     accountLinking: config.accountLinking,
   });
-}
-
-function defaultRedirectUri(providerId: string) {
-  const rootUrl =
-    readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ??
-    readConfigSync(envOptionalString("CONVEX_SITE_URL"));
-  if (!rootUrl) {
-    throw new Error(
-      `Missing CONVEX_SITE_URL while configuring ${providerId} OAuth provider. ` +
-        "Set CONVEX_SITE_URL or pass redirectUri explicitly.",
-    );
-  }
-  return `${rootUrl}/api/auth/callback/${providerId}`;
 }

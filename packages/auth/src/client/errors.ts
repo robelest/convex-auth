@@ -5,7 +5,7 @@ const HANDSHAKE_ERROR_MESSAGES = {
   AUTH_HANDSHAKE_REJECTED: "Authentication was rejected while confirming the session.",
 } as const;
 
-export type ClientHandshakeErrorCode = keyof typeof HANDSHAKE_ERROR_MESSAGES;
+type ClientHandshakeErrorCode = keyof typeof HANDSHAKE_ERROR_MESSAGES;
 
 /** @internal */
 export const createHandshakeError = (

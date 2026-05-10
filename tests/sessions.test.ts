@@ -3,7 +3,7 @@ import schema from "@convex/schema";
 import { decodeJwt } from "jose";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
-import { convexTest, TestConvex } from "./convex.setup";
+import { convexTest, TestConvex } from "./convex/setup";
 import { expectSignInSession, TEST_EMAIL, TEST_PASSWORD } from "./helpers";
 
 const savedEnv: Record<string, string | undefined> = {};

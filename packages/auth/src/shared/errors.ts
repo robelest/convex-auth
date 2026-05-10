@@ -1,5 +1,4 @@
 export class AuthFlowError extends Error {
-  readonly _tag = "AuthFlowError";
   readonly code: string;
 
   constructor({ code, message }: { readonly code: string; readonly message: string }) {

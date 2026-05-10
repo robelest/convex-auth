@@ -9,7 +9,7 @@ const payloadNestedRecordValidator = v.record(
   v.union(payloadPrimitiveValidator, payloadArrayValidator),
 );
 
-export const payloadValueValidator = v.union(
+const payloadValueValidator = v.union(
   payloadPrimitiveValidator,
   payloadArrayValidator,
   payloadNestedRecordValidator,
@@ -17,7 +17,7 @@ export const payloadValueValidator = v.union(
 
 export const payloadRecordValidator = v.record(v.string(), payloadValueValidator);
 
-export const accountIdentityValidator = v.object({
+const accountIdentityValidator = v.object({
   type: v.optional(v.string()),
   provider: v.optional(v.string()),
   providerAccountId: v.optional(v.string()),
@@ -39,14 +39,14 @@ export const accountExtendValidator = v.object({
   ),
 });
 
-export type PayloadPrimitive = string | number | boolean | null;
+type PayloadPrimitive = string | number | boolean | null;
 
-export type PayloadValue =
+type PayloadValue =
   | PayloadPrimitive
   | PayloadPrimitive[]
   | Record<string, PayloadPrimitive | PayloadPrimitive[]>;
 
-export type PayloadRecord = Record<string, PayloadValue>;
+type PayloadRecord = Record<string, PayloadValue>;
 
 export type SignInParams = PayloadRecord;
 

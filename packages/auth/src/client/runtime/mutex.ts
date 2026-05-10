@@ -9,10 +9,11 @@ export async function localMutex<T>(key: string, callback: () => Promise<T>): Pr
     releaseCurrent = resolve;
   });
 
-  mutexTails[key] = previousTail.then(
+  const currentTailPromise = previousTail.then(
     () => currentTail,
     () => currentTail,
   );
+  mutexTails[key] = currentTailPromise;
 
   try {
     await previousTail;
@@ -24,7 +25,7 @@ export async function localMutex<T>(key: string, callback: () => Promise<T>): Pr
     return await callback();
   } finally {
     releaseCurrent?.();
-    if (mutexTails[key] === currentTail) {
+    if (mutexTails[key] === currentTailPromise) {
       delete mutexTails[key];
     }
   }

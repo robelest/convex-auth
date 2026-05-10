@@ -21,7 +21,7 @@
 	let selectedProjectSlug = $state<string | null>(null);
 	let inviteMessage = $state<string | null>(null);
 
-	const dashboard = useQuery(api.groups.getDashboard, () => ({
+	const dashboard = useQuery(api.groups.get, () => ({
 		groupId: data.groupId,
 	}), () => ({
 		initialData: data.demo ?? undefined,
@@ -48,9 +48,9 @@
 	$effect(() => {
 		if (inviteHandled || !user || !auth.invite) return;
 		inviteHandled = true;
-		auth.invite.accept().then((result: { ok: boolean; token?: string }) => {
-			if (result.ok && result.token) {
-					client.mutation(api.groups.acceptInvite, { token: result.token }).then((acceptResult: any) => {
+			auth.invite.accept().then((result: { ok: boolean; token?: string }) => {
+				if (result.ok && result.token) {
+						client.mutation(api.groups.acceptInvite, { token: result.token }).then((acceptResult: any) => {
 					inviteMessage = acceptResult.ok
 						? "Invite accepted! You've been added to the organization."
 						: acceptResult.message ?? "Invalid or expired invite.";

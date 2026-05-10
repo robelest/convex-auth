@@ -274,6 +274,27 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             } | null,
             Name
           >;
+          passkeyGetById: FunctionReference<
+            "query",
+            "internal",
+            { passkeyId: string },
+            {
+              _creationTime: number;
+              _id: string;
+              algorithm: number;
+              backedUp: boolean;
+              counter: number;
+              createdAt: number;
+              credentialId: string;
+              deviceType: string;
+              lastUsedAt?: number;
+              name?: string;
+              publicKey: ArrayBuffer;
+              transports?: Array<string>;
+              userId: string;
+            } | null,
+            Name
+          >;
           passkeyInsert: FunctionReference<
             "mutation",
             "internal",
@@ -2262,7 +2283,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           verifierCreate: FunctionReference<
             "mutation",
             "internal",
-            { sessionId?: string; signature?: string },
+            { expirationTime?: number; sessionId?: string; signature?: string },
             string,
             Name
           >;
@@ -2280,6 +2301,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             {
               _creationTime: number;
               _id: string;
+              expirationTime?: number;
               sessionId?: string;
               signature?: string;
             } | null,
@@ -2292,6 +2314,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             {
               _creationTime: number;
               _id: string;
+              expirationTime?: number;
               sessionId?: string;
               signature?: string;
             } | null,
@@ -2703,6 +2726,27 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "query",
         "internal",
         { credentialId: string },
+        {
+          _creationTime: number;
+          _id: string;
+          algorithm: number;
+          backedUp: boolean;
+          counter: number;
+          createdAt: number;
+          credentialId: string;
+          deviceType: string;
+          lastUsedAt?: number;
+          name?: string;
+          publicKey: ArrayBuffer;
+          transports?: Array<string>;
+          userId: string;
+        } | null,
+        Name
+      >;
+      passkeyGetById: FunctionReference<
+        "query",
+        "internal",
+        { passkeyId: string },
         {
           _creationTime: number;
           _id: string;
@@ -4052,7 +4096,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       verifierCreate: FunctionReference<
         "mutation",
         "internal",
-        { sessionId?: string; signature?: string },
+        { expirationTime?: number; sessionId?: string; signature?: string },
         string,
         Name
       >;
@@ -4070,6 +4114,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           _creationTime: number;
           _id: string;
+          expirationTime?: number;
           sessionId?: string;
           signature?: string;
         } | null,
@@ -4082,6 +4127,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         {
           _creationTime: number;
           _id: string;
+          expirationTime?: number;
           sessionId?: string;
           signature?: string;
         } | null,

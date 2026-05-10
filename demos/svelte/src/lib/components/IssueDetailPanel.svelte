@@ -15,7 +15,7 @@
     onclose,
   } = $props<{
     issue: {
-      issueId: string;
+      _id: string;
       identifier: string;
       number: number;
       title: string;
@@ -43,17 +43,15 @@
     onclose: () => void;
   }>();
 
-  // Only comments need a subscription — everything else is already loaded
   const commentsQuery = useQuery(
-    api.comments.issueComments,
+    api.comments.forIssue,
     () => ({
-      issueId: issue.issueId,
+			issueId: issue._id,
     }),
   );
 
   const comments = $derived(commentsQuery.data ?? []);
 
-  // Compute per-issue permissions client-side
   const isOwnerOrAssignee = $derived(
     issue.createdByUserId === currentUserId || issue.assigneeUserId === currentUserId,
   );
@@ -104,8 +102,8 @@
   async function saveEdit() {
     errorMessage = null;
     try {
-      await client.mutation(api.issues.updateIssue, {
-        issueId: issue.issueId,
+      await client.mutation(api.issues.update, {
+			issueId: issue._id,
         title: editTitle,
         description: editDescription,
       });
@@ -119,8 +117,8 @@
     if (!canMove) return;
     errorMessage = null;
     try {
-      await client.mutation(api.issues.updateIssue, {
-        issueId: issue.issueId,
+      await client.mutation(api.issues.update, {
+			issueId: issue._id,
         status: newStatus,
       });
     } catch (e: unknown) {
@@ -132,8 +130,8 @@
     if (!canEdit) return;
     errorMessage = null;
     try {
-      await client.mutation(api.issues.updateIssue, {
-        issueId: issue.issueId,
+      await client.mutation(api.issues.update, {
+			issueId: issue._id,
         priority: newPriority,
       });
     } catch (e: unknown) {
@@ -144,8 +142,8 @@
   async function handleAssigneeChange(newAssigneeUserId: string) {
     errorMessage = null;
     try {
-      const result = await client.mutation(api.issues.updateIssue, {
-        issueId: issue.issueId,
+      const result = await client.mutation(api.issues.update, {
+			issueId: issue._id,
         assigneeUserId: newAssigneeUserId || null,
       });
       if ("ok" in result && !result.ok && "message" in result) {
@@ -161,8 +159,8 @@
     isSubmittingComment = true;
     errorMessage = null;
     try {
-      await client.mutation(api.comments.createComment, {
-        issueId: issue.issueId,
+      await client.mutation(api.comments.create, {
+			issueId: issue._id,
         body: newComment,
       });
       newComment = "";
@@ -176,7 +174,7 @@
   async function handleDeleteComment(commentId: string) {
     errorMessage = null;
     try {
-      await client.mutation(api.comments.deleteComment, {
+      await client.mutation(api.comments.remove, {
         commentId,
       });
     } catch (e: unknown) {
@@ -193,8 +191,8 @@
     }
     errorMessage = null;
     try {
-      await client.mutation(api.issues.deleteIssue, {
-        issueId: issue.issueId,
+      await client.mutation(api.issues.remove, {
+        issueId: issue._id,
       });
       onclose();
     } catch (e: unknown) {
@@ -317,7 +315,7 @@
   <!-- Labels -->
   {#if issue.labels.length > 0}
     <div class="flex gap-1 flex-wrap">
-      {#each issue.labels as label (`${issue.issueId}-${label}`)}
+      {#each issue.labels as label (`${issue._id}-${label}`)}
         <span class="chip chip--grant">{label}</span>
       {/each}
     </div>
@@ -327,7 +325,7 @@
   <div class="flex flex-col gap-2 mt-1">
     {#if comments.length > 0}
       <div class="flex flex-col gap-1.5">
-        {#each comments as comment (comment.commentId)}
+        {#each comments as comment (comment._id)}
           <div class="flex items-start gap-2 py-1.5 border-b border-gray-200">
             <div class="flex-1">
               <span class="font-label text-[0.6875rem] font-semibold text-gray-700">{comment.authorName}</span>
@@ -337,7 +335,7 @@
             {#if canDeleteComments || comment.authorUserId === currentUserId}
               <button
                 class="bg-transparent border-0 p-0 cursor-pointer flex items-center text-gray-400 hover:text-accent-600"
-                onclick={() => handleDeleteComment(comment.commentId)}
+                onclick={() => handleDeleteComment(comment._id)}
               >
                 <Trash size={14} />
               </button>

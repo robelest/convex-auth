@@ -3,27 +3,31 @@ import {
   GenericDataModel,
   HttpRouter,
   actionGeneric,
+  httpRouter,
   internalMutationGeneric,
 } from "convex/server";
-import { ConvexError } from "convex/values";
+import { ConvexError, type GenericId } from "convex/values";
 import type { Value } from "convex/values";
 import { v } from "convex/values";
 import { serialize as serializeCookie } from "cookie";
 
-import type { AuthTokens, SignInFlowResult } from "../shared/authResults";
-import { redirectToParamCookie, useRedirectToParam } from "./cookies";
+import type { AuthTokens, SignInFlowResult } from "../shared/results";
+import { decodeOAuthState, encodeOAuthState } from "./cookies";
 import { createCoreDomains } from "./core";
 import { GetProviderOrThrowFunc } from "./crypto";
-import { requireEnv } from "./env";
+import { envOptionalString, readConfigSync, requireEnv } from "./env";
+import { FlowSignal } from "./errors";
 import {
   addAuthRoutes,
   addOpenIdRoutes,
+  addWebAuthnRoute,
   convertErrorsToResponse,
   createHttpAction,
   createHttpContext,
   createHttpRoute,
   getCookies,
 } from "./http";
+import { generateWebAuthnConfig } from "./wellknown";
 import { logError, log, LOG_LEVELS } from "./log";
 import {
   callCreateAccountFromCredentials,
@@ -57,6 +61,116 @@ import { MutationCtx } from "./types";
 import { siteUrlsFromEnv } from "./url";
 
 const GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND = "oidc_client_secret" as const;
+
+const vHeaderPairs = v.array(v.array(v.string()));
+
+function formDataEntries(formData: unknown): Iterable<[string, string | { name: string }]> {
+  return formData as unknown as Iterable<[string, string | { name: string }]>;
+}
+
+const vHttpDelegateResponse = v.object({
+  status: v.number(),
+  statusText: v.string(),
+  headers: vHeaderPairs,
+  body: v.string(),
+});
+
+type HttpDelegateResponse = {
+  status: number;
+  statusText: string;
+  headers: Array<[string, string]>;
+  body: string;
+};
+
+type HttpRouteSpec = {
+  path?: string;
+  pathPrefix?: string;
+  method: string;
+  handler: unknown;
+};
+
+type AuthHttpRouteOptions = {
+  /** Prefix where auth HTTP routes are mounted, e.g. `/auth`. */
+  prefix?: string;
+};
+
+function normalizeRoutePrefix(prefix: string | undefined) {
+  if (prefix === undefined || prefix === "" || prefix === "/") {
+    return "";
+  }
+  const withSlash = prefix.startsWith("/") ? prefix : `/${prefix}`;
+  return withSlash.replace(/\/$/, "");
+}
+
+function appendRoutePrefix(siteUrl: string, prefix: string) {
+  return `${siteUrl.replace(/\/$/, "")}${prefix}`;
+}
+
+function authSiteUrlFromEnv() {
+  const siteUrl = readConfigSync(envOptionalString("CONVEX_AUTH_SITE_URL")) ?? requireEnv("CONVEX_SITE_URL");
+  const prefix = normalizeRoutePrefix(
+    readConfigSync(envOptionalString("CONVEX_AUTH_HTTP_PREFIX")) ?? "/auth",
+  );
+  return appendRoutePrefix(siteUrl, prefix);
+}
+
+function createInMemoryHttpRouter() {
+  const routes: HttpRouteSpec[] = [];
+  return {
+    route: (spec: HttpRouteSpec) => {
+      routes.push(spec);
+    },
+    lookup(pathname: string, method: string): HttpRouteSpec | null {
+      const exact = routes.find((route) => route.method === method && route.path === pathname);
+      if (exact) {
+        return exact;
+      }
+      return (
+        routes
+          .filter(
+            (route) =>
+              route.method === method &&
+              route.pathPrefix !== undefined &&
+              pathname.startsWith(route.pathPrefix),
+          )
+          .sort((a, b) => (b.pathPrefix?.length ?? 0) - (a.pathPrefix?.length ?? 0))[0] ?? null
+      );
+    },
+  };
+}
+
+async function invokeHttpHandler(
+  handler: unknown,
+  ctx: GenericActionCtx<GenericDataModel>,
+  request: Request,
+): Promise<Response> {
+  const maybeHandler = handler as {
+    _handler?: (ctx: GenericActionCtx<GenericDataModel>, request: Request) => Promise<Response>;
+  };
+  if (typeof maybeHandler._handler === "function") {
+    return await maybeHandler._handler(ctx, request);
+  }
+  throw new Error("Invalid HTTP action handler.");
+}
+
+async function serializeHttpResponse(response: Response): Promise<HttpDelegateResponse> {
+  const headers: Array<[string, string]> = [];
+  response.headers.forEach((value, name) => headers.push([name, value]));
+  const setCookies = (
+    response.headers as Headers & { getSetCookie?: () => string[] }
+  ).getSetCookie?.();
+  if (setCookies !== undefined) {
+    for (const cookie of setCookies) {
+      headers.push(["set-cookie", cookie]);
+    }
+  }
+  return {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+    body: await response.text(),
+  };
+}
 
 const convexError = (data: Record<string, Value>) => new ConvexError(data);
 
@@ -94,7 +208,10 @@ export type SignOutAction = FunctionReferenceFromExport<ReturnType<typeof Auth>[
  * export const auth = createAuth(components.auth, {
  *   providers: [],
  * });
- * export const { signIn, signOut, store } = auth;
+ * export const signIn = auth.signIn;
+ * export const signOut = auth.signOut;
+ * export const store = auth.store;
+ * export const http = auth.http;
  * ```
  *
  * @returns An object with fields you should reexport from your
@@ -112,8 +229,10 @@ export function Auth(config_: ConvexAuthConfig) {
   const INVITE_TOKEN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   const INVITE_TOKEN_LENGTH = 48;
 
-  const GROUP_CONNECTION_ROUTE_BASE = "/api/auth/connections";
+  const GROUP_CONNECTION_ROUTE_BASE = "/connections";
   const group = createGroupService({ config, sha256 });
+  const authRequireEnv = (name: string) =>
+    name === "CONVEX_SITE_URL" ? authSiteUrlFromEnv() : requireEnv(name);
 
   type AuthRuntimeBase = ReturnType<typeof createCoreDomains> & {
     sso: ReturnType<typeof createGroupConnectionDomain>;
@@ -129,6 +248,49 @@ export function Auth(config_: ConvexAuthConfig) {
       getEnrichCtx: () => enrichCtx,
       inviteTokenAlphabet: INVITE_TOKEN_ALPHABET,
       inviteTokenLength: INVITE_TOKEN_LENGTH,
+      // Wire `auth.provider.signIn` through the canonical sign-in service so
+      // credential providers (e.g. password.ts) can re-enter the flow with a
+      // different provider config (verify/reset OTP issuance, OAuth redirect,
+      // device flow).
+      //
+      // Non-`signedIn` flow results (e.g. `started` after sending an OTP
+      // email) are surfaced via a thrown {@link FlowSignal} so the outer
+      // signIn action receives the original `{ kind: "started" }` shape
+      // rather than collapsing through the credentials authorize → handler
+      // mapping (which only knows about `signedIn` and `totpRequired`).
+      signInForProvider: async (ctx, providerConfig, args) => {
+        const materialized =
+          typeof providerConfig === "function" ? providerConfig() : providerConfig;
+        const result = await services.signIn.signIn(
+          enrichCtx(ctx) as unknown as Parameters<typeof services.signIn.signIn>[0],
+          materialized as Parameters<typeof services.signIn.signIn>[1],
+          args,
+          {
+            generateTokens: false,
+            allowExtraProviders: true,
+          },
+        );
+        if (result.kind === "signedIn") {
+          const session = result.session as {
+            userId?: string;
+            sessionId?: string;
+            _id?: string;
+          } | null;
+          if (session === null || session === undefined) {
+            return null;
+          }
+          const userId = session.userId;
+          const sessionId = session.sessionId ?? session._id;
+          if (userId === undefined || sessionId === undefined) {
+            return null;
+          }
+          return { userId, sessionId };
+        }
+        // Bubble the non-signedIn result up to the action handler. The
+        // credentials runner unwraps `FlowSignal` and re-emits the carried
+        // result so e.g. `{ kind: "started" }` reaches the client unchanged.
+        throw new FlowSignal(result as { kind: string; [key: string]: unknown });
+      },
     }),
     /**
      * SSO namespace — group connection management, domain, OIDC,
@@ -143,7 +305,7 @@ export function Auth(config_: ConvexAuthConfig) {
       emitGroupWebhookDeliveries: group.emitGroupWebhookDeliveries,
       connectionNotFoundError: "Connection not found.",
       GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
-      requireEnv,
+      requireEnv: authRequireEnv,
       generateRandomString,
       INVITE_TOKEN_ALPHABET,
       sha256,
@@ -156,7 +318,172 @@ export function Auth(config_: ConvexAuthConfig) {
   // dense mix of OAuth, SAML, SCIM, cookie, and response helpers.
   const getDefaultCorsOrigins = () => siteUrlsFromEnv().allowedUrls.map((u) => new URL(u).origin);
 
-  const http = {
+  const getAuthSiteUrl = (_ctx: GenericActionCtx<GenericDataModel>) => authSiteUrlFromEnv();
+
+  const createProtocolRouter = (authSiteUrl: string) => {
+    const protocolHttp = createInMemoryHttpRouter();
+    const protocolRequireEnv = (name: string) =>
+      name === "CONVEX_SITE_URL" ? authSiteUrl : requireEnv(name);
+
+    addOpenIdRoutes(protocolHttp as unknown as HttpRouter, {
+      getIssuer: () => authSiteUrl,
+      getJwks: () => requireEnv("JWKS"),
+    });
+
+    addWebAuthnRoute(protocolHttp as unknown as HttpRouter, {
+      getResponse: () => {
+        const r = generateWebAuthnConfig();
+        return r === null ? null : { body: r.body, headers: r.headers };
+      },
+    });
+
+    addGroupHttpRuntime({
+      http: protocolHttp as unknown as HttpRouter,
+      hasSSO,
+      auth: authBase as unknown as Parameters<typeof addGroupHttpRuntime>[0]["auth"],
+      config,
+      routeBase: "/connections",
+      requireEnv: protocolRequireEnv,
+      loadActiveConnectionSamlOrThrow: group.loadActiveConnectionSamlOrThrow,
+      loadConnectionOidcOrThrow: group.loadConnectionOidcOrThrow,
+      getGroupConnectionScimContext: group.getGroupConnectionScimContext,
+      loadGroupPolicyOrThrow: group.loadGroupPolicyOrThrow,
+      normalizeGroupConnectionPolicy,
+      recordGroupAuditEvent: group.recordGroupAuditEvent,
+      emitGroupWebhookDeliveries: group.emitGroupWebhookDeliveries,
+      generateRandomString,
+      inviteTokenAlphabet: INVITE_TOKEN_ALPHABET,
+      callUserOAuth,
+      callVerifierSignature,
+      sharedOidcRedirectURI: ssoProvider?.redirectURI,
+    });
+
+    if (hasOAuth) {
+      addAuthRoutes(protocolHttp as unknown as HttpRouter, {
+        routeBase: "",
+        handleSignIn: convertErrorsToResponse(400, async (ctx, request) => {
+          const url = new URL(request.url);
+          const pathParts = url.pathname.split("/");
+          const providerId = pathParts[pathParts.length - 1]!;
+          if (providerId === null) {
+            throw convexError({
+              code: "OAUTH_MISSING_PROVIDER",
+              message: "Missing OAuth provider ID.",
+            });
+          }
+          const verifier = url.searchParams.get("code");
+          if (verifier === null) {
+            throw convexError({
+              code: "OAUTH_MISSING_VERIFIER",
+              message: "Missing sign-in verifier.",
+            });
+          }
+          const provider = getProviderOrThrow(providerId);
+
+          const oauthConfig = provider as OAuthMaterializedConfig;
+          const redirectTo = url.searchParams.get("redirectTo");
+          const { redirect, cookies, signature } = await createOAuthAuthorizationURL(
+            providerId,
+            oauthConfig,
+            {
+              stateTransform: (state) => encodeOAuthState(state, redirectTo),
+            },
+          );
+
+          await callVerifierSignature(ctx, {
+            verifier,
+            signature,
+          });
+
+          const headers = new Headers({ Location: redirect });
+          for (const { name, value, options } of cookies) {
+            headers.append("Set-Cookie", serializeCookie(name, value, options));
+          }
+
+          return new Response(null, { status: 302, headers });
+        }),
+        handleCallback: async (ctx, request) => {
+          const url = new URL(request.url);
+          const callbackPathParts = new URL(request.url).pathname.split("/");
+          const providerId = callbackPathParts[callbackPathParts.length - 1];
+          if (!providerId) {
+            throw convexError({
+              code: "OAUTH_MISSING_PROVIDER",
+              message: "Missing OAuth provider ID.",
+            });
+          }
+          log(LOG_LEVELS.DEBUG, "Handling OAuth callback for provider:", providerId);
+          const provider = getProviderOrThrow(providerId);
+
+          const cookies = getCookies(request);
+
+          const params = url.searchParams;
+
+          if (request.headers.get("Content-Type")?.includes("application/x-www-form-urlencoded")) {
+            const formData = await request.formData();
+            for (const [key, value] of formDataEntries(formData)) {
+              if (typeof value === "string") {
+                params.append(key, value);
+              }
+            }
+          }
+
+          const fallbackDestinationUrl = await redirectAbsoluteUrl(ctx, config, {
+            redirectTo: undefined,
+          });
+
+          try {
+            const oauthConfig = provider as OAuthMaterializedConfig;
+            const result = await handleOAuthCallback(
+              providerId,
+              oauthConfig,
+              Object.fromEntries(params.entries()),
+              cookies,
+            );
+            const oauthCookies = result.cookies;
+            const { id: profileId, ...profileData } = result.profile;
+            const { signature } = result;
+            const { redirectTo: stateRedirectTo } = decodeOAuthState(params.get("state") ?? "");
+            const destinationUrl = await redirectAbsoluteUrl(ctx, config, {
+              redirectTo: stateRedirectTo ?? undefined,
+            });
+
+            const verificationCode = await callUserOAuth(ctx, {
+              provider: providerId,
+              providerAccountId: profileId,
+              profile: profileData as AuthProfile,
+              signature,
+            });
+
+            const redirUrl = setURLSearchParam(destinationUrl, "code", verificationCode);
+            const redirHeaders = new Headers({ Location: redirUrl });
+            redirHeaders.set("Cache-Control", "must-revalidate");
+            for (const { name, value, options } of oauthCookies as Array<{
+              name: string;
+              value: string;
+              options: Parameters<typeof serializeCookie>[2];
+            }>) {
+              redirHeaders.append("Set-Cookie", serializeCookie(name, value, options));
+            }
+            return new Response(null, {
+              status: 302,
+              headers: redirHeaders,
+            });
+          } catch (error) {
+            logError(error);
+            return new Response(null, {
+              status: 302,
+              headers: { Location: fallbackDestinationUrl },
+            });
+          }
+        },
+      });
+    }
+
+    return protocolHttp;
+  };
+
+  const request = {
     /**
      * Register core HTTP routes for JWT verification and OAuth sign-in.
      *
@@ -164,29 +491,42 @@ export function Auth(config_: ConvexAuthConfig) {
      * import { httpRouter } from "convex/server";
      * import { auth } from "./auth";
      *
-     * const http = httpRouter();
-     *
-     * auth.http.add(http);
-     *
-     * export default http;
+     * export default auth.http();
      * ```
      *
      * The following routes are handled always:
      *
      * - `/.well-known/openid-configuration`
      * - `/.well-known/jwks.json`
+     * - `/.well-known/webauthn` (returns 404 unless `WEBAUTHN_ALT_ORIGINS` or
+     *   `SECONDARY_URL` is set)
      *
      * The following routes are handled if OAuth is configured:
      *
-     * - `/api/auth/signin/*`
-     * - `/api/auth/callback/*`
+     * - `/signin/*`
+     * - `/callback/*`
      *
      * @param http your HTTP router
+     * @param options.prefix where to mount auth protocol routes, e.g. `/auth`
      */
-    add: (http: HttpRouter) => {
+    add: (http: HttpRouter, options?: AuthHttpRouteOptions) => {
+      const routePrefix = normalizeRoutePrefix(options?.prefix);
+      const authSiteUrl = () => appendRoutePrefix(requireEnv("CONVEX_SITE_URL"), routePrefix);
+      const protocolRequireEnv = (name: string) =>
+        name === "CONVEX_SITE_URL" ? authSiteUrl() : requireEnv(name);
+
       addOpenIdRoutes(http, {
-        getIssuer: () => requireEnv("CONVEX_SITE_URL"),
+        routeBase: routePrefix,
+        getIssuer: authSiteUrl,
         getJwks: () => requireEnv("JWKS"),
+      });
+
+      addWebAuthnRoute(http, {
+        routeBase: routePrefix,
+        getResponse: () => {
+          const r = generateWebAuthnConfig();
+          return r === null ? null : { body: r.body, headers: r.headers };
+        },
       });
 
       addGroupHttpRuntime({
@@ -194,8 +534,8 @@ export function Auth(config_: ConvexAuthConfig) {
         hasSSO,
         auth: authBase as unknown as Parameters<typeof addGroupHttpRuntime>[0]["auth"],
         config,
-        routeBase: GROUP_CONNECTION_ROUTE_BASE,
-        requireEnv,
+        routeBase: `${routePrefix}${GROUP_CONNECTION_ROUTE_BASE}`,
+        requireEnv: protocolRequireEnv,
         loadActiveConnectionSamlOrThrow: group.loadActiveConnectionSamlOrThrow,
         loadConnectionOidcOrThrow: group.loadConnectionOidcOrThrow,
         getGroupConnectionScimContext: group.getGroupConnectionScimContext,
@@ -212,6 +552,7 @@ export function Auth(config_: ConvexAuthConfig) {
 
       if (hasOAuth) {
         addAuthRoutes(http, {
+          routeBase: routePrefix,
           handleSignIn: convertErrorsToResponse(400, async (ctx, request) => {
             const url = new URL(request.url);
             const pathParts = url.pathname.split("/");
@@ -232,20 +573,19 @@ export function Auth(config_: ConvexAuthConfig) {
             const provider = getProviderOrThrow(providerId);
 
             const oauthConfig = provider as OAuthMaterializedConfig;
+            const redirectTo = url.searchParams.get("redirectTo");
             const { redirect, cookies, signature } = await createOAuthAuthorizationURL(
               providerId,
               oauthConfig,
+              {
+                stateTransform: (state) => encodeOAuthState(state, redirectTo),
+              },
             );
 
             await callVerifierSignature(ctx, {
               verifier,
               signature,
             });
-
-            const redirectTo = url.searchParams.get("redirectTo");
-            if (redirectTo !== null) {
-              cookies.push(redirectToParamCookie(providerId, redirectTo));
-            }
 
             const headers = new Headers({ Location: redirect });
             for (const { name, value, options } of cookies) {
@@ -269,24 +609,22 @@ export function Auth(config_: ConvexAuthConfig) {
 
             const cookies = getCookies(request);
 
-            const maybeRedirectTo = useRedirectToParam(provider.id, cookies);
-
-            const destinationUrl = await redirectAbsoluteUrl(config, {
-              redirectTo: maybeRedirectTo?.redirectTo,
-            });
-
             const params = url.searchParams;
 
             if (
               request.headers.get("Content-Type")?.includes("application/x-www-form-urlencoded")
             ) {
               const formData = await request.formData();
-              formData.forEach((value, key) => {
+              for (const [key, value] of formDataEntries(formData)) {
                 if (typeof value === "string") {
                   params.append(key, value);
                 }
-              });
+              }
             }
+
+            const fallbackDestinationUrl = await redirectAbsoluteUrl(ctx, config, {
+              redirectTo: undefined,
+            });
 
             try {
               const oauthConfig = provider as OAuthMaterializedConfig;
@@ -299,6 +637,10 @@ export function Auth(config_: ConvexAuthConfig) {
               const oauthCookies = result.cookies;
               const { id: profileId, ...profileData } = result.profile;
               const { signature } = result;
+              const { redirectTo: stateRedirectTo } = decodeOAuthState(params.get("state") ?? "");
+              const destinationUrl = await redirectAbsoluteUrl(ctx, config, {
+                redirectTo: stateRedirectTo ?? undefined,
+              });
 
               const verificationCode = await callUserOAuth(ctx, {
                 provider: providerId,
@@ -310,10 +652,7 @@ export function Auth(config_: ConvexAuthConfig) {
               const redirUrl = setURLSearchParam(destinationUrl, "code", verificationCode);
               const redirHeaders = new Headers({ Location: redirUrl });
               redirHeaders.set("Cache-Control", "must-revalidate");
-              for (const { name, value, options } of [
-                ...oauthCookies,
-                ...(maybeRedirectTo !== null ? [maybeRedirectTo.updatedCookie] : []),
-              ] as Array<{
+              for (const { name, value, options } of oauthCookies as Array<{
                 name: string;
                 value: string;
                 options: Parameters<typeof serializeCookie>[2];
@@ -326,22 +665,33 @@ export function Auth(config_: ConvexAuthConfig) {
               });
             } catch (error) {
               logError(error);
-              const respHeaders = new Headers({
-                Location: destinationUrl,
-              });
-              for (const { name, value, options } of maybeRedirectTo !== null
-                ? [maybeRedirectTo.updatedCookie]
-                : []) {
-                respHeaders.append("Set-Cookie", serializeCookie(name, value, options));
-              }
               return new Response(null, {
                 status: 302,
-                headers: respHeaders,
+                headers: { Location: fallbackDestinationUrl },
               });
             }
           },
         });
       }
+    },
+
+    /**
+     * Create a Convex HTTP router with auth protocol routes already mounted.
+     *
+     * Defaults to the `/auth` prefix. Use {@link request.add add} instead when
+     * you need to compose auth routes with app-specific HTTP routes in the same
+     * router.
+     *
+     * ```ts
+     * import { auth } from "./auth";
+     *
+     * export default auth.http();
+     * ```
+     */
+    router: (options?: AuthHttpRouteOptions) => {
+      const http = httpRouter();
+      request.add(http, options ?? { prefix: "/auth" });
+      return http;
     },
 
     /**
@@ -358,7 +708,7 @@ export function Auth(config_: ConvexAuthConfig) {
      *   path: "/api/data",
      *   method: "GET",
      *   handler: httpAction(async (ctx, request) => {
-     *     const authContext = await auth.http.context(ctx, request);
+     *     const authContext = await auth.request.context(ctx, request);
      *     return Response.json({
      *       userId: authContext.userId,
      *       source: authContext.source,
@@ -382,7 +732,7 @@ export function Auth(config_: ConvexAuthConfig) {
      * are merged and the response is passed through.
      *
      * ```ts
-     * const handler = auth.http.action(async (ctx, request) => {
+     * const handler = auth.request.action(async (ctx, request) => {
      *   const data = await ctx.runQuery(api.data.get, { userId: ctx.key.userId });
      *   return { data };
      * });
@@ -403,7 +753,7 @@ export function Auth(config_: ConvexAuthConfig) {
      * in a single call.
      *
      * ```ts
-     * auth.http.route(http, {
+     * auth.request.route(http, {
      *   path: "/api/messages",
      *   method: "POST",
      *   handler: async (ctx, request) => {
@@ -433,14 +783,144 @@ export function Auth(config_: ConvexAuthConfig) {
     ),
   };
 
-  const auth = Object.assign(authBase, { http });
+  const auth = Object.assign(authBase, { request });
+
+  const httpDelegate = actionGeneric({
+    args: {
+      authSiteUrl: v.string(),
+      routePath: v.string(),
+      url: v.string(),
+      method: v.string(),
+      headers: vHeaderPairs,
+      body: v.optional(v.string()),
+    },
+    returns: vHttpDelegateResponse,
+    handler: async (ctx, args): Promise<HttpDelegateResponse> => {
+      const incomingUrl = new URL(args.url);
+      const requestUrl = new URL(args.authSiteUrl.replace(/\/$/, "") + args.routePath);
+      requestUrl.search = incomingUrl.search;
+      const method = args.method.toUpperCase();
+      const request = new Request(requestUrl, {
+        method,
+        headers: new Headers(args.headers as Array<[string, string]>),
+        body: method === "GET" || method === "HEAD" ? undefined : (args.body ?? ""),
+      });
+
+      const protocolHttp = createProtocolRouter(args.authSiteUrl.replace(/\/$/, ""));
+      const route = protocolHttp.lookup(args.routePath, method);
+      if (!route) {
+        return await serializeHttpResponse(new Response(null, { status: 404 }));
+      }
+
+      const response = await invokeHttpHandler(route.handler, ctx, request);
+      return await serializeHttpResponse(response);
+    },
+  });
+  const http = Object.assign((options?: AuthHttpRouteOptions) => request.router(options), httpDelegate);
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle-aware deletion helpers exposed on `ctx.auth.{account,passkey,totp}`.
+  //
+  // Each helper reads the target doc first (to capture identifying fields like
+  // `userId` / `provider` before deletion), runs the corresponding component
+  // mutation, then fires the matching `after` lifecycle event so callbacks
+  // observe the change atomically with the mutation that performed it.
+  // ---------------------------------------------------------------------------
+  const accountUnlink = async (
+    ctx: GenericActionCtx<GenericDataModel>,
+    args: { accountId: GenericId<"Account"> },
+  ) => {
+    const accountDoc = (await ctx.runQuery(config.component.public.accountGetById, {
+      accountId: args.accountId,
+    })) as { _id: string; userId: string; provider: string } | null;
+    if (accountDoc === null) {
+      throw convexError({
+        code: "ACCOUNT_NOT_FOUND",
+        message: "Account not found.",
+      });
+    }
+    await ctx.runMutation(config.component.public.accountDelete, {
+      accountId: args.accountId,
+    });
+    const userId = accountDoc.userId as GenericId<"User">;
+    const provider = accountDoc.provider;
+    await config.callbacks?.after?.(ctx, {
+      kind: "accountUnlinked",
+      userId,
+      accountId: args.accountId,
+      provider,
+    });
+    return { accountId: args.accountId, userId, provider };
+  };
+
+  const passkeyDelete = async (
+    ctx: GenericActionCtx<GenericDataModel>,
+    args: { passkeyId: GenericId<"Passkey"> },
+  ) => {
+    const passkeyDoc = (await ctx.runQuery(config.component.public.passkeyGetById, {
+      passkeyId: args.passkeyId,
+    })) as { _id: string; userId: string } | null;
+    if (passkeyDoc === null) {
+      throw convexError({
+        code: "PASSKEY_NOT_FOUND",
+        message: "Passkey not found.",
+      });
+    }
+    await ctx.runMutation(config.component.public.passkeyDelete, {
+      passkeyId: args.passkeyId,
+    });
+    const userId = passkeyDoc.userId as GenericId<"User">;
+    await config.callbacks?.after?.(ctx, {
+      kind: "passkeyRemoved",
+      userId,
+      passkeyId: args.passkeyId,
+    });
+    return { passkeyId: args.passkeyId, userId };
+  };
+
+  const totpDelete = async (
+    ctx: GenericActionCtx<GenericDataModel>,
+    args: { totpId: GenericId<"TotpFactor"> },
+  ) => {
+    const totpDoc = (await ctx.runQuery(config.component.public.totpGetById, {
+      totpId: args.totpId,
+    })) as { _id: string; userId: string } | null;
+    if (totpDoc === null) {
+      throw convexError({
+        code: "TOTP_NOT_FOUND",
+        message: "TOTP factor not found.",
+      });
+    }
+    // The component mutation atomically clears `User.hasTotp` when no other
+    // verified factors remain, so callers do not need to coordinate that flag.
+    await ctx.runMutation(config.component.public.totpDelete, {
+      totpId: args.totpId,
+    });
+    const userId = totpDoc.userId as GenericId<"User">;
+    await config.callbacks?.after?.(ctx, {
+      kind: "totpRemoved",
+      userId,
+      totpId: args.totpId,
+    });
+    return { totpId: args.totpId, userId };
+  };
+
+  const enrichedAccount = Object.assign({}, auth.account, { unlink: accountUnlink });
+  const passkeyHelpers = { delete: passkeyDelete };
+  const totpHelpers = { delete: totpDelete };
 
   const enrichCtx = <DataModel extends GenericDataModel>(ctx: GenericActionCtx<DataModel>) => ({
     ...ctx,
     auth: {
       ...ctx.auth,
+      // Methods on `ctx.auth` may live on the class prototype — spread only
+      // copies own enumerable properties, so re-bind the ones we know we'll
+      // need from inside provider authorize callbacks.
+      getUserIdentity: ctx.auth.getUserIdentity.bind(ctx.auth),
       config,
-      account: auth.account,
+      account: enrichedAccount,
+      passkey: passkeyHelpers,
+      totp: totpHelpers,
       session: auth.session,
       member: auth.member,
       provider: auth.provider,
@@ -448,9 +928,6 @@ export function Auth(config_: ConvexAuthConfig) {
   });
 
   return {
-    /**
-     * Helper for configuring HTTP actions.
-     */
     auth,
     /**
      * Action called by the client to sign the user in.
@@ -470,6 +947,10 @@ export function Auth(config_: ConvexAuthConfig) {
           log("INFO", `\`auth:signIn\` called by ${args.calledBy}`);
         }
         const provider = args.provider !== undefined ? getProviderOrThrow(args.provider) : null;
+        const authSiteUrl =
+          provider?.type === "oauth" || provider?.type === "sso"
+            ? getAuthSiteUrl(ctx)
+            : undefined;
         const result = await services.signIn.signIn(
           enrichCtx(ctx) as unknown as Parameters<typeof services.signIn.signIn>[0],
           provider,
@@ -477,6 +958,7 @@ export function Auth(config_: ConvexAuthConfig) {
           {
             generateTokens: true,
             allowExtraProviders: false,
+            authSiteUrl,
             resolveSsoProtocol: group.resolveGroupConnectionSsoProtocolOrThrow,
           },
         );
@@ -519,5 +1001,8 @@ export function Auth(config_: ConvexAuthConfig) {
         return storeImpl(ctx, args, services);
       },
     }),
+
+    /** App-side HTTP protocol delegate retained for generated API compatibility. */
+    http,
   };
 }

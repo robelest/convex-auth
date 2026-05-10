@@ -8,23 +8,19 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError } from "convex/values";
 
 import type { AuthApiRefs } from "../client/index";
-import {
-  createPublicAuthContext,
-  createAuthContextCustomization,
-  createAuthContextFacade,
-} from "./auth-context";
+import { createAuthContextFacade } from "./facade";
 import type {
   AuthConfig,
   AuthContext,
   AuthContextConfig,
+  AuthContextFacade,
+  AuthContextFactory,
+  AuthContextResolver,
   AuthLike,
   InferAuth,
   OptionalAuthContext,
   UserDoc,
-  _AuthContextFacade,
-  _AuthContextResolver,
-  _AuthContextFactory,
-} from "./auth-context";
+} from "./facade";
 import { Auth as AuthFactory } from "./runtime";
 import type {
   AuthAuthorizationConfig,
@@ -43,17 +39,11 @@ export type {
   AuthConfig,
   AuthContext,
   AuthContextConfig,
-  AuthLike,
   InferAuth,
   OptionalAuthContext,
   UserDoc,
 };
-export { createPublicAuthContext, createAuthContextCustomization };
 
-// Use internal aliases for the private types from auth-context
-type AuthContextResolver = _AuthContextResolver;
-type AuthContextFactory = _AuthContextFactory;
-type AuthContextFacade = _AuthContextFacade;
 
 // ============================================================================
 // Types
@@ -111,7 +101,7 @@ type MemberApiWithAuthorization<TAuthorization extends AuthAuthorizationConfig |
  * The base auth API surface returned by {@link createAuth}.
  *
  * Provides core namespaces — `signIn`, `signOut`, `user`, `session`,
- * `member`, `invite`, `group`, `key`, and `http` — that are
+ * `member`, `invite`, `group`, `key`, and `request` — that are
  * always available regardless of which providers are configured.
  * Group SSO helpers under `group.sso` are added conditionally by
  * {@link AuthApi} when an SSO provider is present.
@@ -126,6 +116,7 @@ export type AuthApiBase<TAuthorization extends AuthAuthorizationConfig | undefin
   signIn: ReturnType<typeof AuthFactory>["signIn"];
   signOut: ReturnType<typeof AuthFactory>["signOut"];
   store: ReturnType<typeof AuthFactory>["store"];
+  http: ReturnType<typeof AuthFactory>["http"];
   user: ReturnType<typeof AuthFactory>["auth"]["user"];
   session: ReturnType<typeof AuthFactory>["auth"]["session"];
   provider: ReturnType<typeof AuthFactory>["auth"]["provider"];
@@ -134,7 +125,7 @@ export type AuthApiBase<TAuthorization extends AuthAuthorizationConfig | undefin
   member: MemberApiWithAuthorization<TAuthorization>;
   invite: ReturnType<typeof AuthFactory>["auth"]["invite"];
   key: ReturnType<typeof AuthFactory>["auth"]["key"];
-  http: ReturnType<typeof AuthFactory>["auth"]["http"];
+  request: ReturnType<typeof AuthFactory>["auth"]["request"];
   /**
    * Resolve the current request's auth context. Framework-agnostic — use
    * this in fluent-convex middleware, custom wrappers, or anywhere you
@@ -147,8 +138,8 @@ export type AuthApiBase<TAuthorization extends AuthAuthorizationConfig | undefin
    * Pass `{ optional: true }` to get a null-shaped auth object instead.
    *
    * @param ctx - Convex query, mutation, or action context.
-   * @param config - Optional auth resolution config. Supports `optional`,
-   *   `resolve`, and `authResolve`.
+   * @param config - Optional auth resolution config. Supports `optional` and
+   *   `resolve`.
    * @returns The current auth context.
    *
    * @example fluent-convex middleware
@@ -568,6 +559,7 @@ export function createAuth<
     signIn: authResult.signIn,
     signOut: authResult.signOut,
     store: authResult.store,
+    http: authResult.http,
     user: authResult.auth.user,
     session: authResult.auth.session,
     provider: authResult.auth.provider,
@@ -579,7 +571,7 @@ export function createAuth<
     member: authResult.auth.member,
     invite: authResult.auth.invite,
     key: authResult.auth.key,
-    http: authResult.auth.http,
+    request: authResult.auth.request,
 
     ...(createAuthContextFacade(authResult.auth as AuthLike) as AuthContextFacade),
   } as unknown as ConvexAuthResult<P, TAuthorization>;

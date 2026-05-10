@@ -63,7 +63,7 @@ export const verificationCodeGetByCode = query({
     return await ctx.db
       .query("VerificationCode")
       .withIndex("code", (q) => q.eq("code", code))
-      .unique();
+      .first();
   },
 });
 

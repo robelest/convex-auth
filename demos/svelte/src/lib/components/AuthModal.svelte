@@ -4,18 +4,17 @@
 	import { api } from '$convex/_generated/api.js';
 	import ArrowLeft from 'phosphor-svelte/lib/ArrowLeft';
 
+	type SignInResult = {
+		kind: 'signedIn' | 'redirect' | 'started' | 'totpRequired' | 'deviceCode';
+		redirect?: URL | string;
+	};
+
 	type AuthContext = {
 		invite?: { email?: string } | null;
-		signIn: (provider: string, args?: Record<string, unknown>) => Promise<{
-			kind: 'signedIn' | 'redirect';
-			redirect?: URL | string;
-		}>;
+		signIn: (provider: string, args?: Record<string, unknown>) => Promise<SignInResult>;
 		passkey?: {
 			isSupported: () => boolean;
-			authenticate: (opts?: Record<string, unknown>) => Promise<{
-				kind: 'signedIn' | 'redirect';
-				redirect?: URL | string;
-			}>;
+			signIn: (opts?: Record<string, unknown>) => Promise<SignInResult>;
 		};
 	};
 
@@ -29,14 +28,23 @@
 	let errorMessage: string | null = $state(null);
 	let isSubmitting: boolean = $state(false);
 	let password: string = $state('');
+	let resetCode: string = $state('');
+	let resetNewPassword: string = $state('');
+	let verifyCode: string = $state('');
 
-	// Invite state from auth client (SSR-safe, auto-persisted before redirects)
 	const isInvite = Boolean(auth.invite);
 	const prefillEmail = auth.invite?.email ?? '';
 	let email: string = $state(prefillEmail);
 
 	let mode: 'signIn' | 'signUp' = $state('signIn');
-	let step: 'email' | 'password' | 'checking' = $state('email');
+	type Step =
+		| 'email'
+		| 'password'
+		| 'checking'
+		| 'resetRequest'
+		| 'resetVerify'
+		| 'verifyEmail';
+	let step: Step = $state('email');
 	const passkeySupported = $derived(auth.passkey?.isSupported() ?? false);
 
 	function getErrorMessage(error: unknown) {
@@ -51,6 +59,20 @@
 		return message.includes('No group connection matched the provided input.');
 	}
 
+	function classifyPasswordError(error: unknown): string {
+		const msg = getErrorMessage(error);
+		if (msg.includes('Invalid credentials') || msg.includes('credentials')) {
+			return 'Wrong password. Try again.';
+		}
+		if (msg.includes('Invalid password')) {
+			return 'Password must be at least 8 characters.';
+		}
+		if (msg.includes('Invalid code') || msg.includes('verification code')) {
+			return 'That code is invalid or expired. Try again.';
+		}
+		return msg;
+	}
+
 	onMount(() => {
 		if (!isInvite || !prefillEmail || step !== 'email') {
 			return;
@@ -58,7 +80,7 @@
 
 		step = 'checking';
 		void convexClient
-			.query(api.groups.checkEmailExists, { email: prefillEmail })
+			.query(api.groups.emailExists, { email: prefillEmail })
 			.then((exists: boolean) => {
 				mode = exists ? 'signIn' : 'signUp';
 				step = 'password';
@@ -76,24 +98,27 @@
 
 		let shouldFallbackToPassword = false;
 
-		// Try SSO first
 		try {
 			console.log('[group-sso] lookup:start', { email });
-			const ssoInfo = await convexClient.query(api.auth.group.signIn, { email });
-			console.log('[group-sso] lookup:result', ssoInfo);
-			console.log('[group-sso] signin:start', {
-				connectionId: ssoInfo.connectionId,
-				protocol: ssoInfo.protocol,
-				signInPath: ssoInfo.signInPath,
-			});
-			const result = await auth.signIn('sso', { connectionId: ssoInfo.connectionId });
-			console.log('[group-sso] signin:result', result);
-			if (result.kind === 'redirect' && result.redirect) {
-				window.location.href = result.redirect.toString();
+			const ssoInfo = await convexClient.query(api.auth.group.signInLookup, { email });
+			if (!ssoInfo) {
+				shouldFallbackToPassword = true;
+			} else {
+				console.log('[group-sso] lookup:result', ssoInfo);
+				console.log('[group-sso] signin:start', {
+					connectionId: ssoInfo.connectionId,
+					protocol: ssoInfo.protocol,
+					signInPath: ssoInfo.signInPath,
+				});
+				const result = await auth.signIn('sso', { connectionId: ssoInfo.connectionId });
+				console.log('[group-sso] signin:result', result);
+				if (result.kind === 'redirect' && result.redirect) {
+					window.location.href = result.redirect.toString();
+					return;
+				}
+				window.location.reload();
 				return;
 			}
-			window.location.reload();
-			return;
 		} catch (error) {
 			console.error('[group-sso] flow:failed', error);
 			if (!isNoMatchingSsoError(error)) {
@@ -106,11 +131,9 @@
 
 		if (shouldFallbackToPassword) {
 			try {
-				const exists = await convexClient.query(api.groups.checkEmailExists, { email });
+				const exists = await convexClient.query(api.groups.emailExists, { email });
 				mode = exists ? 'signIn' : 'signUp';
-			} catch {
-				// Default to sign-in
-			}
+			} catch {}
 
 			isSubmitting = false;
 			step = 'password';
@@ -127,14 +150,75 @@
 				window.location.reload();
 			} else if (result.kind === 'redirect' && result.redirect) {
 				window.location.href = result.redirect.toString();
+			} else if (result.kind === 'started') {
+				// Email verification was sent — show the code-entry step.
+				verifyCode = '';
+				step = 'verifyEmail';
 			}
 		} catch (e) {
-			const msg = e instanceof Error ? e.message : 'Something went wrong';
-			if (msg.includes('Invalid credentials') || msg.includes('credentials')) {
-				errorMessage = 'Wrong password. Try again.';
-			} else {
-				errorMessage = msg;
+			errorMessage = classifyPasswordError(e);
+		} finally {
+			isSubmitting = false;
+		}
+	}
+
+	async function handleResetRequest() {
+		if (!email.includes('@')) return;
+		isSubmitting = true;
+		errorMessage = null;
+
+		try {
+			await auth.signIn('password', { flow: 'reset', email });
+			resetCode = '';
+			resetNewPassword = '';
+			step = 'resetVerify';
+		} catch (e) {
+			errorMessage = getErrorMessage(e);
+		} finally {
+			isSubmitting = false;
+		}
+	}
+
+	async function handleResetVerify() {
+		isSubmitting = true;
+		errorMessage = null;
+
+		try {
+			const result = await auth.signIn('password', {
+				flow: 'verify',
+				email,
+				code: resetCode,
+				newPassword: resetNewPassword,
+			});
+			if (result.kind === 'signedIn') {
+				window.location.reload();
+			} else if (result.kind === 'redirect' && result.redirect) {
+				window.location.href = result.redirect.toString();
 			}
+		} catch (e) {
+			errorMessage = classifyPasswordError(e);
+		} finally {
+			isSubmitting = false;
+		}
+	}
+
+	async function handleVerifyEmail() {
+		isSubmitting = true;
+		errorMessage = null;
+
+		try {
+			const result = await auth.signIn('password', {
+				flow: 'verify',
+				email,
+				code: verifyCode,
+			});
+			if (result.kind === 'signedIn') {
+				window.location.reload();
+			} else if (result.kind === 'redirect' && result.redirect) {
+				window.location.href = result.redirect.toString();
+			}
+		} catch (e) {
+			errorMessage = classifyPasswordError(e);
 		} finally {
 			isSubmitting = false;
 		}
@@ -152,7 +236,7 @@
 				window.location.reload();
 			}
 		} catch (e) {
-			errorMessage = e instanceof Error ? e.message : 'Something went wrong';
+			errorMessage = getErrorMessage(e);
 		} finally {
 			isSubmitting = false;
 		}
@@ -164,14 +248,14 @@
 		errorMessage = null;
 
 		try {
-			const result = await auth.passkey.authenticate();
+			const result = await auth.passkey.signIn();
 			if (result.kind === 'redirect' && result.redirect) {
 				window.location.href = result.redirect.toString();
 			} else if (result.kind === 'signedIn') {
 				window.location.reload();
 			}
 		} catch (e) {
-			errorMessage = e instanceof Error ? e.message : 'Something went wrong';
+			errorMessage = getErrorMessage(e);
 		} finally {
 			isSubmitting = false;
 		}
@@ -182,6 +266,19 @@
 		password = '';
 		errorMessage = null;
 	}
+
+	function goToResetRequest() {
+		step = 'resetRequest';
+		errorMessage = null;
+		password = '';
+	}
+
+	function goBackToPassword() {
+		step = 'password';
+		errorMessage = null;
+		resetCode = '';
+		resetNewPassword = '';
+	}
 </script>
 
 <div class="flex w-full max-w-80 flex-col gap-3 border border-gray-300 bg-white p-5 max-md:max-w-full max-md:p-4 max-md:border-x-0">
@@ -191,6 +288,12 @@
 	<h2 class="heading text-xl m-0">
 		{#if step === 'checking'}
 			Loading...
+		{:else if step === 'resetRequest'}
+			Reset password
+		{:else if step === 'resetVerify'}
+			Enter your code
+		{:else if step === 'verifyEmail'}
+			Verify your email
 		{:else}
 			{mode === 'signIn' ? 'Sign in' : 'Create account'}
 		{/if}
@@ -221,7 +324,7 @@
 			</button>
 		</form>
 
-	{:else}
+	{:else if step === 'password'}
 		<form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); handlePasswordSubmit(); }}>
 			{#if !isInvite}
 				<button
@@ -246,10 +349,99 @@
 					{mode === 'signIn' ? 'Sign in' : 'Create account'}
 				{/if}
 			</button>
+			{#if mode === 'signIn'}
+				<button
+					class="bg-transparent border-0 p-0 font-label text-[0.75rem] text-accent-500 hover:text-accent-600 cursor-pointer self-end"
+					type="button"
+					onclick={goToResetRequest}
+				>Forgot password?</button>
+			{/if}
+		</form>
+
+	{:else if step === 'resetRequest'}
+		<form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); handleResetRequest(); }}>
+			<button
+				class="flex items-center gap-1 font-label text-[0.75rem] text-gray-500 text-left bg-transparent border-0 p-0 cursor-pointer hover:text-accent-600"
+				type="button"
+				onclick={goBackToPassword}
+			><ArrowLeft size={14} />Back</button>
+			<p class="font-label text-[0.75rem] text-gray-500 m-0">
+				Enter the email for your account and we'll send you a code.
+			</p>
+			<input
+				bind:value={email}
+				class="input"
+				type="email"
+				placeholder="Email"
+				autocomplete="email"
+			/>
+			<button
+				class="button button--accent button--block"
+				disabled={isSubmitting || !email.includes('@')}
+				type="submit"
+			>
+				{isSubmitting ? 'Sending...' : 'Send reset code'}
+			</button>
+		</form>
+
+	{:else if step === 'resetVerify'}
+		<form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); handleResetVerify(); }}>
+			<button
+				class="flex items-center gap-1 font-label text-[0.75rem] text-gray-500 text-left bg-transparent border-0 p-0 cursor-pointer hover:text-accent-600"
+				type="button"
+				onclick={goToResetRequest}
+			><ArrowLeft size={14} />{email}</button>
+			<p class="font-label text-[0.75rem] text-gray-500 m-0">
+				Check your email for a code, then choose a new password.
+			</p>
+			<input
+				bind:value={resetCode}
+				class="input"
+				type="text"
+				placeholder="Code from email"
+				autocomplete="one-time-code"
+			/>
+			<input
+				bind:value={resetNewPassword}
+				class="input"
+				type="password"
+				placeholder="New password"
+				autocomplete="new-password"
+				minlength={8}
+			/>
+			<button
+				class="button button--accent button--block"
+				disabled={isSubmitting || resetCode.length === 0 || resetNewPassword.length < 8}
+				type="submit"
+			>
+				{isSubmitting ? 'Updating...' : 'Update password'}
+			</button>
+		</form>
+
+	{:else if step === 'verifyEmail'}
+		<form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); handleVerifyEmail(); }}>
+			<span class="font-label text-[0.75rem] text-gray-500">{email}</span>
+			<p class="font-label text-[0.75rem] text-gray-500 m-0">
+				Check your email for a verification code.
+			</p>
+			<input
+				bind:value={verifyCode}
+				class="input"
+				type="text"
+				placeholder="Code from email"
+				autocomplete="one-time-code"
+			/>
+			<button
+				class="button button--accent button--block"
+				disabled={isSubmitting || verifyCode.length === 0}
+				type="submit"
+			>
+				{isSubmitting ? 'Verifying...' : 'Verify email'}
+			</button>
 		</form>
 	{/if}
 
-	{#if authProviders.google && step !== 'checking'}
+	{#if authProviders.google && step !== 'checking' && step !== 'resetRequest' && step !== 'resetVerify' && step !== 'verifyEmail'}
 		<div class="divider"><span>or</span></div>
 		<button
 			class="button button--secondary button--block"
@@ -258,7 +450,7 @@
 		>Continue with Google</button>
 	{/if}
 
-	{#if !isInvite && step !== 'checking'}
+	{#if !isInvite && (step === 'email' || step === 'password')}
 		<p class="font-label text-[0.75rem] text-gray-500 text-center m-0 mt-1">
 			{#if mode === 'signIn'}
 				Don't have an account?

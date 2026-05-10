@@ -3,7 +3,7 @@ import type { ClientAdaptersService } from "./adapters";
 import type { ClientHttpService } from "./http";
 import type { ClientRuntimeService } from "./runtime";
 
-export interface ClientServicesInput {
+interface ClientServicesInput {
   runtime: ClientRuntimeService;
   adapters: ClientAdaptersService;
   adapterFactories: ClientAdapterFactoriesService;

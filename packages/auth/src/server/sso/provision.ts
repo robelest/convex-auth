@@ -1,6 +1,6 @@
 import { ConvexError } from "convex/values";
 
-import type { ComponentCtx, ComponentReadCtx } from "../componentContext";
+import type { ComponentCtx, ComponentReadCtx } from "../component/context";
 import {
   getGroupConnection,
   getScimConfigByConnection,
@@ -90,7 +90,7 @@ export function createGroupScimDomain(deps: ScimDeps) {
   } = deps;
 
   const getScimBasePath = (connectionId: string) =>
-    `${requireEnv("CONVEX_SITE_URL")}/api/auth/connections/${connectionId}/scim/v2`;
+    `${requireEnv("CONVEX_SITE_URL")}/connections/${connectionId}/scim/v2`;
 
   const validateScim = async (ctx: ComponentReadCtx, connectionId: string) => {
     const checks: Array<{

@@ -114,7 +114,7 @@ export default {
 };
 ``` |
 | Gotcha | `CONVEX_SITE_URL` is auto-populated by Convex, so the file does not need any user env vars. This is non-obvious. The skill mentioned it; the docs site does not yet. |
-| Recommendation | Either have `createAuth` emit a compile-time warning if `convex/auth.config.ts` is missing / does not reference `CONVEX_SITE_URL`, or ship a `setup` wizard step that scaffolds the file. Better: have `auth.http.add(http)` or `createAuth` log once at dev-server boot if the config is absent. |
+| Recommendation | Either have `createAuth` emit a compile-time warning if `convex/auth.config.ts` is missing / does not reference `CONVEX_SITE_URL`, or ship a `setup` wizard step that scaffolds the file. Better: have the component HTTP mount or `createAuth` log once at dev-server boot if the config is absent. |
 
 ### 6. Silent `auth:signIn` / `auth:store refreshSession` loop on protected pages with denied sessions
 
@@ -143,7 +143,7 @@ Highest-impact bug after #4. The symptom is cheap traffic; the cause is a design
 Not everything is a bug report. These landed cleanly on the first try:
 
 - `defineApp().use(auth)` in `convex/convex.config.ts`.
-- `auth.http.add(http)` mounting the OAuth callback + JWKS endpoints.
+- Component-owned HTTP mounting for OAuth callbacks + JWKS endpoints.
 - Subscribing to browser state with `auth.onChange` (fits `useSyncExternalStore` perfectly).
 - Server helpers like `auth.user.viewer(ctx)` returning a typed row from the component's `User` table.
 - GitHub OAuth redirect itself, including state + PKCE handling.
@@ -159,7 +159,7 @@ Keeping a local `SKILL.md` for Robel was the single highest-leverage decision we
 - Gave explicit commands to introspect `node_modules/@robelest/convex-auth/dist/providers/` before trusting any import path.
 - Flagged that `client({ convex, api })` requires the `api` option in SPA mode (missing it only fails at first `signIn`).
 - Listed the exact env vars that the component reads at runtime (`JWT_PRIVATE_KEY`, `JWKS`, `CONVEX_SITE_URL`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`, `SITE_URL`).
-- Documented the multi-access pattern (`auth.ctx()`, `auth.context(ctx)`, `auth.http.context(ctx, request)`).
+- Documented the multi-access pattern (`auth.ctx()`, `auth.context(ctx)`, `auth.request.context(ctx, request)`).
 
 These all belong on `auth.estifanos.com` directly, either as an "Integration gotchas" page or inline in the relevant sections.
 
@@ -224,7 +224,7 @@ For reference if you want to mirror-check any of the decisions:
 - `convex/convex.config.ts` — register the component.
 - `convex/auth.ts` — `createAuth(components.auth, { providers: [github(...)] })`.
 - `convex/auth.config.ts` — trust `process.env.CONVEX_SITE_URL` with `aud: "convex"`.
-- `convex/http.ts` — `auth.http.add(http)` + app routes.
+- `convex/http.ts` — app routes.
 - `convex/users.ts` — reads email via `auth.user.viewer(ctx)` everywhere; never trusts `ctx.auth.getUserIdentity().email`.
 - `convex/lib/access.ts` — pure `isAllowedEmail` / `roleForEmail` helpers.
 - `src/lib/auth.ts` — the `AuthApiRefs` cast.

@@ -7,6 +7,7 @@ import {
   type AuthClient,
   type AuthFlowContext,
   type AuthState,
+  type OAuthCompletionResult,
   type ClientAdapterDeps,
   type ActionTransport,
   type ClientAdapters,
@@ -19,7 +20,7 @@ import {
   type SignInActionResult,
   type SignInResult,
 } from "./core/types";
-import type { AuthTokens } from "../shared/authResults";
+import type { AuthTokens } from "../shared/results";
 import { createHandshakeError } from "./errors";
 import { createDeviceClient } from "./factors/device";
 import { createTotpClient } from "./factors/totp";
@@ -37,19 +38,37 @@ import { resolveClientServices } from "./services/resolve";
 import { ClientRuntimeLive } from "./services/runtime";
 
 export type {
+  AnonymousParams,
   AuthApiRefs,
   AuthClient,
-  BrowserAuthClient,
   AuthState,
-  ClientRuntime,
+  BrowserAuthClient,
   ClientOptions,
+  ClientRuntime,
+  CodeCompletionParams,
   DeviceClient,
   DeviceCodeResult,
+  DevicePollParams,
+  DeviceVerifyParams,
+  EmailInitiateParams,
+  OAuthCompletionResult,
+  OAuthSignInParams,
   PasskeyClient,
+  PasskeyRegisterOptions,
+  PasskeySignInOptions,
+  PasskeySignInParams,
+  PasswordParams,
   PendingInvite,
+  PlatformAuthClient,
+  SignInOverloads,
   SignInResult,
+  SsoParams,
   Storage,
   TotpClient,
+  TotpConfirmParams,
+  TotpSetupOptions,
+  TotpSetupResult,
+  TotpVerifyParams,
 } from "./core/types";
 
 const VERIFIER_STORAGE_KEY = "__convexAuthOAuthVerifier";
@@ -128,12 +147,17 @@ function buildSignInRequestKey(
   return stableStringify({ provider: provider ?? null, params });
 }
 
+function formDataEntries(formData: unknown): Iterable<[string, string | { name: string }]> {
+  return formData as unknown as Iterable<[string, string | { name: string }]>;
+}
+
 /**
  * Create a framework-agnostic auth client.
  *
  * Returns an object with `signIn`, `signOut`, `onChange`, `state`, and any
- * factor helpers enabled by your configured providers. Browser-specific
- * passkey support is added by the `@robelest/convex-auth/browser` entrypoint.
+ * factor helpers enabled by your configured providers. Platform-specific
+ * passkey support is added by higher-level entrypoints such as
+ * `@robelest/convex-auth/browser`.
  *
  * ### SPA mode (default)
  *
@@ -219,10 +243,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
         : null;
   const proxyRuntime = proxy ? requireProxyRuntime() : null;
 
-  const replaceUrl =
-    options.replaceUrl ??
-    (runtime.location ? (url: string) => runtime.location!.replace(url) : (_url: string) => {});
-
   // ---------------------------------------------------------------------------
   // Location — SSR-safe URL reading
   // ---------------------------------------------------------------------------
@@ -256,6 +276,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
   function cleanUrlParams(params: string[]) {
     const loc = getLocation();
     if (!loc) return;
+    if (!runtime.location) return;
     const searchParams = new URLSearchParams(loc.search);
     let changed = false;
     for (const p of params) {
@@ -266,14 +287,14 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     }
     if (changed) {
       const next = searchParams.toString() ? `${loc.pathname}?${searchParams}` : loc.pathname;
-      void replaceUrl(next);
+      void runtime.location.replace(next);
     }
   }
 
   const url = proxy ? undefined : resolveUrl(convex, options.url);
-  const escapedNamespace = proxy
-    ? proxy.replace(/[^a-zA-Z0-9]/g, "")
-    : url!.replace(/[^a-zA-Z0-9]/g, "");
+  const escapedNamespace = (proxy ?? url!)
+    .replace(/^https?:\/\//, "")
+    .replace(/[^a-zA-Z0-9]/g, "_");
   const key = (name: string) => `${name}_${escapedNamespace}`;
   const {
     get: storageGet,
@@ -340,6 +361,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     key: string;
     promise: Promise<SignInResult>;
   } | null = null;
+  let initializePromise: Promise<void> | null = null;
   const handshakeWaiters = new Set<HandshakeWaiter>();
   let snapshot: AuthState = {
     phase: hasServerToken ? "authenticated" : isLoading ? "loading" : "unauthenticated",
@@ -347,7 +369,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     isAuthenticated: hasServerToken,
     token,
   };
-  let handlingCodeFlow = false;
 
   const settleHandshakeWaiters = (
     epoch: number,
@@ -701,9 +722,12 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
    * }
    * ```
    *
-   * @example OAuth (triggers redirect)
+   * @example OAuth (returns a redirect URL)
    * ```ts
-   * await auth.signIn('google'); // redirects to Google
+   * const result = await auth.signIn('google');
+   * if (result.kind === 'redirect') {
+   *   window.location.href = result.redirect.toString();
+   * }
    * ```
    */
   const signIn = async (
@@ -717,9 +741,9 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
       args instanceof FormData
         ? (() => {
             const formParams: Record<string, Value> = {};
-            args.forEach((value, key) => {
+            for (const [key, value] of formDataEntries(args)) {
               formParams[key] = typeof value === "string" ? value : value.name;
-            });
+            }
             return formParams;
           })()
         : (args ?? {});
@@ -734,9 +758,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
         const redirectUrl = new URL(result.redirect);
         if (resultOptions.persistVerifier) {
           await storageSet(VERIFIER_STORAGE_KEY, result.verifier);
-        }
-        if (runtime.location) {
-          await runtime.location.redirect(redirectUrl);
         }
         return {
           kind: "redirect" as const,
@@ -804,16 +825,31 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
       }
 
       const verifier = (await storageGet(VERIFIER_STORAGE_KEY)) ?? undefined;
-      await storageRemove(VERIFIER_STORAGE_KEY);
-      const result = (await convex.action(requireApiRefs().signIn, {
-        provider,
-        params,
-        verifier,
-      })) as SignInActionResult;
-      return await handleSignInActionResult(result, {
-        shouldStore: true,
-        persistVerifier: true,
-      });
+      try {
+        const result = (await convex.action(requireApiRefs().signIn, {
+          provider,
+          params,
+          verifier,
+        })) as SignInActionResult;
+        if (params.code !== undefined) {
+          await storageRemove(VERIFIER_STORAGE_KEY);
+        }
+        return await handleSignInActionResult(result, {
+          shouldStore: true,
+          persistVerifier: true,
+        });
+      } catch (error) {
+        if (params.code !== undefined) {
+          const convexCode =
+            error instanceof ConvexError && typeof error.data?.code === "string"
+              ? error.data.code
+              : null;
+          if (convexCode !== null && ["INVALID_VERIFICATION_CODE", "INVALID_VERIFIER"].includes(convexCode)) {
+            await storageRemove(VERIFIER_STORAGE_KEY);
+          }
+        }
+        throw error;
+      }
     })();
 
     activeSignIn = { key: signInKey, promise: signInPromise };
@@ -876,7 +912,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
 
     if (proxy) {
       const tokenBeforeRefresh = token;
-      return await withMutex("__convexAuthProxyRefresh", async () => {
+      return await withMutex(`__convexAuthProxyRefresh_${escapedNamespace}`, async () => {
         // Another tab/call may have already refreshed.
         if (token !== tokenBeforeRefresh) return token;
 
@@ -917,14 +953,14 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
 
     // Direct mode: refresh via storage + httpClient.
     const tokenBeforeLockAcquisition = token;
-    return await withMutex(REFRESH_TOKEN_STORAGE_KEY, async () => {
+    return await withMutex(key(REFRESH_TOKEN_STORAGE_KEY), async () => {
       const tokenAfterLockAcquisition = token;
       if (tokenAfterLockAcquisition !== tokenBeforeLockAcquisition) {
         return tokenAfterLockAcquisition;
       }
       const refreshToken = (await storageGet(REFRESH_TOKEN_STORAGE_KEY)) ?? null;
       if (!refreshToken) {
-        finalizeLoadingState();
+        await setToken({ shouldStore: true, tokens: null, resyncConvexAuth: false });
         return null;
       }
       await verifyCodeAndSetToken({ refreshToken }, { resyncConvexAuth: false });
@@ -936,23 +972,51 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
   // OAuth code flow (SPA mode only — server handles this in proxy mode)
   // ---------------------------------------------------------------------------
 
-  const handleCodeFlow = async () => {
-    if (handlingCodeFlow) return;
-    const location = getLocation();
-    if (!location) return;
-    const code = location.searchParams.get("code");
-    if (!code) return;
-    handlingCodeFlow = true;
-    try {
-      await signIn(undefined, { code });
-      const codeUrl = new URL(location.toString());
-      codeUrl.searchParams.delete("code");
-      await replaceUrl(codeUrl.pathname + codeUrl.search + codeUrl.hash);
-    } catch {
-      // Ignore code flow errors
-    } finally {
-      handlingCodeFlow = false;
+  const resolveOAuthInput = (input: URL | string | { code: string }) => {
+    if (input instanceof URL) {
+      return {
+        code: input.searchParams.get("code"),
+        cleanupUrl: input.searchParams.has("code")
+          ? (() => {
+              const next = new URL(input.toString());
+              next.searchParams.delete("code");
+              return next;
+            })()
+          : null,
+      };
     }
+    if (typeof input === "object") {
+      return { code: input.code, cleanupUrl: null };
+    }
+    try {
+      const url = new URL(input);
+      return {
+        code: url.searchParams.get("code"),
+        cleanupUrl: url.searchParams.has("code")
+          ? (() => {
+              const next = new URL(url.toString());
+              next.searchParams.delete("code");
+              return next;
+            })()
+          : null,
+      };
+    } catch {
+      return { code: input, cleanupUrl: null };
+    }
+  };
+
+  const completeOAuth = async (
+    input: URL | string | { code: string },
+  ): Promise<OAuthCompletionResult> => {
+    const { code, cleanupUrl } = resolveOAuthInput(input);
+    if (!code) {
+      return { handled: false };
+    }
+    const result = await signIn(undefined, { code });
+    if (result.kind !== "signedIn") {
+      throw new Error("OAuth code exchange did not complete sign-in.");
+    }
+    return { handled: true, cleanupUrl };
   };
 
   // ---------------------------------------------------------------------------
@@ -964,7 +1028,46 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     await setToken({
       shouldStore: false,
       tokens: storedToken === null ? null : { token: storedToken },
+      resyncConvexAuth: storedToken !== null,
     });
+  };
+
+  const initialize = async (): Promise<void> => {
+    if (initializePromise !== null) {
+      return await initializePromise;
+    }
+
+    initializePromise = (async () => {
+      if (proxy) {
+        if (!hasServerToken && runtime.environment !== "server") {
+          try {
+            await fetchAccessToken({ forceRefreshToken: true });
+          } catch (error) {
+            logMessage("convex-auth/client", LOG_LEVELS.ERROR, [
+              "[convex-auth] Proxy token refresh failed:",
+              error,
+            ]);
+          }
+        }
+        return;
+      }
+
+      try {
+        await hydrateFromStorage();
+      } catch {
+        try {
+          await setToken({ shouldStore: false, tokens: null, resyncConvexAuth: false });
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+    })();
+
+    try {
+      await initializePromise;
+    } finally {
+      initializePromise = Promise.resolve();
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -1015,39 +1118,12 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
   // queries and mutations are automatically authenticated.
   bindConvexAuth();
 
-  // Auto-hydrate and handle code flow.
-  if (proxy) {
-    // Proxy mode: eagerly resolve auth once on startup so routes that only
-    // read auth state (and do not issue Convex queries yet) don't stay in
-    // the initial loading phase.
-    if (!hasServerToken && runtime.environment !== "server") {
-      void fetchAccessToken({ forceRefreshToken: true }).catch((error) => {
-        logMessage("convex-auth/client", LOG_LEVELS.ERROR, [
-          "[convex-auth] Proxy token refresh failed:",
-          error,
-        ]);
-      });
-    }
-  } else {
-    // Direct mode: hydrate from storage, then handle OAuth code flow.
-    void (async () => {
-      try {
-        await hydrateFromStorage();
-        await handleCodeFlow();
-      } catch {
-        try {
-          await setToken({ shouldStore: false, tokens: null });
-        } catch {
-          // Ignore cleanup errors
-        }
-      }
-    })().catch((error) => {
-      logMessage("convex-auth/client", LOG_LEVELS.ERROR, [
-        "[convex-auth] SPA initialization failed:",
-        error,
-      ]);
-    });
-  }
+  void initialize().catch((error) => {
+    logMessage("convex-auth/client", LOG_LEVELS.ERROR, [
+      "[convex-auth] Client initialization failed:",
+      error,
+    ]);
+  });
 
   // ---------------------------------------------------------------------------
   // Auth factor helpers
@@ -1078,6 +1154,8 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     get state(): AuthState {
       return snapshot;
     },
+    /** Restore persisted auth state for the current runtime. */
+    initialize,
     /** SSR-safe URL param reader. */
     param,
     /** Pending invite from URL or recovered from storage. Null if none. */
@@ -1090,6 +1168,8 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
         accept: acceptInvite,
       };
     },
+    /** Complete an OAuth callback from a URL or authorization code. */
+    completeOAuth,
     /** Sign in with a provider. See {@link SignInResult} for return shape. */
     signIn,
     /** Sign out and clear all token state. */

@@ -4,7 +4,7 @@ import { ConvexError } from "convex/values";
 import { parse, serialize } from "cookie";
 import { jwtDecode } from "jwt-decode";
 
-import type { AuthTokens } from "../shared/authResults";
+import type { AuthTokens } from "../shared/results";
 import { log } from "./log";
 import type { SignInParams } from "./payloads";
 import type { SignInAction, SignInActionResult, SignOutAction } from "./runtime";
@@ -415,11 +415,17 @@ function convexSiteIssuerFromCloudUrl(value: string) {
   return normalizeIssuer(parsed.toString());
 }
 
+function appendAuthIssuerPrefix(value: string) {
+  const issuer = normalizeIssuer(value);
+  return issuer.endsWith("/auth") ? issuer : `${issuer}/auth`;
+}
+
 function defaultAcceptedIssuersForUrl(value: string) {
   const issuers = [normalizeIssuer(value)];
   const siteIssuer = convexSiteIssuerFromCloudUrl(value);
   if (siteIssuer !== null) {
     issuers.push(siteIssuer);
+    issuers.push(appendAuthIssuerPrefix(siteIssuer));
   }
   return issuers;
 }

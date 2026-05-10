@@ -1,6 +1,6 @@
 import { LOG_LEVELS, logMessage } from "../../shared/log";
 
-export type AuthLoggerService = {
+type AuthLoggerService = {
   readonly log: (level: keyof typeof LOG_LEVELS, ...args: unknown[]) => void;
 };
 

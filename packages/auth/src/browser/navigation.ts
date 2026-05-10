@@ -1,7 +1,7 @@
-export interface BrowserNavigationService {
+interface BrowserNavigationService {
   readonly get: () => URL | null;
   readonly replace: (url: string) => void;
-  readonly redirect: (url: URL) => void;
+  readonly open: (url: URL) => void;
 }
 
 export const BrowserNavigationLive: BrowserNavigationService = {
@@ -11,7 +11,7 @@ export const BrowserNavigationLive: BrowserNavigationService = {
       window.history.replaceState({}, "", url);
     }
   },
-  redirect: (url: URL) => {
+  open: (url: URL) => {
     if (typeof window !== "undefined") {
       window.location.href = url.toString();
     }

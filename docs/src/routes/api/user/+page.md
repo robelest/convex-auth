@@ -17,7 +17,7 @@ For native identity claims already available on the JWT, prefer
 `ctx.auth.getUserIdentity()`. In normal app code, prefer `auth.ctx()` /
 `ctx.auth.userId` when you also want the current user document or
 authorization state. Raw mixed-auth HTTP handlers should use
-`auth.http.context(...)`.
+`auth.request.context(...)`.
 
 The `ctx.auth` examples on this page assume you created auth-aware builders such
 as `authQuery`, `authMutation`, or `authAction` with `auth.ctx()` in
@@ -77,7 +77,7 @@ const activeGroup = await auth.user.getActiveGroup(ctx, { userId });
 ### Advanced: raw HTTP mixed auth
 
 ```ts
-const authContext = await auth.http.context(ctx, request, { optional: true });
+const authContext = await auth.request.context(ctx, request, { optional: true });
 if (authContext.userId === null) {
   return new Response("Unauthorized", { status: 401 });
 }

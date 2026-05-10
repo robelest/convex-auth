@@ -16,6 +16,7 @@ import type { Infer } from "convex/values";
 import { GenericId, Value } from "convex/values";
 
 import {
+  vAccountDoc,
   vApiKeyDoc,
   vAuthVerifierDoc,
   vDeviceCodeDoc,
@@ -25,7 +26,11 @@ import {
 } from "../component/model";
 import schema from "../component/schema";
 import type { CredentialsConfig } from "../providers/credentials";
-import type { AuthTokens } from "../shared/authResults";
+
+type AuthTokens = {
+  token: string;
+  refreshToken: string;
+};
 
 // ============================================================================
 // Utility types
@@ -36,7 +41,7 @@ import type { AuthTokens } from "../shared/authResults";
  *
  * @typeParam T - The underlying value type.
  */
-export type Awaitable<T> = T | PromiseLike<T>;
+type Awaitable<T> = T | PromiseLike<T>;
 
 /**
  * A single role definition within the authorization config.
@@ -46,7 +51,7 @@ export type Awaitable<T> = T | PromiseLike<T>;
  *
  * @see {@link AuthAuthorizationConfig}
  */
-export type AuthRoleDefinition = {
+type AuthRoleDefinition = {
   /** Optional stable identifier (defaults to the record key). */
   id?: string;
   /** Human-readable label for admin UIs. */
@@ -68,10 +73,10 @@ export type AuthAuthorizationConfig = {
 };
 
 /** Identity enrichment mode for auth telemetry spans. */
-export type AuthTelemetryIdentityMode = "none" | "hashed" | "raw";
+type AuthTelemetryIdentityMode = "none" | "hashed" | "raw";
 
 /** Individual identity fields that can be attached to telemetry spans. */
-export type AuthTelemetryIdentityFields = {
+type AuthTelemetryIdentityFields = {
   userId?: boolean;
   sessionId?: boolean;
   refreshTokenId?: boolean;
@@ -237,161 +242,15 @@ export type ConvexAuthConfig = {
     maxFailedAttemptsPerHour?: number;
   };
   /**
-   * Lifecycle callbacks for customizing sign-in behavior.
+   * Lifecycle callbacks. Two functions, both discriminated by `event.kind`:
    *
-   * Use `redirect` to control post-OAuth redirect URLs, and
-   * `createOrUpdateUser` or `afterUserCreatedOrUpdated` to
-   * customize account linking and user document creation.
+   * - {@link AuthCallbacks.before before} — intercept + customize specific
+   *   operations. Returning `undefined` falls back to the default.
+   * - {@link AuthCallbacks.after after} — observe lifecycle events. Events
+   *   fired from mutation context are transactional; events fired from action
+   *   context run after the orchestration mutation commits.
    */
-  callbacks?: {
-    /**
-     * Control which URLs are allowed as a destination after OAuth sign-in
-     * and for magic links:
-     *
-     * ```ts
-     * import { createAuth } from "@robelest/convex-auth/component";
-     * import { components } from "./_generated/api";
-     *
-     * const auth = createAuth(components.auth, {
-     *   providers: [google],
-     *   callbacks: {
-     *     async redirect({ redirectTo }) {
-     *       // Check that redirectTo is valid
-     *       // and return the relative or absolute URL
-     *       // to redirect to.
-     *     },
-     *   },
-     * });
-     * ```
-     *
-     * Convex Auth performs redirect only during OAuth sign-in. By default,
-     * it redirects back to the URL specified via the `SITE_URL` environment
-     * variable. Similarly magic links link to `SITE_URL`. Additional frontend
-     * origins can be listed in `SECONDARY_URL` for flows like passkeys.
-     *
-     * You can customize that behavior by providing a `redirectTo` param
-     * to the `signIn` function:
-     *
-     * ```ts
-     * signIn("google", { redirectTo: "/dashboard" })
-     * ```
-     *
-     * You can even redirect to a different site.
-     *
-     * This callback, if specified, is then called with the provided
-     * `redirectTo` param. Otherwise, only query params, relative paths
-     * and URLs starting with `SITE_URL` are allowed.
-     */
-    redirect?: (params: {
-      /**
-       * The param value passed to the `signIn` function.
-       */
-      redirectTo: string;
-    }) => Promise<string>;
-    /**
-     * Completely control account linking via this callback.
-     *
-     * This callback is called during the sign-in process,
-     * before account creation and token generation.
-     * If specified, this callback is responsible for creating
-     * or updating the user document.
-     *
-     * For "credentials" providers, the callback is only called
-     * when `createAccount` is called.
-     */
-    createOrUpdateUser?: (
-      ctx: GenericMutationCtx<AnyDataModel>,
-      args: {
-        /**
-         * If this is a sign-in to an existing account,
-         * this is the existing user ID linked to that account.
-         */
-        existingUserId: GenericId<"User"> | null;
-        /**
-         * The provider type or "verification" if this callback is called
-         * after an email or phone token verification.
-         */
-        type: "oauth" | "credentials" | "email" | "phone" | "verification";
-        /**
-         * The provider used for the sign-in, or the provider
-         * tied to the account which is having the email or phone verified.
-         */
-        provider: AuthProviderMaterializedConfig;
-        /**
-         * - The profile returned by the OAuth provider's `profile` method.
-         * - The profile passed to `createAccount` from a ConvexCredentials
-         * config.
-         * - The email address to which an email will be sent.
-         * - The phone number to which a text will be sent.
-         */
-        profile: Record<string, unknown> & {
-          email?: string;
-          phone?: string;
-          emailVerified?: boolean;
-          phoneVerified?: boolean;
-        };
-        /**
-         * The `shouldLink` argument passed to `createAccount`.
-         */
-        shouldLink?: boolean;
-      },
-    ) => Promise<GenericId<"User">>;
-    /**
-     * Perform additional writes after a user is created.
-     *
-     * This callback is called during the sign-in process,
-     * after the user is created or updated,
-     * before account creation and token generation.
-     *
-     * **This callback is only called if `createOrUpdateUser`
-     * is not specified.** If `createOrUpdateUser` is specified,
-     * you can perform any additional writes in that callback.
-     *
-     * For "credentials" providers, the callback is only called
-     * when `createAccount` is called.
-     */
-    afterUserCreatedOrUpdated?: (
-      ctx: GenericMutationCtx<AnyDataModel>,
-      args: {
-        /**
-         * The ID of the user that is being signed in.
-         */
-        userId: GenericId<"User">;
-        /**
-         * If this is a sign-in to an existing account,
-         * this is the existing user ID linked to that account.
-         */
-        existingUserId: GenericId<"User"> | null;
-        /**
-         * The provider type or "verification" if this callback is called
-         * after an email or phone token verification.
-         */
-        type: "oauth" | "credentials" | "email" | "phone" | "verification";
-        /**
-         * The provider used for the sign-in, or the provider
-         * tied to the account which is having the email or phone verified.
-         */
-        provider: AuthProviderMaterializedConfig;
-        /**
-         * - The profile returned by the OAuth provider's `profile` method.
-         * - The profile passed to `createAccount` from a ConvexCredentials
-         * config.
-         * - The email address to which an email will be sent.
-         * - The phone number to which a text will be sent.
-         */
-        profile: Record<string, unknown> & {
-          email?: string;
-          phone?: string;
-          emailVerified?: boolean;
-          phoneVerified?: boolean;
-        };
-        /**
-         * The `shouldLink` argument passed to `createAccount`.
-         */
-        shouldLink?: boolean;
-      },
-    ) => Promise<void>;
-  };
+  callbacks?: AuthCallbacks;
   /**
    * Application-defined role and grant model used by membership access checks.
    */
@@ -412,6 +271,214 @@ export type ConvexAuthConfig = {
    */
   telemetry?: AuthTelemetryConfig;
 };
+
+// ============================================================================
+// Lifecycle callback types
+// ============================================================================
+
+/** The provider context that triggered a `link` / `userCreated` / `userUpdated` event. */
+export type AuthCallbackContext = "oauth" | "credentials" | "email" | "phone" | "verification";
+
+/** Profile shape passed to `link` / `userCreated` / `userUpdated` callbacks. */
+export type AuthCallbackProfile = Record<string, unknown> & {
+  email?: string;
+  phone?: string;
+  emailVerified?: boolean;
+  phoneVerified?: boolean;
+};
+
+/**
+ * Discriminated union of intercept events. Each variant runs *before* the
+ * default behavior for that operation. Returning a value replaces the
+ * default; returning `undefined` keeps it.
+ */
+export type BeforeEvent =
+  | {
+      kind: "redirect";
+      /** The `redirectTo` param passed to `signIn(provider, { redirectTo })`. */
+      redirectTo: string;
+    }
+  | {
+      kind: "link";
+      /** Existing user ID if this account is already linked, else `null`. */
+      existingUserId: GenericId<"User"> | null;
+      /** Where the link request originated. */
+      type: AuthCallbackContext;
+      /** The provider whose account is being linked. */
+      provider: AuthProviderMaterializedConfig;
+      /** Profile data harvested from the provider. */
+      profile: AuthCallbackProfile;
+      /** The `shouldLink` argument passed to `createAccount`. */
+      shouldLink?: boolean;
+    };
+
+/**
+ * Convex context type passed to `before` callbacks.
+ *
+ * `redirect` events arrive in action context; `link` events arrive
+ * in mutation context. Use `if ("db" in ctx)` to narrow when you need
+ * mutation-only methods.
+ */
+export type BeforeCtx =
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  | GenericMutationCtx<any>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  | GenericActionCtx<any>;
+
+/**
+ * Return value contract for a `before` callback:
+ *
+ * - For `kind: "redirect"` — return a `string` (final URL) or `undefined`
+ *   to fall back to the default URL resolver.
+ * - For `kind: "link"` — return a `GenericId<"User">` or `undefined`
+ *   to fall back to the default user create/link logic.
+ */
+export type BeforeResult = string | GenericId<"User"> | undefined;
+
+/**
+ * Discriminated union of post-operation lifecycle events. Events fired from
+ * mutation context run inside the same Convex transaction, so throwing rolls
+ * the operation back. Events fired from action context run after their
+ * orchestration mutation commits and cannot roll that mutation back.
+ */
+export type AuthEvent =
+  | {
+      kind: "userCreated";
+      userId: GenericId<"User">;
+      type: AuthCallbackContext;
+      provider: AuthProviderMaterializedConfig;
+      profile: AuthCallbackProfile;
+    }
+  | {
+      kind: "userUpdated";
+      userId: GenericId<"User">;
+      existingUserId: GenericId<"User">;
+      type: AuthCallbackContext;
+      provider: AuthProviderMaterializedConfig;
+      profile: AuthCallbackProfile;
+    }
+  | {
+      kind: "signedIn";
+      userId: GenericId<"User">;
+      sessionId: GenericId<"Session">;
+      provider: string;
+      flow?: string;
+    }
+  | {
+      kind: "signedOut";
+      userId: GenericId<"User">;
+      sessionId: GenericId<"Session">;
+    }
+  | {
+      kind: "passwordChanged";
+      userId: GenericId<"User">;
+      flow: "reset" | "change";
+    }
+  | {
+      kind: "passkeyAdded";
+      userId: GenericId<"User">;
+      passkeyId: GenericId<"Passkey">;
+      credentialId: string;
+    }
+  | {
+      kind: "passkeyRemoved";
+      userId: GenericId<"User">;
+      passkeyId: GenericId<"Passkey">;
+    }
+  | {
+      kind: "totpEnrolled";
+      userId: GenericId<"User">;
+      totpId: GenericId<"TotpFactor">;
+    }
+  | {
+      kind: "totpRemoved";
+      userId: GenericId<"User">;
+      totpId: GenericId<"TotpFactor">;
+    }
+  | {
+      kind: "emailVerified";
+      userId: GenericId<"User">;
+      email: string;
+    }
+  | {
+      kind: "phoneVerified";
+      userId: GenericId<"User">;
+      phone: string;
+    }
+  | {
+      kind: "accountLinked";
+      userId: GenericId<"User">;
+      provider: string;
+      providerAccountId: string;
+    }
+  | {
+      kind: "accountUnlinked";
+      userId: GenericId<"User">;
+      accountId: GenericId<"Account">;
+      provider: string;
+    }
+  | {
+      kind: "sessionsInvalidated";
+      userId: GenericId<"User">;
+      sessionIds: GenericId<"Session">[];
+    };
+
+/**
+ * Convex context type passed to `after` callbacks.
+ *
+ * Different events fire from different runtime contexts (some from
+ * mutations, some from actions). The union type exposes only methods both
+ * share — `runQuery`, `runMutation`, `scheduler`, `auth`. To use ctx-specific
+ * features (`db`, `runAction`), narrow with `if ("db" in ctx)`.
+ */
+export type AfterCtx =
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  | GenericMutationCtx<any>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  | GenericActionCtx<any>;
+
+/**
+ * Lifecycle callback set. Two callbacks, both discriminated by `event.kind`.
+ *
+ * @example
+ * ```ts
+ * createAuth(components.auth, {
+ *   providers: [google()],
+ *   callbacks: {
+ *     async before(ctx, event) {
+ *       if (event.kind === "redirect") return safeRedirect(event.redirectTo);
+ *       // returning undefined falls back to default for other kinds
+ *     },
+ *     async after(ctx, event) {
+ *       if (event.kind === "userCreated") {
+ *         await ctx.scheduler.runAfter(0, internal.workflows.onboard, {
+ *           userId: event.userId,
+ *         });
+ *       }
+ *     },
+ *   },
+ * });
+ * ```
+ */
+export interface AuthCallbacks {
+  /**
+   * Intercept and customize specific operations before they commit.
+   * Returning a value replaces the default; returning `undefined` keeps it.
+   *
+   * Match on `event.kind` to narrow the event shape. See {@link BeforeResult}
+   * for what to return per kind.
+   */
+  before?: (ctx: BeforeCtx, event: BeforeEvent) => Promise<BeforeResult>;
+  /**
+   * Observe lifecycle events. The `ctx` type is a union of mutation and
+   * action ctx — see {@link AfterCtx}. Most events fire from mutation
+   * context (atomic with the operation, throwing rolls back); a few fire
+   * from action context after the orchestration mutation commits.
+   */
+  after?: (ctx: AfterCtx, event: AuthEvent) => Promise<void>;
+}
+
+// ============================================================================
 
 /**
  * Union of all supported auth provider config types.
@@ -454,7 +521,7 @@ export interface SSOProviderConfig {
  * - `"verifiedEmail"` — link accounts when the IdP-provided email matches a verified email on an existing user.
  * - `"none"` — never auto-link; always create a new account.
  */
-export type GroupConnectionAccountLinkingPolicy = "verifiedEmail" | "none";
+type GroupConnectionAccountLinkingPolicy = "verifiedEmail" | "none";
 
 /**
  * Policy for reusing existing users during SCIM provisioning.
@@ -462,7 +529,7 @@ export type GroupConnectionAccountLinkingPolicy = "verifiedEmail" | "none";
  * - `"externalId"` — match by the SCIM `externalId` to reuse a previously provisioned user.
  * - `"none"` — always create a new user for each SCIM provision request.
  */
-export type GroupConnectionScimReuseUserPolicy = "externalId" | "none";
+type GroupConnectionScimReuseUserPolicy = "externalId" | "none";
 
 /**
  * Just-in-time provisioning mode for group SSO.
@@ -471,7 +538,7 @@ export type GroupConnectionScimReuseUserPolicy = "externalId" | "none";
  * - `"createUser"` — create a user record on first SSO sign-in.
  * - `"createUserAndMembership"` — create a user and add them to the group on first SSO sign-in.
  */
-export type GroupConnectionJitProvisioningMode = "off" | "createUser" | "createUserAndMembership";
+type GroupConnectionJitProvisioningMode = "off" | "createUser" | "createUserAndMembership";
 
 /**
  * Deprovisioning strategy when a SCIM user is deleted.
@@ -479,12 +546,12 @@ export type GroupConnectionJitProvisioningMode = "off" | "createUser" | "createU
  * - `"soft"` — mark the user as inactive but preserve the record.
  * - `"hard"` — permanently delete the user and associated data.
  */
-export type GroupConnectionDeprovisionMode = "soft" | "hard";
+type GroupConnectionDeprovisionMode = "soft" | "hard";
 
-export type GroupConnectionProfileUpdateMode = "never" | "missing" | "always";
-export type GroupConnectionProvisioningAuthority = "app" | "sso" | "scim";
-export type GroupConnectionGroupSyncMode = "ignore" | "sync";
-export type GroupConnectionRoleSyncMode = "ignore" | "map";
+type GroupConnectionProfileUpdateMode = "never" | "missing" | "always";
+type GroupConnectionProvisioningAuthority = "app" | "sso" | "scim";
+type GroupConnectionGroupSyncMode = "ignore" | "sync";
+type GroupConnectionRoleSyncMode = "ignore" | "map";
 
 /**
  * Effective group policy document stored for an SSO/SCIM tenant.
@@ -862,28 +929,8 @@ export interface OAuthRuntimeClient {
   validateAuthorizationCode(args: { code: string; codeVerifier?: string }): Promise<OAuthTokens>;
 }
 
-/**
- * Internal config shape for an OAuth provider after normalization.
- *
- * This is what the OAuth flow code receives after provider normalization.
- *
- * @internal
- */
-export interface OAuthProviderConfig {
-  /** OAuth scopes to request. */
-  scopes?: string[];
-  /** User-provided profile extraction callback. */
-  profile?: (tokens: OAuthTokens) => Promise<OAuthProfile>;
-  /** Whether to issue and validate a nonce cookie. */
-  nonce?: boolean;
-  /** Optional token validation hook after code exchange. */
-  validateTokens?: (tokens: OAuthTokens, ctx: { nonce?: string }) => Promise<void>;
-  /** Account-linking policy for OAuth identities. */
-  accountLinking?: "verifiedEmail" | "none";
-}
-
 /** Credentials identifying a provider account (e.g. email + hashed password). */
-export type AuthAccountCredentials = {
+type AuthAccountCredentials = {
   /** Provider-specific account identifier (e.g. email address). */
   id: string;
   /** Optional secret (e.g. hashed password). */
@@ -891,7 +938,7 @@ export type AuthAccountCredentials = {
 };
 
 /** Arguments for `auth.account.create()`. */
-export type AuthCreateAccountArgs = {
+type AuthCreateAccountArgs = {
   provider: string;
   account: AuthAccountCredentials;
   profile: Record<string, unknown> & {
@@ -905,13 +952,13 @@ export type AuthCreateAccountArgs = {
 };
 
 /** Arguments for `auth.account.get()`. */
-export type AuthRetrieveAccountArgs = {
+type AuthRetrieveAccountArgs = {
   provider: string;
   account: AuthAccountCredentials;
 };
 
 /** Arguments for `auth.account.update()`. */
-export type AuthUpdateAccountArgs = {
+type AuthUpdateAccountArgs = {
   provider: string;
   account: {
     id: string;
@@ -920,25 +967,40 @@ export type AuthUpdateAccountArgs = {
 };
 
 /** Arguments for `auth.session.invalidate()`. */
-export type AuthInvalidateSessionsArgs = {
+type AuthInvalidateSessionsArgs = {
   userId: GenericId<"User">;
   except?: GenericId<"Session">[];
 };
 
+/** Arguments for `auth.account.unlink()`. */
+type AuthUnlinkAccountArgs = {
+  accountId: GenericId<"Account">;
+};
+
+/** Arguments for `auth.passkey.delete()`. */
+type AuthDeletePasskeyArgs = {
+  passkeyId: GenericId<"Passkey">;
+};
+
+/** Arguments for `auth.totp.delete()`. */
+type AuthDeleteTotpArgs = {
+  totpId: GenericId<"TotpFactor">;
+};
+
 /** Arguments for `auth.provider.signIn()`. */
-export type AuthProviderSignInArgs = {
+type AuthProviderSignInArgs = {
   accountId?: GenericId<"Account">;
   params?: Record<string, Value | undefined>;
 };
 
 /** Return type of `auth.provider.signIn()` — user and session IDs, or `null` on failure. */
-export type AuthProviderSignInResult = {
+type AuthProviderSignInResult = {
   userId: GenericId<"User">;
   sessionId: GenericId<"Session">;
 } | null;
 
 /** Arguments for `auth.member.inspect()`. */
-export type AuthMemberInspectArgs = {
+type AuthMemberInspectArgs = {
   userId: GenericId<"User">;
   groupId: GenericId<"Group">;
   ancestry?: boolean;
@@ -946,14 +1008,14 @@ export type AuthMemberInspectArgs = {
 };
 
 /** Result of `auth.member.inspect()` — membership state and derived access details. */
-export type AuthMemberInspectResult = {
+type AuthMemberInspectResult = {
   membership: GenericDoc<GenericDataModel, "GroupMember"> | null;
   roleIds: string[];
   grants: string[];
 };
 
 /** Arguments for `auth.member.require()`. */
-export type AuthMemberRequireArgs = AuthMemberInspectArgs & {
+type AuthMemberRequireArgs = AuthMemberInspectArgs & {
   roleIds?: string[];
   grants?: string[];
 };
@@ -976,8 +1038,11 @@ export type AuthMemberRequireArgs = AuthMemberInspectArgs & {
  * });
  * ```
  */
-export type AuthServerHelpers = {
-  /** Account management: create, retrieve, and update provider-linked accounts. */
+type AuthServerHelpers = {
+  /**
+   * Account management: create, retrieve, update, and unlink
+   * provider-linked accounts.
+   */
   account: {
     create: (
       ctx: GenericActionCtx<GenericDataModel>,
@@ -997,6 +1062,47 @@ export type AuthServerHelpers = {
       ctx: GenericActionCtx<GenericDataModel>,
       args: AuthUpdateAccountArgs,
     ) => Promise<{ accountId: GenericId<"Account"> }>;
+    /**
+     * Unlink (delete) a provider-linked account by ID and fire the
+     * `accountUnlinked` lifecycle event with the captured `provider`.
+     */
+    unlink: (
+      ctx: GenericActionCtx<GenericDataModel>,
+      args: AuthUnlinkAccountArgs,
+    ) => Promise<{
+      accountId: GenericId<"Account">;
+      userId: GenericId<"User">;
+      provider: string;
+    }>;
+  };
+  /** Passkey credential management exposed to provider authorize callbacks. */
+  passkey: {
+    /**
+     * Delete a passkey credential by ID and fire the `passkeyRemoved`
+     * lifecycle event with the owning `userId`.
+     */
+    delete: (
+      ctx: GenericActionCtx<GenericDataModel>,
+      args: AuthDeletePasskeyArgs,
+    ) => Promise<{
+      passkeyId: GenericId<"Passkey">;
+      userId: GenericId<"User">;
+    }>;
+  };
+  /** TOTP factor management exposed to provider authorize callbacks. */
+  totp: {
+    /**
+     * Delete a TOTP factor by ID and fire the `totpRemoved` lifecycle
+     * event. If this was the user's last verified factor, the
+     * `User.hasTotp` flag is cleared as part of the same mutation.
+     */
+    delete: (
+      ctx: GenericActionCtx<GenericDataModel>,
+      args: AuthDeleteTotpArgs,
+    ) => Promise<{
+      totpId: GenericId<"TotpFactor">;
+      userId: GenericId<"User">;
+    }>;
   };
   session: {
     current: (ctx: {
@@ -1080,7 +1186,7 @@ export interface SAMLAttributeMapping {
   roles?: string;
 }
 
-export interface SSOProfileMapping {
+interface SSOProfileMapping {
   subject?: string;
   email?: string;
   emailVerified?: string;
@@ -1314,7 +1420,7 @@ export type ListResult<T> = {
  * Tags are normalized at write time: both `key` and `value` are
  * trimmed and lowercased. Filtering is strict exact-match only.
  */
-export type GroupTag = {
+type GroupTag = {
   key: string;
   value: string;
 };
@@ -1394,12 +1500,12 @@ export type UserOrderBy = "_creationTime" | "name" | "email" | "phone";
 // ============================================================================
 
 /**
- * Context injected into `auth.http.action()` and `auth.http.route()` handlers.
+ * Context injected into `auth.request.action()` and `auth.request.route()` handlers.
  *
  * The handler's `ctx` receives these fields after Bearer token verification:
  *
  * ```ts
- * auth.http.route(http, {
+ * auth.request.route(http, {
  *   path: "/api/data",
  *   method: "GET",
  *   handler: async (ctx, request) => {
@@ -1439,7 +1545,7 @@ export interface CorsConfig {
 /**
  * Component function references required by core auth runtime.
  */
-export type AuthComponentApi = {
+type AuthComponentApi = {
   public: {
     userGetById: FunctionReference<"query", "internal">;
     userList: FunctionReference<"query", "internal">;
@@ -1504,6 +1610,7 @@ export type AuthComponentApi = {
     keyPatch: FunctionReference<"mutation", "internal">;
     keyDelete: FunctionReference<"mutation", "internal">;
     passkeyInsert: FunctionReference<"mutation", "internal">;
+    passkeyGetById: FunctionReference<"query", "internal">;
     passkeyGetByCredentialId: FunctionReference<"query", "internal">;
     passkeyListByUserId: FunctionReference<"query", "internal">;
     passkeyUpdateCounter: FunctionReference<"mutation", "internal">;
@@ -1644,11 +1751,13 @@ export type SessionTokenIdentityClaims = {
 // code can work with typed results from cross-component queries/mutations
 // instead of casting to `any` at every field access.
 
-export type TotpDoc = Infer<typeof vTotpFactorDoc>;
+type TotpDoc = Infer<typeof vTotpFactorDoc>;
 
-export type PasskeyDoc = Infer<typeof vPasskeyDoc>;
+type PasskeyDoc = Infer<typeof vPasskeyDoc>;
 
-export type VerifierDoc = Infer<typeof vAuthVerifierDoc>;
+type AccountDoc = Infer<typeof vAccountDoc>;
+
+type VerifierDoc = Infer<typeof vAuthVerifierDoc>;
 
 /**
  * Cross-component user document shape inferred from the component validator.
@@ -1675,6 +1784,7 @@ export type KeyDoc = Infer<typeof vApiKeyDoc>;
 export type ComponentCallCtx = {
   runQuery: GenericActionCtx<AuthDataModel>["runQuery"];
   runMutation: GenericActionCtx<AuthDataModel>["runMutation"];
+  runAction?: GenericActionCtx<AuthDataModel>["runAction"];
   auth: { config: { component: AuthComponentApi } };
 };
 
@@ -1833,65 +1943,48 @@ export async function mutatePasskeyUpdateCounter(
   });
 }
 
-// -- Key queries / mutations --
-
-export async function mutateKeyInsert(
+export async function queryPasskeyById(
   ctx: ComponentCallCtx,
-  args: {
-    userId: string;
-    prefix: string;
-    hashedKey: string;
-    name: string;
-    scopes: Array<{ resource: string; actions: string[] }>;
-    rateLimit?: { maxRequests: number; windowMs: number };
-    expiresAt?: number;
-  },
-): Promise<string> {
-  return (await ctx.runMutation(ctx.auth.config.component.public.keyInsert, args)) as string;
+  passkeyId: string,
+): Promise<PasskeyDoc | null> {
+  return (await ctx.runQuery(ctx.auth.config.component.public.passkeyGetById, {
+    passkeyId,
+  })) as PasskeyDoc | null;
 }
 
-export async function queryKeysByUserId(ctx: ComponentCallCtx, userId: string): Promise<KeyDoc[]> {
-  const items: KeyDoc[] = [];
-  let cursor: string | null = null;
-  do {
-    const page = (await ctx.runQuery(ctx.auth.config.component.public.keyList, {
-      where: { userId },
-      limit: 100,
-      cursor,
-    })) as {
-      items: KeyDoc[];
-      nextCursor: string | null;
-    };
-    items.push(...page.items);
-    cursor = page.nextCursor;
-  } while (cursor !== null);
-  return items;
-}
-
-export async function queryKeyById(ctx: ComponentCallCtx, keyId: string): Promise<KeyDoc | null> {
-  return (await ctx.runQuery(ctx.auth.config.component.public.keyGetById, {
-    keyId,
-  })) as KeyDoc | null;
-}
-
-export async function mutateKeyPatch(
-  ctx: ComponentCallCtx,
-  keyId: string,
-  data: Record<string, unknown>,
-): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.public.keyPatch, {
-    keyId,
-    data,
+export async function mutatePasskeyDelete(ctx: ComponentCallCtx, passkeyId: string): Promise<void> {
+  await ctx.runMutation(ctx.auth.config.component.public.passkeyDelete, {
+    passkeyId,
   });
 }
 
-export async function mutateKeyDelete(ctx: ComponentCallCtx, keyId: string): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.public.keyDelete, { keyId });
+// -- Account queries / mutations --
+
+export async function queryAccountById(
+  ctx: ComponentCallCtx,
+  accountId: string,
+): Promise<AccountDoc | null> {
+  return (await ctx.runQuery(ctx.auth.config.component.public.accountGetById, {
+    accountId,
+  })) as AccountDoc | null;
+}
+
+export async function mutateAccountDelete(
+  ctx: ComponentCallCtx,
+  args: { accountId: string; requireOtherAccount?: boolean },
+): Promise<void> {
+  await ctx.runMutation(ctx.auth.config.component.public.accountDelete, args);
+}
+
+// -- TOTP delete mutation --
+
+export async function mutateTotpDelete(ctx: ComponentCallCtx, totpId: string): Promise<void> {
+  await ctx.runMutation(ctx.auth.config.component.public.totpDelete, { totpId });
 }
 
 // -- Device authorization queries / mutations --
 
-export type DeviceDoc = Infer<typeof vDeviceCodeDoc>;
+type DeviceDoc = Infer<typeof vDeviceCodeDoc>;
 
 export async function mutateDeviceInsert(
   ctx: ComponentCallCtx,

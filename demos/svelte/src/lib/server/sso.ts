@@ -1,7 +1,7 @@
 import { api } from "$convex/_generated/api.js";
 import { redirect } from "@sveltejs/kit";
 
-import type { GroupSummary } from "../../../../../convex/shared";
+import type { GroupSummary } from "../../../../../convex/groups";
 import { getConvexClient } from "./convex";
 
 type SelectedGroup = {
@@ -15,7 +15,7 @@ export async function requireSsoManagerAccess(opts: { authToken: string | null; 
   }
 
   const client = getConvexClient(opts.authToken);
-  const demo = await client.query(api.groups.getDashboard, {
+  const demo = await client.query(api.groups.get, {
     groupId: opts.groupId,
   });
   const groups = demo.groups as GroupSummary[];

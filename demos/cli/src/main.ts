@@ -13,9 +13,6 @@ import gradientString from "gradient-string";
 import { api } from "../../../convex/_generated/api.js";
 import { clearStoredSession, readStoredSession, writeStoredSession } from "./storage";
 
-// ---------------------------------------------------------------------------
-// Branding
-// ---------------------------------------------------------------------------
 
 figlet.parseFont("ANSI Shadow", ansiShadow);
 
@@ -30,9 +27,6 @@ function printBanner() {
   console.log("  \x1b[35m✦  cli demo — device login & direct convex calls  ✦\x1b[0m\n");
 }
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 type DeviceCodeResult = {
   deviceCode: string;
@@ -51,9 +45,6 @@ type SignInSessionResult = {
   } | null;
 };
 
-// ---------------------------------------------------------------------------
-// Env + client setup
-// ---------------------------------------------------------------------------
 
 function loadCliEnv() {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -152,9 +143,6 @@ async function authedClient() {
   return client;
 }
 
-// ---------------------------------------------------------------------------
-// Auth commands
-// ---------------------------------------------------------------------------
 
 async function doAuthLogin() {
   const client = createClient();
@@ -219,7 +207,7 @@ async function doAuthLogin() {
 
 async function doAuthStatus() {
   const client = await authedClient();
-  const groups = await client.query(api.groups.listMyGroups, {});
+  const groups = await client.query(api.groups.list, {});
   p.log.success(`Signed in. ${groups.length} group(s) visible.`);
   if (groups.length > 0) {
     console.log(JSON.stringify(groups, null, 2));
@@ -231,13 +219,10 @@ async function doAuthLogout() {
   p.log.success("Stored credentials cleared.");
 }
 
-// ---------------------------------------------------------------------------
-// Resource commands
-// ---------------------------------------------------------------------------
 
 async function doGroupsList() {
   const client = await authedClient();
-  const groups = await client.query(api.groups.listMyGroups, {});
+  const groups = await client.query(api.groups.list, {});
   console.log(JSON.stringify(groups, null, 2));
 }
 
@@ -248,7 +233,7 @@ async function doProjectsList() {
     placeholder: "paste group ID here",
   });
   if (p.isCancel(groupId)) process.exit(0);
-  const result = await client.query(api.projects.listProjects, { groupId });
+  const result = await client.query(api.projects.list, { groupId });
   console.log(JSON.stringify(result, null, 2));
 }
 
@@ -261,7 +246,7 @@ async function doProjectsCreate() {
     description: () => p.text({ message: "Description (optional)", defaultValue: "" }),
   });
   if (p.isCancel(group)) process.exit(0);
-  const result = await client.mutation(api.projects.createProjectByString, {
+  const result = await client.mutation(api.projects.create, {
     groupId: group.groupId,
     name: group.name,
     identifier: group.identifier,
@@ -278,7 +263,7 @@ async function doIssuesList() {
     placeholder: "paste project ID here",
   });
   if (p.isCancel(projectId)) process.exit(0);
-  const result = await client.query(api.issues.projectIssuesByString, {
+  const result = await client.query(api.issues.forProject, {
     projectId,
   });
   console.log(JSON.stringify(result, null, 2));
@@ -292,7 +277,7 @@ async function doIssuesCreate() {
     description: () => p.text({ message: "Description (optional)", defaultValue: "" }),
   });
   if (p.isCancel(issue)) process.exit(0);
-  const result = await client.mutation(api.issues.createIssueByString, {
+  const result = await client.mutation(api.issues.create, {
     projectId: issue.projectId,
     title: issue.title,
     ...(issue.description ? { description: issue.description } : {}),
@@ -301,9 +286,6 @@ async function doIssuesCreate() {
   console.log(JSON.stringify(result, null, 2));
 }
 
-// ---------------------------------------------------------------------------
-// Interactive menu
-// ---------------------------------------------------------------------------
 
 async function run() {
   printBanner();

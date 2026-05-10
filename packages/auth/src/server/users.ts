@@ -118,6 +118,98 @@ export async function upsertUserAndAccount(
   return { userId, accountId };
 }
 
+async function resolveUserIdByLinking(
+  ctx: MutationCtx,
+  args: CreateOrUpdateUserArgs,
+  profile: Record<string, unknown>,
+  shouldLinkViaEmail: boolean,
+  shouldLinkViaPhone: boolean,
+  existingUserIdOverride: GenericId<"User"> | null,
+  config: ConvexAuthConfig,
+): Promise<GenericId<"User"> | null> {
+  const [emailLookup, phoneLookup] = await Promise.all([
+    typeof profile.email === "string" && shouldLinkViaEmail
+      ? uniqueUserWithVerifiedEmail(ctx, profile.email, config)
+      : Promise.resolve(null),
+    typeof profile.phone === "string" && shouldLinkViaPhone
+      ? uniqueUserWithVerifiedPhone(ctx, profile.phone, config)
+      : Promise.resolve(null),
+  ]);
+  const emailUserId = emailLookup?._id ?? null;
+  const phoneUserId = phoneLookup?._id ?? null;
+
+  if (emailUserId !== null && phoneUserId !== null) {
+    log(LOG_LEVELS.DEBUG, `Found both email and phone verified users, not linking: email: ${emailUserId}, phone: ${phoneUserId}`);
+    return existingUserIdOverride;
+  }
+  if (emailUserId !== null) {
+    log(LOG_LEVELS.DEBUG, `Found existing email verified user, linking: ${emailUserId}`);
+    return emailUserId;
+  }
+  if (phoneUserId !== null) {
+    log(LOG_LEVELS.DEBUG, `Found existing phone verified user, linking: ${phoneUserId}`);
+    return phoneUserId;
+  }
+  log(LOG_LEVELS.DEBUG, "No existing verified users found, creating new user");
+  return existingUserIdOverride;
+}
+
+async function checkAllowLink(
+  args: CreateOrUpdateUserArgs,
+  config: ConvexAuthConfig,
+  userId: GenericId<"User">,
+): Promise<boolean> {
+  if (
+    config.sso?.hooks?.allowLink === undefined ||
+    (args.provider.type !== "oauth" && args.provider.type !== "sso")
+  ) {
+    return true;
+  }
+  const allowed = await config.sso.hooks.allowLink({
+    protocol:
+      args.provider.type === "oauth" &&
+      typeof args.accountExtend?.identity?.protocol === "string"
+        ? (args.accountExtend.identity.protocol as "oidc" | "saml")
+        : "oidc",
+    connectionId:
+      typeof args.accountExtend?.identity?.connectionId === "string"
+        ? args.accountExtend.identity.connectionId
+        : undefined,
+    profile: args.profile,
+    userId,
+  });
+  return allowed !== false;
+}
+
+async function updateExistingUser(
+  db: ReturnType<typeof authDb>,
+  userId: GenericId<"User">,
+  userData: Record<string, unknown>,
+  source: UserProvisioningSource,
+  provisioningUser: UserProvisioningPolicy | undefined,
+) {
+  const currentUser = (await db.users.getById(userId)) as Record<string, unknown> | null;
+  const mode = effectiveUserUpdateMode(source, provisioningUser);
+  const patchData = buildUserPatchData({
+    currentUser: currentUser ?? {},
+    nextUser: userData,
+    mode,
+  });
+  if (Object.keys(patchData).length === 0) return;
+  try {
+    await db.users.patch(userId, patchData);
+  } catch (error) {
+    throw new ConvexError({
+      code: "USER_UPDATE_FAILED",
+      message:
+        `Could not update user document with ID \`${userId}\`, ` +
+        `either the user has been deleted but their account has not, ` +
+        `or the profile data doesn't match the \`users\` table schema: ` +
+        `${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
+}
+
 async function defaultCreateOrUpdateUser(
   ctx: MutationCtx,
   existingSessionId: GenericId<"Session"> | null,
@@ -135,12 +227,22 @@ async function defaultCreateOrUpdateUser(
   });
   const existingUserId = existingAccount?.userId ?? null;
   const db = authDb(ctx, config);
-  if (config.callbacks?.createOrUpdateUser !== undefined) {
-    log(LOG_LEVELS.DEBUG, "Using custom createOrUpdateUser callback");
-    return await config.callbacks.createOrUpdateUser(ctx, {
+
+  const before = config.callbacks?.before;
+  if (before !== undefined) {
+    log(LOG_LEVELS.DEBUG, "Calling `before({ kind: \"link\" })` callback");
+    const customUserId = await before(ctx, {
+      kind: "link",
       existingUserId,
-      ...args,
+      type: args.type,
+      provider: args.provider,
+      profile: args.profile,
+      shouldLink: args.shouldLinkViaEmail || args.shouldLinkViaPhone,
     });
+    if (customUserId !== undefined) {
+      // link callback contract: returns a User ID. Narrow.
+      return customUserId as GenericId<"User">;
+    }
   }
 
   const {
@@ -160,61 +262,11 @@ async function defaultCreateOrUpdateUser(
 
   let userId = existingUserId ?? existingUserIdOverride;
   if (existingUserId === null) {
-    const [emailLookup, phoneLookup] = await Promise.all([
-      typeof profile.email === "string" && shouldLinkViaEmail
-        ? uniqueUserWithVerifiedEmail(ctx, profile.email, config)
-        : Promise.resolve(null),
-      typeof profile.phone === "string" && shouldLinkViaPhone
-        ? uniqueUserWithVerifiedPhone(ctx, profile.phone, config)
-        : Promise.resolve(null),
-    ]);
-    const existingUserWithVerifiedEmailId = emailLookup?._id ?? null;
-    const existingUserWithVerifiedPhoneId = phoneLookup?._id ?? null;
-
-    if (existingUserWithVerifiedEmailId !== null && existingUserWithVerifiedPhoneId !== null) {
-      log(
-        LOG_LEVELS.DEBUG,
-        `Found existing email and phone verified users, so not linking: email: ${existingUserWithVerifiedEmailId}, phone: ${existingUserWithVerifiedPhoneId}`,
-      );
+    userId = await resolveUserIdByLinking(
+      ctx, args, profile, shouldLinkViaEmail, shouldLinkViaPhone, existingUserIdOverride, config,
+    );
+    if (userId !== null && !(await checkAllowLink(args, config, userId))) {
       userId = null;
-    } else if (existingUserWithVerifiedEmailId !== null) {
-      log(
-        LOG_LEVELS.DEBUG,
-        `Found existing email verified user, linking: ${existingUserWithVerifiedEmailId}`,
-      );
-      userId = existingUserWithVerifiedEmailId;
-    } else if (existingUserWithVerifiedPhoneId !== null) {
-      log(
-        LOG_LEVELS.DEBUG,
-        `Found existing phone verified user, linking: ${existingUserWithVerifiedPhoneId}`,
-      );
-      userId = existingUserWithVerifiedPhoneId;
-    } else {
-      log(LOG_LEVELS.DEBUG, "No existing verified users found, creating new user");
-      userId = null;
-    }
-
-    if (
-      userId !== null &&
-      config.sso?.hooks?.allowLink !== undefined &&
-      (args.provider.type === "oauth" || args.provider.type === "sso")
-    ) {
-      const allowed = await config.sso.hooks.allowLink({
-        protocol:
-          args.provider.type === "oauth" &&
-          typeof args.accountExtend?.identity?.protocol === "string"
-            ? (args.accountExtend.identity.protocol as "oidc" | "saml")
-            : "oidc",
-        connectionId:
-          typeof args.accountExtend?.identity?.connectionId === "string"
-            ? args.accountExtend.identity.connectionId
-            : undefined,
-        profile: args.profile,
-        userId,
-      });
-      if (allowed === false) {
-        userId = null;
-      }
     }
   }
 
@@ -224,30 +276,9 @@ async function defaultCreateOrUpdateUser(
     ...profile,
   };
   const existingOrLinkedUserId = userId;
+
   if (userId !== null) {
-    const currentUserId = userId;
-    const currentUser = (await db.users.getById(currentUserId)) as Record<string, unknown> | null;
-    const mode = effectiveUserUpdateMode(source, provisioningUser);
-    const patchData = buildUserPatchData({
-      currentUser: currentUser ?? {},
-      nextUser: userData,
-      mode,
-    });
-    if (Object.keys(patchData).length === 0) {
-      return userId;
-    }
-    try {
-      await db.users.patch(currentUserId, patchData);
-    } catch (error) {
-      throw new ConvexError({
-        code: "USER_UPDATE_FAILED",
-        message:
-          `Could not update user document with ID \`${currentUserId}\`, ` +
-          `either the user has been deleted but their account has not, ` +
-          `or the profile data doesn't match the \`users\` table schema: ` +
-          `${error instanceof Error ? error.message : String(error)}`,
-      });
-    }
+    await updateExistingUser(db, userId, userData, source, provisioningUser);
   } else {
     if (source === "login" && provisioningUser?.createOnSignIn === false) {
       throw new ConvexError({
@@ -258,16 +289,33 @@ async function defaultCreateOrUpdateUser(
     userId = (await db.users.insert(userData)) as GenericId<"User">;
   }
 
-  const afterUserCreatedOrUpdated = config.callbacks?.afterUserCreatedOrUpdated;
-  if (afterUserCreatedOrUpdated !== undefined) {
-    log(LOG_LEVELS.DEBUG, "Calling custom afterUserCreatedOrUpdated callback");
-    await afterUserCreatedOrUpdated(ctx, {
-      userId,
-      existingUserId: existingOrLinkedUserId,
-      ...args,
-    });
-  } else {
-    log(LOG_LEVELS.DEBUG, "No custom afterUserCreatedOrUpdated callback, skipping");
+  const after = config.callbacks?.after;
+  if (after !== undefined) {
+    log(LOG_LEVELS.DEBUG, "Calling `after` callback for user lifecycle event");
+    if (existingOrLinkedUserId === null) {
+      await after(ctx, {
+        kind: "userCreated",
+        userId,
+        type: args.type,
+        provider: args.provider,
+        profile: args.profile,
+      });
+    } else {
+      await after(ctx, {
+        kind: "userUpdated",
+        userId,
+        existingUserId: existingOrLinkedUserId,
+        type: args.type,
+        provider: args.provider,
+        profile: args.profile,
+      });
+    }
+    if (emailVerified && typeof args.profile.email === "string") {
+      await after(ctx, { kind: "emailVerified", userId, email: args.profile.email });
+    }
+    if (phoneVerified && typeof args.profile.phone === "string") {
+      await after(ctx, { kind: "phoneVerified", userId, phone: args.profile.phone });
+    }
   }
   return userId;
 }
@@ -307,6 +355,7 @@ async function createOrUpdateAccount(
     "existingAccount" in account
       ? mergeExtend(account.existingAccount.extend, args.accountExtend)
       : args.accountExtend;
+  const isNewAccount = !("existingAccount" in account);
   const accountId =
     "existingAccount" in account
       ? account.existingAccount._id
@@ -317,6 +366,14 @@ async function createOrUpdateAccount(
           secret: account.secret,
           extend: mergedExtend,
         })) as GenericId<"Account">);
+  if (isNewAccount) {
+    await config.callbacks?.after?.(ctx, {
+      kind: "accountLinked",
+      userId,
+      provider: args.provider.id,
+      providerAccountId: (account as { providerAccountId: string }).providerAccountId,
+    });
+  }
   if ("existingAccount" in account && account.existingAccount.userId !== userId) {
     await db.accounts.patch(accountId, { userId });
   }

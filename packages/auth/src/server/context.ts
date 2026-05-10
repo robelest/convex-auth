@@ -1,7 +1,7 @@
 import type { UserIdentity } from "convex/server";
 
-import type { AuthContext, AuthLike, OptionalAuthContext, UserDoc } from "./auth-context";
-import type { ComponentReadCtx as AuthQueryCtx } from "./componentContext";
+import type { AuthContext, AuthLike, OptionalAuthContext, UserDoc } from "./facade";
+import type { ComponentReadCtx as AuthQueryCtx } from "./component/context";
 import { getAuthenticatedUserIdOrNull } from "./identity";
 
 type AuthIdentityCtx = {
@@ -37,18 +37,7 @@ export async function getAuthContextForUser(
   auth: AuthContextResolverLike,
   ctx: AuthQueryCtx,
   userId: string,
-  opts?: { group?: boolean },
 ): Promise<AuthContext> {
-  if (opts?.group === false) {
-    const user = await auth.user.get(ctx, userId);
-    return {
-      userId: userId as AuthContext["userId"],
-      user: user as UserDoc,
-      groupId: null,
-      role: null,
-      grants: [],
-    };
-  }
   const [user, groupId] = await Promise.all([
     auth.user.get(ctx, userId),
     auth.user.getActiveGroup(ctx, { userId }),
@@ -75,7 +64,6 @@ export async function getAuthContextForUser(
 export async function getAuthContext(
   auth: AuthLike,
   ctx: AuthIdentityCtx & AuthQueryCtx,
-  opts?: { group?: boolean },
 ): Promise<AuthContext | null> {
   const userId = await getSessionUserId(ctx);
   if (userId === null) {
@@ -85,7 +73,6 @@ export async function getAuthContext(
     auth as unknown as AuthContextResolverLike,
     ctx as AuthQueryCtx,
     userId,
-    opts,
   );
 }
 

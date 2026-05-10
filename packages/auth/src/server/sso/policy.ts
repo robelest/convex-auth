@@ -1,7 +1,7 @@
 import type { GroupConnectionPolicy, GroupConnectionPolicyPatch } from "../types";
 import { asRecord } from "./shared";
 
-export const DEFAULT_GROUP_CONNECTION_POLICY: GroupConnectionPolicy = {
+const DEFAULT_GROUP_CONNECTION_POLICY: GroupConnectionPolicy = {
   version: 1,
   identity: {
     accountLinking: {
@@ -37,7 +37,32 @@ export const DEFAULT_GROUP_CONNECTION_POLICY: GroupConnectionPolicy = {
   },
 };
 
+/** Accept a value only if it's one of the allowed options, otherwise return the fallback. */
+function oneOf<T extends string>(value: unknown, allowed: T[], fallback: T): T {
+  return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
+/** Parse an object whose values are string arrays (e.g. group→roleIds mapping). */
+function parseStringArrayMapping(raw: unknown): Record<string, string[]> | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  return Object.fromEntries(
+    Object.entries(raw)
+      .filter(([key, value]) => typeof key === "string" && Array.isArray(value))
+      .map(([key, value]) => [
+        key,
+        Array.from(
+          new Set(
+            (value as unknown[]).filter(
+              (item): item is string => typeof item === "string" && item.length > 0,
+            ),
+          ),
+        ),
+      ]),
+  );
+}
+
 export function normalizeGroupConnectionPolicy(policy: unknown): GroupConnectionPolicy {
+  const d = DEFAULT_GROUP_CONNECTION_POLICY;
   const input = asRecord(policy) ?? {};
   const identity = asRecord(input.identity) ?? {};
   const accountLinking = asRecord(identity.accountLinking) ?? {};
@@ -50,50 +75,30 @@ export function normalizeGroupConnectionPolicy(policy: unknown): GroupConnection
   const roles = asRecord(provisioning.roles) ?? {};
   const extend = asRecord(input.extend) ?? undefined;
 
+  const groupsMapping = parseStringArrayMapping(groups.mapping);
+  const rolesMapping = parseStringArrayMapping(roles.mapping);
+
   return {
     version: 1,
     identity: {
       accountLinking: {
-        oidc:
-          accountLinking.oidc === "none"
-            ? "none"
-            : DEFAULT_GROUP_CONNECTION_POLICY.identity.accountLinking.oidc,
-        saml:
-          accountLinking.saml === "none"
-            ? "none"
-            : DEFAULT_GROUP_CONNECTION_POLICY.identity.accountLinking.saml,
+        oidc: oneOf(accountLinking.oidc, ["none"], d.identity.accountLinking.oidc),
+        saml: oneOf(accountLinking.saml, ["none"], d.identity.accountLinking.saml),
       },
     },
     provisioning: {
       user: {
         createOnSignIn:
-          typeof user.createOnSignIn === "boolean"
-            ? user.createOnSignIn
-            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.user.createOnSignIn,
-        updateProfileOnLogin:
-          user.updateProfileOnLogin === "never" || user.updateProfileOnLogin === "always"
-            ? user.updateProfileOnLogin
-            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.user.updateProfileOnLogin,
-        updateProfileFromScim:
-          user.updateProfileFromScim === "never" || user.updateProfileFromScim === "missing"
-            ? user.updateProfileFromScim
-            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.user.updateProfileFromScim,
-        authority:
-          user.authority === "sso" || user.authority === "scim"
-            ? user.authority
-            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.user.authority,
+          typeof user.createOnSignIn === "boolean" ? user.createOnSignIn : d.provisioning.user.createOnSignIn,
+        updateProfileOnLogin: oneOf(user.updateProfileOnLogin, ["never", "always"], d.provisioning.user.updateProfileOnLogin),
+        updateProfileFromScim: oneOf(user.updateProfileFromScim, ["never", "missing"], d.provisioning.user.updateProfileFromScim),
+        authority: oneOf(user.authority, ["sso", "scim"], d.provisioning.user.authority),
       },
       scimReuse: {
-        user:
-          scimReuse.user === "none"
-            ? "none"
-            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.scimReuse.user,
+        user: oneOf(scimReuse.user, ["none"], d.provisioning.scimReuse.user),
       },
       jit: {
-        mode:
-          jit.mode === "off" || jit.mode === "createUser" || jit.mode === "createUserAndMembership"
-            ? jit.mode
-            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.jit.mode,
+        mode: oneOf(jit.mode, ["off", "createUser", "createUserAndMembership"], d.provisioning.jit.mode),
         defaultRoleIds: Array.isArray(jit.defaultRoleIds)
           ? Array.from(
               new Set(
@@ -104,61 +109,20 @@ export function normalizeGroupConnectionPolicy(policy: unknown): GroupConnection
             )
           : typeof jit.defaultRole === "string" && jit.defaultRole.length > 0
             ? [jit.defaultRole]
-            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.jit.defaultRoleIds,
+            : d.provisioning.jit.defaultRoleIds,
       },
       deprovision: {
-        mode:
-          deprovision.mode === "hard"
-            ? "hard"
-            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.deprovision.mode,
+        mode: oneOf(deprovision.mode, ["hard"], d.provisioning.deprovision.mode),
       },
       groups: {
-        mode:
-          groups.mode === "sync"
-            ? "sync"
-            : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.groups.mode,
+        mode: oneOf(groups.mode, ["sync"], d.provisioning.groups.mode),
         source: "protocol",
-        ...(typeof groups.mapping === "object" && groups.mapping !== null
-          ? {
-              mapping: Object.fromEntries(
-                Object.entries(groups.mapping)
-                  .filter(([key, value]) => typeof key === "string" && Array.isArray(value))
-                  .map(([key, value]) => [
-                    key,
-                    Array.from(
-                      new Set(
-                        (value as unknown[]).filter(
-                          (item): item is string => typeof item === "string" && item.length > 0,
-                        ),
-                      ),
-                    ),
-                  ]),
-              ),
-            }
-          : {}),
+        ...(groupsMapping ? { mapping: groupsMapping } : {}),
       },
       roles: {
-        mode:
-          roles.mode === "map" ? "map" : DEFAULT_GROUP_CONNECTION_POLICY.provisioning.roles.mode,
+        mode: oneOf(roles.mode, ["map"], d.provisioning.roles.mode),
         source: "protocol",
-        ...(typeof roles.mapping === "object" && roles.mapping !== null
-          ? {
-              mapping: Object.fromEntries(
-                Object.entries(roles.mapping)
-                  .filter(([key, value]) => typeof key === "string" && Array.isArray(value))
-                  .map(([key, value]) => [
-                    key,
-                    Array.from(
-                      new Set(
-                        (value as unknown[]).filter(
-                          (item): item is string => typeof item === "string" && item.length > 0,
-                        ),
-                      ),
-                    ),
-                  ]),
-              ),
-            }
-          : {}),
+        ...(rolesMapping ? { mapping: rolesMapping } : {}),
       },
     },
     ...(extend ? { extend } : {}),

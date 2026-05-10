@@ -21,19 +21,20 @@ Your app registers the auth component and wires four files:
 
 <CardGrid>
   <Card title="convex.config.ts">
-    <code>app.use(auth)</code> — registers the auth component with your Convex app.
+    <code>app.use(auth)</code> — registers the auth component and its isolated
+    storage/functions.
   </Card>
   <Card title="auth.ts">
     <code>createAuth(components.auth, {'{'}providers{'}'})</code> — configures providers and
-    exports <code>signIn</code>, <code>signOut</code>, and the internal runtime mutation <code>store</code>.
+    exports <code>signIn</code>, <code>signOut</code>, <code>store</code>, and <code>http</code>.
   </Card>
   <Card title="auth/core.ts">
     <code>createAuthContext(components.auth)</code> — lightweight auth context for
     queries and mutations. No providers or crypto loaded.
   </Card>
-  <Card title="http.ts">
-    <code>auth.http.add(http)</code> — registers OAuth callbacks, JWKS, and SSO protocol
-    routes. Imports from <code>auth.ts</code>.
+  <Card title="HTTP alias">
+    <code>auth.http()</code> — mounts OAuth callbacks,
+    JWKS, and SSO protocol routes from the app-side alias.
   </Card>
 </CardGrid>
 
@@ -86,7 +87,7 @@ For subsequent requests:
 - **Internal runtime**: `store` — session token exchange used internally by the auth runtime
 - **Helpers**: `auth.user.*`, `auth.session.*`, `auth.group.*`, etc. —
   server-side primitives
-- **HTTP**: `auth.http.add(http)` — registers OAuth callbacks and JWKS
+- **Request helpers**: `auth.request.context`, `auth.request.action`, and `auth.request.route` for your own app routes
 - **SSO** (conditional): `auth.group.sso.*` — only present when `sso()` is in
   providers
 - **SCIM** (conditional): `auth.group.sso.scim.*` — provisioning helpers when
@@ -113,7 +114,7 @@ export const { signIn, signOut, store } = createAuth(components.auth, {
 export default {
   providers: [
     {
-      domain: process.env.CONVEX_SITE_URL,
+      domain: `${process.env.CONVEX_SITE_URL}/auth`,
       applicationID: "convex",
     },
   ],
@@ -201,9 +202,9 @@ Every auth path resolves to the same `userId`:
 | Browser (password, OAuth, passkey) | `ctx.auth.userId` via `auth.ctx()`                           |
 | Group SSO (OIDC / SAML)            | Same as browser - SSO completes as a session                 |
 | Device flow (CLI / IoT)            | Same as browser - device poll returns session tokens         |
-| API key (machine / automation)     | `ctx.key.userId` or `auth.http.context(ctx, request).userId` |
+| API key (machine / automation)     | `ctx.key.userId` or `auth.request.context(ctx, request).userId` |
 
 The `userId` is the single shared anchor — server logic works regardless of how
 the caller authenticated. In app code, prefer `auth.ctx()` and
-`ctx.auth.userId`. Use `auth.http.context(ctx, request)` for advanced raw HTTP
+`ctx.auth.userId`. Use `auth.request.context(ctx, request)` for advanced raw HTTP
 handlers that accept either a session or an API key.

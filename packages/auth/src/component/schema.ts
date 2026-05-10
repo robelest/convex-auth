@@ -115,6 +115,7 @@ export default defineSchema({
   AuthVerifier: defineTable({
     sessionId: v.optional(v.id("Session")),
     signature: v.optional(v.string()),
+    expirationTime: v.optional(v.number()),
   }).index("signature", ["signature"]),
 
   /**

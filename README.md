@@ -10,7 +10,7 @@
   operations
 - **SSR** — Cookie-based auth for SvelteKit, TanStack Start, Next.js
 - **Multi-access** — `auth.ctx()`, `auth.context(ctx)`, and
-  `auth.http.context(ctx, request)` cover app, imperative, and raw HTTP auth
+  `auth.request.context(ctx, request)` cover app, imperative, and raw HTTP auth
 - **Convex component** — Isolated tables, typed helpers, zero-config defaults
 
 ## Documentation

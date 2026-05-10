@@ -3,7 +3,7 @@ import schema from "@convex/schema";
 import { decodeJwt } from "jose";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
-import { convexTest } from "./convex.setup";
+import { convexTest } from "./convex/setup";
 import { expectSignInSession, signInViaMagicLink, TEST_EMAIL, TEST_PASSWORD } from "./helpers";
 
 afterEach(() => {

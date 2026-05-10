@@ -7,7 +7,7 @@ import type { LayoutServerLoad } from "./$types";
 export const load: LayoutServerLoad = async ({ locals }) => {
   const token = locals.authToken ?? null;
   const client = getConvexClient(token);
-  const authProviders = await client.query(api.groups.getAuthProviders, {});
+  const authProviders = await client.query(api.groups.authProviders, {});
 
   return {
     convexUrl: env.VITE_CONVEX_URL,

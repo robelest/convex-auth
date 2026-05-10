@@ -43,12 +43,16 @@ import { api } from "../convex/_generated/api";
 const auth = client({ convex, api: api.auth });
 
 const result = await auth.signIn("device");
+if (result.kind !== "deviceCode") {
+  throw new Error("Device flow did not start.");
+}
+
 const { deviceCode } = result;
 
-console.log(`Go to: ${deviceCode.verification_uri}`);
+console.log(`Go to: ${deviceCode.verificationUri}`);
 console.log(`Enter code: ${deviceCode.userCode}`);
 
-await auth.device.poll(deviceCode);
+await auth.device.poll({ code: deviceCode });
 // User is now signed in
 ```
 
@@ -61,7 +65,7 @@ function DeviceVerification() {
   const [userCode, setUserCode] = useState("");
 
   const handleVerify = async () => {
-    await auth.device.verify(userCode);
+    await auth.device.verify({ code: userCode });
   };
 
   return (

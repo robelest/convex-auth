@@ -1,3 +1,10 @@
+/**
+ * Auth telemetry helpers for OpenTelemetry span enrichment.
+ *
+ * @module
+ * @internal
+ */
+
 import type { Attributes } from "@opentelemetry/api";
 
 import { authDb } from "./db";
@@ -97,6 +104,7 @@ async function buildAuthIdentityAttributes(
   return attributes;
 }
 
+/** @internal */
 export async function buildRefreshIdentityAttributes(
   ctx: MutationCtx,
   config: ConvexAuthMaterializedConfig,
@@ -105,6 +113,7 @@ export async function buildRefreshIdentityAttributes(
   return await buildAuthIdentityAttributes(ctx, config, args);
 }
 
+/** @internal */
 export async function buildSignInIdentityAttributes(
   ctx: MutationCtx,
   config: ConvexAuthMaterializedConfig,
@@ -113,6 +122,7 @@ export async function buildSignInIdentityAttributes(
   return await buildAuthIdentityAttributes(ctx, config, args);
 }
 
+/** @internal */
 export async function buildSignOutIdentityAttributes(
   ctx: MutationCtx,
   config: ConvexAuthMaterializedConfig,

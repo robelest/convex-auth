@@ -1,6 +1,6 @@
 import { SignJWT, importPKCS8 } from "jose";
 
-import { requireEnv } from "./env";
+import { envOptionalString, readConfigSync, requireEnv } from "./env";
 import { generateRandomString } from "./random";
 import { ConvexAuthConfig } from "./types";
 import type { SessionTokenIdentityClaims } from "./types";
@@ -56,10 +56,27 @@ const getPrivateKey = () => {
 
 const getIssuer = () => {
   if (cachedIssuer === null) {
-    cachedIssuer = requireEnv("CONVEX_SITE_URL");
+    cachedIssuer = appendAuthPrefix(
+      requireEnv("CONVEX_SITE_URL"),
+      readConfigSync(envOptionalString("CONVEX_AUTH_HTTP_PREFIX")) ?? "/auth",
+    );
   }
   return cachedIssuer;
 };
+
+function appendAuthPrefix(siteUrl: string, prefix: string) {
+  const normalizedSiteUrl = siteUrl.replace(/\/$/, "");
+  const normalizedPrefix = normalizeAuthPrefix(prefix);
+  return `${normalizedSiteUrl}${normalizedPrefix}`;
+}
+
+function normalizeAuthPrefix(prefix: string) {
+  const trimmed = prefix.trim();
+  if (trimmed === "" || trimmed === "/") {
+    return "";
+  }
+  return `/${trimmed.replace(/^\/+|\/+$/g, "")}`;
+}
 
 try {
   void getPrivateKey().catch(() => {});

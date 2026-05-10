@@ -1,5 +1,5 @@
-import type { ComponentCtx as ComponentWriteCtx, ComponentReadCtx } from "./componentContext";
-import { cached, invalidateCtxCache } from "./ctxCache";
+import type { ComponentCtx as ComponentWriteCtx, ComponentReadCtx } from "./component/context";
+import { cached, invalidateCtxCache } from "./cache/context";
 import type { ConvexAuthMaterializedConfig } from "./types";
 
 type ComponentPublic = ConvexAuthMaterializedConfig["component"]["public"];
@@ -12,7 +12,7 @@ type UntypedRunMutation = <TArgs extends Record<string, unknown>, TResult>(
   args: TArgs,
 ) => Promise<TResult>;
 
-export type GroupConnectionRecord = {
+type GroupConnectionRecord = {
   _id: string;
   _creationTime: number;
   groupId: string;
@@ -24,17 +24,17 @@ export type GroupConnectionRecord = {
   extend?: unknown;
 };
 
-export type GroupConnectionDomainLookupRecord = {
+type GroupConnectionDomainLookupRecord = {
   connection: GroupConnectionRecord | null;
   domain: ConnectionDomainRecord | null;
 };
 
-export type GroupConnectionListResult = {
+type GroupConnectionListResult = {
   items: GroupConnectionRecord[];
   nextCursor: string | null;
 };
 
-export type GroupRecord = {
+type GroupRecord = {
   _id: string;
   _creationTime: number;
   name: string;
@@ -47,7 +47,7 @@ export type GroupRecord = {
   extend?: unknown;
 };
 
-export type ConnectionDomainRecord = {
+type ConnectionDomainRecord = {
   _id: string;
   _creationTime: number;
   connectionId: string;
@@ -57,14 +57,14 @@ export type ConnectionDomainRecord = {
   verifiedAt?: number;
 };
 
-export type ConnectionDomainVerificationRecord = {
+type ConnectionDomainVerificationRecord = {
   domainId: string;
   recordName: string;
   token: string;
   expiresAt: number;
 };
 
-export type ScimConfigRecord = {
+type ScimConfigRecord = {
   _id: string;
   _creationTime: number;
   connectionId: string;
@@ -76,11 +76,11 @@ export type ScimConfigRecord = {
   extend?: unknown;
 };
 
-export type GroupConnectionSecretRecord = {
+type GroupConnectionSecretRecord = {
   ciphertext: string;
 };
 
-export type WebhookEndpointRecord = {
+type WebhookEndpointRecord = {
   _id: string;
   _creationTime: number;
   connectionId: string;
@@ -96,7 +96,7 @@ export type WebhookEndpointRecord = {
   extend?: unknown;
 };
 
-export type WebhookDeliveryRecord = {
+type WebhookDeliveryRecord = {
   _id: string;
   _creationTime: number;
   connectionId: string;
@@ -126,7 +126,7 @@ export type ScimIdentityRecord = {
   lastProvisionedAt?: number;
 };
 
-export type AuditEventRecord = {
+type AuditEventRecord = {
   _id: string;
   _creationTime: number;
   connectionId?: string;

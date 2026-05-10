@@ -18,6 +18,7 @@ import { withSpan } from "./utils/span";
 
 const DEFAULT_SESSION_TOTAL_DURATION_MS = 1000 * 60 * 60 * 24 * 30; // 30 days
 
+/** @internal */
 export const sessionExpirationTime = (config: ConvexAuthConfig, now = Date.now()) =>
   now +
   (config.session?.totalDurationMs ??

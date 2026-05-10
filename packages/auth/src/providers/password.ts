@@ -1,20 +1,22 @@
 /**
  * Configure the password provider for email/password authentication.
  *
- * The password provider supports the following flows, determined
- * by the `flow` parameter:
+ * Five flows, all single-word camelCase:
  *
- * - `"signUp"`: Create a new account with a password.
- * - `"signIn"`: Sign in with an existing account and password.
- * - `"reset"`: Request a password reset.
- * - `"reset-verification"`: Verify a password reset code and change password.
- * - `"email-verification"`: If email verification is enabled and `code` is
- *    included in params, verify an OTP.
+ * - `signUp` — Create a new account.
+ * - `signIn` — Sign in with email + password.
+ * - `reset` — Kick off a forgot-password flow (issues an OTP via email).
+ * - `verify` — Verify any pending email OTP. With `newPassword`, completes a
+ *   `reset` flow and updates the password. Without `newPassword`, completes
+ *   the post-signup email confirmation. The OTP scope is enforced server-side
+ *   by the issuing email provider.
+ * - `change` — Authenticated password change (requires `currentPassword`).
  *
  * ```ts
  * import { password } from "@robelest/convex-auth/providers";
  *
  * password()
+ * password({ verify: myEmailProvider, reset: myEmailProvider })
  * ```
  *
  * @module
@@ -25,6 +27,7 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { DocumentByName, GenericDataModel, WithoutSystemFields } from "convex/server";
 import { ConvexError, Value } from "convex/values";
 
+import { getAuthenticatedUserIdOrNull } from "../server/identity";
 import { callCredentialsSignIn } from "../server/mutations/index";
 import type {
   EmailConfig,
@@ -37,108 +40,77 @@ import { credentials, type CredentialsConfig } from "./credentials";
 /** Configuration for the {@link password} provider. */
 export interface PasswordConfig<DataModel extends GenericDataModel> {
   /**
-   * Uniquely identifies the provider, allowing to use
-   * multiple different password providers.
+   * Uniquely identifies the provider, allowing multiple password providers.
    */
   id?: string;
   /**
-   * Perform checks on provided params and customize the user
-   * information stored after sign up, including email normalization.
+   * Perform checks on provided params and customize the user information
+   * stored after sign up, including email normalization.
    *
-   * Called for every flow ("signUp", "signIn", "reset",
-   * "reset-verification" and "email-verification").
+   * Called for every flow.
    */
   profile?: (
-    /**
-     * The values passed to the `signIn` function.
-     */
     params: Record<string, Value | undefined>,
-    /**
-     * Convex ActionCtx in case you want to read from or write to
-     * the database.
-     */
     ctx: GenericActionCtxWithAuthConfig<DataModel>,
   ) => WithoutSystemFields<DocumentByName<DataModel, "User">> & {
     email: string;
   };
   /**
-   * Performs custom validation on password provided during sign up or reset.
+   * Performs custom validation on a password during `signUp`, `verify`
+   * (when `newPassword` is set), and `change`.
    *
-   * Otherwise the default validation is used (password is not empty and
-   * at least 8 characters in length).
+   * Default: non-empty, length >= 8.
    *
-   * If the provided password is invalid, implementations must throw an Error.
-   *
-   * @param password the password supplied during "signUp" or
-   *                 "reset-verification" flows.
+   * Throw an `Error` to reject the password.
    */
   validatePasswordRequirements?: (password: string) => void;
   /**
-   * Provide hashing and verification functions if you want to control
-   * how passwords are hashed.
+   * Hashing and verification functions. Defaults to scrypt.
    */
   crypto?: CredentialsConfig["crypto"];
   /**
-   * An email provider used to require verification
-   * before password reset.
+   * Email provider for the `reset` flow. Issues OTPs that the `verify` flow
+   * accepts when `newPassword` is included.
    */
   reset?: EmailConfig | PasswordEmailProviderFactory;
   /**
-   * An email provider used to require verification
-   * before sign up / sign in.
+   * Email provider for post-signup email confirmation. Issues OTPs that the
+   * `verify` flow accepts when `newPassword` is omitted.
    */
   verify?: EmailConfig | PasswordEmailProviderFactory;
 }
 
-type PasswordFlowDispatch =
-  | { tag: "signUp" }
-  | { tag: "signIn" }
-  | { tag: "reset" }
-  | { tag: "resetVerification" }
-  | { tag: "emailVerification" }
-  | { tag: "invalid"; flow: unknown };
+const PASSWORD_FLOWS = ["signUp", "signIn", "reset", "verify", "change"] as const;
+type PasswordFlow = (typeof PASSWORD_FLOWS)[number];
 
-const PASSWORD_FLOW_TAG = {
-  signUp: "signUp",
-  signIn: "signIn",
-  reset: "reset",
-  "reset-verification": "resetVerification",
-  "email-verification": "emailVerification",
-} as const;
+type PasswordFlowDispatch = { tag: PasswordFlow } | { tag: "invalid"; flow: unknown };
 
-type PasswordFlowInput = keyof typeof PASSWORD_FLOW_TAG;
 type PasswordEmailProviderFactory = () => EmailConfig;
 
 function decodePasswordFlow(flow: unknown): PasswordFlowDispatch {
-  if (typeof flow !== "string") {
-    return { tag: "invalid", flow };
+  if (typeof flow === "string" && (PASSWORD_FLOWS as readonly string[]).includes(flow)) {
+    return { tag: flow as PasswordFlow };
   }
-
-  const tag = PASSWORD_FLOW_TAG[flow as PasswordFlowInput];
-  return tag === undefined ? { tag: "invalid", flow } : { tag };
+  return { tag: "invalid", flow };
 }
 
 /**
  * Email and password authentication provider.
  *
- * Passwords are by default hashed using scrypt.
- * You can customize the hashing via the `crypto` option.
+ * Passwords are hashed with scrypt by default. Customize via `crypto`.
  *
- * Email verification is not required unless you pass
- * an email provider to the `verify` option.
+ * Email verification is opt-in via the `verify` option. Password reset is
+ * opt-in via the `reset` option (typically the same email provider).
  *
  * @example
  * ```ts
- * import { password } from "@robelest/convex-auth/providers";
- *
  * password()
- * password({ verify: myEmailProvider })
+ * password({ verify: myEmailProvider, reset: myEmailProvider })
  * ```
  *
  * @typeParam DataModel - The Convex data model used by the auth context.
  * @param config - Password flow hooks and optional verification providers.
  * @returns A configured password provider for `createAuth`.
- * @throws {Error} During sign-in flows when required password params are missing or reset is not enabled.
  */
 export function password<DataModel extends GenericDataModel = GenericDataModel>(
   config: PasswordConfig<DataModel> = {} as PasswordConfig<DataModel>,
@@ -160,17 +132,12 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
         validateDefaultPasswordRequirements(password);
       };
 
-      if (flowDispatch.tag === "signUp") {
-        validatePasswordRequirements(params.password as string);
-      } else if (flowDispatch.tag === "resetVerification") {
-        validatePasswordRequirements(params.newPassword as string);
-      }
-
       const profile = config.profile?.(params, ctx) ?? defaultProfile(params);
       const { email } = profile;
-      const requirePasswordParam = (value: unknown, flow: "signUp" | "signIn") => {
+
+      const requireStringParam = (value: unknown, name: string, flow: PasswordFlow) => {
         if (typeof value !== "string" || value.length === 0) {
-          throw new Error(`Missing \`password\` param for \`${flow}\` flow`);
+          throw new Error(`Missing \`${name}\` param for \`${flow}\` flow`);
         }
         return value;
       };
@@ -189,100 +156,174 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
         return { userId: user._id, hasTotp };
       };
 
-      if (flowDispatch.tag === "signUp") {
-        const secret = requirePasswordParam(params.password, "signUp");
-        const created = await ctx.auth.account.create(ctx, {
-          provider,
-          account: { id: email, secret },
-          profile,
-          shouldLinkViaEmail: config.verify !== undefined,
-          shouldLinkViaPhone: false,
-        });
-        return await finalizeCredentialsResult(created.account, created.user);
-      } else if (flowDispatch.tag === "signIn") {
-        const secret = requirePasswordParam(params.password, "signIn");
-        const result = await callCredentialsSignIn(ctx, {
-          provider,
-          account: { id: email, secret },
-          generateTokens: true,
-          requireVerifiedEmail: verifyProvider !== undefined,
-          enforceTotp: true,
-        });
-        if (result.kind === "invalidAccount" || result.kind === "invalidSecret") {
-          throw new Error("Invalid credentials");
-        }
-        if (result.kind === "tooManyAttempts") {
-          throw new ConvexError({
-            code: "RATE_LIMITED",
-            message: "Too many failed sign-in attempts. Please try again later.",
+      switch (flowDispatch.tag) {
+        case "signUp": {
+          const secret = requireStringParam(params.password, "password", "signUp");
+          validatePasswordRequirements(secret);
+          const created = await ctx.auth.account.create(ctx, {
+            provider,
+            account: { id: email, secret },
+            profile,
+            shouldLinkViaEmail: config.verify !== undefined,
+            shouldLinkViaPhone: false,
           });
+          return await finalizeCredentialsResult(created.account, created.user);
         }
-        if (result.kind === "emailVerificationRequired") {
-          return await ctx.auth.provider.signIn(ctx, verifyProvider!, {
-            accountId: result.account._id as GenericDoc<DataModel, "Account">["_id"],
+
+        case "signIn": {
+          const secret = requireStringParam(params.password, "password", "signIn");
+          const result = await callCredentialsSignIn(ctx, {
+            provider,
+            account: { id: email, secret },
+            generateTokens: true,
+            requireVerifiedEmail: verifyProvider !== undefined,
+            enforceTotp: true,
+          });
+          if (result.kind === "invalidAccount" || result.kind === "invalidSecret") {
+            throw new Error("Invalid credentials");
+          }
+          if (result.kind === "tooManyAttempts") {
+            throw new ConvexError({
+              code: "RATE_LIMITED",
+              message: "Too many failed sign-in attempts. Please try again later.",
+            });
+          }
+          if (result.kind === "emailVerificationRequired") {
+            return await ctx.auth.provider.signIn(ctx, verifyProvider!, {
+              accountId: result.account._id as GenericDoc<DataModel, "Account">["_id"],
+              params,
+            });
+          }
+          const hasTotp = result.kind === "signedIn" ? result.user.hasTotp : true;
+          return {
+            userId: result.user._id as GenericDoc<DataModel, "User">["_id"],
+            hasTotp,
+            issuance: result.issuance,
+          };
+        }
+
+        case "reset": {
+          if (!resetProvider) {
+            throw new Error(`Password reset is not enabled for ${provider}`);
+          }
+          const { account } = await ctx.auth.account.get(ctx, {
+            provider,
+            account: { id: email },
+          });
+          return await ctx.auth.provider.signIn(ctx, resetProvider, {
+            accountId: account._id,
             params,
           });
         }
-        const hasTotp = result.kind === "signedIn" ? result.user.hasTotp : true;
-        return {
-          userId: result.user._id as GenericDoc<DataModel, "User">["_id"],
-          hasTotp,
-          issuance: result.issuance,
-        };
-      } else if (flowDispatch.tag === "reset") {
-        if (!resetProvider) {
-          throw new Error(`Password reset is not enabled for ${provider}`);
+
+        case "verify": {
+          const newPassword = params.newPassword;
+          const isResetCompletion = typeof newPassword === "string" && newPassword.length > 0;
+
+          if (isResetCompletion) {
+            if (!resetProvider) {
+              throw new Error(`Password reset is not enabled for ${provider}`);
+            }
+            validatePasswordRequirements(newPassword as string);
+            const result = await ctx.auth.provider.signIn(ctx, resetProvider, { params });
+            if (result === null) {
+              throw new Error("Invalid code");
+            }
+            const { userId, sessionId } = result;
+            await ctx.auth.account.update(ctx, {
+              provider,
+              account: { id: email, secret: newPassword as string },
+            });
+            await ctx.auth.session.invalidate(ctx, {
+              userId,
+              except: [sessionId],
+            });
+            await ctx.auth.config.callbacks?.after?.(ctx, {
+              kind: "passwordChanged",
+              userId,
+              flow: "reset",
+            });
+            return { userId, sessionId };
+          }
+
+          if (!verifyProvider) {
+            throw new Error(`Email verification is not enabled for ${provider}`);
+          }
+          const { account } = await ctx.auth.account.get(ctx, {
+            provider,
+            account: { id: email },
+          });
+          return await ctx.auth.provider.signIn(ctx, verifyProvider, {
+            accountId: account._id,
+            params,
+          });
         }
-        const { account } = await ctx.auth.account.get(ctx, {
-          provider,
-          account: { id: email },
-        });
-        return await ctx.auth.provider.signIn(ctx, resetProvider, {
-          accountId: account._id,
-          params,
-        });
-      } else if (flowDispatch.tag === "resetVerification") {
-        if (!resetProvider) {
-          throw new Error(`Password reset is not enabled for ${provider}`);
+
+        case "change": {
+          const authedUserId = await getAuthenticatedUserIdOrNull(ctx);
+          if (authedUserId === null) {
+            throw new ConvexError({
+              code: "NOT_SIGNED_IN",
+              message: "Sign in first to change your password.",
+            });
+          }
+          const currentPassword = requireStringParam(
+            params.currentPassword,
+            "currentPassword",
+            "change",
+          );
+          const newPassword = requireStringParam(params.newPassword, "newPassword", "change");
+          validatePasswordRequirements(newPassword);
+
+          const result = await callCredentialsSignIn(ctx, {
+            provider,
+            account: { id: email, secret: currentPassword },
+            generateTokens: true,
+            requireVerifiedEmail: false,
+            enforceTotp: false,
+          });
+          if (result.kind === "invalidAccount" || result.kind === "invalidSecret") {
+            throw new Error("Invalid current password");
+          }
+          if (result.kind === "tooManyAttempts") {
+            throw new ConvexError({
+              code: "RATE_LIMITED",
+              message: "Too many failed attempts. Please try again later.",
+            });
+          }
+          if (result.kind !== "signedIn") {
+            throw new Error(`Unexpected sign-in result: ${result.kind}`);
+          }
+          const verifiedUserId = result.user._id as GenericDoc<DataModel, "User">["_id"];
+          if (verifiedUserId !== authedUserId) {
+            throw new Error("Email does not match authenticated user");
+          }
+          await ctx.auth.account.update(ctx, {
+            provider,
+            account: { id: email, secret: newPassword },
+          });
+          await ctx.auth.session.invalidate(ctx, {
+            userId: verifiedUserId,
+            except: [result.issuance.sessionId],
+          });
+          await ctx.auth.config.callbacks?.after?.(ctx, {
+            kind: "passwordChanged",
+            userId: verifiedUserId,
+            flow: "change",
+          });
+          return {
+            userId: verifiedUserId,
+            hasTotp: false,
+            issuance: result.issuance,
+          };
         }
-        if (params.newPassword === undefined) {
-          throw new Error("Missing `newPassword` param for `reset-verification` flow");
-        }
-        const result = await ctx.auth.provider.signIn(ctx, resetProvider, {
-          params,
-        });
-        if (result === null) {
-          throw new Error("Invalid code");
-        }
-        const { userId, sessionId } = result;
-        const secret = params.newPassword as string;
-        await ctx.auth.account.update(ctx, {
-          provider,
-          account: { id: email, secret },
-        });
-        await ctx.auth.session.invalidate(ctx, {
-          userId,
-          except: [sessionId],
-        });
-        return { userId, sessionId };
-      } else if (flowDispatch.tag === "emailVerification") {
-        if (!verifyProvider) {
-          throw new Error(`Email verification is not enabled for ${provider}`);
-        }
-        const { account } = await ctx.auth.account.get(ctx, {
-          provider,
-          account: { id: email },
-        });
-        return await ctx.auth.provider.signIn(ctx, verifyProvider, {
-          accountId: account._id,
-          params,
-        });
-      } else {
-        throw new Error(
-          "Missing `flow` param, it must be one of " +
-            '"signUp", "signIn", "reset", "reset-verification" or ' +
-            '"email-verification"!',
-        );
+
+        default:
+          throw new Error(
+            "Missing or invalid `flow` param. Expected one of: " +
+              PASSWORD_FLOWS.join(", ") +
+              ".",
+          );
       }
     },
     crypto: config.crypto ?? {

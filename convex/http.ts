@@ -1,12 +1,8 @@
-import { httpRouter } from "convex/server";
-
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { auth } from "./auth";
 
-const http = httpRouter();
-
-auth.http.add(http);
+const http = auth.http();
 
 async function requireProject(ctx: any, projectId: string) {
   const project = await ctx.runQuery(internal.issues.getProjectForApi, {
@@ -25,7 +21,7 @@ http.route({
   path: "/api/me",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const authContext = await auth.http.context(ctx, request);
+    const authContext = await auth.request.context(ctx, request);
     return Response.json({
       userId: authContext.userId,
       groupId: authContext.groupId,
@@ -41,7 +37,7 @@ http.route({
   path: "/api/issues",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const authContext = await auth.http.context(ctx, request);
+    const authContext = await auth.request.context(ctx, request);
     const url = new URL(request.url);
     const projectId = url.searchParams.get("projectId");
     if (!projectId) {
@@ -91,7 +87,7 @@ http.route({
   path: "/api/issues",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const authContext = await auth.http.context(ctx, request);
+    const authContext = await auth.request.context(ctx, request);
     const body = (await request.json()) as {
       projectId?: string;
       title?: string;

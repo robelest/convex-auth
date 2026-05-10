@@ -3,7 +3,7 @@ import schema from "@convex/schema";
 import { custom } from "@robelest/convex-auth/providers";
 import { expect, test, vi } from "vite-plus/test";
 
-import { convexTest } from "./convex.setup";
+import { convexTest } from "./convex/setup";
 
 test("sign up with oauth starts redirect flow", async () => {
   const t = convexTest(schema);
@@ -19,7 +19,7 @@ test("sign up with oauth starts redirect flow", async () => {
 
   const redirect = new URL(result.redirect);
   expect(redirect.origin).toBe(process.env.CONVEX_SITE_URL);
-  expect(redirect.pathname).toBe("/api/auth/signin/google");
+  expect(redirect.pathname).toBe("/auth/signin/google");
   expect(redirect.searchParams.get("code")).toBe(result.verifier);
 });
 
@@ -57,7 +57,7 @@ test("redirectTo with oauth preserves auth redirect semantics", async () => {
 
   const redirect = new URL(result.redirect);
   expect(redirect.origin).toBe(process.env.CONVEX_SITE_URL);
-  expect(redirect.pathname).toBe("/api/auth/signin/google");
+  expect(redirect.pathname).toBe("/auth/signin/google");
   expect(redirect.searchParams.get("code")).toBe(result.verifier);
 });
 

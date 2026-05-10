@@ -17,8 +17,8 @@
 import { MicrosoftEntraId } from "arctic";
 import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
 
-import { envOptionalString, readConfigSync } from "../server/env";
 import { createArcticOAuthClient, createOAuthProvider } from "../server/oauth/factory";
+import { defaultOAuthRedirectUri } from "./redirect";
 
 const DEFAULT_SCOPES = ["openid", "profile", "email"];
 
@@ -30,7 +30,7 @@ export interface MicrosoftConfig {
   clientId: string;
   /** OAuth client secret for confidential clients, when required. */
   clientSecret?: string | null;
-  /** Optional callback URL override. Defaults to `CUSTOM_AUTH_SITE_URL` or `CONVEX_SITE_URL` plus `/api/auth/callback/microsoft`. */
+  /** Optional callback URL override. Defaults to the auth site URL plus `/callback/microsoft`. */
   redirectUri?: string;
   /** Optional OAuth scopes. Defaults to `openid profile email`. */
   scopes?: string[];
@@ -59,19 +59,21 @@ export interface MicrosoftConfig {
  * ```
  */
 export function microsoft(config: MicrosoftConfig) {
-  const provider = new MicrosoftEntraId(
-    config.tenant,
-    config.clientId,
-    config.clientSecret ?? null,
-    config.redirectUri ?? defaultRedirectUri("microsoft"),
-  );
+  const scopes = config.scopes ?? DEFAULT_SCOPES;
+  const createProvider = () =>
+    new MicrosoftEntraId(
+      config.tenant,
+      config.clientId,
+      config.clientSecret ?? null,
+      config.redirectUri ?? defaultOAuthRedirectUri("microsoft"),
+    );
   const issuer = `https://login.microsoftonline.com/${config.tenant}/v2.0`;
   const jwks = createRemoteJWKSet(new URL(`${issuer}/discovery/v2.0/keys`));
 
   return createOAuthProvider({
     id: "microsoft",
-    provider: createArcticOAuthClient(provider, { pkce: "required" }),
-    scopes: config.scopes ?? DEFAULT_SCOPES,
+    provider: createArcticOAuthClient(createProvider, { pkce: "required" }),
+    scopes,
     nonce: true,
     accountLinking: config.accountLinking,
     validateTokens: async (tokens, ctx) => {
@@ -125,17 +127,4 @@ export function microsoft(config: MicrosoftConfig) {
       }
     },
   });
-}
-
-function defaultRedirectUri(providerId: string) {
-  const rootUrl =
-    readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ??
-    readConfigSync(envOptionalString("CONVEX_SITE_URL"));
-  if (!rootUrl) {
-    throw new Error(
-      `Missing CONVEX_SITE_URL while configuring ${providerId} OAuth provider. ` +
-        "Set CONVEX_SITE_URL or pass redirectUri explicitly.",
-    );
-  }
-  return `${rootUrl}/api/auth/callback/${providerId}`;
 }

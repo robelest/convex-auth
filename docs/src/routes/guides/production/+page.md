@@ -95,3 +95,40 @@ yarn dlx convex deploy --cmd 'yarn build'
   `applicationID: "convex"`
 - OAuth callback URLs are registered with your providers pointing to
   `CONVEX_SITE_URL`
+
+### Cross-platform `.well-known` files
+
+Apps using passkeys, password managers, or native iOS/Android sign-in should
+serve these from the frontend host. See the
+[.well-known reference](/reference/well-known) and the
+[native apps guide](/guides/native-apps).
+
+- For native iOS passkeys: `IOS_APP_IDS` set, `apple-app-site-association`
+  reachable at the RP ID host with no redirects, no `.json` extension
+- For native Android passkeys: `ANDROID_APP_LINKS` set, `assetlinks.json`
+  reachable at the RP ID host
+- For password manager UX: `CHANGE_PASSWORD_URL` set (302 from
+  `/.well-known/change-password`)
+- For multi-origin passkeys: `WEBAUTHN_ALT_ORIGINS` set (or `SECONDARY_URL`)
+- For security disclosure: `SECURITY_CONTACT` set with unexpired
+  `Expires:` (refreshes every `SECURITY_TXT_EXPIRES_DAYS`, default 365)
+
+## Auth refresh and Convex logs
+
+Convex Auth refreshes stored browser sessions when the Convex client asks for a
+fresh access token. In logs this can show up as an `auth:signIn` action followed
+by an `auth:store` mutation. That pair is expected on page load, token refresh,
+and across multiple tabs or visitors.
+
+Each refresh mutation can cause active Convex subscriptions to re-evaluate. If
+your logs show a burst of many cached query evaluations after auth refresh, first
+look for duplicate or unnecessary subscriptions in the app:
+
+- avoid subscribing to the same query in both a page and child component;
+- pass already-loaded data as props when possible;
+- use `"skip"` for queries that are disabled by config or route state;
+- only run auth-dependent queries on pages that actually need them.
+
+Treat refresh as suspicious when a single tab with one auth client refreshes in a
+tight loop. Common causes are duplicate auth clients, unavailable storage,
+corrupted refresh-token storage, or proxy retry failures.

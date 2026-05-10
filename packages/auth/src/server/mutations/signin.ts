@@ -48,6 +48,13 @@ export async function signInImpl(
           sessionId: issuance.sessionId,
         })),
       });
+      // Fire `signedIn` event atomically with session creation.
+      await config.callbacks?.after?.(ctx, {
+        kind: "signedIn",
+        userId: issuance.userId,
+        sessionId: issuance.sessionId,
+        provider: "session",
+      });
       return issuance;
     },
   );

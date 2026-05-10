@@ -52,6 +52,8 @@ type OidcUserInfo = {
   email_verified?: boolean;
   name?: string;
   picture?: string;
+  groups?: unknown;
+  roles?: unknown;
 };
 
 function validateOidcDiscovery(data: unknown): OidcDiscovery {
@@ -102,6 +104,8 @@ function validateOidcUserInfo(data: unknown): OidcUserInfo {
     email_verified: typeof obj.email_verified === "boolean" ? obj.email_verified : undefined,
     name: typeof obj.name === "string" ? obj.name : undefined,
     picture: typeof obj.picture === "string" ? obj.picture : undefined,
+    groups: obj.groups,
+    roles: obj.roles,
   };
 }
 
@@ -286,6 +290,8 @@ async function userInfoProfileFx(opts: {
           : opts.verifiedProfile.emailVerified,
       name: typeof userInfo.name === "string" ? userInfo.name : opts.verifiedProfile.name,
       image: typeof userInfo.picture === "string" ? userInfo.picture : opts.verifiedProfile.image,
+      groups: normalizeStringArray(userInfo.groups) ?? opts.verifiedProfile.groups,
+      roles: normalizeStringArray(userInfo.roles) ?? opts.verifiedProfile.roles,
     } as OAuthProfile & { emailVerified?: boolean };
   });
 }
@@ -351,6 +357,15 @@ export async function createGroupConnectionOidcProvider(
       : discoveredTokenEndpointAuthMethods.includes("client_secret_basic")
         ? "client_secret_basic"
         : "client_secret_post";
+  if (
+    typeof client.authMethod === "string" &&
+    discoveredTokenEndpointAuthMethods.length > 0 &&
+    !discoveredTokenEndpointAuthMethods.includes(tokenEndpointAuthMethod)
+  ) {
+    throw new Error(
+      `OIDC token endpoint auth method ${tokenEndpointAuthMethod} is not advertised by discovery.`,
+    );
+  }
   const userinfoEndpoint = (discovery.userinfo_endpoint as string | undefined) ?? undefined;
   const claimMapping =
     typeof profile.mapping === "object" && profile.mapping !== null
@@ -379,20 +394,12 @@ export async function createGroupConnectionOidcProvider(
       : String(client.id);
   const clockToleranceSeconds =
     typeof security.clockToleranceSeconds === "number" ? security.clockToleranceSeconds : 10;
-  const getIssuerCandidates = (issuer: string) => {
-    const candidates = [issuer];
-    if (issuer.startsWith("https://")) {
-      candidates.push(`http://${issuer.slice("https://".length)}`);
-    } else if (issuer.startsWith("http://")) {
-      candidates.push(`https://${issuer.slice("http://".length)}`);
-    }
-    return candidates;
-  };
+  if (clockToleranceSeconds < 0 || clockToleranceSeconds > 300) {
+    throw new Error("OIDC clockToleranceSeconds must be between 0 and 300.");
+  }
   const expectedIssuers = strictIssuer
     ? [expectedIssuer]
-    : Array.from(
-        new Set([...getIssuerCandidates(expectedIssuer), ...getIssuerCandidates(discoveredIssuer)]),
-      );
+    : Array.from(new Set([expectedIssuer, discoveredIssuer]));
   const jwks = getOidcJwks(jwksUri, runtimeOrigin, externalHost, oidcFetch);
   let verifiedClaims: Record<string, unknown> | null = null;
   let verifiedProfile: (OAuthProfile & { emailVerified?: boolean }) | null = null;
@@ -441,7 +448,21 @@ export async function createGroupConnectionOidcProvider(
         typeof request.authorizationParams === "object" && request.authorizationParams !== null
           ? (request.authorizationParams as Record<string, unknown>)
           : {};
+      const reservedAuthorizationParams = new Set([
+        "response_type",
+        "client_id",
+        "redirect_uri",
+        "scope",
+        "state",
+        "code_challenge",
+        "code_challenge_method",
+        "nonce",
+        "login_hint",
+      ]);
       for (const [key, value] of Object.entries(authorizationParams)) {
+        if (reservedAuthorizationParams.has(key)) {
+          throw new Error(`OIDC authorizationParams cannot override reserved parameter: ${key}`);
+        }
         if (typeof value === "string") {
           url.searchParams.set(key, value);
         }
@@ -464,10 +485,12 @@ export async function createGroupConnectionOidcProvider(
         "Content-Type": "application/x-www-form-urlencoded",
       });
       if (typeof client.secret === "string" && tokenEndpointAuthMethod === "client_secret_basic") {
+        const encodeCredential = (value: string) => encodeURIComponent(value).replace(/%20/g, "+");
+        const credentials = `${encodeCredential(String(client.id))}:${encodeCredential(client.secret)}`;
         const basicAuth =
           typeof btoa === "function"
-            ? btoa(`${String(client.id)}:${client.secret}`)
-            : Buffer.from(`${String(client.id)}:${client.secret}`).toString("base64");
+            ? btoa(credentials)
+            : Buffer.from(credentials).toString("base64");
         headers.set("Authorization", `Basic ${basicAuth}`);
       } else {
         body.set("client_id", String(client.id));
@@ -571,11 +594,7 @@ export async function createGroupConnectionOidcProvider(
         throw new Error("OIDC nonce mismatch.");
       }
 
-      if (
-        Array.isArray(payload.aud) &&
-        payload.aud.length > 1 &&
-        payload.azp !== String(client.id)
-      ) {
+      if (payload.azp !== undefined && payload.azp !== String(client.id)) {
         throw new Error("OIDC authorized party does not match client ID.");
       }
 

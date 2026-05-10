@@ -1,6 +1,6 @@
 import { ConvexError } from "convex/values";
 
-import type { ComponentCtx, ComponentReadCtx } from "../componentContext";
+import type { ComponentCtx, ComponentReadCtx } from "../component/context";
 import { configDefaults } from "../config";
 import {
   getGroupConnectionSecret as queryGroupConnectionSecret,
@@ -333,6 +333,12 @@ export function createGroupService(deps: {
       throw convexError({
         code: "INVALID_PARAMETERS",
         message: connectionNotFoundError,
+      });
+    }
+    if (connection.status !== "active") {
+      throw convexError({
+        code: "INVALID_PARAMETERS",
+        message: "Connection is not active.",
       });
     }
     return {

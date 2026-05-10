@@ -10,9 +10,9 @@
 import { sha256 } from "@oslojs/crypto/sha2";
 import { encodeBase64urlNoPadding } from "@oslojs/encoding";
 
-import { envOptionalString, readConfigSync } from "../server/env";
 import { createOAuthProvider } from "../server/oauth/factory";
 import type { OAuthProfile, OAuthRuntimeClient, OAuthTokens } from "../server/types";
+import { defaultOAuthRedirectUri } from "./redirect";
 
 type ScopeSeparator = " " | ",";
 type PkceMode = "required" | "optional" | "never";
@@ -66,7 +66,7 @@ export interface CustomOAuthConfig {
   clientId: string;
   /** Optional OAuth client secret. */
   clientSecret?: string | null;
-  /** Optional callback URL override. Defaults to `CUSTOM_AUTH_SITE_URL` or `CONVEX_SITE_URL` plus `/api/auth/callback/<id>`. */
+  /** Optional callback URL override. Defaults to the auth site URL plus `/callback/<id>`. */
   redirectUri?: string;
   /** Optional default scopes requested during sign-in. */
   scopes?: string[];
@@ -84,19 +84,6 @@ export interface CustomOAuthConfig {
   validateTokens?: (tokens: OAuthTokens, ctx: { nonce?: string }) => Promise<void>;
 }
 
-function defaultRedirectUri(providerId: string) {
-  const rootUrl =
-    readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ??
-    readConfigSync(envOptionalString("CONVEX_SITE_URL"));
-  if (!rootUrl) {
-    throw new Error(
-      `Missing CONVEX_SITE_URL while configuring ${providerId} OAuth provider. ` +
-        "Set CONVEX_SITE_URL or pass redirectUri explicitly.",
-    );
-  }
-  return `${rootUrl}/api/auth/callback/${providerId}`;
-}
-
 function joinScopes(scopes: string[], separator: ScopeSeparator = " ") {
   return scopes.join(separator);
 }
@@ -106,15 +93,16 @@ function createCodeChallenge(codeVerifier: string) {
 }
 
 function createRuntimeClient(config: CustomOAuthConfig): OAuthRuntimeClient {
-  const redirectUri = config.redirectUri ?? defaultRedirectUri(config.id);
   const authorization = config.authorization;
   const token = config.token;
   const pkce = authorization.pkce ?? "required";
   const scopes = [...(config.scopes ?? [])];
+  const getRedirectUri = () => config.redirectUri ?? defaultOAuthRedirectUri(config.id);
 
   return {
     pkce,
     createAuthorizationURL({ state, codeVerifier, scopes: requestedScopes, nonce }) {
+      const redirectUri = getRedirectUri();
       const url = new URL(authorization.url);
       const nextScopes = requestedScopes.length > 0 ? requestedScopes : scopes;
       url.searchParams.set("response_type", "code");
@@ -140,6 +128,7 @@ function createRuntimeClient(config: CustomOAuthConfig): OAuthRuntimeClient {
       return url;
     },
     async validateAuthorizationCode({ code, codeVerifier }) {
+      const redirectUri = getRedirectUri();
       const body = new URLSearchParams();
       body.set("grant_type", "authorization_code");
       body.set("code", code);

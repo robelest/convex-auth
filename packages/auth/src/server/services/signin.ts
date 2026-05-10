@@ -9,7 +9,7 @@ import type {
   GenericActionCtxWithAuthConfig,
 } from "../types";
 
-export type AuthSignInService = {
+type AuthSignInService = {
   readonly signIn: (
     ctx: GenericActionCtxWithAuthConfig<AuthDataModel>,
     provider: AuthProviderMaterializedConfig | null,
@@ -23,6 +23,7 @@ export type AuthSignInService = {
     options: {
       generateTokens: boolean;
       allowExtraProviders: boolean;
+      authSiteUrl?: string;
       resolveSsoProtocol?: (
         ctx: GenericActionCtxWithAuthConfig<AuthDataModel>,
         connectionId: string,

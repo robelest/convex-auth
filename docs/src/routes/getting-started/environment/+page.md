@@ -34,7 +34,7 @@ JWT issuer:
 export default {
   providers: [
     {
-      domain: process.env.CONVEX_SITE_URL,
+      domain: `${process.env.CONVEX_SITE_URL}/auth`,
       applicationID: "convex",
     },
   ],
@@ -60,11 +60,12 @@ export default {
 OAuth provider callbacks default to:
 
 ```text
-${CONVEX_SITE_URL}/api/auth/callback/<provider>
+${CONVEX_SITE_URL}/auth/callback/<provider>
 ```
 
-You only need to pass `redirectUri` in provider config when you want to override
-that default.
+This uses `CONVEX_AUTH_HTTP_PREFIX`, which defaults to `/auth`, matching the
+default `auth.http()` route prefix. Pass `redirectUri` in provider config when
+you want to override that default.
 
 ## Optional
 
@@ -74,6 +75,21 @@ that default.
 | `AUTH_SESSION_TOTAL_DURATION_MS`    | Max session lifetime                                                      | 30 days           |
 | `AUTH_SESSION_INACTIVE_DURATION_MS` | Inactive session timeout                                                  | Provider-specific |
 | `AUTH_LOG_LEVEL`                    | `DEBUG` / `INFO` / `WARN` / `ERROR`                                       | `INFO`            |
+
+### `.well-known` content
+
+These drive the [.well-known endpoints](/reference/well-known) — leave them
+unset to disable a given endpoint (it then returns 404).
+
+| Variable                    | Purpose                                                            | Default           |
+| --------------------------- | ------------------------------------------------------------------ | ----------------- |
+| `IOS_APP_IDS`               | Comma-separated `TEAMID.bundle.id` for `apple-app-site-association`| -                 |
+| `IOS_APPLINK_PATHS`         | Comma-separated path patterns for `applinks` (e.g., `/auth/*`)     | `/auth/*,/callback/*` |
+| `ANDROID_APP_LINKS`         | `package:FP1;package2:FP2` for `assetlinks.json`                   | -                 |
+| `WEBAUTHN_ALT_ORIGINS`      | Comma-separated origins for `/.well-known/webauthn`                | falls back to `SECONDARY_URL` |
+| `CHANGE_PASSWORD_URL`       | Redirect target for `/.well-known/change-password`                 | -                 |
+| `SECURITY_CONTACT`          | `Contact:` for `security.txt` (`mailto:` or `https:`)              | -                 |
+| `SECURITY_TXT_EXPIRES_DAYS` | Days until `Expires:` in `security.txt`                            | 365               |
 
 `SITE_URL` remains the canonical frontend URL used for generated links and
 default redirects. Use `SECONDARY_URL` to allow additional localhost or hosted

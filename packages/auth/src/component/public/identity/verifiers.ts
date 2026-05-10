@@ -1,7 +1,18 @@
 import { v } from "convex/values";
 
+import type { QueryCtx } from "../../_generated/server";
 import { mutation, query } from "../../functions";
 import { vAuthVerifierDoc } from "../../model";
+
+const DEFAULT_VERIFIER_TTL_MS = 1000 * 60 * 15;
+
+async function getUnexpiredVerifier(ctx: QueryCtx, verifierId: string) {
+  const verifier = await ctx.db.get("AuthVerifier", verifierId as any);
+  if (verifier?.expirationTime !== undefined && verifier.expirationTime < Date.now()) {
+    return null;
+  }
+  return verifier;
+}
 
 /**
  * Create a new PKCE verifier, optionally linked to a session.
@@ -27,12 +38,14 @@ export const verifierCreate = mutation({
   args: {
     sessionId: v.optional(v.id("Session")),
     signature: v.optional(v.string()),
+    expirationTime: v.optional(v.number()),
   },
   returns: v.id("AuthVerifier"),
-  handler: async (ctx, { sessionId, signature }) => {
+  handler: async (ctx, { sessionId, signature, expirationTime }) => {
     return await ctx.db.insert("AuthVerifier", {
       sessionId: sessionId as any,
       signature,
+      expirationTime: expirationTime ?? Date.now() + DEFAULT_VERIFIER_TTL_MS,
     });
   },
 });
@@ -61,7 +74,7 @@ export const verifierGetById = query({
   args: { verifierId: v.id("AuthVerifier") },
   returns: v.union(vAuthVerifierDoc, v.null()),
   handler: async (ctx, { verifierId }) => {
-    return await ctx.db.get("AuthVerifier", verifierId);
+    return await getUnexpiredVerifier(ctx, verifierId);
   },
 });
 
@@ -91,10 +104,14 @@ export const verifierGetBySignature = query({
   args: { signature: v.string() },
   returns: v.union(vAuthVerifierDoc, v.null()),
   handler: async (ctx, { signature }) => {
-    return await ctx.db
+    const verifier = await ctx.db
       .query("AuthVerifier")
       .withIndex("signature", (q) => q.eq("signature", signature))
       .unique();
+    if (verifier?.expirationTime !== undefined && verifier.expirationTime < Date.now()) {
+      return null;
+    }
+    return verifier;
   },
 });
 

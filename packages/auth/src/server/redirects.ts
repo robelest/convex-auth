@@ -1,3 +1,4 @@
+import { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError } from "convex/values";
 
 import { requireEnv } from "./env";
@@ -21,6 +22,7 @@ const describeUnknown = (value: unknown) => {
 
 /** @internal */
 export async function redirectAbsoluteUrl(
+  ctx: GenericActionCtx<GenericDataModel>,
   config: ConvexAuthMaterializedConfig,
   params: { redirectTo: unknown },
 ) {
@@ -33,9 +35,19 @@ export async function redirectAbsoluteUrl(
       message: `Expected \`redirectTo\` to be a string, got ${describeUnknown(params.redirectTo)}`,
     });
   }
-  const redirectCallback = config.callbacks?.redirect ?? defaultRedirectCallback;
+  const redirectTo = params.redirectTo;
   try {
-    return await redirectCallback({ redirectTo: params.redirectTo });
+    const before = config.callbacks?.before;
+    if (before !== undefined) {
+      const result = await before(
+        ctx as Parameters<NonNullable<typeof before>>[0],
+        { kind: "redirect", redirectTo },
+      );
+      if (typeof result === "string") {
+        return result;
+      }
+    }
+    return await defaultRedirectCallback({ redirectTo });
   } catch {
     throw new ConvexError({
       code: "INTERNAL_ERROR",

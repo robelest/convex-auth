@@ -27,11 +27,11 @@
     client: ConvexClient;
   }>();
 
-  const issuesQuery = useQuery(
-    api.issues.projectIssues,
-    () => ({
-      projectId: project.projectId,
-    }),
+	const issuesQuery = useQuery(
+		api.issues.forProject,
+		() => ({
+			projectId: project.projectId,
+		}),
   );
 
   const issues = $derived(issuesQuery.data?.issues ?? []);
@@ -46,7 +46,6 @@
     return "Failed to load issues.";
   });
 
-  // Status ordering and labels
   const statusOrder = ["in_progress", "todo", "backlog", "done", "cancelled"] as const;
 
   const statusLabels: Record<string, string> = {
@@ -65,7 +64,6 @@
     cancelled: "text-gray-300",
   };
 
-  // Priority sort weight (lower = higher priority = sorted first)
   const priorityWeight: Record<string, number> = {
     urgent: 0,
     high: 1,
@@ -82,7 +80,6 @@
     none: "",
   };
 
-  // Group by status, sort by priority within each group
   type IssueType = (typeof issues)[number];
   type StatusGroup = { status: string; label: string; issues: IssueType[] };
 
@@ -122,10 +119,10 @@
     isCreating = true;
     errorMessage = null;
     try {
-      const result = await client.mutation(api.issues.createIssue, {
-        projectId: project.projectId,
-        title: newTitle,
-      });
+		const result = await client.mutation(api.issues.create, {
+			projectId: project.projectId,
+			title: newTitle,
+		});
       if ("ok" in result && !result.ok && "message" in result) {
         errorMessage = result.message ?? "Failed to create issue";
       } else {
@@ -190,12 +187,12 @@
           <span class="font-label text-[0.6rem] text-gray-400">{group.issues.length}</span>
         </div>
 
-        {#each group.issues as issue (issue.issueId)}
+						{#each group.issues as issue (issue._id)}
           <!-- Issue row -->
           <div
-            class="flex items-center gap-3 px-3 py-2 border-b border-gray-200 bg-transparent cursor-pointer hover:bg-gray-50 text-left w-full transition-colors duration-75 {expandedIssueId === issue.issueId ? 'bg-gray-100' : ''}"
-            onclick={() => toggleIssue(issue.issueId)}
-            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleIssue(issue.issueId); } }}
+							class="flex items-center gap-3 px-3 py-2 border-b border-gray-200 bg-transparent cursor-pointer hover:bg-gray-50 text-left w-full transition-colors duration-75 {expandedIssueId === issue._id ? 'bg-gray-100' : ''}"
+							onclick={() => toggleIssue(issue._id)}
+							onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleIssue(issue._id); } }}
             role="button"
             tabindex="0"
           >
@@ -211,7 +208,7 @@
             {/if}
 
             <!-- Labels -->
-            {#each issue.labels.slice(0, 2) as label (`${issue.issueId}-${label}`)}
+							{#each issue.labels.slice(0, 2) as label (`${issue._id}-${label}`)}
               <span class="chip chip--grant shrink-0">{label}</span>
             {/each}
 
@@ -222,7 +219,7 @@
           </div>
 
           <!-- Inline expand -->
-          {#if expandedIssueId === issue.issueId}
+          {#if expandedIssueId === issue._id}
             <div class="border-b border-gray-300 bg-gray-50">
               <IssueDetailPanel
                 {issue}

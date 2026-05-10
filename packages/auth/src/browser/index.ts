@@ -3,19 +3,21 @@
  *
  * This entrypoint wraps the framework-agnostic `client(...)`
  * helper with browser defaults such as `ConvexHttpClient`, local storage, URL
- * replacement, and passkey adapters.
+ * replacement, OAuth launching, and passkey adapters.
  *
  * @module
  */
 
 import { ConvexHttpClient } from "convex/browser";
 
+import { LOG_LEVELS, logMessage } from "../shared/log";
 import {
   client as createClient,
   type AuthApiRefs,
-  type BrowserAuthClient,
   type ClientOptions,
+  type PlatformAuthClient,
 } from "../client/index";
+import type { SignInImpl } from "../client/core/types";
 import { ClientAdapterFactoriesLive, ClientAdaptersLive } from "../client/services/adapters";
 import { ClientHttpLive } from "../client/services/http";
 import { resolveClientServices } from "../client/services/resolve";
@@ -23,7 +25,7 @@ import { ClientRuntimeLive } from "../client/services/runtime";
 import { createPasskeyClient } from "./passkey";
 import { createBrowserRuntime } from "./runtime";
 
-export type { AuthApiRefs, BrowserAuthClient as AuthClient, ClientOptions } from "../client/index";
+export type { AuthApiRefs, PlatformAuthClient as AuthClient, ClientOptions } from "../client/index";
 
 /**
  * Create a browser-configured auth client.
@@ -36,20 +38,10 @@ export type { AuthApiRefs, BrowserAuthClient as AuthClient, ClientOptions } from
  * @typeParam Api - Auth API references that control which factor helpers are
  *   available on the returned client.
  * @returns A browser auth client with the configured auth helpers.
- *
- * @example
- * ```ts
- * import { ConvexReactClient } from "convex/react";
- * import { client } from "@robelest/convex-auth/browser";
- * import { api } from "../convex/_generated/api";
- *
- * const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
- * const auth = client({ convex, api: api.auth });
- * ```
  */
 export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs>(
   options: ClientOptions<Api>,
-): BrowserAuthClient<Api> {
+): PlatformAuthClient<Api> {
   const url =
     options.proxyPath === undefined ? (options.url ?? inferConvexUrl(options.convex)) : undefined;
   const runtime = mergeBrowserRuntime(options.runtime);
@@ -68,15 +60,75 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     ),
   });
 
-  return createClient({
+  const baseClient = createClient({
     ...options,
-    storage:
-      options.storage === undefined && options.proxyPath !== undefined ? null : options.storage,
+    storage: options.storage === undefined && options.proxyPath !== undefined ? null : options.storage,
     runtime: services.runtime,
     adapters: services.adapters,
     adapterFactories: services.adapterFactories,
     httpClient: services.httpClient,
-  }) as BrowserAuthClient<Api>;
+  });
+
+  const completeOAuth: typeof baseClient.completeOAuth = async (input) => {
+    const result = await baseClient.completeOAuth(input);
+    if (result.handled && result.cleanupUrl && services.runtime.location) {
+      const current = services.runtime.location.get();
+      const cleanupUrl = result.cleanupUrl;
+      const relativeUrl =
+        current !== null && cleanupUrl.origin === current.origin
+          ? `${cleanupUrl.pathname}${cleanupUrl.search}${cleanupUrl.hash}`
+          : cleanupUrl.toString();
+      await services.runtime.location.replace(relativeUrl);
+    }
+    return result;
+  };
+
+  const initialize: typeof baseClient.initialize = async () => {
+    await baseClient.initialize();
+    const current = services.runtime.location?.get();
+    if (current?.searchParams.has("code") && current.searchParams.has("state")) {
+      await completeOAuth(current);
+    }
+  };
+
+  const signIn: typeof baseClient.signIn = async (provider, ...args) => {
+    const params = args[0] as Record<string, unknown> | undefined;
+    // Forward through the loose internal signature — TS cannot resolve the
+    // generic params type from the wrapper's union-typed `provider` argument.
+    const result = await (baseClient.signIn as SignInImpl)(provider, params);
+    if (result.kind === "redirect") {
+      await services.runtime.oauth?.open(result.redirect);
+    }
+    return result;
+  };
+
+  const browserClient = {
+    get state() {
+      return baseClient.state;
+    },
+    initialize,
+    param: baseClient.param,
+    get invite() {
+      return baseClient.invite;
+    },
+    completeOAuth,
+    signIn,
+    signOut: baseClient.signOut,
+    onChange: baseClient.onChange,
+    destroy: baseClient.destroy,
+    ...("totp" in baseClient ? { totp: baseClient.totp } : {}),
+    ...("device" in baseClient ? { device: baseClient.device } : {}),
+    ...("passkey" in baseClient ? { passkey: baseClient.passkey } : {}),
+  } as PlatformAuthClient<Api>;
+
+  void initialize().catch((error) => {
+    logMessage("convex-auth/browser", LOG_LEVELS.ERROR, [
+      "[convex-auth] Browser client initialization failed:",
+      error,
+    ]);
+  });
+
+  return browserClient;
 }
 
 function mergeBrowserRuntime(
@@ -90,6 +142,7 @@ function mergeBrowserRuntime(
     proxy: runtime?.proxy ?? defaults.proxy,
     storage: runtime?.storage === undefined ? defaults.storage : runtime.storage,
     location: runtime?.location ?? defaults.location,
+    oauth: runtime?.oauth ?? defaults.oauth,
     sync: runtime?.sync ?? defaults.sync,
     mutex: runtime?.mutex ?? defaults.mutex,
   };

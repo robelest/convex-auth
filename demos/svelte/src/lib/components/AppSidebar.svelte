@@ -35,7 +35,6 @@
 
   let mobileOpen = $state(false);
 
-  // New project form
   let showNewProject = $state(false);
   let newProjectName = $state("");
   let newProjectIdentifier = $state("");
@@ -64,7 +63,7 @@
     isCreatingProject = true;
     newProjectError = null;
     try {
-      const result = await client.mutation(api.projects.createProject, {
+      const result = await client.mutation(api.projects.create, {
         groupId: groupId,
         name: newProjectName.trim(),
         identifier: newProjectIdentifier.trim(),

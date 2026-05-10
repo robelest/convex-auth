@@ -15,8 +15,8 @@
 
 import { Google as ArcticGoogle } from "arctic";
 
-import { envOptionalString, readConfigSync } from "../server/env";
 import { createArcticOAuthClient, createOAuthProvider } from "../server/oauth/factory";
+import { defaultOAuthRedirectUri } from "./redirect";
 
 const DEFAULT_SCOPES = ["openid", "profile", "email"];
 
@@ -26,7 +26,7 @@ export interface GoogleConfig {
   clientId: string;
   /** OAuth client secret from the Google Cloud console. */
   clientSecret: string;
-  /** Optional callback URL override. Defaults to `CUSTOM_AUTH_SITE_URL` or `CONVEX_SITE_URL` plus `/api/auth/callback/google`. */
+  /** Optional callback URL override. Defaults to the auth site URL plus `/callback/google`. */
   redirectUri?: string;
   /** Optional OAuth scopes. Defaults to `openid profile email`. */
   scopes?: string[];
@@ -55,30 +55,17 @@ export interface GoogleConfig {
  * ```
  */
 export function google(config: GoogleConfig) {
+  const scopes = config.scopes ?? DEFAULT_SCOPES;
+  const createProvider = () =>
+    new ArcticGoogle(
+      config.clientId,
+      config.clientSecret,
+      config.redirectUri ?? defaultOAuthRedirectUri("google"),
+    );
   return createOAuthProvider({
     id: "google",
-    provider: createArcticOAuthClient(
-      new ArcticGoogle(
-        config.clientId,
-        config.clientSecret,
-        config.redirectUri ?? defaultRedirectUri("google"),
-      ),
-      { pkce: "required" },
-    ),
-    scopes: config.scopes ?? DEFAULT_SCOPES,
+    provider: createArcticOAuthClient(createProvider, { pkce: "required" }),
+    scopes,
     accountLinking: config.accountLinking,
   });
-}
-
-function defaultRedirectUri(providerId: string) {
-  const rootUrl =
-    readConfigSync(envOptionalString("CUSTOM_AUTH_SITE_URL")) ??
-    readConfigSync(envOptionalString("CONVEX_SITE_URL"));
-  if (!rootUrl) {
-    throw new Error(
-      `Missing CONVEX_SITE_URL while configuring ${providerId} OAuth provider. ` +
-        "Set CONVEX_SITE_URL or pass redirectUri explicitly.",
-    );
-  }
-  return `${rootUrl}/api/auth/callback/${providerId}`;
 }

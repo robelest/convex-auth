@@ -159,16 +159,20 @@ type CookieToSerialize = {
   options: Parameters<typeof serializeCookie>[2];
 };
 
+function formDataEntries(formData: unknown): Iterable<[string, string | { name: string }]> {
+  return formData as unknown as Iterable<[string, string | { name: string }]>;
+}
+
 async function getOidcCallbackParams(request: Request) {
   const url = new URL(request.url);
   const params = new URLSearchParams(url.searchParams);
   if (request.headers.get("Content-Type")?.includes("application/x-www-form-urlencoded")) {
     const formData = await request.formData();
-    formData.forEach((value, key) => {
+    for (const [key, value] of formDataEntries(formData)) {
       if (typeof value === "string") {
         params.append(key, value);
       }
-    });
+    }
   }
   return params;
 }
@@ -189,7 +193,7 @@ type GroupListItem = {
   memberIds?: string[];
 };
 
-export type GroupHttpRuntimeDeps = {
+type GroupHttpRuntimeDeps = {
   http: HttpRouter;
   hasSSO: boolean;
   auth: AuthRuntime;
@@ -568,8 +572,21 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
     return null;
   };
 
-  const readScimJson = async (request: Request) =>
-    (await request.json()) as Record<string, unknown>;
+  const readScimJson = async (request: Request) => {
+    const contentType = request.headers.get("Content-Type") ?? "";
+    if (contentType && !contentType.includes("application/scim+json") && !contentType.includes("application/json")) {
+      throw new Error("Unsupported SCIM content type.");
+    }
+    try {
+      return (await request.json()) as Record<string, unknown>;
+    } catch {
+      throw new Error("Invalid SCIM JSON.");
+    }
+  };
+
+  const unsupportedScimPatch = (): never => {
+    throw new Error("Unsupported SCIM PATCH operation.");
+  };
 
   type ScimBody = Record<string, unknown> & {
     displayName?: string;
@@ -692,7 +709,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
       },
     });
 
-    const destinationUrl = await redirectAbsoluteUrl(config, {
+    const destinationUrl = await redirectAbsoluteUrl(ctx, config, {
       redirectTo:
         maybeRedirectTo?.redirectTo ??
         (typeof parsedResponse.relayState.redirectTo === "string"
@@ -757,6 +774,9 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         relayState: parsedMessage.relayState,
       });
     } else if (parsedMessage.hasSamlResponse) {
+      if (!parsedMessage.parsedResponse) {
+        throw convexError("INVALID_PARAMETERS", "Missing SAML logout response payload.");
+      }
       return new Response(null, { status: 204 });
     } else {
       throw convexError("INVALID_PARAMETERS", "Missing SAML logout payload.");
@@ -1048,6 +1068,21 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         if (!existingUser) {
           return scimError(404, "notFound", "User not found.");
         }
+        const existingIdentity = await getScimIdentityByConnectionAndUser(
+          state.ctx,
+          config.component.public,
+          {
+            connectionId: state.connection._id,
+            userId,
+          },
+        );
+        const existingMembership = await auth.member.inspect(state.ctx, {
+          groupId: state.connection.groupId,
+          userId,
+        });
+        if (!existingIdentity && !existingMembership.membership) {
+          return scimError(404, "notFound", "User not found.");
+        }
         const body = (await readScimJson(state.request)) as ScimBody;
         const extractedBase = extractScimProfile(state.scimConfig, body);
         const extracted =
@@ -1081,31 +1116,55 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
             patchData.phoneVerificationTime = Date.now();
           }
         } else {
-          for (const operation of Array.isArray(body.Operations) ? body.Operations : []) {
+          const operations = Array.isArray(body.Operations)
+            ? body.Operations
+            : unsupportedScimPatch();
+          for (const operation of operations) {
+            const op = typeof operation.op === "string" ? operation.op.toLowerCase() : "replace";
+            if (op !== "replace" && op !== "add") {
+              unsupportedScimPatch();
+            }
+            if (operation.path === undefined && typeof operation.value === "object" && operation.value !== null) {
+              const value = operation.value as Record<string, unknown>;
+              if (typeof value.active === "boolean") nextActive = value.active;
+              if (typeof value.displayName === "string") patchData.name = value.displayName;
+              if (typeof value.userName === "string") {
+                patchData.email = value.userName;
+                patchData.emailVerificationTime = Date.now();
+              }
+              continue;
+            }
             if (operation.path === "active") {
               nextActive = typeof operation.value === "boolean" ? operation.value : undefined;
+              continue;
             }
             if (operation.path === "displayName" || operation.path === "name.formatted") {
               patchData.name = operation.value;
+              continue;
             }
             if (operation.path === "name.givenName") {
               patchData.firstName = operation.value;
+              continue;
             }
             if (operation.path === "name.familyName") {
               patchData.lastName = operation.value;
+              continue;
             }
             if (operation.path === "userName" || operation.path === "emails.value") {
               patchData.email = operation.value;
               if (typeof operation.value === "string") {
                 patchData.emailVerificationTime = Date.now();
               }
+              continue;
             }
             if (operation.path === "phoneNumbers.value") {
               patchData.phone = operation.value;
               if (typeof operation.value === "string") {
                 patchData.phoneVerificationTime = Date.now();
               }
+              continue;
             }
+            unsupportedScimPatch();
           }
         }
         const nextPatchData = applyUserProvisioningPatch({
@@ -1120,10 +1179,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
             data: nextPatchData,
           });
         }
-        const resolution = await auth.member.inspect(state.ctx, {
-          groupId: state.connection.groupId,
-          userId,
-        });
+        const resolution = existingMembership;
         if (resolution.membership) {
           await auth.member.update(state.ctx, resolution.membership._id, {
             roleIds: resolveProvisionedRoleIds({
@@ -1139,15 +1195,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
           connectionId: state.connection._id,
           groupId: state.connection.groupId,
           resourceType: "user",
-          externalId:
-            externalId !== undefined
-              ? externalId
-              : ((
-                  await getScimIdentityByConnectionAndUser(state.ctx, config.component.public, {
-                    connectionId: state.connection._id,
-                    userId,
-                  })
-                )?.externalId ?? userId),
+          externalId: externalId ?? existingIdentity?.externalId ?? userId,
           userId,
           active: provisionProfile.active !== false && nextActive !== false,
           raw: body,
@@ -1179,13 +1227,6 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         const missing = requireScimResourceId(state.parsedPath.resourceId, "User");
         if (missing) return missing;
         const userId = state.parsedPath.resourceId!;
-        const resolution = await auth.member.inspect(state.ctx, {
-          groupId: state.connection.groupId,
-          userId,
-        });
-        if (resolution.membership) {
-          await auth.member.delete(state.ctx, resolution.membership._id);
-        }
         const identity = await getScimIdentityByConnectionAndUser(
           state.ctx,
           config.component.public,
@@ -1194,22 +1235,30 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
             userId,
           },
         );
-        if (identity) {
-          if (state.policy.provisioning.deprovision.mode === "hard") {
-            await deleteScimIdentity(state.ctx, config.component.public, identity._id);
-          } else {
-            await upsertScimIdentity(state.ctx, config.component.public, {
-              connectionId: identity.connectionId,
-              groupId: identity.groupId,
-              resourceType: identity.resourceType,
-              externalId: identity.externalId,
-              userId: identity.userId,
-              mappedGroupId: identity.mappedGroupId,
-              active: false,
-              raw: identity.raw,
-              lastProvisionedAt: Date.now(),
-            });
-          }
+        if (!identity) {
+          return scimError(404, "notFound", "User not found.");
+        }
+        const resolution = await auth.member.inspect(state.ctx, {
+          groupId: state.connection.groupId,
+          userId,
+        });
+        if (resolution.membership) {
+          await auth.member.delete(state.ctx, resolution.membership._id);
+        }
+        if (state.policy.provisioning.deprovision.mode === "hard") {
+          await deleteScimIdentity(state.ctx, config.component.public, identity._id);
+        } else {
+          await upsertScimIdentity(state.ctx, config.component.public, {
+            connectionId: identity.connectionId,
+            groupId: identity.groupId,
+            resourceType: identity.resourceType,
+            externalId: identity.externalId,
+            userId: identity.userId,
+            mappedGroupId: identity.mappedGroupId,
+            active: false,
+            raw: identity.raw,
+            lastProvisionedAt: Date.now(),
+          });
         }
         await state.recordScimEvent("group.sso.scim.user.deleted", true, "user", userId);
         return new Response(null, { status: 204 });
@@ -1377,14 +1426,16 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         }
         for (const userId of nextUserIds.values()) {
           if (!currentByUserId.has(userId)) {
-            try {
-              await auth.member.create(state.ctx, {
-                groupId,
-                userId,
-                roleIds: provisionedRoleIds,
-                status: "active",
-              });
-            } catch {}
+            const user = await auth.user.get(state.ctx, userId);
+            if (!user) {
+              return scimError(400, "invalidValue", `Group member user not found: ${userId}`);
+            }
+            await auth.member.create(state.ctx, {
+              groupId,
+              userId,
+              roleIds: provisionedRoleIds,
+              status: "active",
+            });
           }
         }
         await state.recordScimEvent(
@@ -1417,19 +1468,46 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         const missing = requireScimResourceId(state.parsedPath.resourceId, "Group");
         if (missing) return missing;
         const groupId = state.parsedPath.resourceId!;
-        const body = await readScimJson(state.request);
-        for (const operation of Array.isArray(body.Operations) ? body.Operations : []) {
+        const identity = await getScimIdentityByMappedGroup(
+          state.ctx,
+          config.component.public,
+          groupId,
+        );
+        if (!identity || identity.connectionId !== state.connection._id) {
+          return scimError(404, "notFound", "Group not found.");
+        }
+        const body = (await readScimJson(state.request)) as ScimBody;
+        const operations = Array.isArray(body.Operations)
+          ? body.Operations
+          : unsupportedScimPatch();
+        for (const operation of operations) {
+          const op = typeof operation.op === "string" ? operation.op.toLowerCase() : "replace";
+          if (operation.path === undefined && op === "replace" && typeof operation.value === "object" && operation.value !== null) {
+            const value = operation.value as Record<string, unknown>;
+            if (typeof value.displayName === "string") {
+              await auth.group.update(state.ctx, groupId, { name: value.displayName });
+            }
+            continue;
+          }
           if (operation.path === "displayName") {
+            if (op !== "replace" && op !== "add") unsupportedScimPatch();
             await auth.group.update(state.ctx, groupId, {
               name: operation.value,
             });
+            continue;
           }
-          if (operation.path === "members" && operation.op === "add") {
+          if (operation.path === "members" && op === "add") {
             for (const member of Array.isArray(operation.value) ? operation.value : []) {
-              try {
+              const userId = String(member.value);
+              const user = await auth.user.get(state.ctx, userId);
+              if (!user) {
+                return scimError(400, "invalidValue", `Group member user not found: ${userId}`);
+              }
+              const existing = await auth.member.inspect(state.ctx, { groupId, userId });
+              if (!existing.membership) {
                 await auth.member.create(state.ctx, {
                   groupId,
-                  userId: String(member.value),
+                  userId,
                   roleIds: resolveProvisionedRoleIds({
                     policy: state.policy as any,
                     groups: typeof body.displayName === "string" ? [body.displayName] : undefined,
@@ -1437,10 +1515,11 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
                   }),
                   status: "active",
                 });
-              } catch {}
+              }
             }
+            continue;
           }
-          if (operation.path === "members" && operation.op === "replace") {
+          if (operation.path === "members" && op === "replace") {
             const currentMembers = (
               await auth.member.list(state.ctx, {
                 where: { groupId, status: "active" },
@@ -1460,24 +1539,27 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
             }
             for (const userId of nextUserIds.values()) {
               if (!currentUserIds.has(userId)) {
-                try {
-                  await auth.member.create(state.ctx, {
-                    groupId,
-                    userId,
-                    roleIds: resolveProvisionedRoleIds({
-                      policy: state.policy as any,
-                      groups: typeof body.displayName === "string" ? [body.displayName] : undefined,
-                      roles: pickStringArray((body as Record<string, unknown>).roles),
-                    }),
-                    status: "active",
-                  });
-                } catch {}
+                const user = await auth.user.get(state.ctx, userId);
+                if (!user) {
+                  return scimError(400, "invalidValue", `Group member user not found: ${userId}`);
+                }
+                await auth.member.create(state.ctx, {
+                  groupId,
+                  userId,
+                  roleIds: resolveProvisionedRoleIds({
+                    policy: state.policy as any,
+                    groups: typeof body.displayName === "string" ? [body.displayName] : undefined,
+                    roles: pickStringArray((body as Record<string, unknown>).roles),
+                  }),
+                  status: "active",
+                });
               }
             }
+            continue;
           }
           if (
             typeof operation.path === "string" &&
-            operation.op === "remove" &&
+            op === "remove" &&
             operation.path.startsWith("members[")
           ) {
             const match = operation.path.match(/^members\[value eq "([^"]+)"\]$/);
@@ -1491,7 +1573,9 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
                 await auth.member.delete(state.ctx, resolution.membership._id);
               }
             }
+            continue;
           }
+          unsupportedScimPatch();
         }
         await state.recordScimEvent("group.sso.scim.group.updated", true, "group", groupId);
         const group = await auth.group.get(state.ctx, groupId);
@@ -1520,15 +1604,16 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         const missing = requireScimResourceId(state.parsedPath.resourceId, "Group");
         if (missing) return missing;
         const groupId = state.parsedPath.resourceId!;
-        await auth.group.delete(state.ctx, groupId);
         const identity = await getScimIdentityByMappedGroup(
           state.ctx,
           config.component.public,
           groupId,
         );
-        if (identity) {
-          await deleteScimIdentity(state.ctx, config.component.public, identity._id);
+        if (!identity || identity.connectionId !== state.connection._id) {
+          return scimError(404, "notFound", "Group not found.");
         }
+        await auth.group.delete(state.ctx, groupId);
+        await deleteScimIdentity(state.ctx, config.component.public, identity._id);
         await state.recordScimEvent("group.sso.scim.group.deleted", true, "group", groupId);
         return new Response(null, { status: 204 });
       };
@@ -1594,6 +1679,18 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
       if (error instanceof Error && error.message === "Unsupported SCIM filter.") {
         return scimError(400, "invalidFilter", error.message);
       }
+      if (error instanceof Error && error.message === "Invalid SCIM pagination.") {
+        return scimError(400, "invalidValue", error.message);
+      }
+      if (error instanceof Error && error.message === "Invalid SCIM JSON.") {
+        return scimError(400, "invalidSyntax", error.message);
+      }
+      if (error instanceof Error && error.message === "Unsupported SCIM content type.") {
+        return scimError(415, "invalidSyntax", error.message);
+      }
+      if (error instanceof Error && error.message === "Unsupported SCIM PATCH operation.") {
+        return scimError(400, "invalidSyntax", error.message);
+      }
       if (
         error instanceof ConvexError &&
         typeof error.data === "object" &&
@@ -1603,7 +1700,15 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
       ) {
         const code = error.data.code as string;
         const status = code === "MISSING_BEARER_TOKEN" || code === "INVALID_API_KEY" ? 401 : 400;
-        return scimError(status, code, error.data.message);
+        const response = scimError(
+          status,
+          status === 401 ? "invalidValue" : code,
+          error.data.message,
+        );
+        if (status === 401) {
+          response.headers.set("WWW-Authenticate", "Bearer");
+        }
+        return response;
       }
       throw error;
     }
@@ -1614,7 +1719,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
     request: Request,
     connectionId: string,
   ) => {
-    const url = new URL(request.url);
+    const params = await getOidcCallbackParams(request);
     const { connection, oidc } = await loadConnectionOidcOrThrow(ctx, connectionId);
     const { providerId, provider, oauthConfig } = await createGroupConnectionOidcRuntime({
       rootUrl: requireEnv("CONVEX_SITE_URL"),
@@ -1624,13 +1729,13 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
     });
     const cookies = getCookies(request);
     const maybeRedirectTo = useRedirectToParam(providerId, cookies);
-    const destinationUrl = await redirectAbsoluteUrl(config, {
+    const destinationUrl = await redirectAbsoluteUrl(ctx, config, {
       redirectTo: maybeRedirectTo?.redirectTo,
     });
     const result = await handleOAuthCallback(
       providerId,
       { ...oauthConfig, provider },
-      Object.fromEntries(url.searchParams.entries()),
+      Object.fromEntries(params.entries()),
       cookies,
     );
     const extraFields =
@@ -1824,8 +1929,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
     handleOidcSharedCallback: async (ctx, request) => {
       const url = new URL(request.url);
       const params = await getOidcCallbackParams(request);
-      const { connectionId, state } = decodeGroupOidcState(params.get("state"));
-      params.set("state", state);
+      const { connectionId } = decodeGroupOidcState(params.get("state"));
       url.search = params.toString();
       const normalizedRequest = new Request(url, request);
       return await handleOidcCallbackForConnection(ctx, normalizedRequest, connectionId);

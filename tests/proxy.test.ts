@@ -16,7 +16,7 @@ async function waitForSetAuthCalls(
   }
 }
 
-function createConvexMock() {
+function createConvexMock(): any {
   const authRegistrations: Array<{
     fetchToken: (args: { forceRefreshToken: boolean }) => Promise<string | null | undefined>;
     onChange?: (isAuthenticated: boolean) => void;
@@ -24,7 +24,7 @@ function createConvexMock() {
   let authConfirmed = false;
 
   return {
-    action: vi.fn(async () => null),
+    action: vi.fn(async (..._args: any[]) => null as any),
     setAuth: vi.fn((fetchToken, onChange) => {
       authRegistrations.push({ fetchToken, onChange });
     }),
@@ -39,6 +39,22 @@ function createConvexMock() {
     triggerAuthChange(isAuthenticated: boolean) {
       authConfirmed = isAuthenticated;
       authRegistrations[authRegistrations.length - 1]?.onChange?.(isAuthenticated);
+    },
+  };
+}
+
+function createMemoryStorage() {
+  const values = new Map<string, string>();
+  return {
+    values,
+    async getItem(key: string) {
+      return values.get(key) ?? null;
+    },
+    async setItem(key: string, value: string) {
+      values.set(key, value);
+    },
+    async removeItem(key: string) {
+      values.delete(key);
     },
   };
 }
@@ -489,7 +505,9 @@ test("browser client preserves proxy defaults when runtime is partially overridd
       location: {
         get: () => null,
         replace: () => {},
-        redirect: () => {},
+      },
+      oauth: {
+        open: () => {},
       },
     },
   });
@@ -505,6 +523,89 @@ test("browser client preserves proxy defaults when runtime is partially overridd
 
   await expect(signInPromise).resolves.toMatchObject({ kind: "signedIn" });
   expect(fetchMock).toHaveBeenCalledTimes(1);
+
+  auth.destroy();
+});
+
+test("headless client completes OAuth manually and returns cleanup URL", async () => {
+  const storage = createMemoryStorage();
+  const convex = createConvexMock();
+  convex.action = vi.fn(async (_action: unknown, args: Record<string, unknown>) => {
+    if (args.provider === "google") {
+      return {
+        kind: "redirect",
+        redirect: "https://example.com/oauth/google",
+        verifier: "oauth-verifier",
+      };
+    }
+
+    if ((args.params as { code?: string } | undefined)?.code === "oauth-code") {
+      expect(args.verifier).toBe("oauth-verifier");
+      return {
+        kind: "signedIn",
+        session: {
+          token: "fresh-token",
+          refreshToken: "fresh-refresh-token",
+        },
+      };
+    }
+
+    throw new Error(`Unexpected action args: ${JSON.stringify(args)}`);
+  });
+
+  const auth = client({
+    convex,
+    api: { signIn: {} as never, signOut: {} as never },
+    url: "https://example.convex.cloud",
+    storage,
+  });
+
+  const redirect = await auth.signIn("google");
+  expect(redirect).toMatchObject({ kind: "redirect" });
+
+  const completionPromise = auth.completeOAuth(new URL("myapp://auth/callback?code=oauth-code"));
+  await waitForSetAuthCalls(convex, 2);
+  convex.triggerAuthChange(true);
+
+  await expect(completionPromise).resolves.toMatchObject({
+    handled: true,
+    cleanupUrl: new URL("myapp://auth/callback"),
+  });
+  expect(Array.from(storage.values.values())).not.toContain("oauth-verifier");
+
+  auth.destroy();
+});
+
+test("browser client opens OAuth redirects via runtime oauth launcher", async () => {
+  vi.stubGlobal("window", {
+    location: { origin: "https://example.com", href: "https://example.com" },
+  });
+
+  const convex = createConvexMock();
+  convex.action = vi.fn(async () => ({
+    kind: "redirect",
+    redirect: "https://example.com/oauth/google",
+    verifier: "oauth-verifier",
+  }));
+  const open = vi.fn(async () => {});
+
+  const auth = browserClient({
+    convex,
+    api: { signIn: {} as never, signOut: {} as never },
+    url: "https://example.convex.cloud",
+    runtime: {
+      location: {
+        get: () => null,
+        replace: () => {},
+      },
+      oauth: { open },
+      storage: createMemoryStorage(),
+      sync: { subscribe: () => null },
+    },
+  });
+
+  await expect(auth.signIn("google")).resolves.toMatchObject({ kind: "redirect" });
+  expect(open).toHaveBeenCalledWith(new URL("https://example.com/oauth/google"));
 
   auth.destroy();
 });

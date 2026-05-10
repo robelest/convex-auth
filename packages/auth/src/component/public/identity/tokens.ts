@@ -237,11 +237,11 @@ export const refreshTokenExchange = mutation({
     };
 
     const refreshTokenDoc = await ctx.db.get("RefreshToken", args.refreshTokenId);
-    if (
-      refreshTokenDoc === null ||
-      refreshTokenDoc.expirationTime < args.now ||
-      refreshTokenDoc.sessionId !== args.sessionId
-    ) {
+    if (refreshTokenDoc === null || refreshTokenDoc.sessionId !== args.sessionId) {
+      return null;
+    }
+
+    if (refreshTokenDoc.expirationTime < args.now) {
       await cleanupSessionArtifacts();
       return null;
     }

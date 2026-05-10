@@ -95,9 +95,9 @@ export function getGroupSamlUrls(opts: {
   source: GroupSamlSource;
 }): GroupSamlUrls {
   const root = opts.rootUrl.replace(/\/$/, "");
-  const metadataBase = `${root}/api/auth/connections/${opts.source.id}/saml/metadata`;
-  const acsBase = `${root}/api/auth/connections/${opts.source.id}/saml/acs`;
-  const sloBase = `${root}/api/auth/connections/${opts.source.id}/saml/slo`;
+  const metadataBase = `${root}/connections/${opts.source.id}/saml/metadata`;
+  const acsBase = `${root}/connections/${opts.source.id}/saml/acs`;
+  const sloBase = `${root}/connections/${opts.source.id}/saml/slo`;
   return {
     metadataUrl: metadataBase,
     acsUrl: acsBase,
@@ -114,7 +114,7 @@ export function getGroupOidcUrls(opts: {
   const root = opts.rootUrl.replace(/\/$/, "");
   const callbackUrl = (() => {
     if (typeof opts.sharedRedirectURI !== "string") {
-      return `${root}/api/auth/connections/${opts.connectionId}/oidc/callback`;
+      return `${root}/connections/${opts.connectionId}/oidc/callback`;
     }
     if (/^https?:\/\//.test(opts.sharedRedirectURI)) {
       return opts.sharedRedirectURI;
@@ -122,7 +122,7 @@ export function getGroupOidcUrls(opts: {
     return `${root}${opts.sharedRedirectURI.startsWith("/") ? "" : "/"}${opts.sharedRedirectURI}`;
   })();
   return {
-    signInUrl: `${root}/api/auth/connections/${opts.connectionId}/oidc/signin`,
+    signInUrl: `${root}/connections/${opts.connectionId}/oidc/signin`,
     callbackUrl,
   };
 }

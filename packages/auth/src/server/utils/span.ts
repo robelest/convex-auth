@@ -61,29 +61,6 @@ export async function withSpan<T>(
 }
 
 /**
- * Synchronous version of {@link withSpan} for non-async operations.
- */
-export function withSpanSync<T>(name: string, attributes: Attributes, fn: () => T): T {
-  if (!isTracingActive()) {
-    return fn();
-  }
-  return tracer.startActiveSpan(name, { attributes }, (span) => {
-    try {
-      const result = fn();
-      return result;
-    } catch (error) {
-      span.setStatus({ code: SpanStatusCode.ERROR });
-      if (error instanceof Error) {
-        span.recordException(error);
-      }
-      throw error;
-    } finally {
-      span.end();
-    }
-  });
-}
-
-/**
  * Attach attributes to the current active span when tracing is enabled.
  */
 export function setActiveSpanAttributes(attributes: Attributes): void {

@@ -20,7 +20,7 @@
     errorMessage = null;
 
     try {
-      const result = await client.mutation(api.groups.createGroup, { name });
+      const result = await client.mutation(api.groups.create, { name });
       if ("ok" in result && !result.ok && "message" in result) {
         errorMessage = typeof result.message === "string" ? result.message : "Something went wrong.";
       } else if ("groupId" in result) {

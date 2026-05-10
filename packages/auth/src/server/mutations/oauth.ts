@@ -60,14 +60,55 @@ function normalizeAccountExtend(
   };
 }
 
-type ReturnType = string;
+async function jitProvisionMembership(
+  ctx: MutationCtx,
+  config: Provider.Config,
+  connectionPolicy: ReturnType<typeof normalizeGroupConnectionPolicy> | null,
+  connection: { groupId: string } | null,
+  userId: string,
+  profile: AuthProfile,
+) {
+  if (connectionPolicy?.provisioning.jit.mode !== "createUserAndMembership") return;
+  const groupId = connection?.groupId;
+  if (!groupId) return;
+
+  const provisionedRoleIds = resolveProvisionedRoleIds({
+    policy: connectionPolicy,
+    groups: Array.isArray((profile as Record<string, unknown>).groups)
+      ? ((profile as Record<string, unknown>).groups as string[])
+      : undefined,
+    roles: Array.isArray((profile as Record<string, unknown>).roles)
+      ? ((profile as Record<string, unknown>).roles as string[])
+      : undefined,
+  });
+
+  const existingMembership = await ctx.runQuery(
+    config.component.public.memberGetByGroupAndUser,
+    { userId, groupId },
+  );
+  if (existingMembership === null) {
+    await ctx.runMutation(config.component.public.memberAdd, {
+      groupId,
+      userId,
+      roleIds: provisionedRoleIds,
+      status: "active",
+    });
+  } else if (provisionedRoleIds.length > 0) {
+    await ctx.runMutation(config.component.public.memberUpdate, {
+      memberId: existingMembership._id,
+      data: { roleIds: provisionedRoleIds },
+    });
+  }
+}
+
+type OAuthReturnType = string;
 
 export async function userOAuthImpl(
   ctx: MutationCtx,
   args: Infer<typeof userOAuthArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
-): Promise<ReturnType> {
+): Promise<OAuthReturnType> {
   log("DEBUG", "userOAuthImpl args:", args);
   const { profile, provider, providerAccountId, signature, accountExtend } = args;
   const typedProfile = profile as AuthProfile;
@@ -167,52 +208,11 @@ export async function userOAuthImpl(
         : undefined,
   );
 
-  if (
-    connectionId !== null &&
-    connectionPolicy?.provisioning.jit.mode === "createUserAndMembership"
-  ) {
-    const account = await db.accounts.getById(accountId);
-    const userId = account?.userId;
-    if (userId) {
-      const groupId = connection?.groupId;
-      if (groupId) {
-        const provisionedRoleIds = resolveProvisionedRoleIds({
-          policy: connectionPolicy,
-          groups: Array.isArray((typedProfile as Record<string, unknown>).groups)
-            ? ((typedProfile as Record<string, unknown>).groups as string[])
-            : undefined,
-          roles: Array.isArray((typedProfile as Record<string, unknown>).roles)
-            ? ((typedProfile as Record<string, unknown>).roles as string[])
-            : undefined,
-        });
-        const existingMembership = await ctx.runQuery(
-          config.component.public.memberGetByGroupAndUser,
-          {
-            userId,
-            groupId,
-          },
-        );
-        if (existingMembership === null) {
-          await ctx.runMutation(config.component.public.memberAdd, {
-            groupId,
-            userId,
-            roleIds: provisionedRoleIds,
-            status: "active",
-          });
-        } else if (provisionedRoleIds.length > 0) {
-          await ctx.runMutation(config.component.public.memberUpdate, {
-            memberId: existingMembership._id,
-            data: { roleIds: provisionedRoleIds },
-          });
-        }
-      }
-    }
-  }
-
   if (connectionId !== null) {
     const account = await db.accounts.getById(accountId);
     const userId = account?.userId;
     if (userId) {
+      await jitProvisionMembership(ctx, config, connectionPolicy, connection, userId, typedProfile);
       if (config.sso?.hooks?.afterProvision) {
         await config.sso.hooks.afterProvision({
           protocol: connectionProtocol ?? "oidc",
@@ -243,11 +243,11 @@ export async function userOAuthImpl(
 export const callUserOAuth = async <DataModel extends GenericDataModel>(
   ctx: GenericActionCtx<DataModel>,
   args: Infer<typeof userOAuthArgs>,
-): Promise<ReturnType> => {
+): Promise<OAuthReturnType> => {
   return ctx.runMutation(AUTH_STORE_REF, {
     args: {
       type: "userOAuth",
       ...args,
     },
-  }) as Promise<ReturnType>;
+  }) as Promise<OAuthReturnType>;
 };

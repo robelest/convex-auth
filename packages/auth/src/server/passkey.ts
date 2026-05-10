@@ -42,8 +42,8 @@ import type {
   AuthTokens,
   SignInPasskeyOptionsResult,
   SignInSessionResult,
-} from "../shared/authResults";
-import { ConvexError } from "convex/values";
+} from "../shared/results";
+import { ConvexError, type GenericId } from "convex/values";
 
 import { authFlowError } from "../shared/errors";
 import { authDb } from "./db";
@@ -84,25 +84,19 @@ type PasskeyResult =
   | SignInSessionResult<SessionInfo<AuthTokens | null> | null>
   | SignInPasskeyOptionsResult;
 
-const PASSKEY_FLOW = {
-  registerOptions: "registerOptions",
-  registerVerify: "registerVerify",
-  authOptions: "authOptions",
-  authVerify: "authVerify",
-} as const;
-
-const PASSKEY_FLOWS = [
-  PASSKEY_FLOW.registerOptions,
-  PASSKEY_FLOW.registerVerify,
-  PASSKEY_FLOW.authOptions,
-  PASSKEY_FLOW.authVerify,
-] as const;
-
-type PasskeyDispatch =
-  | { flow: typeof PASSKEY_FLOW.registerOptions }
-  | { flow: typeof PASSKEY_FLOW.registerVerify }
-  | { flow: typeof PASSKEY_FLOW.authOptions }
-  | { flow: typeof PASSKEY_FLOW.authVerify };
+/**
+ * Passkey provider has three single-word flows:
+ *
+ * - `register` — issue a WebAuthn registration challenge (phase 1).
+ * - `signIn`   — issue a WebAuthn authentication challenge (phase 1).
+ * - `verify`   — consume the WebAuthn response (phase 2). The server
+ *                auto-detects whether this completes a registration
+ *                (`attestationObject` present) or a sign-in
+ *                (`signature` + `credentialId` present).
+ */
+const PASSKEY_FLOWS = ["register", "signIn", "verify"] as const;
+type PasskeyFlow = (typeof PASSKEY_FLOWS)[number];
+type PasskeyDispatch = { flow: PasskeyFlow };
 
 type PasskeyParams = {
   userName?: string;
@@ -241,12 +235,12 @@ function verifyUserFlags<T extends { userPresent: boolean; userVerified: boolean
 
 function resolvePasskeyDispatch(params: Record<string, unknown>): PasskeyDispatch {
   const flow = params.flow;
-  if (typeof flow === "string" && PASSKEY_FLOWS.includes(flow as never)) {
-    return { flow: flow as (typeof PASSKEY_FLOWS)[number] };
+  if (typeof flow === "string" && (PASSKEY_FLOWS as readonly string[]).includes(flow)) {
+    return { flow: flow as PasskeyFlow };
   }
   throw convexError(
     "PASSKEY_MISSING_FLOW",
-    "Missing `flow` parameter. Expected one of: registerOptions, registerVerify, authOptions, authVerify",
+    "Missing `flow` parameter. Expected one of: " + PASSKEY_FLOWS.join(", "),
   );
 }
 
@@ -347,8 +341,169 @@ export async function handlePasskeyFx(
   const params = (args.params ?? {}) as PasskeyParams;
   const dispatch = resolvePasskeyDispatch(params);
 
-  const flowHandlers: Record<string, () => Promise<PasskeyResult>> = {
-    registerOptions: async () => {
+  const handleRegisterVerify = async (): Promise<PasskeyResult> => {
+    const userId = await requireAuthenticatedUserId(ctx);
+    const rp = resolveRpOptions(provider);
+    const verifier = requirePasskeyVerifier(args.verifier);
+
+    const clientDataJSON = decodeBase64urlIgnorePadding(
+      requireStringParam(params.clientDataJSON, "clientDataJSON"),
+    );
+    const clientData = parseClientDataJSON(clientDataJSON);
+    verifyClientDataType(clientData, ClientDataType.Create, "webauthn.create");
+    verifyOrigin(clientData, rp);
+    await verifyAndConsumeChallenge(clientData, ctx, verifier);
+
+    const attestationObjectBytes = decodeBase64urlIgnorePadding(
+      requireStringParam(params.attestationObject, "attestationObject"),
+    );
+    const attestation = parseAttestationObject(attestationObjectBytes);
+    const authData = attestation.authenticatorData;
+    verifyRpId(authData, rp.rpId);
+    verifyUserFlags(authData, rp);
+
+    if (authData.credential == null) {
+      throw convexError("PASSKEY_NO_CREDENTIAL", "No credential in attestation.");
+    }
+
+    const credential = authData.credential;
+    const credentialId = encodeBase64urlNoPadding(credential.id);
+    const publicKey = credential.publicKey;
+    const algorithm = publicKey.isAlgorithmDefined()
+      ? publicKey.algorithm()
+      : publicKey.type() === COSEKeyType.EC2
+        ? coseAlgorithmES256
+        : publicKey.type() === COSEKeyType.RSA
+          ? coseAlgorithmRS256
+          : coseAlgorithmES256;
+    const publicKeyBytes = resolveRegistrationPublicKeyBytes(publicKey, algorithm);
+
+    try {
+      const deviceType = params.deviceType ?? "single-device";
+      const backedUp = params.backedUp ?? false;
+      const db = authDb(ctx, ctx.auth.config);
+
+      await db.accounts.create({
+        userId,
+        provider: provider.id,
+        providerAccountId: credentialId,
+      });
+
+      const passkeyId = await mutatePasskeyInsert(ctx, {
+        userId,
+        credentialId,
+        publicKey: publicKeyBytes.buffer.slice(
+          publicKeyBytes.byteOffset,
+          publicKeyBytes.byteOffset + publicKeyBytes.byteLength,
+        ),
+        algorithm,
+        counter: authData.signatureCounter,
+        transports: params.transports,
+        deviceType,
+        backedUp,
+        name: params.passkeyName,
+        createdAt: Date.now(),
+      });
+      await ctx.auth.config.callbacks?.after?.(ctx, {
+        kind: "passkeyAdded",
+        userId: userId as GenericId<"User">,
+        passkeyId: passkeyId as GenericId<"Passkey">,
+        credentialId,
+      });
+    } catch {
+      throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+    }
+
+    let signInResult;
+    try {
+      signInResult = await callSignIn(ctx, {
+        userId,
+        generateTokens: true,
+      });
+    } catch (error) {
+      throw asConvexError(error, "INTERNAL_ERROR", "Failed to finalize passkey registration.");
+    }
+    return { kind: "signedIn" as const, session: signInResult };
+  };
+
+  const handleAuthVerify = async (): Promise<PasskeyResult> => {
+    const rp = resolveRpOptions(provider);
+    const verifier = requirePasskeyVerifier(args.verifier);
+
+    const clientDataJSON = decodeBase64urlIgnorePadding(
+      requireStringParam(params.clientDataJSON, "clientDataJSON"),
+    );
+    const clientData = parseClientDataJSON(clientDataJSON);
+    verifyClientDataType(clientData, ClientDataType.Get, "webauthn.get");
+    verifyOrigin(clientData, rp);
+    await verifyAndConsumeChallenge(clientData, ctx, verifier);
+
+    const credentialId = params.credentialId;
+    if (credentialId == null) {
+      throw convexError("PASSKEY_UNKNOWN_CREDENTIAL", "Missing credential ID");
+    }
+
+    let passkey;
+    try {
+      passkey = await queryPasskeyByCredentialId(ctx, credentialId);
+    } catch {
+      throw convexError("PASSKEY_UNKNOWN_CREDENTIAL", "Unknown passkey credential.");
+    }
+    if (passkey === null) {
+      throw convexError("PASSKEY_UNKNOWN_CREDENTIAL", "Unknown credential");
+    }
+
+    const authenticatorDataBytes = decodeBase64urlIgnorePadding(
+      requireStringParam(params.authenticatorData, "authenticatorData"),
+    );
+    const authenticatorData = parseAuthenticatorData(authenticatorDataBytes);
+    const signatureBytes = decodeBase64urlIgnorePadding(
+      requireStringParam(params.signature, "signature"),
+    );
+    const signatureMessage = createAssertionSignatureMessage(authenticatorDataBytes, clientDataJSON);
+    const messageHash = sha256(signatureMessage);
+
+    verifyRpId(authenticatorData, rp.rpId);
+    verifyUserFlags(authenticatorData, rp);
+    verifyAssertionSignature(passkey, signatureBytes, messageHash);
+
+    if (
+      passkey.counter !== 0 &&
+      authenticatorData.signatureCounter !== 0 &&
+      authenticatorData.signatureCounter <= passkey.counter
+    ) {
+      throw convexError(
+        "PASSKEY_COUNTER_ERROR",
+        "Authenticator counter did not increase — possible credential cloning detected.",
+      );
+    }
+
+    try {
+      await mutatePasskeyUpdateCounter(
+        ctx,
+        passkey._id,
+        authenticatorData.signatureCounter,
+        Date.now(),
+      );
+    } catch (error) {
+      throw asConvexError(error, "INTERNAL_ERROR", "Failed to update passkey counter.");
+    }
+
+    let signInResult;
+    try {
+      signInResult = await callSignIn(ctx, {
+        userId: passkey.userId,
+        generateTokens: true,
+      });
+    } catch (error) {
+      throw asConvexError(error, "INTERNAL_ERROR", "Failed to finalize passkey sign-in.");
+    }
+
+    return { kind: "signedIn" as const, session: signInResult };
+  };
+
+  const flowHandlers: Record<PasskeyFlow, () => Promise<PasskeyResult>> = {
+    register: async () => {
       const userId = await requireAuthenticatedUserId(ctx);
       const rp = resolveRpOptions(provider);
 
@@ -417,86 +572,7 @@ export async function handlePasskeyFx(
       };
     },
 
-    registerVerify: async () => {
-      const userId = await requireAuthenticatedUserId(ctx);
-      const rp = resolveRpOptions(provider);
-      const verifier = requirePasskeyVerifier(args.verifier);
-
-      const clientDataJSON = decodeBase64urlIgnorePadding(
-        requireStringParam(params.clientDataJSON, "clientDataJSON"),
-      );
-      const clientData = parseClientDataJSON(clientDataJSON);
-      verifyClientDataType(clientData, ClientDataType.Create, "webauthn.create");
-      verifyOrigin(clientData, rp);
-      await verifyAndConsumeChallenge(clientData, ctx, verifier);
-
-      const attestationObjectBytes = decodeBase64urlIgnorePadding(
-        requireStringParam(params.attestationObject, "attestationObject"),
-      );
-      const attestation = parseAttestationObject(attestationObjectBytes);
-      const authData = attestation.authenticatorData;
-      verifyRpId(authData, rp.rpId);
-      verifyUserFlags(authData, rp);
-
-      if (authData.credential == null) {
-        throw convexError("PASSKEY_NO_CREDENTIAL", "No credential in attestation.");
-      }
-
-      const credential = authData.credential;
-      const credentialId = encodeBase64urlNoPadding(credential.id);
-      const publicKey = credential.publicKey;
-      const algorithm = publicKey.isAlgorithmDefined()
-        ? publicKey.algorithm()
-        : publicKey.type() === COSEKeyType.EC2
-          ? coseAlgorithmES256
-          : publicKey.type() === COSEKeyType.RSA
-            ? coseAlgorithmRS256
-            : coseAlgorithmES256;
-      const publicKeyBytes = resolveRegistrationPublicKeyBytes(publicKey, algorithm);
-
-      try {
-        const deviceType = params.deviceType ?? "single-device";
-        const backedUp = params.backedUp ?? false;
-        const db = authDb(ctx, ctx.auth.config);
-
-        await db.accounts.create({
-          userId,
-          provider: provider.id,
-          providerAccountId: credentialId,
-        });
-
-        await mutatePasskeyInsert(ctx, {
-          userId,
-          credentialId,
-          publicKey: publicKeyBytes.buffer.slice(
-            publicKeyBytes.byteOffset,
-            publicKeyBytes.byteOffset + publicKeyBytes.byteLength,
-          ),
-          algorithm,
-          counter: authData.signatureCounter,
-          transports: params.transports,
-          deviceType,
-          backedUp,
-          name: params.passkeyName,
-          createdAt: Date.now(),
-        });
-      } catch {
-        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
-      }
-
-      let signInResult;
-      try {
-        signInResult = await callSignIn(ctx, {
-          userId,
-          generateTokens: true,
-        });
-      } catch (error) {
-        throw asConvexError(error, "INTERNAL_ERROR", "Failed to finalize passkey registration.");
-      }
-      return { kind: "signedIn" as const, session: signInResult };
-    },
-
-    authOptions: async () => {
+    signIn: async () => {
       const rp = resolveRpOptions(provider);
 
       const challenge = new Uint8Array(32);
@@ -567,83 +643,25 @@ export async function handlePasskeyFx(
       };
     },
 
-    authVerify: async () => {
-      const rp = resolveRpOptions(provider);
-      const verifier = requirePasskeyVerifier(args.verifier);
+    verify: async () => {
+      // Auto-detect register-completion vs auth-completion by param shape.
+      // Registration responses carry an `attestationObject`; authentication
+      // responses carry a `signature`.
+      const isRegistration =
+        typeof params.attestationObject === "string" && params.attestationObject.length > 0;
+      const isAuthentication = typeof params.signature === "string" && params.signature.length > 0;
 
-      const clientDataJSON = decodeBase64urlIgnorePadding(
-        requireStringParam(params.clientDataJSON, "clientDataJSON"),
+      if (isRegistration && !isAuthentication) {
+        return await handleRegisterVerify();
+      }
+      if (isAuthentication && !isRegistration) {
+        return await handleAuthVerify();
+      }
+      throw convexError(
+        "PASSKEY_INVALID_VERIFY",
+        "`verify` flow requires either `attestationObject` (to complete a `register`) " +
+          "or `signature` + `credentialId` (to complete a `signIn`).",
       );
-      const clientData = parseClientDataJSON(clientDataJSON);
-      verifyClientDataType(clientData, ClientDataType.Get, "webauthn.get");
-      verifyOrigin(clientData, rp);
-      await verifyAndConsumeChallenge(clientData, ctx, verifier);
-
-      const credentialId = params.credentialId;
-      if (credentialId == null) {
-        throw convexError("PASSKEY_UNKNOWN_CREDENTIAL", "Missing credential ID");
-      }
-
-      let passkey;
-      try {
-        passkey = await queryPasskeyByCredentialId(ctx, credentialId);
-      } catch {
-        throw convexError("PASSKEY_UNKNOWN_CREDENTIAL", "Unknown passkey credential.");
-      }
-      if (passkey === null) {
-        throw convexError("PASSKEY_UNKNOWN_CREDENTIAL", "Unknown credential");
-      }
-
-      const authenticatorDataBytes = decodeBase64urlIgnorePadding(
-        requireStringParam(params.authenticatorData, "authenticatorData"),
-      );
-      const authenticatorData = parseAuthenticatorData(authenticatorDataBytes);
-      const signatureBytes = decodeBase64urlIgnorePadding(
-        requireStringParam(params.signature, "signature"),
-      );
-      const signatureMessage = createAssertionSignatureMessage(
-        authenticatorDataBytes,
-        clientDataJSON,
-      );
-      const messageHash = sha256(signatureMessage);
-
-      verifyRpId(authenticatorData, rp.rpId);
-      verifyUserFlags(authenticatorData, rp);
-      verifyAssertionSignature(passkey, signatureBytes, messageHash);
-
-      if (
-        passkey.counter !== 0 &&
-        authenticatorData.signatureCounter !== 0 &&
-        authenticatorData.signatureCounter <= passkey.counter
-      ) {
-        throw convexError(
-          "PASSKEY_COUNTER_ERROR",
-          "Authenticator counter did not increase — possible credential cloning detected.",
-        );
-      }
-
-      try {
-        await mutatePasskeyUpdateCounter(
-          ctx,
-          passkey._id,
-          authenticatorData.signatureCounter,
-          Date.now(),
-        );
-      } catch (error) {
-        throw asConvexError(error, "INTERNAL_ERROR", "Failed to update passkey counter.");
-      }
-
-      let signInResult;
-      try {
-        signInResult = await callSignIn(ctx, {
-          userId: passkey.userId,
-          generateTokens: true,
-        });
-      } catch (error) {
-        throw asConvexError(error, "INTERNAL_ERROR", "Failed to finalize passkey sign-in.");
-      }
-
-      return { kind: "signedIn" as const, session: signInResult };
     },
   };
 

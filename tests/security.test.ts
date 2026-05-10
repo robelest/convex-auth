@@ -322,6 +322,58 @@ test("verify accepts convex.site issuer for convex.cloud URL", async () => {
   await expect(auth.verify(request)).resolves.toBe(true);
 });
 
+test("verify accepts prefixed auth issuer for convex.cloud URL", async () => {
+  const auth = server({
+    url: "https://example.convex.cloud",
+    cookieNamespace: TEST_COOKIE_NAMESPACE,
+  });
+  const host = "app.example.com";
+  const cookieNames = authCookieNames(host, TEST_COOKIE_NAMESPACE);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const siteToken = unsignedToken({
+    iss: "https://example.convex.site/auth",
+    iat: nowSeconds,
+    exp: nowSeconds + 60 * 60,
+  });
+
+  const request = new Request("https://app.example.com/dashboard", {
+    method: "GET",
+    headers: {
+      host,
+      cookie: `${cookieNames.token}=${siteToken}`,
+    },
+  });
+
+  await expect(auth.verify(request)).resolves.toBe(true);
+});
+
+test("refresh keeps prefixed auth issuer cookies", async () => {
+  const auth = server({
+    url: "https://example.convex.cloud",
+    cookieNamespace: TEST_COOKIE_NAMESPACE,
+  });
+  const host = "app.example.com";
+  const cookieNames = authCookieNames(host, TEST_COOKIE_NAMESPACE);
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const siteToken = unsignedToken({
+    iss: "https://example.convex.site/auth",
+    iat: nowSeconds,
+    exp: nowSeconds + 60 * 60,
+  });
+
+  const request = new Request("https://app.example.com/dashboard", {
+    method: "GET",
+    headers: {
+      host,
+      cookie: `${cookieNames.token}=${siteToken}; ${cookieNames.refreshToken}=refresh-token`,
+    },
+  });
+
+  const result = expectNonRedirectRefreshResult(await auth.refresh(request));
+  expect(result.cookies).toEqual([]);
+  expect(result.token).toBe(siteToken);
+});
+
 test("verify accepts convex.cloud issuer for convex.cloud URL", async () => {
   const auth = server({
     url: "https://example.convex.cloud",

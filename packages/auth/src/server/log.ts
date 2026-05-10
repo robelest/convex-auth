@@ -2,7 +2,6 @@ import { LOG_LEVELS, type LogLevel, logMessage } from "../shared/log";
 import { envBoolean, envOptionalString, readConfigSync } from "./env";
 
 export { LOG_LEVELS };
-export type { LogLevel };
 
 const configuredLogLevel =
   LOG_LEVELS[

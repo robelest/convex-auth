@@ -23,8 +23,12 @@ export const parseRefreshToken = (
   refreshTokenId: GenericId<"RefreshToken">;
   sessionId: GenericId<"Session">;
 } => {
-  const [refreshTokenId, sessionId] = refreshToken.split(REFRESH_TOKEN_DIVIDER);
+  const parts = refreshToken.split(REFRESH_TOKEN_DIVIDER);
   const message = `Can't parse refresh token: ${maybeRedact(refreshToken)}`;
+  if (parts.length !== 2) {
+    throw new ConvexError({ code: "INVALID_REFRESH_TOKEN", message });
+  }
+  const [refreshTokenId, sessionId] = parts;
   if (refreshTokenId == null || sessionId == null) {
     throw new ConvexError({ code: "INVALID_REFRESH_TOKEN", message });
   }

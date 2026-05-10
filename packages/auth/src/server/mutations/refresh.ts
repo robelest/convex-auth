@@ -1,7 +1,7 @@
 import type { GenericDataModel } from "convex/server";
 import { GenericId, Infer, v } from "convex/values";
 
-import type { AuthTokens } from "../../shared/authResults";
+import type { AuthTokens } from "../../shared/results";
 import type * as Provider from "../crypto";
 import { authDb } from "../db";
 import { log, maybeRedact } from "../log";

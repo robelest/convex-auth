@@ -12,7 +12,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   }
 
   const client = getConvexClient(locals.authToken);
-  const demo = await client.query(api.groups.getDashboard, {});
+  const demo = await client.query(api.groups.get, {});
 
   if (demo.groups.length > 0) {
     const targetGroupId = demo.selectedGroup?.groupId ?? demo.groups[0]?.groupId;

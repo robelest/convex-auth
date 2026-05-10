@@ -4,7 +4,7 @@ import { configDefaults } from "../config";
 import { refreshSessionImpl, refreshSessionArgs } from "../mutations/refresh";
 import type { MutationCtx } from "../types";
 
-export type AuthRefreshService = {
+type AuthRefreshService = {
   readonly refresh: (
     ctx: MutationCtx,
     args: Infer<typeof refreshSessionArgs>,

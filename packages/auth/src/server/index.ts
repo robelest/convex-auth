@@ -7,7 +7,7 @@
  * @module
  */
 
-import "./convexIdentity";
+import "./identity/convex";
 
 export { createAuth } from "./auth";
 export type {
@@ -47,3 +47,21 @@ export {
   shouldProxyAuthAction,
   structuredAuthCookies,
 } from "./prefetch";
+export type { WellKnownResponse } from "./wellknown";
+export {
+  generateAppleAppSiteAssociation,
+  generateAssetLinks,
+  generateChangePasswordRedirect,
+  generateSecurityTxt,
+  generateWebAuthnConfig,
+} from "./wellknown";
+export type {
+  AfterCtx,
+  AuthCallbackContext,
+  AuthCallbackProfile,
+  AuthCallbacks,
+  AuthEvent,
+  BeforeCtx,
+  BeforeEvent,
+  BeforeResult,
+} from "./types";

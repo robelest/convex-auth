@@ -1,5 +1,5 @@
 import { Resend } from "@convex-dev/resend";
-import { createAuth } from "@robelest/convex-auth/component";
+import { createAuth } from "@robelest/convex-auth/server";
 import {
   anonymous,
   device,
@@ -27,12 +27,53 @@ const resend = new Resend(components.resend, {
   testMode: false,
 });
 
+const emailProvider = email({
+  from: process.env.AUTH_EMAIL ?? "My App <onboarding@resend.dev>",
+  send: async (ctx, params) => {
+    await resend.sendEmailManually(
+      ctx,
+      {
+        from: params.from,
+        to: params.to,
+        subject: params.subject,
+      },
+      async () => {
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: params.from,
+            to: params.to,
+            subject: params.subject,
+            html: params.html,
+          }),
+        });
+        if (!res.ok) {
+          throw new Error(`Email send failed: ${res.status}`);
+        }
+        const payload = (await res.json()) as { id?: string };
+        return payload.id ?? "sent";
+      },
+    );
+  },
+});
+
+// Password sign-up should work in the demo without a configured email sender.
+// Set `AUTH_PASSWORD_EMAIL_VERIFICATION=true` to require email verification.
+const passwordEmailVerification = process.env.AUTH_PASSWORD_EMAIL_VERIFICATION === "true";
+const passwordProvider = passwordEmailVerification
+  ? password({ reset: emailProvider, verify: emailProvider })
+  : password();
+
 const googleProvider = maybeGoogleProvider();
 const auth = createAuth(components.auth, {
   providers: [
     sso(),
     ...(googleProvider ? [googleProvider] : []),
-    password(),
+    passwordProvider,
     passkey(),
     totp({ issuer: "ConvexAuth Example" }),
     anonymous(),
@@ -41,39 +82,7 @@ const auth = createAuth(components.auth, {
         ? `${process.env.APP_URL}/device`
         : "http://localhost:3001/device",
     }),
-    email({
-      from: process.env.AUTH_EMAIL ?? "My App <onboarding@resend.dev>",
-      send: async (ctx, params) => {
-        await resend.sendEmailManually(
-          ctx,
-          {
-            from: params.from,
-            to: params.to,
-            subject: params.subject,
-          },
-          async () => {
-            const res = await fetch("https://api.resend.com/emails", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                from: params.from,
-                to: params.to,
-                subject: params.subject,
-                html: params.html,
-              }),
-            });
-            if (!res.ok) {
-              throw new Error(`Email send failed: ${res.status}`);
-            }
-            const payload = (await res.json()) as { id?: string };
-            return payload.id ?? "sent";
-          },
-        );
-      },
-    }),
+    emailProvider,
   ],
   authorization: {
     roles,

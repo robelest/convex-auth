@@ -1,10 +1,10 @@
 import { Auth, GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError, GenericId } from "convex/values";
 
-import type { ComponentCtx, ComponentReadCtx } from "./componentContext";
+import type { ComponentCtx, ComponentReadCtx } from "./component/context";
 import { configDefaults } from "./config";
 import { getSessionUserId } from "./context";
-import { cached, ctxCacheHas, invalidateCtxCache } from "./ctxCache";
+import { cached, ctxCacheHas, invalidateCtxCache } from "./cache/context";
 import { buildScopeChecker, checkKeyRateLimit, generateApiKey, hashApiKey } from "./keys";
 import type { AuthProfile, SignInParams } from "./payloads";
 import { generateRandomString, sha256 } from "./random";

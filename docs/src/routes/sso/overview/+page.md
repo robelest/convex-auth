@@ -21,7 +21,7 @@ import { components } from "./_generated/api";
 const auth = createAuth(components.auth, {
   providers: [
     sso({
-      redirectURI: "/api/auth/sso/callback",
+      redirectURI: "/auth/sso/callback",
     }),
   ],
 });

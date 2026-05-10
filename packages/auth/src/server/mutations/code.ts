@@ -100,10 +100,18 @@ async function generateUniqueVerificationCode(
   if (existingCode !== null) {
     await db.verificationCodes.delete(existingCode._id);
   }
+  const hashedCode = await sha256(code);
+  const conflictingCode = await db.verificationCodes.getByCode(hashedCode);
+  if (conflictingCode !== null && conflictingCode.accountId !== accountId) {
+    throw new ConvexError({
+      code: "VERIFICATION_CODE_COLLISION",
+      message: "Generated verification code conflicts with another pending sign-in.",
+    });
+  }
   await db.verificationCodes.create({
     accountId,
     provider,
-    code: await sha256(code),
+    code: hashedCode,
     expirationTime,
     emailVerified: email,
     phoneVerified: phone,

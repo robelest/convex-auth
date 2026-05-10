@@ -2,7 +2,7 @@ import { api } from "@convex/_generated/api";
 import schema from "@convex/schema";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
-import { convexTest } from "./convex.setup";
+import { convexTest } from "./convex/setup";
 import { expectSignInSession, MOCK_EMAIL_ID, RESEND_API_URL } from "./helpers";
 
 afterEach(() => {

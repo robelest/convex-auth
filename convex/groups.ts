@@ -1,25 +1,111 @@
 import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";
-import { internalMutation, query } from "./_generated/server";
+import { query, internalMutation } from "./_generated/server";
 import { auth } from "./auth/core";
-import { authAction, authMutation, authQuery } from "./functions";
-import {
-  getPermissions,
-  getUserRoleLabel,
-  getUserSummaries,
-  groupSummary,
-  inviteSummary,
-  memberSummary,
-  permissionsValidator,
-  projectSummary,
-  toSlug,
-  type GroupSummary,
-  userSummary,
-  validRoleIds,
-} from "./shared";
+import { authAction, authMutation, authQuery, requireIdentity, requireUserId } from "./functions";
+import { roles } from "./roles";
 
-export const checkEmailExists = authQuery({
+const validRoleIds = [roles.orgAdmin.id, roles.member.id, roles.viewer.id] as const;
+
+function toSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
+function getUserRoleLabel(roleIds: string[]) {
+  if (roleIds.includes(roles.orgAdmin.id)) return "Admin";
+  if (roleIds.includes(roles.member.id)) return "Member";
+  if (roleIds.includes(roles.viewer.id)) return "Viewer";
+  return "Unassigned";
+}
+
+function getPermissions(grants: string[]) {
+  return {
+    canReadProjects: grants.includes("projects.read"),
+    canCreateProjects: grants.includes("projects.create"),
+    canManageProjects: grants.includes("projects.manage"),
+    canCreateIssues: grants.includes("issues.create"),
+    canEditIssues: grants.includes("issues.edit"),
+    canMoveIssues: grants.includes("issues.move"),
+    canAssignIssues: grants.includes("issues.assign"),
+    canDeleteIssues: grants.includes("issues.delete"),
+    canCreateComments: grants.includes("comments.create"),
+    canDeleteComments: grants.includes("comments.delete"),
+    canManageMembers: grants.includes("members.manage"),
+    canManageSso: grants.includes("sso.connection.manage"),
+    canManageScim: grants.includes("scim.manage"),
+  };
+}
+
+export const userSummaryValidator = v.object({
+  userId: v.string(),
+  name: v.string(),
+  email: v.union(v.string(), v.null()),
+});
+
+const groupSummaryValidator = v.object({
+  groupId: v.string(),
+  name: v.string(),
+  roleIds: v.array(v.string()),
+  grants: v.array(v.string()),
+});
+
+const memberSummaryValidator = v.object({
+  memberId: v.string(),
+  userId: v.string(),
+  name: v.string(),
+  email: v.union(v.string(), v.null()),
+  roleIds: v.array(v.string()),
+  status: v.string(),
+});
+
+const inviteSummaryValidator = v.object({
+  inviteId: v.string(),
+  email: v.union(v.string(), v.null()),
+  roleIds: v.array(v.string()),
+  createdAt: v.number(),
+});
+
+const permissionsValidator = v.object({
+  canReadProjects: v.boolean(),
+  canCreateProjects: v.boolean(),
+  canManageProjects: v.boolean(),
+  canCreateIssues: v.boolean(),
+  canEditIssues: v.boolean(),
+  canMoveIssues: v.boolean(),
+  canAssignIssues: v.boolean(),
+  canDeleteIssues: v.boolean(),
+  canCreateComments: v.boolean(),
+  canDeleteComments: v.boolean(),
+  canManageMembers: v.boolean(),
+  canManageSso: v.boolean(),
+  canManageScim: v.boolean(),
+});
+
+const projectSummaryValidator = v.object({
+  projectId: v.id("projects"),
+  name: v.string(),
+  identifier: v.string(),
+  slug: v.string(),
+  description: v.string(),
+  status: v.string(),
+  issueCount: v.number(),
+  openIssueCount: v.number(),
+});
+
+export type GroupSummary = {
+  groupId: string;
+  name: string;
+  roleIds: string[];
+  grants: string[];
+};
+
+export const emailExists = query({
   args: { email: v.string() },
   returns: v.boolean(),
   handler: async (ctx, args) => {
@@ -31,19 +117,15 @@ export const checkEmailExists = authQuery({
   },
 });
 
-export const getAuthProviders = query({
+export const authProviders = query({
   args: {},
-  returns: v.object({
-    google: v.boolean(),
+  returns: v.object({ google: v.boolean() }),
+  handler: async () => ({
+    google: Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET),
   }),
-  handler: async () => {
-    return {
-      google: Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET),
-    };
-  },
 });
 
-export const listMyGroups = authQuery({
+export const list = authQuery({
   args: {},
   returns: v.array(
     v.object({
@@ -54,48 +136,37 @@ export const listMyGroups = authQuery({
     }),
   ),
   handler: async (ctx) => {
+    const userId = await requireUserId(ctx);
     const memberships = await auth.member.list(ctx, {
-      where: { userId: ctx.auth.userId },
+      where: { userId },
       limit: 50,
       orderBy: "_creationTime",
       order: "asc",
     });
-    // Batch-fetch every group doc in one component round-trip. Previously
-    // this fanned out N `auth.group.get` RPCs (one per membership).
-    const groupIds: string[] = memberships.items.map(
-      (membership: (typeof memberships.items)[number]) => membership.groupId,
+    const groupIds: readonly string[] = memberships.items.map(
+      (m: (typeof memberships.items)[number]) => m.groupId,
     );
     const groupDocs = await auth.group.get(ctx, groupIds);
-    type ListGroupEntry = {
-      groupId: string;
-      name: string;
-      roleIds: string[];
-      userRoleLabel: string;
-    };
-    const groupsWithNulls: Array<ListGroupEntry | null> = memberships.items.map(
-      (membership: (typeof memberships.items)[number], i: number) => {
+    return memberships.items.flatMap(
+      (m: (typeof memberships.items)[number], i: number) => {
         const group = groupDocs[i];
-        return group
-          ? {
-              groupId: group._id,
-              name: group.name,
-              roleIds: membership.roleIds,
-              userRoleLabel: getUserRoleLabel(membership.roleIds),
-            }
-          : null;
+        if (!group) return [];
+        return [{
+          groupId: group._id,
+          name: group.name,
+          roleIds: m.roleIds,
+          userRoleLabel: getUserRoleLabel(m.roleIds),
+        }];
       },
     );
-    return groupsWithNulls.filter((group): group is ListGroupEntry => group !== null);
   },
 });
 
-export const getDashboard = authQuery({
-  args: {
-    groupId: v.optional(v.string()),
-  },
+export const get = authQuery({
+  args: { groupId: v.optional(v.string()) },
   returns: v.object({
-    user: v.union(userSummary, v.null()),
-    groups: v.array(groupSummary),
+    user: v.union(userSummaryValidator, v.null()),
+    groups: v.array(groupSummaryValidator),
     selectedGroup: v.union(
       v.object({
         groupId: v.string(),
@@ -103,15 +174,16 @@ export const getDashboard = authQuery({
         roleIds: v.array(v.string()),
         grants: v.array(v.string()),
         userRoleLabel: v.string(),
-        projects: v.array(projectSummary),
-        members: v.array(memberSummary),
+        projects: v.array(projectSummaryValidator),
+        members: v.array(memberSummaryValidator),
         permissions: permissionsValidator,
       }),
       v.null(),
     ),
   }),
   handler: async (ctx, args) => {
-    const { userId, user } = ctx.auth;
+    const identity = await requireIdentity(ctx);
+    const userId = identity.subject;
     const roots = await auth.group.list(ctx, {
       where: { isRoot: true },
       orderBy: "name",
@@ -119,137 +191,131 @@ export const getDashboard = authQuery({
       limit: 20,
     });
 
-    // Resolve all root-group memberships in a single batched component
-    // round-trip. Previously this fanned out N `auth.member.inspect` RPCs
-    // (one per root group via `Promise.all`) — on an org with 20 root groups
-    // that's 20 component crossings just to decide which workspaces to
-    // list. The batched helper collapses them into one.
-    const rootGroupIds = roots.items.map((group: (typeof roots.items)[number]) => group._id);
-    const resolutions = await auth.member.inspect(ctx, {
-      userId,
-      groupIds: rootGroupIds,
-    });
-    const groupsWithNulls: Array<GroupSummary | null> = roots.items.map(
-      (group: (typeof roots.items)[number], i: number) => {
-        const resolution = resolutions[i]!;
-        if (resolution.membership === null) return null;
-        return {
-          groupId: group._id,
-          name: group.name,
-          roleIds: resolution.roleIds,
-          grants: resolution.grants,
-        } satisfies GroupSummary;
+    const rootGroupIds = roots.items.map((g: (typeof roots.items)[number]) => g._id);
+    const resolutions = await auth.member.inspect(ctx, { userId, groupIds: rootGroupIds });
+
+    const groups: GroupSummary[] = roots.items.flatMap(
+      (g: (typeof roots.items)[number], i: number) => {
+        const r = resolutions[i];
+        if (!r || r.membership === null) return [];
+        return [{ groupId: g._id, name: g.name, roleIds: r.roleIds, grants: r.grants }];
       },
     );
-    const groups: GroupSummary[] = groupsWithNulls.filter(
-      (group): group is GroupSummary => group !== null,
-    );
+
+    const userSummary = {
+      userId,
+      name: identity.name ?? identity.email ?? "Unknown user",
+      email: identity.email ?? null,
+    };
 
     if (groups.length === 0) {
-      return {
-        user: {
-          userId,
-          name: user?.name ?? user?.email ?? "Unknown user",
-          email: user?.email ?? null,
-        },
-        groups: [],
-        selectedGroup: null,
-      };
+      return { user: userSummary, groups: [], selectedGroup: null };
     }
 
-    const selectedGroup = groups.find((group) => group.groupId === args.groupId) ?? groups[0]!;
-    const permissions = getPermissions(selectedGroup.grants);
+    const selected = groups.find((g) => g.groupId === args.groupId) ?? groups[0]!;
+    const permissions = getPermissions(selected.grants);
 
-    // Kick off the projects scan and the member-list component read at the
-    // same time — neither depends on the other.
     const [projects, members] = await Promise.all([
       permissions.canReadProjects
         ? ctx.db
             .query("projects")
-            .withIndex("by_groupId", (q) => q.eq("groupId", selectedGroup.groupId))
+            .withIndex("by_groupId", (q) => q.eq("groupId", selected.groupId))
             .take(50)
         : Promise.resolve([]),
       auth.member.list(ctx, {
-        where: { groupId: selectedGroup.groupId },
+        where: { groupId: selected.groupId },
         limit: 20,
         orderBy: "_creationTime",
         order: "asc",
       }),
     ]);
 
-    const projectSummaries = projects.map((project) => ({
-      projectId: project._id,
-      name: project.name,
-      identifier: project.identifier,
-      slug: project.slug,
-      description: project.description,
-      status: project.status,
-      issueCount: project.issueCounter,
-      openIssueCount: project.openIssueCount ?? 0,
-    }));
-
-    // Fetch every member's user doc in a single batched component round-trip
-    // rather than firing N serial `auth.user.get` calls. With the batched
-    // helper plus the ctx-scoped cache, the shared active-group member
-    // summary (already resolved by `auth.ctx()`) also dedupes for free.
-    const memberUserIds = members.items.map(
-      (member: (typeof members.items)[number]) => member.userId,
-    );
-    const memberUserSummaries = await getUserSummaries(ctx, memberUserIds);
-    const memberSummaries = members.items.map(
-      (member: (typeof members.items)[number], i: number) => ({
-        memberId: member._id,
-        userId: member.userId,
-        name: memberUserSummaries[i]!.name,
-        email: memberUserSummaries[i]!.email,
-        roleIds: member.roleIds ?? [],
-        status: member.status ?? "active",
-      }),
-    );
+    const memberUserIds: readonly string[] = members.items.map((m: (typeof members.items)[number]) => m.userId);
+    const memberUsers = await auth.user.get(ctx, memberUserIds);
 
     return {
-      user: {
-        userId,
-        name: user?.name ?? user?.email ?? "Unknown user",
-        email: user?.email ?? null,
-      },
+      user: userSummary,
       groups,
       selectedGroup: {
-        groupId: selectedGroup.groupId,
-        name: selectedGroup.name,
-        roleIds: selectedGroup.roleIds,
-        grants: selectedGroup.grants,
-        userRoleLabel: getUserRoleLabel(selectedGroup.roleIds),
-        projects: projectSummaries,
-        members: memberSummaries,
+        groupId: selected.groupId,
+        name: selected.name,
+        roleIds: selected.roleIds,
+        grants: selected.grants,
+        userRoleLabel: getUserRoleLabel(selected.roleIds),
+        projects: projects.map((p) => ({
+          projectId: p._id,
+          name: p.name,
+          identifier: p.identifier,
+          slug: p.slug,
+          description: p.description,
+          status: p.status,
+          issueCount: p.issueCounter,
+          openIssueCount: p.openIssueCount ?? 0,
+        })),
+        members: members.items.map((m: (typeof members.items)[number], i: number) => {
+          const u = memberUsers[i];
+          return {
+            memberId: m._id,
+            userId: m.userId,
+            name: u?.name ?? u?.email ?? "Unknown user",
+            email: u?.email ?? null,
+            roleIds: m.roleIds ?? [],
+            status: m.status ?? "active",
+          };
+        }),
         permissions,
       },
     };
   },
 });
 
-export const createGroup = authMutation({
+export const listInvites = authQuery({
+  args: { groupId: v.string() },
+  returns: v.array(inviteSummaryValidator),
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    await auth.member.require(ctx, {
+      userId,
+      groupId: args.groupId,
+      grants: ["members.manage"],
+    });
+    const result = await auth.invite.list(ctx, {
+      where: { groupId: args.groupId, status: "pending" },
+      orderBy: "_creationTime",
+      order: "desc",
+      limit: 20,
+    });
+    return result.items.map((inv: (typeof result.items)[number]) => ({
+      inviteId: inv._id,
+      email: inv.email ?? null,
+      roleIds: inv.roleIds ?? [],
+      createdAt: inv._creationTime,
+    }));
+  },
+});
+
+export const create = authMutation({
   args: { name: v.string() },
   returns: v.object({ groupId: v.string() }),
   handler: async (ctx, { name: rawName }) => {
-    const { userId } = ctx.auth;
     const name = rawName.trim();
     if (name.length < 3) {
-      throw new ConvexError({
-        code: "INVALID_INPUT",
-        message: "Name must be at least 3 characters.",
-      });
+      throw new ConvexError({ code: "INVALID_INPUT", message: "Name must be at least 3 characters." });
     }
-    const { groupId } = await auth.group.create(ctx, {
-      name,
-      slug: toSlug(name),
-    });
-    await auth.member.create(ctx, {
-      userId,
-      groupId,
-      roleIds: [validRoleIds[0]],
-    });
+    const userId = await requireUserId(ctx);
+    const { groupId } = await auth.group.create(ctx, { name, slug: toSlug(name) });
+    await auth.member.create(ctx, { userId, groupId, roleIds: [validRoleIds[0]] });
     return { groupId };
+  },
+});
+
+export const acceptInvite = authMutation({
+  args: { token: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    await auth.invite.token.accept(ctx, { token: args.token, acceptedByUserId: userId });
+    return null;
   },
 });
 
@@ -261,43 +327,42 @@ export const updateMemberRole = authMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { userId } = ctx.auth;
-
+    const userId = await requireUserId(ctx);
     await auth.member.require(ctx, {
       userId,
       groupId: args.groupId,
       grants: ["members.manage"],
     });
-
     const matched = validRoleIds.find((id) => id === args.roleId);
     if (!matched) {
-      throw new ConvexError({
-        code: "INVALID_INPUT",
-        message: "Invalid role.",
-      });
+      throw new ConvexError({ code: "INVALID_INPUT", message: "Invalid role." });
     }
-
     if (matched !== validRoleIds[0]) {
-      const members = await auth.member.list(ctx, {
-        where: { groupId: args.groupId },
-        limit: 50,
-      });
+      const members = await auth.member.list(ctx, { where: { groupId: args.groupId }, limit: 50 });
       const adminCount = members.items.filter(
-        (member: (typeof members.items)[number]) =>
-          member.roleIds?.includes(validRoleIds[0]) && member._id !== args.memberId,
+        (m: (typeof members.items)[number]) =>
+          m.roleIds?.includes(validRoleIds[0]) && m._id !== args.memberId,
       ).length;
       if (adminCount === 0) {
-        throw new ConvexError({
-          code: "INVALID_INPUT",
-          message: "Cannot remove the last admin.",
-        });
+        throw new ConvexError({ code: "INVALID_INPUT", message: "Cannot remove the last admin." });
       }
     }
+    await auth.member.update(ctx, args.memberId, { roleIds: [matched] });
+    return null;
+  },
+});
 
-    await auth.member.update(ctx, args.memberId, {
-      roleIds: [matched],
+export const revokeInvite = authMutation({
+  args: { groupId: v.string(), inviteId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    await auth.member.require(ctx, {
+      userId,
+      groupId: args.groupId,
+      grants: ["members.manage"],
     });
-
+    await auth.invite.revoke(ctx, args.inviteId);
     return null;
   },
 });
@@ -309,35 +374,24 @@ export const createInviteInternal = internalMutation({
     roleId: v.string(),
     invitedByUserId: v.string(),
   },
-  returns: v.object({
-    inviteId: v.string(),
-    token: v.string(),
-  }),
+  returns: v.object({ inviteId: v.string(), token: v.string() }),
   handler: async (ctx, args) => {
     await auth.member.require(ctx, {
       userId: args.invitedByUserId,
       groupId: args.groupId,
       grants: ["members.manage"],
     });
-
     const matched = validRoleIds.find((id) => id === args.roleId);
     if (!matched) {
-      throw new ConvexError({
-        code: "INVALID_INPUT",
-        message: "Invalid role.",
-      });
+      throw new ConvexError({ code: "INVALID_INPUT", message: "Invalid role." });
     }
-
     const result = await auth.invite.create(ctx, {
       groupId: args.groupId,
       email: args.email,
       roleIds: [matched],
       invitedByUserId: args.invitedByUserId,
     });
-    return {
-      inviteId: result.inviteId,
-      token: result.token,
-    };
+    return { inviteId: result.inviteId, token: result.token };
   },
 });
 
@@ -349,17 +403,11 @@ export const inviteMember = authAction({
   },
   returns: v.object({ inviteId: v.string() }),
   handler: async (ctx, args) => {
-    const { userId } = ctx.auth;
+    const userId = await requireUserId(ctx);
     const email = args.email.trim().toLowerCase();
-
     const result: { inviteId: string; token: string } = await ctx.runMutation(
       internal.groups.createInviteInternal,
-      {
-        groupId: args.groupId,
-        email,
-        roleId: args.roleId,
-        invitedByUserId: userId,
-      },
+      { groupId: args.groupId, email, roleId: args.roleId, invitedByUserId: userId },
     );
 
     const appUrl = process.env.APP_URL ?? "http://localhost:3001";
@@ -380,79 +428,11 @@ export const inviteMember = authAction({
           html: `<p>You've been invited to join an organization.</p><p><a href="${inviteLink}">Accept invitation</a></p>`,
         }),
       });
-      if (!res.ok) {
-        console.error("Invite email failed:", res.status);
-      }
+      if (!res.ok) console.error("Invite email failed:", res.status);
     } catch (error) {
       console.error("Invite email error:", error);
     }
 
     return { inviteId: result.inviteId };
-  },
-});
-
-export const acceptInvite = authMutation({
-  args: {
-    token: v.string(),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const { userId } = ctx.auth;
-
-    await auth.invite.token.accept(ctx, {
-      token: args.token,
-      acceptedByUserId: userId,
-    });
-    return null;
-  },
-});
-
-export const listInvites = authQuery({
-  args: {
-    groupId: v.string(),
-  },
-  returns: v.array(inviteSummary),
-  handler: async (ctx, args) => {
-    const { userId } = ctx.auth;
-
-    await auth.member.require(ctx, {
-      userId,
-      groupId: args.groupId,
-      grants: ["members.manage"],
-    });
-
-    const result = await auth.invite.list(ctx, {
-      where: { groupId: args.groupId, status: "pending" },
-      orderBy: "_creationTime",
-      order: "desc",
-      limit: 20,
-    });
-
-    return result.items.map((invite: (typeof result.items)[number]) => ({
-      inviteId: invite._id,
-      email: invite.email ?? null,
-      roleIds: invite.roleIds ?? [],
-      createdAt: invite._creationTime,
-    }));
-  },
-});
-
-export const revokeInvite = authMutation({
-  args: {
-    groupId: v.string(),
-    inviteId: v.string(),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const { userId } = ctx.auth;
-
-    await auth.member.require(ctx, {
-      userId,
-      groupId: args.groupId,
-      grants: ["members.manage"],
-    });
-
-    await auth.invite.revoke(ctx, args.inviteId);
-    return null;
   },
 });

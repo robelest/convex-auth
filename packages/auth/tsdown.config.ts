@@ -21,10 +21,12 @@ const entryMap = (patterns: string[], exclude: string[] = []) => {
 };
 
 const serverAndProviderEntries = entryMap(["src/server/**/*.ts", "src/providers/**/*.ts"]);
+const clientExternals = [/^convex/, /^expo($|\/)/, /^react-native($|\/)/, /^react-native-passkey$/];
 
 const publicDeclarationEntries = {
   "client/index": "src/client/index.ts",
   "browser/index": "src/browser/index.ts",
+  "expo/index": "src/expo/index.ts",
   "core/index": "src/core/index.ts",
   "authorization/index": "src/authorization/index.ts",
   otel: "src/otel.ts",
@@ -53,6 +55,7 @@ export default defineConfig([
     entry: {
       "client/index": "src/client/index.ts",
       "browser/index": "src/browser/index.ts",
+      "expo/index": "src/expo/index.ts",
     },
     format: "esm",
     outDir: "dist",
@@ -60,7 +63,7 @@ export default defineConfig([
     clean: false,
     unbundle: true,
     platform: "browser",
-    external: [/^convex/],
+    external: clientExternals,
     outExtensions: jsExtensions,
   },
   {
@@ -100,7 +103,7 @@ export default defineConfig([
     clean: false,
     unbundle: true,
     platform: "node",
-    external: [/^convex/],
+    external: clientExternals,
     outExtensions: jsExtensions,
   },
   {

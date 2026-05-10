@@ -222,6 +222,7 @@ export const vAuthVerifierDoc = v.object({
   ...vDocMeta(TABLES.AuthVerifier),
   sessionId: v.optional(v.id(TABLES.Session)),
   signature: v.optional(v.string()),
+  expirationTime: v.optional(v.number()),
 });
 
 export const vVerificationCodeDoc = v.object({

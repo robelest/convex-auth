@@ -4,7 +4,7 @@
  * @module
  */
 
-export interface RetryOptions {
+interface RetryOptions {
   /** Maximum number of retry attempts (default: 2). */
   maxRetries?: number;
   /** Base delay in milliseconds (default: 200). */

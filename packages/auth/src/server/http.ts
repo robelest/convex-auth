@@ -9,7 +9,7 @@ import { ConvexError } from "convex/values";
 import { parse as parseCookies } from "cookie";
 
 import type { AuthContext, OptionalAuthContext, UserDoc } from "./auth";
-import type { ComponentReadCtx as HttpQueryCtx } from "./componentContext";
+import type { ComponentReadCtx as HttpQueryCtx } from "./component/context";
 import {
   createUnauthenticatedAuthContext,
   getAuthContextForUser,
@@ -53,7 +53,7 @@ type HttpContextAuthLike = {
 };
 
 /**
- * Auth context returned by `auth.http.context(ctx, request)`.
+ * Auth context returned by `auth.request.context(ctx, request)`.
  *
  * This resolves raw HTTP authentication in two steps:
  * 1. session auth from `ctx.auth.getUserIdentity()`
@@ -65,7 +65,7 @@ type HttpContextAuthLike = {
  *
  * @example
  * ```ts
- * const authContext = await auth.http.context(ctx, request);
+ * const authContext = await auth.request.context(ctx, request);
  * if (authContext.source === "key") {
  *   console.log(authContext.key.keyId);
  * }
@@ -87,7 +87,7 @@ export type HttpAuthContext =
 
 /**
  * Nullable HTTP auth context returned by
- * `auth.http.context(ctx, request, { optional: true })`.
+ * `auth.request.context(ctx, request, { optional: true })`.
  *
  * This preserves a stable auth-shaped object for raw `httpAction` handlers
  * that allow anonymous callers.
@@ -102,7 +102,7 @@ export type OptionalHttpAuthContext =
   | HttpAuthContext;
 
 /**
- * Configuration for {@link createAuth().http.context}.
+ * Configuration for {@link createAuth().request.context}.
  *
  * This mirrors {@link AuthContextConfig} for raw HTTP handlers and adds support
  * for enriching mixed session/API-key auth results.
@@ -112,7 +112,7 @@ export type OptionalHttpAuthContext =
  *
  * @example
  * ```ts
- * const authContext = await auth.http.context(ctx, request, {
+ * const authContext = await auth.request.context(ctx, request, {
  *   resolve: async (_ctx, user, authState) => ({
  *     email: user.email,
  *     isMachineRequest: authState.source === "key",
@@ -231,7 +231,7 @@ async function resolveHttpAuthContext(
 
 /**
  * @internal
- * Create the implementation behind `auth.http.context(...)`.
+ * Create the implementation behind `auth.request.context(...)`.
  */
 export function createHttpContext(auth: HttpContextAuthLike): {
   <
@@ -542,7 +542,10 @@ export type SSORuntimeRoute = {
   rest: string[];
 };
 
-function parseConnectionRuntimeRoute(pathname: string, routeBase: string): SSORuntimeRoute | null {
+export function parseConnectionRuntimeRoute(
+  pathname: string,
+  routeBase: string,
+): SSORuntimeRoute | null {
   const runtimePrefix = `${routeBase}/`;
   const runtimeParts = pathname.startsWith(runtimePrefix)
     ? pathname.slice(runtimePrefix.length).split("/").filter(Boolean)
@@ -568,12 +571,14 @@ export function addOpenIdRoutes(
   deps: {
     getIssuer: () => string;
     getJwks: () => string;
+    routeBase?: string;
   },
 ) {
   const cacheControl = "public, max-age=15, stale-while-revalidate=15, stale-if-error=86400";
+  const routeBase = deps.routeBase ?? "";
 
   http.route({
-    path: "/.well-known/openid-configuration",
+    path: `${routeBase}/.well-known/openid-configuration`,
     method: "GET",
     handler: httpActionGeneric(async () => {
       const issuer = deps.getIssuer();
@@ -594,7 +599,7 @@ export function addOpenIdRoutes(
   });
 
   http.route({
-    path: "/.well-known/jwks.json",
+    path: `${routeBase}/.well-known/jwks.json`,
     method: "GET",
     handler: httpActionGeneric(async () => {
       return new Response(deps.getJwks(), {
@@ -608,6 +613,39 @@ export function addOpenIdRoutes(
   });
 }
 
+/**
+ * Register `/.well-known/webauthn` on the Convex backend.
+ *
+ * Useful when the WebAuthn RP ID matches the `CONVEX_SITE_URL` host. Apps
+ * whose RP ID is the frontend domain should host this endpoint themselves
+ * (see {@link generateWebAuthnConfig} from `@robelest/convex-auth/server`).
+ *
+ * Returns 404 when no alternative origins are configured (no
+ * `WEBAUTHN_ALT_ORIGINS` and no `SECONDARY_URL`).
+ */
+export function addWebAuthnRoute(
+  http: HttpRouter,
+  deps: {
+    /** Returns the response body or null if not configured. */
+    getResponse: () => { body: string; headers: Record<string, string> } | null;
+    routeBase?: string;
+  },
+) {
+  const routeBase = deps.routeBase ?? "";
+
+  http.route({
+    path: `${routeBase}/.well-known/webauthn`,
+    method: "GET",
+    handler: httpActionGeneric(async () => {
+      const result = deps.getResponse();
+      if (result === null) {
+        return new Response(null, { status: 404 });
+      }
+      return new Response(result.body, { status: 200, headers: result.headers });
+    }),
+  });
+}
+
 export function addAuthRoutes(
   http: HttpRouter,
   deps: {
@@ -616,10 +654,13 @@ export function addAuthRoutes(
       ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
     ) => Promise<Response>;
+    routeBase?: string;
   },
 ) {
+  const routeBase = deps.routeBase ?? "/api/auth";
+  const routePrefix = routeBase === "" ? "" : routeBase;
   http.route({
-    pathPrefix: "/api/auth/signin/",
+    pathPrefix: `${routePrefix}/signin/`,
     method: "GET",
     handler: httpActionGeneric(deps.handleSignIn),
   });
@@ -627,13 +668,13 @@ export function addAuthRoutes(
   const callbackHandler = httpActionGeneric(deps.handleCallback);
 
   http.route({
-    pathPrefix: "/api/auth/callback/",
+    pathPrefix: `${routePrefix}/callback/`,
     method: "GET",
     handler: callbackHandler,
   });
 
   http.route({
-    pathPrefix: "/api/auth/callback/",
+    pathPrefix: `${routePrefix}/callback/`,
     method: "POST",
     handler: callbackHandler,
   });
@@ -778,6 +819,9 @@ export function addSSORoutes(
           if (route.rest[0] === "slo") {
             return await deps.handleSamlSlo(ctx, request, route);
           }
+        }
+        if (route?.protocol === "oidc" && route.rest.length === 1 && route.rest[0] === "callback") {
+          return await deps.handleOidcCallback(ctx, request, route);
         }
         if (route?.protocol === "scim" && route.rest[0] === "v2") {
           return await deps.handleScimRequest(ctx, request);

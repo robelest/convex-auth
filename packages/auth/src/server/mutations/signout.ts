@@ -35,6 +35,11 @@ export async function signOutImpl(ctx: MutationCtx, config: Provider.Config): Pr
         sessionId: session._id,
       })),
     });
+    await config.callbacks?.after?.(ctx, {
+      kind: "signedOut",
+      userId: session.userId,
+      sessionId: session._id,
+    });
     return {
       userId: session.userId,
       sessionId: session._id,

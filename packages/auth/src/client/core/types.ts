@@ -1,11 +1,19 @@
 import type { FunctionReference } from "convex/server";
 import type { ConvexError, Value } from "convex/values";
 
-import type {
-  AuthTokens,
-  DeviceCodePayload as SharedDeviceCodeResult,
-  SignInFlowResult,
-} from "../../shared/authResults";
+type AuthTokens = {
+  token: string;
+  refreshToken: string;
+};
+
+type SignInFlowResult<TSession> =
+  | { kind: "signedIn"; session: TSession }
+  | { kind: "redirect"; redirect: string; verifier: string }
+  | { kind: "started" }
+  | { kind: "passkeyOptions"; options: Record<string, unknown>; verifier: string }
+  | { kind: "totpRequired"; verifier: string }
+  | { kind: "totpSetup"; totpSetup: TotpSetupResult; verifier: string }
+  | { kind: "deviceCode"; deviceCode: DeviceCodeResult };
 
 /**
  * Structural interface for any Convex client.
@@ -30,6 +38,7 @@ export interface ActionTransport {
   action(action: unknown, args: unknown): Promise<unknown>;
 }
 
+/** @internal */
 export type SignInApiRef = { signIn: AuthApiRefs["signIn"] };
 
 /** Pluggable key-value storage supplied by the host runtime. */
@@ -40,14 +49,18 @@ export interface Storage {
 }
 
 /** Platform-neutral location/navigation hooks. */
-export interface LocationRuntime {
+interface LocationRuntime {
   get(): URL | null;
   replace(relativeUrl: string): void | Promise<void>;
-  redirect(url: URL): void | Promise<void>;
+}
+
+/** Platform-specific OAuth launch primitive. */
+interface OAuthRuntime {
+  open(url: URL): void | Promise<void>;
 }
 
 /** Cross-context synchronization hooks, such as browser storage events. */
-export interface SyncRuntime {
+interface SyncRuntime {
   subscribe(
     key: string,
     callback: (value: string | null) => void | Promise<void>,
@@ -55,12 +68,12 @@ export interface SyncRuntime {
 }
 
 /** Cross-context mutex/locking primitive. */
-export interface MutexRuntime {
+interface MutexRuntime {
   withKey<T>(key: string, callback: () => Promise<T>): Promise<T>;
 }
 
 /** Proxy request execution supplied by the host runtime. */
-export interface ProxyRuntime {
+interface ProxyRuntime {
   fetch(body: Record<string, unknown>, proxyPath: string): Promise<Response>;
 }
 
@@ -74,6 +87,7 @@ export interface ClientRuntime {
   environment?: "client" | "server";
   storage?: Storage | null;
   location?: LocationRuntime;
+  oauth?: OAuthRuntime;
   sync?: SyncRuntime;
   mutex?: MutexRuntime;
   proxy?: ProxyRuntime;
@@ -86,6 +100,11 @@ export interface ClientAdapters {
   device?: DeviceClient;
 }
 
+/**
+ * Dependencies provided to platform-specific factor adapters.
+ *
+ * @internal
+ */
 export interface ClientAdapterDeps {
   proxy: string | undefined;
   convex: ConvexTransport;
@@ -108,20 +127,30 @@ export interface ClientAdapterDeps {
   ) => Promise<boolean>;
 }
 
+/**
+ * Factory overrides for platform-specific factor adapters.
+ *
+ * @internal
+ */
 export interface ClientAdapterFactories {
   passkey?: (deps: ClientAdapterDeps) => PasskeyClient;
 }
 
+/** @internal */
 export type SignInActionResult = SignInFlowResult<AuthTokens | null>;
 
-export type DeviceCodeResult = SharedDeviceCodeResult;
-
 /**
- * Device code response returned when signing in with the `"device"` provider.
- *
- * The device displays the `userCode` (or `verificationUriComplete`) and
- * polls via `auth.device.poll()` until the user authorizes.
+ * Device authorization payload returned from the `deviceCode` sign-in flow.
  */
+export type DeviceCodeResult = {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  verificationUriComplete: string;
+  expiresIn: number;
+  interval: number;
+};
+
 /**
  * Result of a `signIn` call.
  *
@@ -180,6 +209,30 @@ export type AuthApiRefs<
 };
 
 /**
+ * Optional hints for {@link PasskeyClient.register}.
+ */
+export type PasskeyRegisterOptions = {
+  /** Human-readable label for this credential (e.g. `"MacBook Pro"`). */
+  name?: string;
+  /** Email hint stored with the credential. */
+  email?: string;
+  /** WebAuthn `user.name` override. */
+  userName?: string;
+  /** WebAuthn `user.displayName` override. */
+  userDisplayName?: string;
+};
+
+/**
+ * Optional hints for {@link PasskeyClient.signIn}.
+ */
+export type PasskeySignInOptions = {
+  /** Email hint to filter discoverable credentials. */
+  email?: string;
+  /** Set to `true` for conditional UI (autofill) mode. */
+  autofill?: boolean;
+};
+
+/**
  * Passkey (WebAuthn) client-side helpers.
  *
  * @see {@link TotpClient}
@@ -208,7 +261,7 @@ export interface PasskeyClient {
    * @example
    * ```ts
    * if (await auth.passkey.isAutofillSupported()) {
-   *   await auth.passkey.authenticate({ autofill: true });
+   *   await auth.passkey.signIn({ autofill: true });
    * }
    * ```
    */
@@ -224,30 +277,70 @@ export interface PasskeyClient {
    * @param opts.email - Email hint for discoverable credentials.
    * @param opts.userName - WebAuthn `user.name` override.
    * @param opts.userDisplayName - WebAuthn `user.displayName` override.
-   * @returns A {@link SignInResult} — typically `{ kind: "signedIn" }` on success.
+    * @returns A {@link SignInResult} — typically `{ kind: "signedIn" }` once a client session is available.
    *
    * @example
    * ```ts
    * const result = await auth.passkey.register({ name: "My laptop" });
    * ```
    */
-  register(opts?: Record<string, unknown>): Promise<SignInResult>;
+  register(opts?: PasskeyRegisterOptions): Promise<SignInResult>;
 
   /**
-   * Authenticate with an existing passkey and complete the WebAuthn ceremony.
+   * Sign in with an existing passkey and complete the WebAuthn ceremony.
    *
-   * @param opts - Optional authentication hints.
+   * @param opts - Optional sign-in hints.
    * @param opts.email - Email hint to filter discoverable credentials.
    * @param opts.autofill - Set to `true` for conditional UI (autofill) mode.
-   * @returns A {@link SignInResult} — typically `{ kind: "signedIn" }` on success.
+   * @returns A {@link SignInResult} — typically `{ kind: "signedIn" }` once a client session is available.
    *
    * @example
    * ```ts
-   * const result = await auth.passkey.authenticate();
+   * const result = await auth.passkey.signIn();
    * ```
    */
-  authenticate(opts?: Record<string, unknown>): Promise<SignInResult>;
+  signIn(opts?: PasskeySignInOptions): Promise<SignInResult>;
 }
+
+/**
+ * Optional hints for {@link TotpClient.setup}.
+ */
+export type TotpSetupOptions = {
+  /** Issuer name shown in the authenticator app. */
+  name?: string;
+  /** Account label shown in the authenticator app. */
+  accountName?: string;
+};
+
+/** Result of {@link TotpClient.setup}. */
+export type TotpSetupResult = {
+  /** `otpauth://` URL — render as a QR code. */
+  uri: string;
+  /** Raw base32-encoded shared secret. */
+  secret: string;
+  /** Verifier token to pass to {@link TotpClient.confirm}. */
+  verifier: string;
+  /** Factor ID to pass to {@link TotpClient.confirm}. */
+  totpId: string;
+};
+
+/** Params for {@link TotpClient.confirm}. */
+export type TotpConfirmParams = {
+  /** Six-digit OTP from the authenticator app. */
+  code: string;
+  /** Verifier token from {@link TotpSetupResult.verifier}. */
+  verifier: string;
+  /** Factor ID from {@link TotpSetupResult.totpId}. */
+  totpId: string;
+};
+
+/** Params for {@link TotpClient.verify}. */
+export type TotpVerifyParams = {
+  /** Six-digit OTP from the authenticator app. */
+  code: string;
+  /** Verifier token from a `totpRequired` sign-in result. */
+  verifier: string;
+};
 
 /**
  * TOTP two-factor authentication client-side helpers.
@@ -274,7 +367,7 @@ export interface TotpClient {
    * await auth.totp.confirm({ code: userCode, verifier, totpId });
    * ```
    */
-  setup(opts?: Record<string, unknown>): Promise<Record<string, unknown>>;
+  setup(opts?: TotpSetupOptions): Promise<TotpSetupResult>;
 
   /**
    * Confirm a newly created TOTP factor with the first authenticator code.
@@ -291,7 +384,7 @@ export interface TotpClient {
    * await auth.totp.confirm({ code: "123456", verifier, totpId });
    * ```
    */
-  confirm(opts: Record<string, unknown>): Promise<void>;
+  confirm(opts: TotpConfirmParams): Promise<void>;
 
   /**
    * Complete a sign-in that is waiting on TOTP verification.
@@ -310,8 +403,14 @@ export interface TotpClient {
    * }
    * ```
    */
-  verify(opts: Record<string, unknown>): Promise<void>;
+  verify(opts: TotpVerifyParams): Promise<void>;
 }
+
+/** Params for {@link DeviceClient.poll}. */
+export type DevicePollParams = { code: DeviceCodeResult };
+
+/** Params for {@link DeviceClient.verify}. */
+export type DeviceVerifyParams = { code: string };
 
 /**
  * Device authorization (RFC 8628) client-side helpers.
@@ -340,7 +439,7 @@ export interface DeviceClient {
    * }
    * ```
    */
-  poll(opts: { code: DeviceCodeResult }): Promise<void>;
+  poll(opts: DevicePollParams): Promise<void>;
 
   /**
    * Approve a device flow from the verification page using the displayed user code.
@@ -357,7 +456,7 @@ export interface DeviceClient {
    * await auth.device.verify({ code: "WDJB-MJHT" });
    * ```
    */
-  verify(opts: { code: string }): Promise<void>;
+  verify(opts: DeviceVerifyParams): Promise<void>;
 }
 
 /**
@@ -365,7 +464,7 @@ export interface DeviceClient {
  *
  * @typeParam Api - An AuthApiRefs type to extract capability flags from.
  */
-export type InferCaps<Api extends AuthApiRefs<boolean, boolean, boolean>> =
+type InferCaps<Api extends AuthApiRefs<boolean, boolean, boolean>> =
   Api extends AuthApiRefs<infer P, infer T, infer D>
     ? { passkey: P; totp: T; device: D }
     : { passkey: boolean; totp: boolean; device: boolean };
@@ -391,13 +490,128 @@ export interface PendingInvite {
   accept(): Promise<{ token: string }>;
 }
 
+/**
+ * Discriminated union of params for the password provider's flows.
+ *
+ * Each branch maps to one of the five password flows: `signUp`, `signIn`,
+ * `reset`, `verify`, `change`. Selecting a `flow` literal narrows the
+ * accepted params automatically.
+ */
+export type PasswordParams =
+  | { flow: "signUp"; email: string; password: string; redirectTo?: string }
+  | { flow: "signIn"; email: string; password: string; redirectTo?: string }
+  | { flow: "reset"; email: string; redirectTo?: string }
+  | {
+      flow: "verify";
+      email: string;
+      code: string;
+      /** When set, completes a `reset` flow by updating the password. Otherwise confirms email. */
+      newPassword?: string;
+      redirectTo?: string;
+    }
+  | {
+      flow: "change";
+      email: string;
+      currentPassword: string;
+      newPassword: string;
+      redirectTo?: string;
+    };
+
+/** Params for the email (magic link) provider's initiation step. */
+export type EmailInitiateParams = { email: string; redirectTo?: string };
+
+/**
+ * Params for completing a code-based flow (no provider). Used to finalise
+ * email magic-link sign-ins and password-reset OTPs when the verification
+ * call is made without re-specifying the originating provider.
+ */
+export type CodeCompletionParams = { code: string; redirectTo?: string };
+
+/** Params for the `sso` provider — requires a connection ID. */
+export type SsoParams = { connectionId: string; redirectTo?: string };
+
+/** Params for the anonymous provider. Empty / `redirectTo` only. */
+export type AnonymousParams = { redirectTo?: string };
+
+/** Default params shape for OAuth-style providers (google, github, etc.). */
+export type OAuthSignInParams = { redirectTo?: string };
+
+/**
+ * Params for `signIn("passkey", ...)`. Direct passkey flows are typically
+ * triggered through `auth.passkey.register()` / `auth.passkey.signIn()`
+ * — this overload is for advanced callers that bypass the helper.
+ */
+export type PasskeySignInParams = { redirectTo?: string };
+
+/**
+ * Resolves the `params` argument shape from the `provider` literal.
+ *
+ * Known special providers (`"password"`, `"email"`, etc.) get strict typing.
+ * Any other string falls back to OAuth-style params, since custom OAuth
+ * providers can be registered under arbitrary IDs.
+ */
+export type ParamsForProvider<P> = P extends "password"
+  ? PasswordParams
+  : P extends "email"
+    ? EmailInitiateParams
+    : P extends "anonymous"
+      ? AnonymousParams | undefined
+      : P extends "sso"
+        ? SsoParams
+        : P extends "passkey"
+          ? PasskeySignInParams | undefined
+          : P extends undefined
+            ? CodeCompletionParams
+            : OAuthSignInParams | undefined;
+
+/**
+ * Tuple-rest helper that flips `params` between required and optional based
+ * on whether `undefined` is in its resolved type.
+ *
+ * @internal
+ */
+export type SignInArgs<P> = undefined extends ParamsForProvider<P>
+  ? [params?: ParamsForProvider<P>]
+  : [params: ParamsForProvider<P>];
+
+/**
+ * Public signature for `auth.signIn`. The provider literal discriminates the
+ * params shape via {@link ParamsForProvider}, and the params slot is
+ * automatically optional when the resolved type permits `undefined`.
+ *
+ * @example
+ * ```ts
+ * auth.signIn("password", { flow: "signIn", email, password });
+ * auth.signIn("password", { flow: "change", email, currentPassword, newPassword });
+ * auth.signIn("anonymous"); // params optional
+ * ```
+ */
+export type SignInOverloads = <P extends string | undefined>(
+  provider: P,
+  ...args: SignInArgs<P>
+) => Promise<SignInResult>;
+
+/**
+ * Internal-only loose signature for the `signIn` value. Use this when
+ * forwarding through wrappers where TypeScript cannot select an overload
+ * from the wrapper's union-typed `provider` argument.
+ *
+ * @internal
+ */
+export type SignInImpl = (
+  provider?: string,
+  params?: Record<string, unknown>,
+) => Promise<SignInResult>;
+
 /** Base auth client — always present. */
-export interface AuthClientBase {
+interface AuthClientBase {
   /**
    * Reactive auth state snapshot.
    * @readonly
    */
   readonly state: AuthState;
+  /** Restore initial auth state for the current runtime. */
+  initialize: () => Promise<void>;
   /** SSR-safe query-param reader. */
   param: (name: string) => string | null;
   /**
@@ -405,8 +619,10 @@ export interface AuthClientBase {
    * @readonly
    */
   readonly invite: PendingInvite | null;
+  /** Complete an OAuth callback using a URL or authorization code. */
+  completeOAuth: (input: URL | string | { code: string }) => Promise<OAuthCompletionResult>;
   /** Start a sign-in flow for a provider. */
-  signIn: (provider: string, params?: Record<string, unknown>) => Promise<SignInResult>;
+  signIn: SignInOverloads;
   /** Sign out and clear local auth state. */
   signOut: () => Promise<void>;
   /** Subscribe to auth state changes. Returns an unsubscribe function. */
@@ -419,8 +635,8 @@ export interface AuthClientBase {
  * Framework-agnostic auth client return type.
  *
  * Conditionally includes `totp` and `device` helpers based on the
- * capabilities in the `AuthApiRefs` type. Browser-only `passkey` helpers are
- * added by {@link BrowserAuthClient}.
+ * capabilities in the `AuthApiRefs` type. Platform-specific `passkey` helpers
+ * are added by {@link PlatformAuthClient}.
  *
  * @typeParam Api - An AuthApiRefs type that determines which factor helpers are included.
  */
@@ -437,8 +653,12 @@ export type AuthClient<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
  *
  * @typeParam Api - An AuthApiRefs type that determines which factor helpers are included.
  */
-export type BrowserAuthClient<Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs> =
+export type PlatformAuthClient<Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs> =
   AuthClient<Api> & (InferCaps<Api>["passkey"] extends true ? { passkey: PasskeyClient } : {});
+
+/** @deprecated Use `PlatformAuthClient`. */
+export type BrowserAuthClient<Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs> =
+  PlatformAuthClient<Api>;
 
 /**
  * Options for {@link client}.
@@ -472,8 +692,6 @@ export type ClientOptions<Api extends AuthApiRefs<boolean, boolean, boolean> = A
    * Defaults to `runtime.storage` when provided, otherwise `null`.
    */
   storage?: Storage | null;
-  /** Override how OAuth code cleanup updates the current URL. */
-  replaceUrl?: (relativeUrl: string) => void | Promise<void>;
   /**
    * Proxy endpoint used instead of direct Convex auth calls.
    * When set, provide `runtime.proxy` and omit direct `api`/`httpClient`
@@ -486,8 +704,15 @@ export type ClientOptions<Api extends AuthApiRefs<boolean, boolean, boolean> = A
   location?: URL | (() => URL | null);
 };
 
-export type AuthHandshakeErrorCode = "AUTH_HANDSHAKE_TIMEOUT" | "AUTH_HANDSHAKE_REJECTED";
+export type OAuthCompletionResult =
+  | { handled: false }
+  | { handled: true; cleanupUrl: URL | null };
 
+/**
+ * Metadata describing the current auth flow for handshake diagnostics.
+ *
+ * @internal
+ */
 export type AuthFlowContext = {
   provider?: string;
   flow: string;
@@ -496,12 +721,18 @@ export type AuthFlowContext = {
 /**
  * A simple deferred promise that can be resolved or rejected externally.
  */
-export interface SimpleDeferred<T, E = unknown> {
+interface SimpleDeferred<T, E = unknown> {
   readonly promise: Promise<T>;
   resolve(value: T): void;
   reject(error: E): void;
 }
 
+/**
+ * Create a deferred promise that can be resolved or rejected externally.
+ *
+ * @returns A deferred object containing the promise and control methods.
+ * @internal
+ */
 export function createDeferred<T, E = unknown>(): SimpleDeferred<T, E> {
   let resolve!: (value: T) => void;
   let reject!: (error: E) => void;
@@ -512,6 +743,7 @@ export function createDeferred<T, E = unknown>(): SimpleDeferred<T, E> {
   return { promise, resolve, reject };
 }
 
+/** @internal */
 export type HandshakeWaiter = {
   epoch: number;
   context: AuthFlowContext;

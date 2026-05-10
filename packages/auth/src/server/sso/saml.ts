@@ -56,6 +56,11 @@ type SamlServiceProvider = ReturnType<typeof createSamlServiceProvider> & {
     binding: GroupSamlHttpRequest["binding"],
     request: ESamlHttpRequest,
   ): Promise<SamlParsedFlow>;
+  parseLogoutResponse(
+    idp: SamlIdentityProvider,
+    binding: GroupSamlHttpRequest["binding"],
+    request: ESamlHttpRequest,
+  ): Promise<SamlParsedFlow>;
   createLogoutResponse(
     idp: SamlIdentityProvider,
     extract: SamlParsedFlow["extract"],
@@ -63,6 +68,10 @@ type SamlServiceProvider = ReturnType<typeof createSamlServiceProvider> & {
     relayState: string,
   ): { context: string; entityEndpoint: string };
 };
+
+function formDataEntries(formData: unknown): Iterable<[string, string | { name: string }]> {
+  return formData as unknown as Iterable<[string, string | { name: string }]>;
+}
 
 type SamlConfigShape = {
   enabled?: boolean;
@@ -94,6 +103,14 @@ function ensureSamlifyValidator() {
   setSchemaValidator(_samlifyPermissiveValidator);
 }
 
+function escapeHtmlAttribute(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 /** @internal */
 export function createSamlPostBindingResponse(opts: {
   endpoint: string;
@@ -102,13 +119,13 @@ export function createSamlPostBindingResponse(opts: {
   relayState?: string;
 }) {
   const fields = [
-    `<input type="hidden" name="${opts.parameter}" value="${opts.value.replace(/"/g, "&quot;")}" />`,
+    `<input type="hidden" name="${opts.parameter}" value="${escapeHtmlAttribute(opts.value)}" />`,
     opts.relayState
-      ? `<input type="hidden" name="RelayState" value="${opts.relayState.replace(/"/g, "&quot;")}" />`
+      ? `<input type="hidden" name="RelayState" value="${escapeHtmlAttribute(opts.relayState)}" />`
       : "",
   ].join("");
   return new Response(
-    `<!doctype html><html><body><form method="POST" action="${opts.endpoint}">${fields}</form><script>document.forms[0].submit();</script></body></html>`,
+    `<!doctype html><html><body><form method="POST" action="${escapeHtmlAttribute(opts.endpoint)}">${fields}</form><script>document.forms[0].submit();</script></body></html>`,
     { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } },
   );
 }
@@ -177,9 +194,9 @@ export async function readRequestBody(request: Request): Promise<Record<string, 
   ) {
     const form = await request.formData();
     const body: Record<string, string> = {};
-    form.forEach((value, key) => {
+    for (const [key, value] of formDataEntries(form)) {
       body[key] = typeof value === "string" ? value : value.name;
-    });
+    }
     return body;
   }
   return {};
@@ -217,6 +234,9 @@ function getSamlSecurityConfig(config: unknown): SamlSecurityConfig {
 /** @internal */
 export function parseSamlIdpMetadata(metadata: string): ParsedSamlMetadata {
   const source = typeof metadata === "string" ? metadata : String(metadata);
+  if (/<!DOCTYPE|<!ENTITY/i.test(source)) {
+    throw new Error("SAML metadata must not contain DTD or entity declarations.");
+  }
   const entityId = source.match(/<[^>]*EntityDescriptor\b[^>]*\bentityID="([^"]+)"/i)?.[1] ?? null;
   if (!entityId) {
     throw new Error("SAML metadata is missing EntityDescriptor@entityID.");
@@ -568,13 +588,19 @@ function verifySamlTimeWindow(
   const drift = clockSkewSeconds * 1000;
   if (notBefore) {
     const notBeforeTime = new Date(notBefore).getTime();
-    if (Number.isFinite(notBeforeTime) && now < notBeforeTime - drift) {
+    if (!Number.isFinite(notBeforeTime)) {
+      throw new Error("SAML assertion has an invalid NotBefore timestamp.");
+    }
+    if (now < notBeforeTime - drift) {
       throw new Error("SAML assertion is not yet valid.");
     }
   }
   if (notOnOrAfter) {
     const notOnOrAfterTime = new Date(notOnOrAfter).getTime();
-    if (Number.isFinite(notOnOrAfterTime) && now >= notOnOrAfterTime + drift) {
+    if (!Number.isFinite(notOnOrAfterTime)) {
+      throw new Error("SAML assertion has an invalid NotOnOrAfter timestamp.");
+    }
+    if (now >= notOnOrAfterTime + drift) {
       throw new Error("SAML assertion has expired.");
     }
   }
@@ -598,7 +624,7 @@ export function enforceGroupConnectionSamlSecurity(opts: {
   }
 
   if (security.requireTimestamps === true) {
-    if (!conditions?.notBefore && !conditions?.notOnOrAfter) {
+    if (!conditions?.notBefore || !conditions?.notOnOrAfter) {
       throw new Error("SAML assertion missing required timestamp conditions.");
     }
   }
@@ -797,10 +823,18 @@ export async function parseGroupConnectionSamlLogoutMessage(opts: {
         toSamlHttpRequest(httpRequest),
       )) as SamlParsedFlow)
     : undefined;
+  const parsedResponse = httpRequest.hasSamlResponse
+    ? ((await runtime.sp.parseLogoutResponse(
+        runtime.idp,
+        httpRequest.binding,
+        toSamlHttpRequest(httpRequest),
+      )) as SamlParsedFlow)
+    : undefined;
   return {
     ...httpRequest,
     runtime,
     parsedRequest,
+    parsedResponse,
   };
 }
 

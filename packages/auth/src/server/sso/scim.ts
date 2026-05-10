@@ -14,16 +14,17 @@ type ScimGroupRecord = {
 /** @internal */
 export function parseScimPath(pathname: string) {
   const parts = pathname.split("/").filter(Boolean);
-  const [api, auth, connections, connectionId, protocol, version, ...rest] = parts;
+  const connectionsIndex = parts.lastIndexOf("connections");
+  const [connectionId, protocol, version, ...rest] =
+    connectionsIndex >= 0 ? parts.slice(connectionsIndex + 1) : [];
 
   if (
-    api !== "api" ||
-    auth !== "auth" ||
-    connections !== "connections" ||
+    connectionsIndex < 0 ||
     !connectionId ||
     connectionId === "setup" ||
     protocol !== "scim" ||
-    version !== "v2"
+    version !== "v2" ||
+    rest.length > 2
   ) {
     return {
       connectionId: "",
@@ -41,8 +42,18 @@ export function parseScimPath(pathname: string) {
 
 /** @internal */
 export function parseScimListRequest(url: URL): ScimListRequest {
-  const startIndex = Math.max(1, Number(url.searchParams.get("startIndex") ?? "1"));
-  const count = Math.min(100, Math.max(1, Number(url.searchParams.get("count") ?? "100")));
+  const rawStartIndex = url.searchParams.get("startIndex") ?? "1";
+  const rawCount = url.searchParams.get("count") ?? "100";
+  const parsedStartIndex = Number(rawStartIndex);
+  const parsedCount = Number(rawCount);
+  if (!Number.isInteger(parsedStartIndex) || parsedStartIndex < 1) {
+    throw new Error("Invalid SCIM pagination.");
+  }
+  if (!Number.isInteger(parsedCount) || parsedCount < 0) {
+    throw new Error("Invalid SCIM pagination.");
+  }
+  const startIndex = parsedStartIndex;
+  const count = Math.min(100, parsedCount);
   const filterParam = url.searchParams.get("filter");
   const filter = filterParam
     ? (() => {

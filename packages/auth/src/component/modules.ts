@@ -5,6 +5,7 @@ const modules: Record<string, () => Promise<unknown>> = {
   "./component/_generated/server.ts": () => import("./_generated/server"),
   "./component/convex.config.ts": () => import("./convex.config"),
   "./component/functions.ts": () => import("./functions"),
+  "./component/http.ts": () => import("./http"),
   "./component/index.ts": () => import("./index"),
   "./component/model.ts": () => import("./model"),
   "./component/public.ts": () => import("./public"),

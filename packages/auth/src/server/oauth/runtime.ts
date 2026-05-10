@@ -128,7 +128,7 @@ function constantTimeEqual(a: string, b: string): boolean {
  * Creates a signature string from the OAuth state parameters.
  * This is stored in the verifier table and validated during callback.
  */
-export function getAuthorizationSignature({
+function getAuthorizationSignature({
   codeVerifier,
   state,
 }: {

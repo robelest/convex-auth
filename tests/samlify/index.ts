@@ -3,7 +3,7 @@ import path from "node:path";
 
 import * as esaml2 from "@robelest/samlify";
 import { verifyTime } from "@robelest/samlify/src/validator";
-import { test, expect } from "vite-plus/test";
+import { test, expect, vi } from "vite-plus/test";
 
 process.chdir(path.resolve(import.meta.dirname, "../../packages/samlify"));
 
@@ -28,6 +28,15 @@ setFileIO({
 
 const binding = ref.namespace.binding;
 const algorithms = ref.algorithms;
+
+function withoutConsoleWarn<T>(fn: () => T) {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    return fn();
+  } finally {
+    warn.mockRestore();
+  }
+}
 const wording = ref.wording;
 const signatureAlgorithms = algorithms.signature;
 
@@ -571,22 +580,24 @@ test("getAssertionConsumerService with two bindings", () => {
 })();
 
 test("idp with multiple signing and encryption certificates", () => {
-  const localIdp = identityProvider({
-    signingCert: [
-      fixtureRead("key/idp/cert.cer").toString(),
-      fixtureRead("key/idp/cert2.cer").toString(),
-    ],
-    encryptCert: [
-      fixtureRead("key/idp/encryptionCert.cer").toString(),
-      fixtureRead("key/idp/encryptionCert.cer").toString(),
-    ],
-    singleSignOnService: [
-      {
-        Binding: "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
-        Location: "idp.example.com/sso",
-      },
-    ],
-  });
+  const localIdp = withoutConsoleWarn(() =>
+    identityProvider({
+      signingCert: [
+        fixtureRead("key/idp/cert.cer").toString(),
+        fixtureRead("key/idp/cert2.cer").toString(),
+      ],
+      encryptCert: [
+        fixtureRead("key/idp/encryptionCert.cer").toString(),
+        fixtureRead("key/idp/encryptionCert.cer").toString(),
+      ],
+      singleSignOnService: [
+        {
+          Binding: "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
+          Location: "idp.example.com/sso",
+        },
+      ],
+    }),
+  );
 
   const signingCertificate = localIdp.entityMeta.getX509Certificate("signing");
   const encryptionCertificate = localIdp.entityMeta.getX509Certificate("encryption");
@@ -599,36 +610,38 @@ test("idp with multiple signing and encryption certificates", () => {
 });
 
 test("verify time with and without drift tolerance", () => {
-  const now = new Date();
-  const timeBefore10Mins = new Date(new Date().setMinutes(now.getMinutes() - 10)).toISOString();
-  const timeBefore5Mins = new Date(new Date().setMinutes(now.getMinutes() - 5)).toISOString();
-  const timeAfter5Mins = new Date(new Date().setMinutes(now.getMinutes() + 5)).toISOString();
-  const timeAfter10Mins = new Date(new Date().setMinutes(now.getMinutes() + 5)).toISOString();
+  withoutConsoleWarn(() => {
+    const now = new Date();
+    const timeBefore10Mins = new Date(new Date().setMinutes(now.getMinutes() - 10)).toISOString();
+    const timeBefore5Mins = new Date(new Date().setMinutes(now.getMinutes() - 5)).toISOString();
+    const timeAfter5Mins = new Date(new Date().setMinutes(now.getMinutes() + 5)).toISOString();
+    const timeAfter10Mins = new Date(new Date().setMinutes(now.getMinutes() + 5)).toISOString();
 
-  // without drift tolerance
-  expect(verifyTime(timeBefore5Mins, timeAfter5Mins)).toBe(true);
-  expect(verifyTime(timeBefore5Mins, undefined)).toBe(true);
-  expect(verifyTime(undefined, timeAfter5Mins)).toBe(true);
+    // without drift tolerance
+    expect(verifyTime(timeBefore5Mins, timeAfter5Mins)).toBe(true);
+    expect(verifyTime(timeBefore5Mins, undefined)).toBe(true);
+    expect(verifyTime(undefined, timeAfter5Mins)).toBe(true);
 
-  expect(verifyTime(undefined, timeBefore5Mins)).toBe(false);
-  expect(verifyTime(timeAfter5Mins, undefined)).toBe(false);
-  expect(verifyTime(timeBefore10Mins, timeBefore5Mins)).toBe(false);
-  expect(verifyTime(timeAfter5Mins, timeAfter10Mins)).toBe(false);
+    expect(verifyTime(undefined, timeBefore5Mins)).toBe(false);
+    expect(verifyTime(timeAfter5Mins, undefined)).toBe(false);
+    expect(verifyTime(timeBefore10Mins, timeBefore5Mins)).toBe(false);
+    expect(verifyTime(timeAfter5Mins, timeAfter10Mins)).toBe(false);
 
-  expect(verifyTime(undefined, undefined)).toBe(true);
+    expect(verifyTime(undefined, undefined)).toBe(true);
 
-  // with drift tolerance 5 mins + 1 sec = 301,000 ms
-  const drifts: [number, number] = [-301000, 301000];
-  expect(verifyTime(timeBefore5Mins, timeAfter5Mins, drifts)).toBe(true);
-  expect(verifyTime(timeBefore5Mins, undefined, drifts)).toBe(true);
-  expect(verifyTime(undefined, timeAfter5Mins, drifts)).toBe(true);
+    // with drift tolerance 5 mins + 1 sec = 301,000 ms
+    const drifts: [number, number] = [-301000, 301000];
+    expect(verifyTime(timeBefore5Mins, timeAfter5Mins, drifts)).toBe(true);
+    expect(verifyTime(timeBefore5Mins, undefined, drifts)).toBe(true);
+    expect(verifyTime(undefined, timeAfter5Mins, drifts)).toBe(true);
 
-  expect(verifyTime(undefined, timeBefore5Mins, drifts)).toBe(true);
-  expect(verifyTime(timeAfter5Mins, undefined, drifts)).toBe(true);
-  expect(verifyTime(timeBefore10Mins, timeBefore5Mins, drifts)).toBe(true);
-  expect(verifyTime(timeAfter5Mins, timeAfter10Mins, drifts)).toBe(true);
+    expect(verifyTime(undefined, timeBefore5Mins, drifts)).toBe(true);
+    expect(verifyTime(timeAfter5Mins, undefined, drifts)).toBe(true);
+    expect(verifyTime(timeBefore10Mins, timeBefore5Mins, drifts)).toBe(true);
+    expect(verifyTime(timeAfter5Mins, timeAfter10Mins, drifts)).toBe(true);
 
-  expect(verifyTime(undefined, undefined, drifts)).toBe(true);
+    expect(verifyTime(undefined, undefined, drifts)).toBe(true);
+  });
 });
 
 // new versions of xmldom realizes multiple_entitydescriptor.xml is invalid XML and doesn't parse it anymore.

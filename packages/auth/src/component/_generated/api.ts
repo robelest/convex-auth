@@ -9,6 +9,7 @@
  */
 
 import type * as functions from "../functions.js";
+import type * as http from "../http.js";
 import type * as index from "../index.js";
 import type * as model from "../model.js";
 import type * as modules from "../modules.js";
@@ -43,6 +44,7 @@ import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
   functions: typeof functions;
+  http: typeof http;
   index: typeof index;
   model: typeof model;
   modules: typeof modules;

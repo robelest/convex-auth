@@ -3,9 +3,14 @@
   import { api } from "$convex/_generated/api.js";
   import { useQuery } from "convex-svelte";
   import { getContext } from "svelte";
+  import ChangePasswordForm from "./ChangePasswordForm.svelte";
 
   type AuthContext = {
     signOut: () => Promise<void>;
+    signIn: (
+      provider: string,
+      args?: Record<string, unknown>,
+    ) => Promise<{ kind: "signedIn" | "redirect"; redirect?: URL | string }>;
     passkey?: {
       isSupported: () => boolean;
       register: (opts?: Record<string, unknown>) => Promise<{
@@ -36,11 +41,10 @@
     client: ConvexClient;
   }>();
 
-  let tab = $state<"passkeys" | "apikeys" | "members" | "permissions">("passkeys");
+  let tab = $state<"passkeys" | "security" | "apikeys" | "members" | "permissions">("passkeys");
   let isSigningOut = $state(false);
   let errorMessage = $state<string | null>(null);
 
-  // Invite state
   let showInviteForm = $state(false);
   let inviteEmail = $state("");
   let inviteRoleId = $state("member");
@@ -229,6 +233,7 @@
 
   const tabs = [
     { id: "passkeys" as const, label: "Passkeys" },
+    { id: "security" as const, label: "Security" },
     { id: "apikeys" as const, label: "API keys" },
     { id: "members" as const, label: "Members" },
     { id: "permissions" as const, label: "Permissions" },
@@ -296,6 +301,10 @@
             {/each}
           </div>
         {/if}
+
+      {:else if tab === 'security'}
+        <p class="muted m-0">Change your password. After updating, your session continues with fresh tokens.</p>
+        <ChangePasswordForm email={user.email} />
 
       {:else if tab === 'apikeys'}
         <p class="muted m-0">Create a key for <code>/api/me</code> and <code>/api/issues</code> curl requests.</p>

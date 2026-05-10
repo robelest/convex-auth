@@ -94,7 +94,7 @@ export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
       userDisplayName?: string;
     }): Promise<SignInResult> => {
       const phase1Params = {
-        flow: "registerOptions",
+        flow: "register",
         email: opts?.email,
         userName: opts?.userName,
         userDisplayName: opts?.userDisplayName,
@@ -153,7 +153,7 @@ export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
         typeof response.getTransports === "function" ? response.getTransports() : undefined;
 
       const phase2Params = {
-        flow: "registerVerify",
+        flow: "verify",
         clientDataJSON: base64urlEncode(response.clientDataJSON),
         attestationObject: base64urlEncode(response.attestationObject),
         transports,
@@ -179,12 +179,12 @@ export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
         })) as SignInActionResult;
       }
 
-      return handleSignedInResult(phase2Result, "registerVerify");
+      return handleSignedInResult(phase2Result, "verify");
     },
 
-    authenticate: async (opts?: { email?: string; autofill?: boolean }): Promise<SignInResult> => {
+    signIn: async (opts?: { email?: string; autofill?: boolean }): Promise<SignInResult> => {
       const phase1Params = {
-        flow: "authOptions",
+        flow: "signIn",
         email: opts?.email,
       };
 
@@ -236,7 +236,7 @@ export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
 
       const response = credential.response as AuthenticatorAssertionResponse;
       const phase2Params = {
-        flow: "authVerify",
+        flow: "verify",
         credentialId: base64urlEncode(credential.rawId),
         clientDataJSON: base64urlEncode(response.clientDataJSON),
         authenticatorData: base64urlEncode(response.authenticatorData),
@@ -261,7 +261,7 @@ export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
         })) as SignInActionResult;
       }
 
-      return handleSignedInResult(phase2Result, "authVerify");
+      return handleSignedInResult(phase2Result, "verify");
     },
   };
 }

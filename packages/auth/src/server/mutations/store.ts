@@ -6,7 +6,7 @@ import type { ServerServices } from "../services/resolve";
 import { MutationCtx } from "../types";
 import { modifyAccountArgs, modifyAccountImpl } from "./account";
 import { createVerificationCodeArgs, createVerificationCodeImpl } from "./code";
-import { credentialsSignInArgs, credentialsSignInImpl } from "./credentialsSignIn";
+import { credentialsSignInArgs, credentialsSignInImpl } from "./credentials/signin";
 import { invalidateSessionsArgs, invalidateSessionsImpl } from "./invalidate";
 import { userOAuthArgs, userOAuthImpl } from "./oauth";
 import { refreshSessionArgs } from "./refresh";

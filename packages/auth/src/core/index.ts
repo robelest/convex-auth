@@ -8,18 +8,18 @@
  * @module
  */
 
-import "../server/convexIdentity";
+import "../server/identity/convex";
 
-import { createAuthContextFacade } from "../server/auth-context";
+import { createAuthContextFacade } from "../server/facade";
 import type {
   AuthConfig,
   AuthContext,
   AuthContextConfig,
+  AuthContextFacade,
   AuthLike,
   OptionalAuthContext,
   UserDoc,
-  _AuthContextFacade,
-} from "../server/auth-context";
+} from "../server/facade";
 import { configDefaults } from "../server/config";
 import { createCoreDomains } from "../server/core";
 import {
@@ -32,7 +32,6 @@ import type { ConvexAuthConfig, AuthAuthorizationConfig } from "../server/types"
 
 export type { AuthContext, OptionalAuthContext, UserDoc, AuthContextConfig };
 
-type AuthContextFacade = _AuthContextFacade;
 
 /**
  * Create a lightweight auth context object.
@@ -56,6 +55,11 @@ type AuthContextFacade = _AuthContextFacade;
  * import { auth } from "./auth-core";
  * export const authQuery = customQuery(query, auth.ctx());
  * ```
+ *
+ * @param component - The Convex Auth component reference from `components.auth`.
+ * @param config - Optional auth configuration. Provider config is intentionally
+ *   omitted in this lightweight entrypoint.
+ * @returns The lightweight auth context facade.
  */
 export function createAuthContext(
   component: ConvexAuthConfig["component"],

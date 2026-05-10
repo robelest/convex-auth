@@ -11,18 +11,10 @@ const browserStorage = {
     }
   },
   async setItem(key: string, value: string): Promise<void> {
-    try {
-      localStorage.setItem(key, value);
-    } catch {
-      // Storage may be full or unavailable
-    }
+    localStorage.setItem(key, value);
   },
   async removeItem(key: string): Promise<void> {
-    try {
-      localStorage.removeItem(key);
-    } catch {
-      // Storage may be unavailable
-    }
+    localStorage.removeItem(key);
   },
 };
 
@@ -38,7 +30,8 @@ export function base64urlEncode(buffer: ArrayBuffer): string {
 
 /** @internal */
 export function base64urlDecode(str: string): Uint8Array {
-  const padded = str.replace(/-/g, "+").replace(/_/g, "/");
+  const normalized = str.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
   const binary = atob(padded);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) {
@@ -48,11 +41,11 @@ export function base64urlDecode(str: string): Uint8Array {
 }
 
 type BrowserGlobals = typeof globalThis & {
-  __convexAuthStorageListeners?: Record<string, () => void>;
+  __convexAuthStorageListeners?: Record<string, Set<() => void>>;
 };
 
 /** @internal */
-export function getStorageListenerRegistry(): Record<string, () => void> {
+export function getStorageListenerRegistry(): Record<string, Set<() => void>> {
   const globals: BrowserGlobals = globalThis;
   if (globals.__convexAuthStorageListeners === undefined) {
     globals.__convexAuthStorageListeners = {};
@@ -71,8 +64,10 @@ export function createBrowserRuntime(): ClientRuntime {
         BrowserNavigationLive.replace(url);
         return Promise.resolve();
       },
-      redirect: (url) => {
-        BrowserNavigationLive.redirect(url);
+    },
+    oauth: {
+      open: (url) => {
+        BrowserNavigationLive.open(url);
         return Promise.resolve();
       },
     },
@@ -81,6 +76,9 @@ export function createBrowserRuntime(): ClientRuntime {
     },
     proxy: {
       fetch: async (body, proxyPath) => {
+        if (typeof window === "undefined" || window.location?.origin === undefined) {
+          throw new Error("Browser proxy fetch is unavailable outside the browser runtime.");
+        }
         return fetch(new URL(proxyPath, window.location.origin), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -95,9 +93,8 @@ export function createBrowserRuntime(): ClientRuntime {
           return null;
         }
         const registry = getStorageListenerRegistry();
-        const existingSubscription = registry[key];
-        if (existingSubscription !== undefined) {
-          existingSubscription();
+        if (registry[key] === undefined) {
+          registry[key] = new Set();
         }
 
         const controller = new AbortController();
@@ -111,12 +108,13 @@ export function createBrowserRuntime(): ClientRuntime {
         );
 
         const unsubscribe = () => {
-          if (registry[key] === unsubscribe) {
+          registry[key]?.delete(unsubscribe);
+          if (registry[key]?.size === 0) {
             delete registry[key];
           }
           controller.abort();
         };
-        registry[key] = unsubscribe;
+        registry[key].add(unsubscribe);
         return unsubscribe;
       },
     },
