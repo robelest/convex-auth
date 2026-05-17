@@ -100,7 +100,7 @@ test("auth.member.inspect returns membership, roleIds, and grants", async () => 
   });
 
   const orgId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupCreate, {
+    return await ctx.runMutation(components.auth.group.create, {
       name: "Acme Org",
       slug: "acme-org",
       type: "organization",
@@ -108,7 +108,7 @@ test("auth.member.inspect returns membership, roleIds, and grants", async () => 
   });
 
   await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.memberAdd, {
+    return await ctx.runMutation(components.auth.group.member.create, {
       userId,
       groupId: orgId,
       roleIds: [roles.orgAdmin.id],
@@ -138,7 +138,7 @@ test("auth.member.require throws ConvexError on invalid role ids", async () => {
   });
 
   const groupId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupCreate, {
+    return await ctx.runMutation(components.auth.group.create, {
       name: "Role Test Org",
       slug: "role-test-org",
       type: "organization",

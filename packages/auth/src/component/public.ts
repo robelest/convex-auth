@@ -12,8 +12,5 @@ export * from "./public/sso/domains";
 export * from "./public/sso/scim";
 export * from "./public/sso/secrets";
 export * from "./public/sso/webhooks";
-export * from "./public/groups/core";
-export * from "./public/groups/invites";
-export * from "./public/groups/members";
 export * from "./public/factors/passkeys";
 export * from "./public/factors/totp";

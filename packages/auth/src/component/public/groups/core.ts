@@ -116,35 +116,28 @@ export const groupCreate = mutation({
  * }
  * ```
  */
-export const groupGet = query({
-  args: { groupId: v.id("Group") },
-  returns: v.union(vGroupDoc, v.null()),
-  handler: async (ctx, { groupId }) => {
-    return await ctx.db.get("Group", groupId);
-  },
-});
-
 /**
- * Batched equivalent of {@link groupGet}. Fetches many group documents by ID
- * in a single component round-trip. Returns each group (or `null`) in the
- * same slot as the input ID; duplicates are tolerated but de-duplicated
- * internally so each `ctx.db.get` runs exactly once per distinct ID.
- *
- * Used by app-side aggregate handlers (e.g. `groups:listMyGroups`) that
- * previously fanned out one `groupGet` per item.
- *
- * @param args.groupIds - Array of group document IDs.
- * @returns Array of group documents (or `null` entries) in input order.
+ * Read a group by identity — one function, all-optional args, unioned
+ * return: `{ id }` → `Doc<"Group"> | null`, or `{ ids }` → ordered
+ * `(Doc<"Group"> | null)[]` (deduped). Replaces `groupGet` /
+ * `groupGetMany`.
  */
-export const groupGetMany = query({
-  args: { groupIds: v.array(v.id("Group")) },
-  returns: v.array(v.union(vGroupDoc, v.null())),
-  handler: async (ctx, { groupIds }) => {
-    if (groupIds.length === 0) return [];
-    const unique = Array.from(new Set(groupIds));
-    const docs = await Promise.all(unique.map((id) => ctx.db.get("Group", id)));
-    const byId = new Map(unique.map((id, i) => [id, docs[i] ?? null]));
-    return groupIds.map((id) => byId.get(id) ?? null);
+export const groupGet = query({
+  args: {
+    id: v.optional(v.id("Group")),
+    ids: v.optional(v.array(v.id("Group"))),
+  },
+  returns: v.union(vGroupDoc, v.null(), v.array(v.union(vGroupDoc, v.null()))),
+  handler: async (ctx, args) => {
+    if (args.ids !== undefined) {
+      if (args.ids.length === 0) return [];
+      const unique = Array.from(new Set(args.ids));
+      const docs = await Promise.all(unique.map((id) => ctx.db.get("Group", id)));
+      const byId = new Map(unique.map((id, i) => [id, docs[i] ?? null]));
+      return args.ids.map((id) => byId.get(id) ?? null);
+    }
+    if (args.id === undefined) return null;
+    return await ctx.db.get("Group", args.id);
   },
 });
 

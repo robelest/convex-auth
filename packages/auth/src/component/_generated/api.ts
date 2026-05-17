@@ -10,6 +10,9 @@
 
 import type * as account from "../account.js";
 import type * as functions from "../functions.js";
+import type * as group from "../group.js";
+import type * as group_invite from "../group/invite.js";
+import type * as group_member from "../group/member.js";
 import type * as http from "../http.js";
 import type * as index from "../index.js";
 import type * as key from "../key.js";
@@ -54,6 +57,9 @@ import { anyApi, componentsGeneric } from "convex/server";
 const fullApi: ApiFromModules<{
   account: typeof account;
   functions: typeof functions;
+  group: typeof group;
+  "group/invite": typeof group_invite;
+  "group/member": typeof group_member;
   http: typeof http;
   index: typeof index;
   key: typeof key;

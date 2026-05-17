@@ -143,45 +143,29 @@ export const inviteCreate = mutation({
  * }
  * ```
  */
+/**
+ * Read an invite by identity — one function, all-optional args, unioned
+ * return: `{ id }` (point lookup) or `{ tokenHash }` (token index).
+ * Replaces `inviteGet` / `inviteGetByTokenHash`.
+ */
 export const inviteGet = query({
-  args: { inviteId: v.id("GroupInvite") },
+  args: {
+    id: v.optional(v.id("GroupInvite")),
+    tokenHash: v.optional(v.string()),
+  },
   returns: v.union(vGroupInviteDoc, v.null()),
-  handler: async (ctx, { inviteId }) => {
-    return await ctx.db.get("GroupInvite", inviteId);
+  handler: async (ctx, args) => {
+    if (args.tokenHash !== undefined) {
+      return await ctx.db
+        .query("GroupInvite")
+        .withIndex("token_hash", (q) => q.eq("tokenHash", args.tokenHash!))
+        .first();
+    }
+    if (args.id === undefined) return null;
+    return await ctx.db.get("GroupInvite", args.id);
   },
 });
 
-/**
- * Retrieve an invite by its hashed token.
- *
- * Looks up the `GroupInvite` table using the `token_hash` index. This is
- * the primary mechanism for resolving an invite from a URL-embedded token.
- * Returns `null` if no invite matches the given hash.
- *
- * @param args.tokenHash - The hashed token string to look up (must match the value stored at creation time).
- * @returns The invite document or `null` if no invite exists with the given token hash.
- *
- * @example
- * ```ts
- * const invite = await ctx.runQuery(
- *   components.auth.groups.inviteGetByTokenHash,
- *   { tokenHash: "sha256_abc123..." },
- * );
- * if (invite !== null && invite.status === "pending") {
- *   // proceed with acceptance flow
- * }
- * ```
- */
-export const inviteGetByTokenHash = query({
-  args: { tokenHash: v.string() },
-  returns: v.union(vGroupInviteDoc, v.null()),
-  handler: async (ctx, { tokenHash }) => {
-    return await ctx.db
-      .query("GroupInvite")
-      .withIndex("token_hash", (q) => q.eq("tokenHash", tokenHash))
-      .first();
-  },
-});
 
 /**
  * List invites with optional filtering, sorting, and pagination.

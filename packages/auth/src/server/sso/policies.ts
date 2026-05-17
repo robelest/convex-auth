@@ -47,7 +47,7 @@ export function createGroupPolicyDomain(deps: PolicyDeps) {
       return await loadGroupPolicyOrThrow(ctx, groupId);
     },
     update: async (ctx: ComponentCtx, groupId: string, patch: GroupConnectionPolicyPatch) => {
-      const group = await getGroup(ctx, config.component.public, groupId);
+      const group = await getGroup(ctx, config.component.group, groupId);
       if (!group) {
         throw convexError({
           code: "INVALID_PARAMETERS",
@@ -55,7 +55,7 @@ export function createGroupPolicyDomain(deps: PolicyDeps) {
         });
       }
       const policy = patchGroupConnectionPolicy(group.policy, patch);
-      await ctx.runMutation(config.component.public.groupUpdate, {
+      await ctx.runMutation(config.component.group.update, {
         groupId,
         data: { policy },
       });
@@ -71,7 +71,7 @@ export function createGroupPolicyDomain(deps: PolicyDeps) {
       return policy;
     },
     validate: async (ctx: ComponentReadCtx, groupId: string) => {
-      const group = await getGroup(ctx, config.component.public, groupId);
+      const group = await getGroup(ctx, config.component.group, groupId);
       if (!group) {
         return {
           ok: false,

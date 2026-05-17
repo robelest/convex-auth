@@ -82,11 +82,30 @@ export const memberAdd = mutation({
  * }
  * ```
  */
+/**
+ * Read a membership by identity — one function, all-optional args,
+ * unioned return: `{ id }` (point lookup) or `{ groupId, userId }`
+ * (unique per group+user). Replaces `memberGet` /
+ * `memberGetByGroupAndUser`.
+ */
 export const memberGet = query({
-  args: { memberId: v.id("GroupMember") },
+  args: {
+    id: v.optional(v.id("GroupMember")),
+    groupId: v.optional(v.id("Group")),
+    userId: v.optional(v.id("User")),
+  },
   returns: v.union(vGroupMemberDoc, v.null()),
-  handler: async (ctx, { memberId }) => {
-    return await ctx.db.get("GroupMember", memberId);
+  handler: async (ctx, args) => {
+    if (args.groupId !== undefined && args.userId !== undefined) {
+      return await ctx.db
+        .query("GroupMember")
+        .withIndex("group_id_user_id", (q) =>
+          q.eq("groupId", args.groupId!).eq("userId", args.userId!),
+        )
+        .unique();
+    }
+    if (args.id === undefined) return null;
+    return await ctx.db.get("GroupMember", args.id);
   },
 });
 
@@ -198,39 +217,6 @@ export const memberList = query({
   },
 });
 
-/**
- * Look up a specific user's membership in a specific group.
- *
- * Uses the `group_id_user_id` compound index for an efficient exact-match
- * lookup. Returns `null` if the user is not a member of the group. Unlike
- * {@link memberResolve}, this does **not** walk the group hierarchy — it
- * checks only the specified group.
- *
- * @param args.groupId - The `Id<"Group">` of the group to check.
- * @param args.userId - The `Id<"User">` of the user whose membership to look up.
- * @returns The member document or `null` if the user is not a direct member of the group.
- *
- * @example
- * ```ts
- * const member = await ctx.runQuery(
- *   components.auth.groups.memberGetByGroupAndUser,
- *   { groupId: teamGroupId, userId: currentUserId },
- * );
- * if (member !== null) {
- *   console.log("User has roles:", member.roleIds);
- * }
- * ```
- */
-export const memberGetByGroupAndUser = query({
-  args: { groupId: v.id("Group"), userId: v.id("User") },
-  returns: v.union(vGroupMemberDoc, v.null()),
-  handler: async (ctx, { groupId, userId }) => {
-    return await ctx.db
-      .query("GroupMember")
-      .withIndex("group_id_user_id", (q) => q.eq("groupId", groupId).eq("userId", userId))
-      .unique();
-  },
-});
 
 /**
  * Batched equivalent of {@link memberGetByGroupAndUser}. Resolves many

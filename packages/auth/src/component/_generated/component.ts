@@ -86,6 +86,492 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         Name
       >;
     };
+    group: {
+      ancestors: FunctionReference<
+        "query",
+        "internal",
+        { groupId: string; includeSelf?: boolean; maxDepth?: number },
+        {
+          ancestors: Array<{
+            _creationTime: number;
+            _id: string;
+            extend?: any;
+            isRoot?: boolean;
+            name: string;
+            parentGroupId?: string;
+            policy?: {
+              extend?: any;
+              identity: {
+                accountLinking: {
+                  oidc: "verifiedEmail" | "none" | "sameConnection";
+                  saml: "verifiedEmail" | "none" | "sameConnection";
+                };
+              };
+              provisioning: {
+                deprovision: { mode: "soft" | "hard" };
+                groups: {
+                  mapping?: Record<string, Array<string>>;
+                  mode: "ignore" | "sync";
+                  source: "protocol";
+                };
+                jit: {
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
+                  mode: "off" | "createUser" | "createUserAndMembership";
+                };
+                roles: {
+                  mapping?: Record<string, Array<string>>;
+                  mode: "ignore" | "map";
+                  source: "protocol";
+                };
+                scimReuse: { user: "externalId" | "none" };
+                user: {
+                  authority: "app" | "sso" | "scim";
+                  createOnSignIn: boolean;
+                  updateProfileFromScim: "never" | "missing" | "always";
+                  updateProfileOnLogin: "never" | "missing" | "always";
+                };
+              };
+              version: 1;
+            };
+            rootGroupId?: string;
+            slug?: string;
+            tags?: Array<{ key: string; value: string }>;
+            type?: string;
+          }>;
+          cycleDetected: boolean;
+          maxDepthReached: boolean;
+        },
+        Name
+      >;
+      create: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          extend?: any;
+          name: string;
+          parentGroupId?: string;
+          slug?: string;
+          tags?: Array<{ key: string; value: string }>;
+          type?: string;
+        },
+        string,
+        Name
+      >;
+      delete: FunctionReference<
+        "mutation",
+        "internal",
+        { groupId: string },
+        null,
+        Name
+      >;
+      get: FunctionReference<
+        "query",
+        "internal",
+        { id?: string; ids?: Array<string> },
+        | {
+            _creationTime: number;
+            _id: string;
+            extend?: any;
+            isRoot?: boolean;
+            name: string;
+            parentGroupId?: string;
+            policy?: {
+              extend?: any;
+              identity: {
+                accountLinking: {
+                  oidc: "verifiedEmail" | "none" | "sameConnection";
+                  saml: "verifiedEmail" | "none" | "sameConnection";
+                };
+              };
+              provisioning: {
+                deprovision: { mode: "soft" | "hard" };
+                groups: {
+                  mapping?: Record<string, Array<string>>;
+                  mode: "ignore" | "sync";
+                  source: "protocol";
+                };
+                jit: {
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
+                  mode: "off" | "createUser" | "createUserAndMembership";
+                };
+                roles: {
+                  mapping?: Record<string, Array<string>>;
+                  mode: "ignore" | "map";
+                  source: "protocol";
+                };
+                scimReuse: { user: "externalId" | "none" };
+                user: {
+                  authority: "app" | "sso" | "scim";
+                  createOnSignIn: boolean;
+                  updateProfileFromScim: "never" | "missing" | "always";
+                  updateProfileOnLogin: "never" | "missing" | "always";
+                };
+              };
+              version: 1;
+            };
+            rootGroupId?: string;
+            slug?: string;
+            tags?: Array<{ key: string; value: string }>;
+            type?: string;
+          }
+        | null
+        | Array<{
+            _creationTime: number;
+            _id: string;
+            extend?: any;
+            isRoot?: boolean;
+            name: string;
+            parentGroupId?: string;
+            policy?: {
+              extend?: any;
+              identity: {
+                accountLinking: {
+                  oidc: "verifiedEmail" | "none" | "sameConnection";
+                  saml: "verifiedEmail" | "none" | "sameConnection";
+                };
+              };
+              provisioning: {
+                deprovision: { mode: "soft" | "hard" };
+                groups: {
+                  mapping?: Record<string, Array<string>>;
+                  mode: "ignore" | "sync";
+                  source: "protocol";
+                };
+                jit: {
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
+                  mode: "off" | "createUser" | "createUserAndMembership";
+                };
+                roles: {
+                  mapping?: Record<string, Array<string>>;
+                  mode: "ignore" | "map";
+                  source: "protocol";
+                };
+                scimReuse: { user: "externalId" | "none" };
+                user: {
+                  authority: "app" | "sso" | "scim";
+                  createOnSignIn: boolean;
+                  updateProfileFromScim: "never" | "missing" | "always";
+                  updateProfileOnLogin: "never" | "missing" | "always";
+                };
+              };
+              version: 1;
+            };
+            rootGroupId?: string;
+            slug?: string;
+            tags?: Array<{ key: string; value: string }>;
+            type?: string;
+          } | null>,
+        Name
+      >;
+      invite: {
+        accept: FunctionReference<
+          "mutation",
+          "internal",
+          { acceptedByUserId?: string; inviteId: string },
+          null,
+          Name
+        >;
+        acceptByToken: FunctionReference<
+          "mutation",
+          "internal",
+          { acceptedByUserId: string; tokenHash: string },
+          {
+            groupId: string | null;
+            inviteId: string;
+            inviteStatus: "accepted" | "already_accepted";
+            memberId?: string;
+            membershipStatus: "joined" | "already_joined" | "not_applicable";
+          },
+          Name
+        >;
+        create: FunctionReference<
+          "mutation",
+          "internal",
+          {
+            email?: string;
+            expiresTime?: number;
+            extend?: any;
+            groupId?: string;
+            invitedByUserId?: string;
+            roleIds?: Array<string>;
+            status: "pending" | "accepted" | "revoked" | "expired";
+            tokenHash: string;
+          },
+          string,
+          Name
+        >;
+        get: FunctionReference<
+          "query",
+          "internal",
+          { id?: string; tokenHash?: string },
+          {
+            _creationTime: number;
+            _id: string;
+            acceptedByUserId?: string;
+            acceptedTime?: number;
+            email?: string;
+            expiresTime?: number;
+            extend?: any;
+            groupId?: string;
+            invitedByUserId?: string;
+            role?: string;
+            roleIds?: Array<string>;
+            status: "pending" | "accepted" | "revoked" | "expired";
+            tokenHash: string;
+          } | null,
+          Name
+        >;
+        list: FunctionReference<
+          "query",
+          "internal",
+          {
+            cursor?: string | null;
+            limit?: number;
+            order?: "asc" | "desc";
+            orderBy?:
+              | "_creationTime"
+              | "status"
+              | "email"
+              | "expiresTime"
+              | "acceptedTime";
+            where?: {
+              acceptedByUserId?: string;
+              email?: string;
+              groupId?: string;
+              invitedByUserId?: string;
+              roleId?: string;
+              status?: "pending" | "accepted" | "revoked" | "expired";
+              tokenHash?: string;
+            };
+          },
+          {
+            items: Array<{
+              _creationTime: number;
+              _id: string;
+              acceptedByUserId?: string;
+              acceptedTime?: number;
+              email?: string;
+              expiresTime?: number;
+              extend?: any;
+              groupId?: string;
+              invitedByUserId?: string;
+              role?: string;
+              roleIds?: Array<string>;
+              status: "pending" | "accepted" | "revoked" | "expired";
+              tokenHash: string;
+            }>;
+            nextCursor: string | null;
+          },
+          Name
+        >;
+        revoke: FunctionReference<
+          "mutation",
+          "internal",
+          { inviteId: string },
+          null,
+          Name
+        >;
+      };
+      list: FunctionReference<
+        "query",
+        "internal",
+        {
+          cursor?: string | null;
+          limit?: number;
+          order?: "asc" | "desc";
+          orderBy?: "_creationTime" | "name" | "slug" | "type";
+          where?: {
+            isRoot?: boolean;
+            name?: string;
+            parentGroupId?: string;
+            slug?: string;
+            tagsAll?: Array<{ key: string; value: string }>;
+            tagsAny?: Array<{ key: string; value: string }>;
+            type?: string;
+          };
+        },
+        {
+          items: Array<{
+            _creationTime: number;
+            _id: string;
+            extend?: any;
+            isRoot?: boolean;
+            name: string;
+            parentGroupId?: string;
+            policy?: {
+              extend?: any;
+              identity: {
+                accountLinking: {
+                  oidc: "verifiedEmail" | "none" | "sameConnection";
+                  saml: "verifiedEmail" | "none" | "sameConnection";
+                };
+              };
+              provisioning: {
+                deprovision: { mode: "soft" | "hard" };
+                groups: {
+                  mapping?: Record<string, Array<string>>;
+                  mode: "ignore" | "sync";
+                  source: "protocol";
+                };
+                jit: {
+                  defaultRole?: string;
+                  defaultRoleIds?: Array<string>;
+                  mode: "off" | "createUser" | "createUserAndMembership";
+                };
+                roles: {
+                  mapping?: Record<string, Array<string>>;
+                  mode: "ignore" | "map";
+                  source: "protocol";
+                };
+                scimReuse: { user: "externalId" | "none" };
+                user: {
+                  authority: "app" | "sso" | "scim";
+                  createOnSignIn: boolean;
+                  updateProfileFromScim: "never" | "missing" | "always";
+                  updateProfileOnLogin: "never" | "missing" | "always";
+                };
+              };
+              version: 1;
+            };
+            rootGroupId?: string;
+            slug?: string;
+            tags?: Array<{ key: string; value: string }>;
+            type?: string;
+          }>;
+          nextCursor: string | null;
+        },
+        Name
+      >;
+      member: {
+        create: FunctionReference<
+          "mutation",
+          "internal",
+          {
+            extend?: any;
+            groupId: string;
+            roleIds?: Array<string>;
+            status?: string;
+            userId: string;
+          },
+          string,
+          Name
+        >;
+        delete: FunctionReference<
+          "mutation",
+          "internal",
+          { memberId: string },
+          null,
+          Name
+        >;
+        get: FunctionReference<
+          "query",
+          "internal",
+          { groupId?: string; id?: string; userId?: string },
+          {
+            _creationTime: number;
+            _id: string;
+            extend?: any;
+            groupId: string;
+            role?: string;
+            roleIds?: Array<string>;
+            status?: string;
+            userId: string;
+          } | null,
+          Name
+        >;
+        getMany: FunctionReference<
+          "query",
+          "internal",
+          { groupIds: Array<string>; userId: string },
+          Array<{
+            _creationTime: number;
+            _id: string;
+            extend?: any;
+            groupId: string;
+            role?: string;
+            roleIds?: Array<string>;
+            status?: string;
+            userId: string;
+          } | null>,
+          Name
+        >;
+        list: FunctionReference<
+          "query",
+          "internal",
+          {
+            cursor?: string | null;
+            limit?: number;
+            order?: "asc" | "desc";
+            orderBy?: "_creationTime" | "status";
+            where?: {
+              groupId?: string;
+              roleId?: string;
+              status?: string;
+              userId?: string;
+            };
+          },
+          {
+            items: Array<{
+              _creationTime: number;
+              _id: string;
+              extend?: any;
+              groupId: string;
+              role?: string;
+              roleIds?: Array<string>;
+              status?: string;
+              userId: string;
+            }>;
+            nextCursor: string | null;
+          },
+          Name
+        >;
+        resolve: FunctionReference<
+          "query",
+          "internal",
+          {
+            ancestry?: boolean;
+            groupId: string;
+            maxDepth?: number;
+            userId: string;
+          },
+          {
+            depth: number | null;
+            isDirect: boolean;
+            isInherited: boolean;
+            matchedGroupId: string | null;
+            membership: {
+              _creationTime: number;
+              _id: string;
+              extend?: any;
+              groupId: string;
+              role?: string;
+              roleIds?: Array<string>;
+              status?: string;
+              userId: string;
+            } | null;
+            traversedGroupIds?: Array<string>;
+          },
+          Name
+        >;
+        update: FunctionReference<
+          "mutation",
+          "internal",
+          { data: any; memberId: string },
+          null,
+          Name
+        >;
+      };
+      update: FunctionReference<
+        "mutation",
+        "internal",
+        { data: any; groupId: string },
+        null,
+        Name
+      >;
+    };
     key: {
       create: FunctionReference<
         "mutation",
@@ -532,63 +1018,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           >;
         };
       };
-      groupAncestors: FunctionReference<
-        "query",
-        "internal",
-        { groupId: string; includeSelf?: boolean; maxDepth?: number },
-        {
-          ancestors: Array<{
-            _creationTime: number;
-            _id: string;
-            extend?: any;
-            isRoot?: boolean;
-            name: string;
-            parentGroupId?: string;
-            policy?: {
-              extend?: any;
-              identity: {
-                accountLinking: {
-                  oidc: "verifiedEmail" | "none" | "sameConnection";
-                  saml: "verifiedEmail" | "none" | "sameConnection";
-                };
-              };
-              provisioning: {
-                deprovision: { mode: "soft" | "hard" };
-                groups: {
-                  mapping?: Record<string, Array<string>>;
-                  mode: "ignore" | "sync";
-                  source: "protocol";
-                };
-                jit: {
-                  defaultRole?: string;
-                  defaultRoleIds?: Array<string>;
-                  mode: "off" | "createUser" | "createUserAndMembership";
-                };
-                roles: {
-                  mapping?: Record<string, Array<string>>;
-                  mode: "ignore" | "map";
-                  source: "protocol";
-                };
-                scimReuse: { user: "externalId" | "none" };
-                user: {
-                  authority: "app" | "sso" | "scim";
-                  createOnSignIn: boolean;
-                  updateProfileFromScim: "never" | "missing" | "always";
-                  updateProfileOnLogin: "never" | "missing" | "always";
-                };
-              };
-              version: 1;
-            };
-            rootGroupId?: string;
-            slug?: string;
-            tags?: Array<{ key: string; value: string }>;
-            type?: string;
-          }>;
-          cycleDetected: boolean;
-          maxDepthReached: boolean;
-        },
-        Name
-      >;
       groupAuditEventCreate: FunctionReference<
         "mutation",
         "internal",
@@ -1056,203 +1485,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null,
         Name
       >;
-      groupCreate: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          extend?: any;
-          name: string;
-          parentGroupId?: string;
-          slug?: string;
-          tags?: Array<{ key: string; value: string }>;
-          type?: string;
-        },
-        string,
-        Name
-      >;
-      groupDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { groupId: string },
-        null,
-        Name
-      >;
-      groupGet: FunctionReference<
-        "query",
-        "internal",
-        { groupId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          extend?: any;
-          isRoot?: boolean;
-          name: string;
-          parentGroupId?: string;
-          policy?: {
-            extend?: any;
-            identity: {
-              accountLinking: {
-                oidc: "verifiedEmail" | "none" | "sameConnection";
-                saml: "verifiedEmail" | "none" | "sameConnection";
-              };
-            };
-            provisioning: {
-              deprovision: { mode: "soft" | "hard" };
-              groups: {
-                mapping?: Record<string, Array<string>>;
-                mode: "ignore" | "sync";
-                source: "protocol";
-              };
-              jit: {
-                defaultRole?: string;
-                defaultRoleIds?: Array<string>;
-                mode: "off" | "createUser" | "createUserAndMembership";
-              };
-              roles: {
-                mapping?: Record<string, Array<string>>;
-                mode: "ignore" | "map";
-                source: "protocol";
-              };
-              scimReuse: { user: "externalId" | "none" };
-              user: {
-                authority: "app" | "sso" | "scim";
-                createOnSignIn: boolean;
-                updateProfileFromScim: "never" | "missing" | "always";
-                updateProfileOnLogin: "never" | "missing" | "always";
-              };
-            };
-            version: 1;
-          };
-          rootGroupId?: string;
-          slug?: string;
-          tags?: Array<{ key: string; value: string }>;
-          type?: string;
-        } | null,
-        Name
-      >;
-      groupGetMany: FunctionReference<
-        "query",
-        "internal",
-        { groupIds: Array<string> },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          extend?: any;
-          isRoot?: boolean;
-          name: string;
-          parentGroupId?: string;
-          policy?: {
-            extend?: any;
-            identity: {
-              accountLinking: {
-                oidc: "verifiedEmail" | "none" | "sameConnection";
-                saml: "verifiedEmail" | "none" | "sameConnection";
-              };
-            };
-            provisioning: {
-              deprovision: { mode: "soft" | "hard" };
-              groups: {
-                mapping?: Record<string, Array<string>>;
-                mode: "ignore" | "sync";
-                source: "protocol";
-              };
-              jit: {
-                defaultRole?: string;
-                defaultRoleIds?: Array<string>;
-                mode: "off" | "createUser" | "createUserAndMembership";
-              };
-              roles: {
-                mapping?: Record<string, Array<string>>;
-                mode: "ignore" | "map";
-                source: "protocol";
-              };
-              scimReuse: { user: "externalId" | "none" };
-              user: {
-                authority: "app" | "sso" | "scim";
-                createOnSignIn: boolean;
-                updateProfileFromScim: "never" | "missing" | "always";
-                updateProfileOnLogin: "never" | "missing" | "always";
-              };
-            };
-            version: 1;
-          };
-          rootGroupId?: string;
-          slug?: string;
-          tags?: Array<{ key: string; value: string }>;
-          type?: string;
-        } | null>,
-        Name
-      >;
-      groupList: FunctionReference<
-        "query",
-        "internal",
-        {
-          cursor?: string | null;
-          limit?: number;
-          order?: "asc" | "desc";
-          orderBy?: "_creationTime" | "name" | "slug" | "type";
-          where?: {
-            isRoot?: boolean;
-            name?: string;
-            parentGroupId?: string;
-            slug?: string;
-            tagsAll?: Array<{ key: string; value: string }>;
-            tagsAny?: Array<{ key: string; value: string }>;
-            type?: string;
-          };
-        },
-        {
-          items: Array<{
-            _creationTime: number;
-            _id: string;
-            extend?: any;
-            isRoot?: boolean;
-            name: string;
-            parentGroupId?: string;
-            policy?: {
-              extend?: any;
-              identity: {
-                accountLinking: {
-                  oidc: "verifiedEmail" | "none" | "sameConnection";
-                  saml: "verifiedEmail" | "none" | "sameConnection";
-                };
-              };
-              provisioning: {
-                deprovision: { mode: "soft" | "hard" };
-                groups: {
-                  mapping?: Record<string, Array<string>>;
-                  mode: "ignore" | "sync";
-                  source: "protocol";
-                };
-                jit: {
-                  defaultRole?: string;
-                  defaultRoleIds?: Array<string>;
-                  mode: "off" | "createUser" | "createUserAndMembership";
-                };
-                roles: {
-                  mapping?: Record<string, Array<string>>;
-                  mode: "ignore" | "map";
-                  source: "protocol";
-                };
-                scimReuse: { user: "externalId" | "none" };
-                user: {
-                  authority: "app" | "sso" | "scim";
-                  createOnSignIn: boolean;
-                  updateProfileFromScim: "never" | "missing" | "always";
-                  updateProfileOnLogin: "never" | "missing" | "always";
-                };
-              };
-              version: 1;
-            };
-            rootGroupId?: string;
-            slug?: string;
-            tags?: Array<{ key: string; value: string }>;
-            type?: string;
-          }>;
-          nextCursor: string | null;
-        },
-        Name
-      >;
       groups: {
         core: {
           groupAncestors: FunctionReference<
@@ -1336,107 +1568,102 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           groupGet: FunctionReference<
             "query",
             "internal",
-            { groupId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              extend?: any;
-              isRoot?: boolean;
-              name: string;
-              parentGroupId?: string;
-              policy?: {
+            { id?: string; ids?: Array<string> },
+            | {
+                _creationTime: number;
+                _id: string;
                 extend?: any;
-                identity: {
-                  accountLinking: {
-                    oidc: "verifiedEmail" | "none" | "sameConnection";
-                    saml: "verifiedEmail" | "none" | "sameConnection";
+                isRoot?: boolean;
+                name: string;
+                parentGroupId?: string;
+                policy?: {
+                  extend?: any;
+                  identity: {
+                    accountLinking: {
+                      oidc: "verifiedEmail" | "none" | "sameConnection";
+                      saml: "verifiedEmail" | "none" | "sameConnection";
+                    };
                   };
+                  provisioning: {
+                    deprovision: { mode: "soft" | "hard" };
+                    groups: {
+                      mapping?: Record<string, Array<string>>;
+                      mode: "ignore" | "sync";
+                      source: "protocol";
+                    };
+                    jit: {
+                      defaultRole?: string;
+                      defaultRoleIds?: Array<string>;
+                      mode: "off" | "createUser" | "createUserAndMembership";
+                    };
+                    roles: {
+                      mapping?: Record<string, Array<string>>;
+                      mode: "ignore" | "map";
+                      source: "protocol";
+                    };
+                    scimReuse: { user: "externalId" | "none" };
+                    user: {
+                      authority: "app" | "sso" | "scim";
+                      createOnSignIn: boolean;
+                      updateProfileFromScim: "never" | "missing" | "always";
+                      updateProfileOnLogin: "never" | "missing" | "always";
+                    };
+                  };
+                  version: 1;
                 };
-                provisioning: {
-                  deprovision: { mode: "soft" | "hard" };
-                  groups: {
-                    mapping?: Record<string, Array<string>>;
-                    mode: "ignore" | "sync";
-                    source: "protocol";
-                  };
-                  jit: {
-                    defaultRole?: string;
-                    defaultRoleIds?: Array<string>;
-                    mode: "off" | "createUser" | "createUserAndMembership";
-                  };
-                  roles: {
-                    mapping?: Record<string, Array<string>>;
-                    mode: "ignore" | "map";
-                    source: "protocol";
-                  };
-                  scimReuse: { user: "externalId" | "none" };
-                  user: {
-                    authority: "app" | "sso" | "scim";
-                    createOnSignIn: boolean;
-                    updateProfileFromScim: "never" | "missing" | "always";
-                    updateProfileOnLogin: "never" | "missing" | "always";
-                  };
-                };
-                version: 1;
-              };
-              rootGroupId?: string;
-              slug?: string;
-              tags?: Array<{ key: string; value: string }>;
-              type?: string;
-            } | null,
-            Name
-          >;
-          groupGetMany: FunctionReference<
-            "query",
-            "internal",
-            { groupIds: Array<string> },
-            Array<{
-              _creationTime: number;
-              _id: string;
-              extend?: any;
-              isRoot?: boolean;
-              name: string;
-              parentGroupId?: string;
-              policy?: {
+                rootGroupId?: string;
+                slug?: string;
+                tags?: Array<{ key: string; value: string }>;
+                type?: string;
+              }
+            | null
+            | Array<{
+                _creationTime: number;
+                _id: string;
                 extend?: any;
-                identity: {
-                  accountLinking: {
-                    oidc: "verifiedEmail" | "none" | "sameConnection";
-                    saml: "verifiedEmail" | "none" | "sameConnection";
+                isRoot?: boolean;
+                name: string;
+                parentGroupId?: string;
+                policy?: {
+                  extend?: any;
+                  identity: {
+                    accountLinking: {
+                      oidc: "verifiedEmail" | "none" | "sameConnection";
+                      saml: "verifiedEmail" | "none" | "sameConnection";
+                    };
                   };
+                  provisioning: {
+                    deprovision: { mode: "soft" | "hard" };
+                    groups: {
+                      mapping?: Record<string, Array<string>>;
+                      mode: "ignore" | "sync";
+                      source: "protocol";
+                    };
+                    jit: {
+                      defaultRole?: string;
+                      defaultRoleIds?: Array<string>;
+                      mode: "off" | "createUser" | "createUserAndMembership";
+                    };
+                    roles: {
+                      mapping?: Record<string, Array<string>>;
+                      mode: "ignore" | "map";
+                      source: "protocol";
+                    };
+                    scimReuse: { user: "externalId" | "none" };
+                    user: {
+                      authority: "app" | "sso" | "scim";
+                      createOnSignIn: boolean;
+                      updateProfileFromScim: "never" | "missing" | "always";
+                      updateProfileOnLogin: "never" | "missing" | "always";
+                    };
+                  };
+                  version: 1;
                 };
-                provisioning: {
-                  deprovision: { mode: "soft" | "hard" };
-                  groups: {
-                    mapping?: Record<string, Array<string>>;
-                    mode: "ignore" | "sync";
-                    source: "protocol";
-                  };
-                  jit: {
-                    defaultRole?: string;
-                    defaultRoleIds?: Array<string>;
-                    mode: "off" | "createUser" | "createUserAndMembership";
-                  };
-                  roles: {
-                    mapping?: Record<string, Array<string>>;
-                    mode: "ignore" | "map";
-                    source: "protocol";
-                  };
-                  scimReuse: { user: "externalId" | "none" };
-                  user: {
-                    authority: "app" | "sso" | "scim";
-                    createOnSignIn: boolean;
-                    updateProfileFromScim: "never" | "missing" | "always";
-                    updateProfileOnLogin: "never" | "missing" | "always";
-                  };
-                };
-                version: 1;
-              };
-              rootGroupId?: string;
-              slug?: string;
-              tags?: Array<{ key: string; value: string }>;
-              type?: string;
-            } | null>,
+                rootGroupId?: string;
+                slug?: string;
+                tags?: Array<{ key: string; value: string }>;
+                type?: string;
+              } | null>,
             Name
           >;
           groupList: FunctionReference<
@@ -1557,28 +1784,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           inviteGet: FunctionReference<
             "query",
             "internal",
-            { inviteId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              acceptedByUserId?: string;
-              acceptedTime?: number;
-              email?: string;
-              expiresTime?: number;
-              extend?: any;
-              groupId?: string;
-              invitedByUserId?: string;
-              role?: string;
-              roleIds?: Array<string>;
-              status: "pending" | "accepted" | "revoked" | "expired";
-              tokenHash: string;
-            } | null,
-            Name
-          >;
-          inviteGetByTokenHash: FunctionReference<
-            "query",
-            "internal",
-            { tokenHash: string },
+            { id?: string; tokenHash?: string },
             {
               _creationTime: number;
               _id: string;
@@ -1664,23 +1870,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           memberGet: FunctionReference<
             "query",
             "internal",
-            { memberId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              extend?: any;
-              groupId: string;
-              role?: string;
-              roleIds?: Array<string>;
-              status?: string;
-              userId: string;
-            } | null,
-            Name
-          >;
-          memberGetByGroupAndUser: FunctionReference<
-            "query",
-            "internal",
-            { groupId: string; userId: string },
+            { groupId?: string; id?: string; userId?: string },
             {
               _creationTime: number;
               _id: string;
@@ -1783,13 +1973,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           >;
         };
       };
-      groupUpdate: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; groupId: string },
-        null,
-        Name
-      >;
       groupWebhookDeliveryEnqueue: FunctionReference<
         "mutation",
         "internal",
@@ -2431,267 +2614,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           >;
         };
       };
-      inviteAccept: FunctionReference<
-        "mutation",
-        "internal",
-        { acceptedByUserId?: string; inviteId: string },
-        null,
-        Name
-      >;
-      inviteAcceptByToken: FunctionReference<
-        "mutation",
-        "internal",
-        { acceptedByUserId: string; tokenHash: string },
-        {
-          groupId: string | null;
-          inviteId: string;
-          inviteStatus: "accepted" | "already_accepted";
-          memberId?: string;
-          membershipStatus: "joined" | "already_joined" | "not_applicable";
-        },
-        Name
-      >;
-      inviteCreate: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          email?: string;
-          expiresTime?: number;
-          extend?: any;
-          groupId?: string;
-          invitedByUserId?: string;
-          roleIds?: Array<string>;
-          status: "pending" | "accepted" | "revoked" | "expired";
-          tokenHash: string;
-        },
-        string,
-        Name
-      >;
-      inviteGet: FunctionReference<
-        "query",
-        "internal",
-        { inviteId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          acceptedByUserId?: string;
-          acceptedTime?: number;
-          email?: string;
-          expiresTime?: number;
-          extend?: any;
-          groupId?: string;
-          invitedByUserId?: string;
-          role?: string;
-          roleIds?: Array<string>;
-          status: "pending" | "accepted" | "revoked" | "expired";
-          tokenHash: string;
-        } | null,
-        Name
-      >;
-      inviteGetByTokenHash: FunctionReference<
-        "query",
-        "internal",
-        { tokenHash: string },
-        {
-          _creationTime: number;
-          _id: string;
-          acceptedByUserId?: string;
-          acceptedTime?: number;
-          email?: string;
-          expiresTime?: number;
-          extend?: any;
-          groupId?: string;
-          invitedByUserId?: string;
-          role?: string;
-          roleIds?: Array<string>;
-          status: "pending" | "accepted" | "revoked" | "expired";
-          tokenHash: string;
-        } | null,
-        Name
-      >;
-      inviteList: FunctionReference<
-        "query",
-        "internal",
-        {
-          cursor?: string | null;
-          limit?: number;
-          order?: "asc" | "desc";
-          orderBy?:
-            | "_creationTime"
-            | "status"
-            | "email"
-            | "expiresTime"
-            | "acceptedTime";
-          where?: {
-            acceptedByUserId?: string;
-            email?: string;
-            groupId?: string;
-            invitedByUserId?: string;
-            roleId?: string;
-            status?: "pending" | "accepted" | "revoked" | "expired";
-            tokenHash?: string;
-          };
-        },
-        {
-          items: Array<{
-            _creationTime: number;
-            _id: string;
-            acceptedByUserId?: string;
-            acceptedTime?: number;
-            email?: string;
-            expiresTime?: number;
-            extend?: any;
-            groupId?: string;
-            invitedByUserId?: string;
-            role?: string;
-            roleIds?: Array<string>;
-            status: "pending" | "accepted" | "revoked" | "expired";
-            tokenHash: string;
-          }>;
-          nextCursor: string | null;
-        },
-        Name
-      >;
-      inviteRevoke: FunctionReference<
-        "mutation",
-        "internal",
-        { inviteId: string },
-        null,
-        Name
-      >;
-      memberAdd: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          extend?: any;
-          groupId: string;
-          roleIds?: Array<string>;
-          status?: string;
-          userId: string;
-        },
-        string,
-        Name
-      >;
-      memberGet: FunctionReference<
-        "query",
-        "internal",
-        { memberId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          extend?: any;
-          groupId: string;
-          role?: string;
-          roleIds?: Array<string>;
-          status?: string;
-          userId: string;
-        } | null,
-        Name
-      >;
-      memberGetByGroupAndUser: FunctionReference<
-        "query",
-        "internal",
-        { groupId: string; userId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          extend?: any;
-          groupId: string;
-          role?: string;
-          roleIds?: Array<string>;
-          status?: string;
-          userId: string;
-        } | null,
-        Name
-      >;
-      memberGetByGroupAndUserMany: FunctionReference<
-        "query",
-        "internal",
-        { groupIds: Array<string>; userId: string },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          extend?: any;
-          groupId: string;
-          role?: string;
-          roleIds?: Array<string>;
-          status?: string;
-          userId: string;
-        } | null>,
-        Name
-      >;
-      memberList: FunctionReference<
-        "query",
-        "internal",
-        {
-          cursor?: string | null;
-          limit?: number;
-          order?: "asc" | "desc";
-          orderBy?: "_creationTime" | "status";
-          where?: {
-            groupId?: string;
-            roleId?: string;
-            status?: string;
-            userId?: string;
-          };
-        },
-        {
-          items: Array<{
-            _creationTime: number;
-            _id: string;
-            extend?: any;
-            groupId: string;
-            role?: string;
-            roleIds?: Array<string>;
-            status?: string;
-            userId: string;
-          }>;
-          nextCursor: string | null;
-        },
-        Name
-      >;
-      memberRemove: FunctionReference<
-        "mutation",
-        "internal",
-        { memberId: string },
-        null,
-        Name
-      >;
-      memberResolve: FunctionReference<
-        "query",
-        "internal",
-        {
-          ancestry?: boolean;
-          groupId: string;
-          maxDepth?: number;
-          userId: string;
-        },
-        {
-          depth: number | null;
-          isDirect: boolean;
-          isInherited: boolean;
-          matchedGroupId: string | null;
-          membership: {
-            _creationTime: number;
-            _id: string;
-            extend?: any;
-            groupId: string;
-            role?: string;
-            roleIds?: Array<string>;
-            status?: string;
-            userId: string;
-          } | null;
-          traversedGroupIds?: Array<string>;
-        },
-        Name
-      >;
-      memberUpdate: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; memberId: string },
-        null,
-        Name
-      >;
       passkeyDelete: FunctionReference<
         "mutation",
         "internal",

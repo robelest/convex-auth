@@ -1626,25 +1626,32 @@ type AuthComponentApi = {
     update: FunctionReference<"mutation", "internal">;
     delete: FunctionReference<"mutation", "internal">;
   };
+  group: {
+    get: FunctionReference<"query", "internal">;
+    ancestors: FunctionReference<"query", "internal">;
+    list: FunctionReference<"query", "internal">;
+    create: FunctionReference<"mutation", "internal">;
+    update: FunctionReference<"mutation", "internal">;
+    delete: FunctionReference<"mutation", "internal">;
+    member: {
+      get: FunctionReference<"query", "internal">;
+      getMany: FunctionReference<"query", "internal">;
+      list: FunctionReference<"query", "internal">;
+      create: FunctionReference<"mutation", "internal">;
+      update: FunctionReference<"mutation", "internal">;
+      delete: FunctionReference<"mutation", "internal">;
+      resolve: FunctionReference<"query", "internal">;
+    };
+    invite: {
+      get: FunctionReference<"query", "internal">;
+      list: FunctionReference<"query", "internal">;
+      create: FunctionReference<"mutation", "internal">;
+      accept: FunctionReference<"mutation", "internal">;
+      acceptByToken: FunctionReference<"mutation", "internal">;
+      revoke: FunctionReference<"mutation", "internal">;
+    };
+  };
   public: {
-    groupCreate: FunctionReference<"mutation", "internal">;
-    groupGet: FunctionReference<"query", "internal">;
-    groupList: FunctionReference<"query", "internal">;
-    groupUpdate: FunctionReference<"mutation", "internal">;
-    groupDelete: FunctionReference<"mutation", "internal">;
-    memberAdd: FunctionReference<"mutation", "internal">;
-    memberGet: FunctionReference<"query", "internal">;
-    memberList: FunctionReference<"query", "internal">;
-    memberGetByGroupAndUser: FunctionReference<"query", "internal">;
-    memberRemove: FunctionReference<"mutation", "internal">;
-    memberUpdate: FunctionReference<"mutation", "internal">;
-    inviteCreate: FunctionReference<"mutation", "internal">;
-    inviteGet: FunctionReference<"query", "internal">;
-    inviteGetByTokenHash: FunctionReference<"query", "internal">;
-    inviteList: FunctionReference<"query", "internal">;
-    inviteAccept: FunctionReference<"mutation", "internal">;
-    inviteAcceptByToken: FunctionReference<"mutation", "internal">;
-    inviteRevoke: FunctionReference<"mutation", "internal">;
     passkeyInsert: FunctionReference<"mutation", "internal">;
     passkeyGetById: FunctionReference<"query", "internal">;
     passkeyGetByCredentialId: FunctionReference<"query", "internal">;

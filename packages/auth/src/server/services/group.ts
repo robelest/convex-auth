@@ -94,7 +94,7 @@ export function createGroupService(deps: {
   };
 
   const loadGroupPolicyOrThrow = async (ctx: ComponentReadCtx, groupId: string) => {
-    const group = await getGroup(ctx, config.component.public, groupId);
+    const group = await getGroup(ctx, config.component.group, groupId);
     if (!group) {
       throw convexError({
         code: "INVALID_PARAMETERS",

@@ -49,7 +49,7 @@ test("token invite acceptance allows matching unverified email", async () => {
   expect(result.membershipStatus).toBe("not_applicable");
 
   const invite = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.inviteGet, { inviteId });
+    return await ctx.runQuery(components.auth.group.invite.get, { id: inviteId });
   });
   expect(invite?.status).toBe("accepted");
   expect(invite?.acceptedByUserId).toBeDefined();
@@ -201,7 +201,7 @@ async function createInvite(
 ) {
   const tokenHash = await sha256Hex(args.token);
   return await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.inviteCreate, {
+    return await ctx.runMutation(components.auth.group.invite.create, {
       tokenHash,
       status: "pending",
       email: args.email,

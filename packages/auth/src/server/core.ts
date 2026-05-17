@@ -852,8 +852,8 @@ export function createCoreDomains(deps: CoreDeps) {
   ): Promise<GroupDocLike | Array<GroupDocLike>> {
     if (typeof input === "string") {
       return (await cached(ctx, `group:${input}`, () =>
-        ctx.runQuery(config.component.public.groupGet, {
-          groupId: input,
+        ctx.runQuery(config.component.group.get, {
+          id: input,
         }),
       )) as GroupDocLike;
     }
@@ -883,7 +883,7 @@ export function createCoreDomains(deps: CoreDeps) {
     return (await Promise.all(
       groupIds.map((id) =>
         cached(ctx, `group:${id}`, () =>
-          ctx.runQuery(config.component.public.groupGet, { groupId: id }),
+          ctx.runQuery(config.component.group.get, { id: id }),
         ),
       ),
     )) as Array<GroupDocLike>;
@@ -1003,7 +1003,7 @@ export function createCoreDomains(deps: CoreDeps) {
         extend?: Record<string, unknown>;
       },
     ): Promise<{ groupId: string }> => {
-      const groupId = (await ctx.runMutation(config.component.public.groupCreate, data)) as string;
+      const groupId = (await ctx.runMutation(config.component.group.create, data)) as string;
       return { groupId };
     },
     /**
@@ -1082,7 +1082,7 @@ export function createCoreDomains(deps: CoreDeps) {
         order?: "asc" | "desc";
       },
     ) => {
-      return (await ctx.runQuery(config.component.public.groupList, {
+      return (await ctx.runQuery(config.component.group.list, {
         where: opts?.where,
         limit: opts?.limit,
         cursor: opts?.cursor,
@@ -1110,7 +1110,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     update: async (ctx: ComponentCtx, groupId: string, data: Record<string, unknown>) => {
-      await ctx.runMutation(config.component.public.groupUpdate, {
+      await ctx.runMutation(config.component.group.update, {
         groupId,
         data,
       });
@@ -1131,7 +1131,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     delete: async (ctx: ComponentCtx, groupId: string) => {
-      await ctx.runMutation(config.component.public.groupDelete, { groupId });
+      await ctx.runMutation(config.component.group.delete, { groupId });
       invalidateCtxCache(ctx, `group:${groupId}`);
       invalidateCtxCache(ctx, "member");
       invalidateCtxCache(ctx, "member-inspect");
@@ -1235,7 +1235,7 @@ export function createCoreDomains(deps: CoreDeps) {
       return await Promise.all(
         groupIds.map(async (groupId) => {
           const membership = (await cached(ctx, `member-inspect:${userId}:${groupId}:n`, () =>
-            ctx.runQuery(config.component.public.memberGetByGroupAndUser, {
+            ctx.runQuery(config.component.group.member.get, {
               userId,
               groupId,
             }),
@@ -1281,7 +1281,7 @@ export function createCoreDomains(deps: CoreDeps) {
       membership = result.membership;
     } else {
       const doc = (await cached(ctx, cacheKey, () =>
-        ctx.runQuery(config.component.public.memberGetByGroupAndUser, {
+        ctx.runQuery(config.component.group.member.get, {
           userId: opts.userId,
           groupId: opts.groupId,
         }),
@@ -1344,7 +1344,7 @@ export function createCoreDomains(deps: CoreDeps) {
       },
     ) => {
       const roleIds = normalizeRoleIds(data.roleIds);
-      const memberId = (await ctx.runMutation(config.component.public.memberAdd, {
+      const memberId = (await ctx.runMutation(config.component.group.member.create, {
         ...data,
         roleIds,
       })) as string;
@@ -1370,8 +1370,8 @@ export function createCoreDomains(deps: CoreDeps) {
       memberId: string,
     ): Promise<Doc<"GroupMember"> | null> => {
       return (await cached(ctx, `member:${memberId}`, () =>
-        ctx.runQuery(config.component.public.memberGet, {
-          memberId,
+        ctx.runQuery(config.component.group.member.get, {
+          id: memberId,
         }),
       )) as Doc<"GroupMember"> | null;
     },
@@ -1404,7 +1404,7 @@ export function createCoreDomains(deps: CoreDeps) {
       ctx: ComponentReadCtx,
       opts?: O,
     ): Promise<Paginated<MemberItem<NonNullable<O>>>> => {
-      const page = (await ctx.runQuery(config.component.public.memberList, {
+      const page = (await ctx.runQuery(config.component.group.member.list, {
         where: opts?.where,
         limit: opts?.limit,
         cursor: opts?.cursor,
@@ -1452,7 +1452,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     delete: async (ctx: ComponentCtx, memberId: string) => {
-      await ctx.runMutation(config.component.public.memberRemove, { memberId });
+      await ctx.runMutation(config.component.group.member.delete, { memberId });
       invalidateCtxCache(ctx, "member");
       invalidateCtxCache(ctx, "member-inspect");
       return { memberId };
@@ -1482,7 +1482,7 @@ export function createCoreDomains(deps: CoreDeps) {
           Array.isArray(nextData.roleIds) ? (nextData.roleIds as string[]) : undefined,
         );
       }
-      await ctx.runMutation(config.component.public.memberUpdate, {
+      await ctx.runMutation(config.component.group.member.update, {
         memberId,
         data: nextData,
       });
@@ -1726,7 +1726,7 @@ export function createCoreDomains(deps: CoreDeps) {
       const roleIds = normalizeRoleIds(data.roleIds);
       const token = generateRandomString(inviteTokenLength, inviteTokenAlphabet);
       const tokenHash = await sha256(token);
-      const inviteId = (await ctx.runMutation(config.component.public.inviteCreate, {
+      const inviteId = (await ctx.runMutation(config.component.group.invite.create, {
         ...data,
         roleIds,
         tokenHash,
@@ -1757,8 +1757,8 @@ export function createCoreDomains(deps: CoreDeps) {
       ctx: ComponentReadCtx,
       inviteId: string,
     ): Promise<Doc<"GroupInvite"> | null> => {
-      return (await ctx.runQuery(config.component.public.inviteGet, {
-        inviteId,
+      return (await ctx.runQuery(config.component.group.invite.get, {
+        id: inviteId,
       })) as Doc<"GroupInvite"> | null;
     },
     token: {
@@ -1786,7 +1786,7 @@ export function createCoreDomains(deps: CoreDeps) {
         token: string,
       ): Promise<Doc<"GroupInvite"> | null> => {
         const tokenHash = await sha256(token);
-        return (await ctx.runQuery(config.component.public.inviteGetByTokenHash, {
+        return (await ctx.runQuery(config.component.group.invite.get, {
           tokenHash,
         })) as Doc<"GroupInvite"> | null;
       },
@@ -1822,7 +1822,7 @@ export function createCoreDomains(deps: CoreDeps) {
       }> => {
         const tokenHash = await sha256(args.token);
         const result = (await ctx.runMutation(
-          config.component.public.inviteAcceptByToken,
+          config.component.group.invite.acceptByToken,
           {
             tokenHash,
             acceptedByUserId: args.acceptedByUserId,
@@ -1878,7 +1878,7 @@ export function createCoreDomains(deps: CoreDeps) {
         order?: "asc" | "desc";
       },
     ) => {
-      return (await ctx.runQuery(config.component.public.inviteList, {
+      return (await ctx.runQuery(config.component.group.invite.list, {
         where: opts?.where,
         limit: opts?.limit,
         cursor: opts?.cursor,
@@ -1905,7 +1905,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     accept: async (ctx: ComponentCtx, inviteId: string, acceptedByUserId?: string) => {
-      await ctx.runMutation(config.component.public.inviteAccept, {
+      await ctx.runMutation(config.component.group.invite.accept, {
         inviteId,
         ...(acceptedByUserId ? { acceptedByUserId } : {}),
       });
@@ -1930,7 +1930,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     revoke: async (ctx: ComponentCtx, inviteId: string) => {
-      await ctx.runMutation(config.component.public.inviteRevoke, { inviteId });
+      await ctx.runMutation(config.component.group.invite.revoke, { inviteId });
       return { inviteId };
     },
   };

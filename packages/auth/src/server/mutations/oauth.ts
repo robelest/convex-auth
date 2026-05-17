@@ -85,18 +85,18 @@ async function jitProvisionMembership(
   });
 
   const existingMembership = await ctx.runQuery(
-    config.component.public.memberGetByGroupAndUser,
+    config.component.group.member.get,
     { userId, groupId },
   );
   if (existingMembership === null) {
-    await ctx.runMutation(config.component.public.memberAdd, {
+    await ctx.runMutation(config.component.group.member.create, {
       groupId,
       userId,
       roleIds: provisionedRoleIds,
       status: "active",
     });
   } else if (provisionedRoleIds.length > 0) {
-    await ctx.runMutation(config.component.public.memberUpdate, {
+    await ctx.runMutation(config.component.group.member.update, {
       memberId: existingMembership._id,
       data: { roleIds: provisionedRoleIds },
     });
@@ -132,7 +132,7 @@ export async function userOAuthImpl(
       ? await getGroupConnection(ctx, config.component.public, connectionId)
       : null;
   const group =
-    connection !== null ? await getGroup(ctx, config.component.public, connection.groupId) : null;
+    connection !== null ? await getGroup(ctx, config.component.group, connection.groupId) : null;
   const connectionPolicy = connection ? normalizeGroupConnectionPolicy(group?.policy) : null;
 
   const existingScimIdentity =

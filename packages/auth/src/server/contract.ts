@@ -242,11 +242,11 @@ export const deleteGroupConnection = async (
 
 export const getGroup = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentGroup: ConvexAuthMaterializedConfig["component"]["group"],
   groupId: string,
 ) =>
   cached(ctx, `group-record:${groupId}`, () =>
-    query<{ groupId: string }, GroupRecord | null>(ctx, componentPublic.groupGet, { groupId }),
+    query<{ id: string }, GroupRecord | null>(ctx, componentGroup.get, { id: groupId }),
   );
 
 export const listConnectionDomains = (

@@ -54,7 +54,7 @@ test("group connection component stores group connection records and domains", a
   const t = convexTest(schema);
 
   const groupId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupCreate, {
+    return await ctx.runMutation(components.auth.group.create, {
       name: "Acme Corp",
       slug: "acme",
       type: "organization",
@@ -107,7 +107,7 @@ test("group connection domain validation reports onboarding diagnostics", async 
   const t = convexTest(schema);
 
   const groupId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupCreate, {
+    return await ctx.runMutation(components.auth.group.create, {
       name: "Acme Corp",
       slug: "acme-onboarding",
       type: "organization",
@@ -292,7 +292,7 @@ test("group connection component stores scim config, audit events, and webhook d
   const t = convexTest(schema);
 
   const groupId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupCreate, {
+    return await ctx.runMutation(components.auth.group.create, {
       name: "Globex",
       slug: "globex",
       type: "organization",
@@ -418,7 +418,7 @@ test("group connection scim identity lookup is scoped to the group connection", 
   });
 
   const first = await t.run(async (ctx) => {
-    const groupId = await ctx.runMutation(components.auth.public.groupCreate, {
+    const groupId = await ctx.runMutation(components.auth.group.create, {
       name: "First Group Connection",
       slug: "first-group-connection",
     });
@@ -441,7 +441,7 @@ test("group connection scim identity lookup is scoped to the group connection", 
   });
 
   const second = await t.run(async (ctx) => {
-    const groupId = await ctx.runMutation(components.auth.public.groupCreate, {
+    const groupId = await ctx.runMutation(components.auth.group.create, {
       name: "Second Group Connection",
       slug: "second-group-connection",
     });
@@ -577,7 +577,7 @@ test("group saml.register persists config directly on group connection", async (
   const t = convexTest(schema);
 
   const groupId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupCreate, {
+    return await ctx.runMutation(components.auth.group.create, {
       name: "SAML Register Co",
       slug: "saml-register-co",
       type: "organization",
@@ -736,7 +736,7 @@ test("group policy defaults and updates are normalized through auth.group.sso.po
   const t = convexTest(schema);
 
   const groupId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupCreate, {
+    return await ctx.runMutation(components.auth.group.create, {
       name: "Policy Co",
       slug: "policy-co",
       type: "organization",
@@ -799,7 +799,7 @@ test("group connection domain status exposes trust and next steps", async () => 
   const t = convexTest(schema);
 
   const groupId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupCreate, {
+    return await ctx.runMutation(components.auth.group.create, {
       name: "Status Co",
       slug: "status-co",
       type: "organization",
@@ -853,7 +853,7 @@ test("group oidc.register merges config and client.signIn requires verified doma
   const t = convexTest(schema);
 
   const groupId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupCreate, {
+    return await ctx.runMutation(components.auth.group.create, {
       name: "OIDC Co",
       slug: "oidc-co",
       type: "organization",
@@ -1100,7 +1100,7 @@ test("provisioned membership stores resolved roleIds queryable via memberGetByGr
   const t = convexTest(schema);
 
   const groupId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupCreate, {
+    return await ctx.runMutation(components.auth.group.create, {
       name: "Role Assert Co",
       slug: "role-assert-co",
       type: "organization",
@@ -1160,7 +1160,7 @@ test("provisioned membership stores resolved roleIds queryable via memberGetByGr
   });
 
   await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.memberAdd, {
+    return await ctx.runMutation(components.auth.group.member.create, {
       groupId,
       userId,
       roleIds: resolvedRoleIds,
@@ -1169,7 +1169,7 @@ test("provisioned membership stores resolved roleIds queryable via memberGetByGr
   });
 
   const membership = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.memberGetByGroupAndUser, {
+    return await ctx.runQuery(components.auth.group.member.get, {
       groupId,
       userId,
     });
@@ -1184,7 +1184,7 @@ test("SSO hooks can transform normalized profiles", async () => {
   const t = convexTest(schema);
 
   const groupId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupCreate, {
+    return await ctx.runMutation(components.auth.group.create, {
       name: "Hooks Co",
       slug: "hooks-co",
       type: "organization",
@@ -1391,7 +1391,7 @@ test("group connection scim.configure stores hashed token and enqueues subscribe
   const t = convexTest(schema);
 
   const groupId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupCreate, {
+    return await ctx.runMutation(components.auth.group.create, {
       name: "SCIM Corp",
       slug: "scim-corp",
       type: "organization",
