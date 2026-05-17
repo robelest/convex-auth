@@ -304,19 +304,19 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
           extend?: Record<string, unknown>;
         },
       ): Promise<{ connectionId: string; groupId: string }> => {
-        const connectionId = await createGroupConnection(ctx, config.component.public, data);
+        const connectionId = await createGroupConnection(ctx, config.component.sso, data);
         return {
           connectionId,
           groupId: data.groupId,
         };
       },
       get: async (ctx: ComponentReadCtx, connectionId: string) => {
-        return await getGroupConnection(ctx, config.component.public, connectionId);
+        return await getGroupConnection(ctx, config.component.sso, connectionId);
       },
       getByDomain: async (ctx: ComponentReadCtx, domain: string) => {
         return await getGroupConnectionByDomain(
           ctx,
-          config.component.public,
+          config.component.sso,
           normalizeDomain(domain),
         );
       },
@@ -334,7 +334,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
           order?: "asc" | "desc";
         },
       ) => {
-        return await listGroupConnections(ctx, config.component.public, {
+        return await listGroupConnections(ctx, config.component.sso, {
           where: opts?.where,
           limit: opts?.limit,
           cursor: opts?.cursor,
@@ -343,14 +343,14 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
         });
       },
       update: async (ctx: ComponentCtx, connectionId: string, data: Record<string, unknown>) => {
-        await updateGroupConnection(ctx, config.component.public, {
+        await updateGroupConnection(ctx, config.component.sso, {
           connectionId,
           data,
         });
         return { connectionId };
       },
       delete: async (ctx: ComponentCtx, connectionId: string) => {
-        await deleteGroupConnection(ctx, config.component.public, connectionId);
+        await deleteGroupConnection(ctx, config.component.sso, connectionId);
         return { connectionId };
       },
       /**
@@ -362,7 +362,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
        * diagnostics without running full network validation.
        */
       status: async (ctx: ComponentReadCtx, connectionId: string) => {
-        const connection = await getGroupConnection(ctx, config.component.public, connectionId);
+        const connection = await getGroupConnection(ctx, config.component.sso, connectionId);
         if (!connection) {
           throw convexError({
             code: "INVALID_PARAMETERS",
@@ -379,10 +379,10 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
         const samlConfig = getSamlConfig(connection.config) as DomainSamlConfig;
         const scimConfig = await getScimConfigByConnection(
           ctx,
-          config.component.public,
+          config.component.sso,
           connectionId,
         );
-        const domains = await listConnectionDomains(ctx, config.component.public, connectionId);
+        const domains = await listConnectionDomains(ctx, config.component.sso, connectionId);
 
         const oidcReady =
           oidcConfig?.enabled === true &&
@@ -436,16 +436,16 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
           isPrimary?: boolean;
         },
       ): Promise<string> => {
-        return await addConnectionDomain(ctx, config.component.public, {
+        return await addConnectionDomain(ctx, config.component.sso, {
           ...data,
           domain: normalizeDomain(data.domain),
         });
       },
       list: async (ctx: ComponentReadCtx, connectionId: string) => {
-        return await listConnectionDomains(ctx, config.component.public, connectionId);
+        return await listConnectionDomains(ctx, config.component.sso, connectionId);
       },
       validate: async (ctx: ComponentReadCtx, connectionId: string) => {
-        const connection = await getGroupConnection(ctx, config.component.public, connectionId);
+        const connection = await getGroupConnection(ctx, config.component.sso, connectionId);
         if (connection === null) {
           throw convexError({
             code: "INVALID_PARAMETERS",
@@ -453,7 +453,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
           });
         }
 
-        const domains = await listConnectionDomains(ctx, config.component.public, connectionId);
+        const domains = await listConnectionDomains(ctx, config.component.sso, connectionId);
         const primaryDomains = domains.filter(
           (domain: (typeof domains)[number]) => domain.isPrimary,
         );
@@ -493,8 +493,8 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
       },
       status: async (ctx: ComponentReadCtx, connectionId: string) => {
         const [connection, domains] = await Promise.all([
-          getGroupConnection(ctx, config.component.public, connectionId),
-          listConnectionDomains(ctx, config.component.public, connectionId),
+          getGroupConnection(ctx, config.component.sso, connectionId),
+          listConnectionDomains(ctx, config.component.sso, connectionId),
         ]);
         if (connection === null) {
           throw convexError({
@@ -512,7 +512,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
             domains.map(async (domain: (typeof domains)[number]) => {
               const verification = await getConnectionDomainVerification(
                 ctx,
-                config.component.public,
+                config.component.sso,
                 domain._id,
               );
               if (!verification || verification.expiresAt < Date.now()) {
@@ -596,13 +596,13 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
         };
       },
       remove: async (ctx: ComponentCtx, domainId: string) => {
-        await deleteConnectionDomain(ctx, config.component.public, domainId);
+        await deleteConnectionDomain(ctx, config.component.sso, domainId);
       },
       verification: {
         request: async (ctx: ComponentCtx, args: { connectionId: string; domain: string }) => {
           const connection = await loadConnectionOrThrow(ctx, args.connectionId);
           const normalizedDomain = normalizeDomain(args.domain);
-          const domains = await listConnectionDomains(ctx, config.component.public, connection._id);
+          const domains = await listConnectionDomains(ctx, config.component.sso, connection._id);
           const domain = domains.find(
             (entry: (typeof domains)[number]) => entry.domain === normalizedDomain,
           );
@@ -619,7 +619,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
           const tokenHash = await sha256(token);
           const recordName = getDomainVerificationRecordName(normalizedDomain);
 
-          await upsertConnectionDomainVerification(ctx, config.component.public, {
+          await upsertConnectionDomainVerification(ctx, config.component.sso, {
             connectionId: connection._id,
             groupId: connection.groupId,
             domainId: domain._id,
@@ -657,7 +657,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
         confirm: async (ctx: ComponentCtx, args: { connectionId: string; domain: string }) => {
           const connection = await loadConnectionOrThrow(ctx, args.connectionId);
           const normalizedDomain = normalizeDomain(args.domain);
-          const domains = await listConnectionDomains(ctx, config.component.public, connection._id);
+          const domains = await listConnectionDomains(ctx, config.component.sso, connection._id);
           const domain = domains.find(
             (entry: (typeof domains)[number]) => entry.domain === normalizedDomain,
           );
@@ -685,7 +685,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
 
           const verification = await getConnectionDomainVerification(
             ctx,
-            config.component.public,
+            config.component.sso,
             domain._id,
           );
           const checks: Array<{ name: string; ok: boolean; message?: string }> = [];
@@ -705,7 +705,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
           checks.push({ name: "verification_requested", ok: true });
 
           if (verification.expiresAt < Date.now()) {
-            await deleteConnectionDomainVerification(ctx, config.component.public, domain._id);
+            await deleteConnectionDomainVerification(ctx, config.component.sso, domain._id);
             checks.push({
               name: "challenge_active",
               ok: false,
@@ -758,7 +758,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
           }
 
           const verifiedAt = Date.now();
-          await verifyConnectionDomain(ctx, config.component.public, {
+          await verifyConnectionDomain(ctx, config.component.sso, {
             domainId: domain._id,
             verifiedAt,
           });
@@ -835,7 +835,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
       ) => {
         let connection;
         try {
-          connection = await getGroupConnection(ctx, config.component.public, data.connectionId);
+          connection = await getGroupConnection(ctx, config.component.sso, data.connectionId);
         } catch {
           throw convexError({
             code: "INTERNAL_ERROR",
@@ -942,7 +942,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
         });
 
         try {
-          await updateGroupConnection(ctx, config.component.public, {
+          await updateGroupConnection(ctx, config.component.sso, {
             connectionId: connection._id,
             data: {
               status: "active",
@@ -959,7 +959,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
         if (normalizedDomains) {
           for (const [index, domain] of normalizedDomains.entries()) {
             try {
-              await addConnectionDomain(ctx, config.component.public, {
+              await addConnectionDomain(ctx, config.component.sso, {
                 connectionId: connection._id,
                 groupId: connection.groupId,
                 domain,
@@ -1003,7 +1003,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
       refresh: async (ctx: ComponentCtx, data: { connectionId: string }) => {
         let connection;
         try {
-          connection = await getGroupConnection(ctx, config.component.public, data.connectionId);
+          connection = await getGroupConnection(ctx, config.component.sso, data.connectionId);
         } catch {
           throw convexError({
             code: "INTERNAL_ERROR",
@@ -1077,7 +1077,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
           security: samlConfig.security,
         });
         try {
-          await updateGroupConnection(ctx, config.component.public, {
+          await updateGroupConnection(ctx, config.component.sso, {
             connectionId: connection._id,
             data: {
               status: connection.status,
@@ -1117,7 +1117,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
       get: async (ctx: ComponentReadCtx, connectionId: string) => {
         let connection;
         try {
-          connection = await getGroupConnection(ctx, config.component.public, connectionId);
+          connection = await getGroupConnection(ctx, config.component.sso, connectionId);
         } catch {
           throw convexError({
             code: "INTERNAL_ERROR",
@@ -1133,7 +1133,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
         return getSamlConfig(connection.config);
       },
       status: (ctx: ComponentReadCtx, connectionId: string) => {
-        return getGroupConnection(ctx, config.component.public, connectionId).then((connection) => {
+        return getGroupConnection(ctx, config.component.sso, connectionId).then((connection) => {
           if (!connection) {
             throw convexError({
               code: "INVALID_PARAMETERS",
@@ -1172,7 +1172,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
       ) => {
         const connection = await getGroupConnection(
           ctx,
-          config.component.public,
+          config.component.sso,
           opts.connectionId,
         );
         if (!connection) {
@@ -1212,7 +1212,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
           message?: string;
         }> = [];
 
-        const connection = await getGroupConnection(ctx, config.component.public, connectionId);
+        const connection = await getGroupConnection(ctx, config.component.sso, connectionId);
 
         if (!connection) {
           return {
@@ -1391,7 +1391,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
 
         let connection;
         try {
-          connection = await getGroupConnection(ctx, config.component.public, data.connectionId);
+          connection = await getGroupConnection(ctx, config.component.sso, data.connectionId);
         } catch {
           throw convexError({
             code: "INTERNAL_ERROR",
@@ -1438,7 +1438,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
         });
 
         try {
-          await updateGroupConnection(ctx, config.component.public, {
+          await updateGroupConnection(ctx, config.component.sso, {
             connectionId: data.connectionId,
             data: { config: nextConfig },
           });
@@ -1460,7 +1460,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
             });
           }
           try {
-            await upsertGroupConnectionSecret(ctx, config.component.public, {
+            await upsertGroupConnectionSecret(ctx, config.component.sso, {
               connectionId: data.connectionId,
               groupId: connection.groupId,
               kind: GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
@@ -1521,7 +1521,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
       get: async (ctx: ComponentReadCtx, connectionId: string) => {
         let connection;
         try {
-          connection = await getGroupConnection(ctx, config.component.public, connectionId);
+          connection = await getGroupConnection(ctx, config.component.sso, connectionId);
         } catch {
           throw convexError({
             code: "INTERNAL_ERROR",
@@ -1553,7 +1553,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
       },
       status: (ctx: ComponentReadCtx, connectionId: string) => {
         return Promise.all([
-          getGroupConnection(ctx, config.component.public, connectionId),
+          getGroupConnection(ctx, config.component.sso, connectionId),
           getGroupConnectionSecret(ctx, connectionId, GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND),
         ]).then(([connection, secret]) => {
           if (!connection) {
@@ -1614,7 +1614,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
         let connection;
         if (data.connectionId !== undefined) {
           try {
-            connection = await getGroupConnection(ctx, config.component.public, data.connectionId!);
+            connection = await getGroupConnection(ctx, config.component.sso, data.connectionId!);
           } catch {
             throw convexError({
               code: "INTERNAL_ERROR",
@@ -1632,7 +1632,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
           try {
             result = await getGroupConnectionByDomain(
               ctx,
-              config.component.public,
+              config.component.sso,
               normalizeDomain(data.domain ?? String(data.email).split("@").pop() ?? ""),
             );
           } catch {
@@ -1730,7 +1730,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
           message?: string;
         }> = [];
 
-        const connection = await getGroupConnection(ctx, config.component.public, connectionId);
+        const connection = await getGroupConnection(ctx, config.component.sso, connectionId);
 
         if (!connection) {
           return {
@@ -1903,7 +1903,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
         ctx: ComponentReadCtx,
         data: { connectionId?: string; groupId?: string; limit?: number },
       ) => {
-        return await listAuditEvents(ctx, config.component.public, data);
+        return await listAuditEvents(ctx, config.component.sso, data);
       },
     },
     webhook,

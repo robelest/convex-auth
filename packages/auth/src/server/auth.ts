@@ -572,7 +572,7 @@ export function createAuth<
           ctx as {
             runMutation: GenericActionCtx<GenericDataModel>["runMutation"];
           }
-        ).runMutation(component.public.groupConnectionDomainVerify, {
+        ).runMutation(component.sso.connection.domain.verify, {
           domainId,
           verifiedAt: current.verifiedAt,
         });

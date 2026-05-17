@@ -24,24 +24,6 @@ import { vAuditActorType, vAuditStatus, vGroupAuditEventDoc } from "../../model"
  * @param args.metadata - An optional arbitrary object with additional event details.
  * @returns The ID of the newly created `GroupAuditEvent` document.
  *
- * @example
- * ```ts
- * const eventId = await ctx.runMutation(
- *   components.auth.group.sso.groupAuditEventCreate,
- *   {
- *     connectionId,
- *     groupId: orgGroupId,
- *     eventType: "user.login",
- *     actorType: "user",
- *     actorId: userId,
- *     subjectType: "session",
- *     subjectId: sessionId,
- *     status: "success",
- *     occurredAt: Date.now(),
- *     ip: "203.0.113.42",
- *   },
- * );
- * ```
  */
 export const groupAuditEventCreate = mutation({
   args: {
@@ -78,16 +60,6 @@ export const groupAuditEventCreate = mutation({
  * @param args.limit - Maximum number of events to return (clamped between 1 and 100, defaults to 50).
  * @returns An array of audit event documents, most recent first.
  *
- * @example
- * ```ts
- * const events = await ctx.runQuery(
- *   components.auth.group.sso.groupAuditEventList,
- *   { connectionId, limit: 20 },
- * );
- * for (const event of events) {
- *   console.log(event.eventType, event.actorType, event.status);
- * }
- * ```
  */
 export const groupAuditEventList = query({
   args: {

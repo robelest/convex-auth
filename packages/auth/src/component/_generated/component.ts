@@ -999,473 +999,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           >;
         };
       };
-      groupAuditEventCreate: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          actorId?: string;
-          actorType: "user" | "system" | "scim" | "api_key" | "webhook";
-          connectionId?: string;
-          eventType: string;
-          groupId: string;
-          ip?: string;
-          metadata?: any;
-          occurredAt: number;
-          requestId?: string;
-          status: "success" | "failure";
-          subjectId?: string;
-          subjectType: string;
-        },
-        string,
-        Name
-      >;
-      groupAuditEventList: FunctionReference<
-        "query",
-        "internal",
-        { connectionId?: string; groupId?: string; limit?: number },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          actorId?: string;
-          actorType: "user" | "system" | "scim" | "api_key" | "webhook";
-          connectionId?: string;
-          eventType: string;
-          groupId: string;
-          ip?: string;
-          metadata?: any;
-          occurredAt: number;
-          requestId?: string;
-          status: "success" | "failure";
-          subjectId?: string;
-          subjectType: string;
-        }>,
-        Name
-      >;
-      groupConnectionCreate: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          config?: any;
-          extend?: any;
-          groupId: string;
-          name?: string;
-          protocol: "oidc" | "saml";
-          slug?: string;
-          status?: "draft" | "active" | "disabled";
-        },
-        string,
-        Name
-      >;
-      groupConnectionDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { connectionId: string },
-        null,
-        Name
-      >;
-      groupConnectionDomainAdd: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          connectionId: string;
-          domain: string;
-          groupId: string;
-          isPrimary?: boolean;
-        },
-        string,
-        Name
-      >;
-      groupConnectionDomainDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { domainId: string },
-        null,
-        Name
-      >;
-      groupConnectionDomainList: FunctionReference<
-        "query",
-        "internal",
-        { connectionId: string; limit?: number },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          connectionId: string;
-          domain: string;
-          groupId: string;
-          isPrimary: boolean;
-          verifiedAt?: number;
-        }>,
-        Name
-      >;
-      groupConnectionDomainVerificationDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { domainId: string },
-        null,
-        Name
-      >;
-      groupConnectionDomainVerificationGet: FunctionReference<
-        "query",
-        "internal",
-        { domainId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          connectionId: string;
-          domain: string;
-          domainId: string;
-          expiresAt: number;
-          groupId: string;
-          recordName: string;
-          requestedAt: number;
-          token: string;
-          tokenHash: string;
-        } | null,
-        Name
-      >;
-      groupConnectionDomainVerificationUpsert: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          connectionId: string;
-          domain: string;
-          domainId: string;
-          expiresAt: number;
-          groupId: string;
-          recordName: string;
-          requestedAt: number;
-          token: string;
-          tokenHash: string;
-        },
-        string,
-        Name
-      >;
-      groupConnectionDomainVerify: FunctionReference<
-        "mutation",
-        "internal",
-        { domainId: string; verifiedAt: number },
-        {
-          _creationTime: number;
-          _id: string;
-          connectionId: string;
-          domain: string;
-          groupId: string;
-          isPrimary: boolean;
-          verifiedAt?: number;
-        },
-        Name
-      >;
-      groupConnectionGet: FunctionReference<
-        "query",
-        "internal",
-        { connectionId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          config?: any;
-          extend?: any;
-          groupId: string;
-          name?: string;
-          protocol: "oidc" | "saml";
-          slug?: string;
-          status: "draft" | "active" | "disabled";
-        } | null,
-        Name
-      >;
-      groupConnectionGetByDomain: FunctionReference<
-        "query",
-        "internal",
-        { domain: string },
-        {
-          connection: {
-            _creationTime: number;
-            _id: string;
-            config?: any;
-            extend?: any;
-            groupId: string;
-            name?: string;
-            protocol: "oidc" | "saml";
-            slug?: string;
-            status: "draft" | "active" | "disabled";
-          };
-          domain: {
-            _creationTime: number;
-            _id: string;
-            connectionId: string;
-            domain: string;
-            groupId: string;
-            isPrimary: boolean;
-            verifiedAt?: number;
-          };
-        } | null,
-        Name
-      >;
-      groupConnectionList: FunctionReference<
-        "query",
-        "internal",
-        {
-          cursor?: string | null;
-          limit?: number;
-          order?: "asc" | "desc";
-          orderBy?: "_creationTime" | "name" | "slug" | "status";
-          where?: {
-            groupId?: string;
-            slug?: string;
-            status?: "draft" | "active" | "disabled";
-          };
-        },
-        {
-          items: Array<{
-            _creationTime: number;
-            _id: string;
-            config?: any;
-            extend?: any;
-            groupId: string;
-            name?: string;
-            protocol: "oidc" | "saml";
-            slug?: string;
-            status: "draft" | "active" | "disabled";
-          }>;
-          nextCursor: string | null;
-        },
-        Name
-      >;
-      groupConnectionScimConfigGetByGroupConnection: FunctionReference<
-        "query",
-        "internal",
-        { connectionId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          basePath: string;
-          connectionId: string;
-          extend?: any;
-          groupId: string;
-          lastRotatedAt?: number;
-          status: "draft" | "active" | "disabled";
-          tokenHash: string;
-        } | null,
-        Name
-      >;
-      groupConnectionScimConfigGetByTokenHash: FunctionReference<
-        "query",
-        "internal",
-        { tokenHash: string },
-        {
-          _creationTime: number;
-          _id: string;
-          basePath: string;
-          connectionId: string;
-          extend?: any;
-          groupId: string;
-          lastRotatedAt?: number;
-          status: "draft" | "active" | "disabled";
-          tokenHash: string;
-        } | null,
-        Name
-      >;
-      groupConnectionScimConfigUpsert: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          basePath: string;
-          connectionId: string;
-          extend?: any;
-          groupId: string;
-          lastRotatedAt?: number;
-          status: "draft" | "active" | "disabled";
-          tokenHash: string;
-        },
-        string,
-        Name
-      >;
-      groupConnectionScimIdentityDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { identityId: string },
-        null,
-        Name
-      >;
-      groupConnectionScimIdentityGet: FunctionReference<
-        "query",
-        "internal",
-        {
-          connectionId: string;
-          externalId: string;
-          resourceType: "user" | "group";
-        },
-        {
-          _creationTime: number;
-          _id: string;
-          active?: boolean;
-          connectionId: string;
-          externalId: string;
-          groupId: string;
-          lastProvisionedAt?: number;
-          mappedGroupId?: string;
-          raw?: any;
-          resourceType: "user" | "group";
-          userId?: string;
-        } | null,
-        Name
-      >;
-      groupConnectionScimIdentityGetByGroupConnectionAndUser: FunctionReference<
-        "query",
-        "internal",
-        { connectionId: string; userId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          active?: boolean;
-          connectionId: string;
-          externalId: string;
-          groupId: string;
-          lastProvisionedAt?: number;
-          mappedGroupId?: string;
-          raw?: any;
-          resourceType: "user" | "group";
-          userId?: string;
-        } | null,
-        Name
-      >;
-      groupConnectionScimIdentityGetByGroupConnectionAndUsers: FunctionReference<
-        "query",
-        "internal",
-        { connectionId: string; userIds: Array<string> },
-        Array<{
-          identity: {
-            _creationTime: number;
-            _id: string;
-            active?: boolean;
-            connectionId: string;
-            externalId: string;
-            groupId: string;
-            lastProvisionedAt?: number;
-            mappedGroupId?: string;
-            raw?: any;
-            resourceType: "user" | "group";
-            userId?: string;
-          } | null;
-          userId: string;
-        }>,
-        Name
-      >;
-      groupConnectionScimIdentityGetByMappedGroup: FunctionReference<
-        "query",
-        "internal",
-        { mappedGroupId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          active?: boolean;
-          connectionId: string;
-          externalId: string;
-          groupId: string;
-          lastProvisionedAt?: number;
-          mappedGroupId?: string;
-          raw?: any;
-          resourceType: "user" | "group";
-          userId?: string;
-        } | null,
-        Name
-      >;
-      groupConnectionScimIdentityGetByUser: FunctionReference<
-        "query",
-        "internal",
-        { userId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          active?: boolean;
-          connectionId: string;
-          externalId: string;
-          groupId: string;
-          lastProvisionedAt?: number;
-          mappedGroupId?: string;
-          raw?: any;
-          resourceType: "user" | "group";
-          userId?: string;
-        } | null,
-        Name
-      >;
-      groupConnectionScimIdentityListByGroupConnection: FunctionReference<
-        "query",
-        "internal",
-        { connectionId: string },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          active?: boolean;
-          connectionId: string;
-          externalId: string;
-          groupId: string;
-          lastProvisionedAt?: number;
-          mappedGroupId?: string;
-          raw?: any;
-          resourceType: "user" | "group";
-          userId?: string;
-        }>,
-        Name
-      >;
-      groupConnectionScimIdentityUpsert: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          active?: boolean;
-          connectionId: string;
-          externalId: string;
-          groupId: string;
-          lastProvisionedAt?: number;
-          mappedGroupId?: string;
-          raw?: any;
-          resourceType: "user" | "group";
-          userId?: string;
-        },
-        string,
-        Name
-      >;
-      groupConnectionSecretDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { connectionId: string; kind: "oidc_client_secret" },
-        null,
-        Name
-      >;
-      groupConnectionSecretGet: FunctionReference<
-        "query",
-        "internal",
-        { connectionId: string; kind: "oidc_client_secret" },
-        {
-          _creationTime: number;
-          _id: string;
-          ciphertext: string;
-          connectionId: string;
-          groupId: string;
-          kind: "oidc_client_secret";
-          updatedAt: number;
-        } | null,
-        Name
-      >;
-      groupConnectionSecretUpsert: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          ciphertext: string;
-          connectionId: string;
-          groupId: string;
-          kind: "oidc_client_secret";
-          updatedAt: number;
-        },
-        string,
-        Name
-      >;
-      groupConnectionUpdate: FunctionReference<
-        "mutation",
-        "internal",
-        { connectionId: string; data: any },
-        null,
-        Name
-      >;
       groups: {
         core: {
           groupAncestors: FunctionReference<
@@ -1954,134 +1487,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           >;
         };
       };
-      groupWebhookDeliveryEnqueue: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          auditEventId?: string;
-          connectionId: string;
-          endpointId: string;
-          eventType: string;
-          nextAttemptAt: number;
-          payload: any;
-        },
-        string,
-        Name
-      >;
-      groupWebhookDeliveryList: FunctionReference<
-        "query",
-        "internal",
-        { connectionId: string; limit?: number },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          attemptCount: number;
-          auditEventId?: string;
-          connectionId: string;
-          endpointId: string;
-          eventType: string;
-          lastAttemptAt?: number;
-          lastError?: string;
-          lastResponseStatus?: number;
-          nextAttemptAt: number;
-          payload: any;
-          status: "pending" | "processing" | "delivered" | "failed";
-        }>,
-        Name
-      >;
-      groupWebhookDeliveryListReady: FunctionReference<
-        "query",
-        "internal",
-        { limit?: number; now: number },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          attemptCount: number;
-          auditEventId?: string;
-          connectionId: string;
-          endpointId: string;
-          eventType: string;
-          lastAttemptAt?: number;
-          lastError?: string;
-          lastResponseStatus?: number;
-          nextAttemptAt: number;
-          payload: any;
-          status: "pending" | "processing" | "delivered" | "failed";
-        }>,
-        Name
-      >;
-      groupWebhookDeliveryPatch: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; deliveryId: string },
-        null,
-        Name
-      >;
-      groupWebhookEndpointCreate: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          connectionId: string;
-          createdByUserId?: string;
-          extend?: any;
-          groupId: string;
-          secretHash: string;
-          status?: "active" | "disabled";
-          subscriptions: Array<string>;
-          url: string;
-        },
-        string,
-        Name
-      >;
-      groupWebhookEndpointGet: FunctionReference<
-        "query",
-        "internal",
-        { endpointId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          connectionId: string;
-          createdByUserId?: string;
-          extend?: any;
-          failureCount: number;
-          groupId: string;
-          lastFailureAt?: number;
-          lastSuccessAt?: number;
-          secretHash: string;
-          status: "active" | "disabled";
-          subscriptions: Array<string>;
-          url: string;
-        } | null,
-        Name
-      >;
-      groupWebhookEndpointList: FunctionReference<
-        "query",
-        "internal",
-        { connectionId: string },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          connectionId: string;
-          createdByUserId?: string;
-          extend?: any;
-          failureCount: number;
-          groupId: string;
-          lastFailureAt?: number;
-          lastSuccessAt?: number;
-          secretHash: string;
-          status: "active" | "disabled";
-          subscriptions: Array<string>;
-          url: string;
-        }>,
-        Name
-      >;
-      groupWebhookEndpointUpdate: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; endpointId: string },
-        null,
-        Name
-      >;
       identity: {
         accounts: {
           accountDelete: FunctionReference<
@@ -2744,26 +2149,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           groupConnectionGet: FunctionReference<
             "query",
             "internal",
-            { connectionId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              config?: any;
-              extend?: any;
-              groupId: string;
-              name?: string;
-              protocol: "oidc" | "saml";
-              slug?: string;
-              status: "draft" | "active" | "disabled";
-            } | null,
-            Name
-          >;
-          groupConnectionGetByDomain: FunctionReference<
-            "query",
-            "internal",
-            { domain: string },
-            {
-              connection: {
+            { connectionId?: string; domain?: string },
+            | {
                 _creationTime: number;
                 _id: string;
                 config?: any;
@@ -2773,17 +2160,30 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 protocol: "oidc" | "saml";
                 slug?: string;
                 status: "draft" | "active" | "disabled";
-              };
-              domain: {
-                _creationTime: number;
-                _id: string;
-                connectionId: string;
-                domain: string;
-                groupId: string;
-                isPrimary: boolean;
-                verifiedAt?: number;
-              };
-            } | null,
+              }
+            | {
+                connection: {
+                  _creationTime: number;
+                  _id: string;
+                  config?: any;
+                  extend?: any;
+                  groupId: string;
+                  name?: string;
+                  protocol: "oidc" | "saml";
+                  slug?: string;
+                  status: "draft" | "active" | "disabled";
+                };
+                domain: {
+                  _creationTime: number;
+                  _id: string;
+                  connectionId: string;
+                  domain: string;
+                  groupId: string;
+                  isPrimary: boolean;
+                  verifiedAt?: number;
+                };
+              }
+            | null,
             Name
           >;
           groupConnectionList: FunctionReference<
@@ -2919,27 +2319,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           >;
         };
         scim: {
-          groupConnectionScimConfigGetByGroupConnection: FunctionReference<
+          groupConnectionScimConfigGet: FunctionReference<
             "query",
             "internal",
-            { connectionId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              basePath: string;
-              connectionId: string;
-              extend?: any;
-              groupId: string;
-              lastRotatedAt?: number;
-              status: "draft" | "active" | "disabled";
-              tokenHash: string;
-            } | null,
-            Name
-          >;
-          groupConnectionScimConfigGetByTokenHash: FunctionReference<
-            "query",
-            "internal",
-            { tokenHash: string },
+            { connectionId?: string; tokenHash?: string },
             {
               _creationTime: number;
               _id: string;
@@ -2979,29 +2362,12 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             "query",
             "internal",
             {
-              connectionId: string;
-              externalId: string;
-              resourceType: "user" | "group";
-            },
-            {
-              _creationTime: number;
-              _id: string;
-              active?: boolean;
-              connectionId: string;
-              externalId: string;
-              groupId: string;
-              lastProvisionedAt?: number;
+              connectionId?: string;
+              externalId?: string;
               mappedGroupId?: string;
-              raw?: any;
-              resourceType: "user" | "group";
+              resourceType?: "user" | "group";
               userId?: string;
-            } | null,
-            Name
-          >;
-          groupConnectionScimIdentityGetByGroupConnectionAndUser: FunctionReference<
-            "query",
-            "internal",
-            { connectionId: string; userId: string },
+            },
             {
               _creationTime: number;
               _id: string;
@@ -3037,44 +2403,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               } | null;
               userId: string;
             }>,
-            Name
-          >;
-          groupConnectionScimIdentityGetByMappedGroup: FunctionReference<
-            "query",
-            "internal",
-            { mappedGroupId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              active?: boolean;
-              connectionId: string;
-              externalId: string;
-              groupId: string;
-              lastProvisionedAt?: number;
-              mappedGroupId?: string;
-              raw?: any;
-              resourceType: "user" | "group";
-              userId?: string;
-            } | null,
-            Name
-          >;
-          groupConnectionScimIdentityGetByUser: FunctionReference<
-            "query",
-            "internal",
-            { userId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              active?: boolean;
-              connectionId: string;
-              externalId: string;
-              groupId: string;
-              lastProvisionedAt?: number;
-              mappedGroupId?: string;
-              raw?: any;
-              resourceType: "user" | "group";
-              userId?: string;
-            } | null,
             Name
           >;
           groupConnectionScimIdentityListByGroupConnection: FunctionReference<
@@ -3169,28 +2497,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           groupWebhookDeliveryList: FunctionReference<
             "query",
             "internal",
-            { connectionId: string; limit?: number },
-            Array<{
-              _creationTime: number;
-              _id: string;
-              attemptCount: number;
-              auditEventId?: string;
-              connectionId: string;
-              endpointId: string;
-              eventType: string;
-              lastAttemptAt?: number;
-              lastError?: string;
-              lastResponseStatus?: number;
-              nextAttemptAt: number;
-              payload: any;
-              status: "pending" | "processing" | "delivered" | "failed";
-            }>,
-            Name
-          >;
-          groupWebhookDeliveryListReady: FunctionReference<
-            "query",
-            "internal",
-            { limit?: number; now: number },
+            { connectionId?: string; limit?: number; now?: number },
             Array<{
               _creationTime: number;
               _id: string;
@@ -3475,6 +2782,525 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         }>,
         Name
       >;
+    };
+    sso: {
+      audit: {
+        create: FunctionReference<
+          "mutation",
+          "internal",
+          {
+            actorId?: string;
+            actorType: "user" | "system" | "scim" | "api_key" | "webhook";
+            connectionId?: string;
+            eventType: string;
+            groupId: string;
+            ip?: string;
+            metadata?: any;
+            occurredAt: number;
+            requestId?: string;
+            status: "success" | "failure";
+            subjectId?: string;
+            subjectType: string;
+          },
+          string,
+          Name
+        >;
+        list: FunctionReference<
+          "query",
+          "internal",
+          { connectionId?: string; groupId?: string; limit?: number },
+          Array<{
+            _creationTime: number;
+            _id: string;
+            actorId?: string;
+            actorType: "user" | "system" | "scim" | "api_key" | "webhook";
+            connectionId?: string;
+            eventType: string;
+            groupId: string;
+            ip?: string;
+            metadata?: any;
+            occurredAt: number;
+            requestId?: string;
+            status: "success" | "failure";
+            subjectId?: string;
+            subjectType: string;
+          }>,
+          Name
+        >;
+      };
+      connection: {
+        create: FunctionReference<
+          "mutation",
+          "internal",
+          {
+            config?: any;
+            extend?: any;
+            groupId: string;
+            name?: string;
+            protocol: "oidc" | "saml";
+            slug?: string;
+            status?: "draft" | "active" | "disabled";
+          },
+          string,
+          Name
+        >;
+        delete: FunctionReference<
+          "mutation",
+          "internal",
+          { connectionId: string },
+          null,
+          Name
+        >;
+        domain: {
+          create: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              connectionId: string;
+              domain: string;
+              groupId: string;
+              isPrimary?: boolean;
+            },
+            string,
+            Name
+          >;
+          delete: FunctionReference<
+            "mutation",
+            "internal",
+            { domainId: string },
+            null,
+            Name
+          >;
+          list: FunctionReference<
+            "query",
+            "internal",
+            { connectionId: string; limit?: number },
+            Array<{
+              _creationTime: number;
+              _id: string;
+              connectionId: string;
+              domain: string;
+              groupId: string;
+              isPrimary: boolean;
+              verifiedAt?: number;
+            }>,
+            Name
+          >;
+          verification: {
+            delete: FunctionReference<
+              "mutation",
+              "internal",
+              { domainId: string },
+              null,
+              Name
+            >;
+            get: FunctionReference<
+              "query",
+              "internal",
+              { domainId: string },
+              {
+                _creationTime: number;
+                _id: string;
+                connectionId: string;
+                domain: string;
+                domainId: string;
+                expiresAt: number;
+                groupId: string;
+                recordName: string;
+                requestedAt: number;
+                token: string;
+                tokenHash: string;
+              } | null,
+              Name
+            >;
+            upsert: FunctionReference<
+              "mutation",
+              "internal",
+              {
+                connectionId: string;
+                domain: string;
+                domainId: string;
+                expiresAt: number;
+                groupId: string;
+                recordName: string;
+                requestedAt: number;
+                token: string;
+                tokenHash: string;
+              },
+              string,
+              Name
+            >;
+          };
+          verify: FunctionReference<
+            "mutation",
+            "internal",
+            { domainId: string; verifiedAt: number },
+            {
+              _creationTime: number;
+              _id: string;
+              connectionId: string;
+              domain: string;
+              groupId: string;
+              isPrimary: boolean;
+              verifiedAt?: number;
+            },
+            Name
+          >;
+        };
+        get: FunctionReference<
+          "query",
+          "internal",
+          { connectionId?: string; domain?: string },
+          | {
+              _creationTime: number;
+              _id: string;
+              config?: any;
+              extend?: any;
+              groupId: string;
+              name?: string;
+              protocol: "oidc" | "saml";
+              slug?: string;
+              status: "draft" | "active" | "disabled";
+            }
+          | {
+              connection: {
+                _creationTime: number;
+                _id: string;
+                config?: any;
+                extend?: any;
+                groupId: string;
+                name?: string;
+                protocol: "oidc" | "saml";
+                slug?: string;
+                status: "draft" | "active" | "disabled";
+              };
+              domain: {
+                _creationTime: number;
+                _id: string;
+                connectionId: string;
+                domain: string;
+                groupId: string;
+                isPrimary: boolean;
+                verifiedAt?: number;
+              };
+            }
+          | null,
+          Name
+        >;
+        list: FunctionReference<
+          "query",
+          "internal",
+          {
+            cursor?: string | null;
+            limit?: number;
+            order?: "asc" | "desc";
+            orderBy?: "_creationTime" | "name" | "slug" | "status";
+            where?: {
+              groupId?: string;
+              slug?: string;
+              status?: "draft" | "active" | "disabled";
+            };
+          },
+          {
+            items: Array<{
+              _creationTime: number;
+              _id: string;
+              config?: any;
+              extend?: any;
+              groupId: string;
+              name?: string;
+              protocol: "oidc" | "saml";
+              slug?: string;
+              status: "draft" | "active" | "disabled";
+            }>;
+            nextCursor: string | null;
+          },
+          Name
+        >;
+        scimConfig: {
+          get: FunctionReference<
+            "query",
+            "internal",
+            { connectionId?: string; tokenHash?: string },
+            {
+              _creationTime: number;
+              _id: string;
+              basePath: string;
+              connectionId: string;
+              extend?: any;
+              groupId: string;
+              lastRotatedAt?: number;
+              status: "draft" | "active" | "disabled";
+              tokenHash: string;
+            } | null,
+            Name
+          >;
+          upsert: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              basePath: string;
+              connectionId: string;
+              extend?: any;
+              groupId: string;
+              lastRotatedAt?: number;
+              status: "draft" | "active" | "disabled";
+              tokenHash: string;
+            },
+            string,
+            Name
+          >;
+        };
+        scimIdentity: {
+          delete: FunctionReference<
+            "mutation",
+            "internal",
+            { identityId: string },
+            null,
+            Name
+          >;
+          get: FunctionReference<
+            "query",
+            "internal",
+            {
+              connectionId?: string;
+              externalId?: string;
+              mappedGroupId?: string;
+              resourceType?: "user" | "group";
+              userId?: string;
+            },
+            {
+              _creationTime: number;
+              _id: string;
+              active?: boolean;
+              connectionId: string;
+              externalId: string;
+              groupId: string;
+              lastProvisionedAt?: number;
+              mappedGroupId?: string;
+              raw?: any;
+              resourceType: "user" | "group";
+              userId?: string;
+            } | null,
+            Name
+          >;
+          getMany: FunctionReference<
+            "query",
+            "internal",
+            { connectionId: string; userIds: Array<string> },
+            Array<{
+              identity: {
+                _creationTime: number;
+                _id: string;
+                active?: boolean;
+                connectionId: string;
+                externalId: string;
+                groupId: string;
+                lastProvisionedAt?: number;
+                mappedGroupId?: string;
+                raw?: any;
+                resourceType: "user" | "group";
+                userId?: string;
+              } | null;
+              userId: string;
+            }>,
+            Name
+          >;
+          list: FunctionReference<
+            "query",
+            "internal",
+            { connectionId: string },
+            Array<{
+              _creationTime: number;
+              _id: string;
+              active?: boolean;
+              connectionId: string;
+              externalId: string;
+              groupId: string;
+              lastProvisionedAt?: number;
+              mappedGroupId?: string;
+              raw?: any;
+              resourceType: "user" | "group";
+              userId?: string;
+            }>,
+            Name
+          >;
+          upsert: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              active?: boolean;
+              connectionId: string;
+              externalId: string;
+              groupId: string;
+              lastProvisionedAt?: number;
+              mappedGroupId?: string;
+              raw?: any;
+              resourceType: "user" | "group";
+              userId?: string;
+            },
+            string,
+            Name
+          >;
+        };
+        secret: {
+          delete: FunctionReference<
+            "mutation",
+            "internal",
+            { connectionId: string; kind: "oidc_client_secret" },
+            null,
+            Name
+          >;
+          get: FunctionReference<
+            "query",
+            "internal",
+            { connectionId: string; kind: "oidc_client_secret" },
+            {
+              _creationTime: number;
+              _id: string;
+              ciphertext: string;
+              connectionId: string;
+              groupId: string;
+              kind: "oidc_client_secret";
+              updatedAt: number;
+            } | null,
+            Name
+          >;
+          upsert: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              ciphertext: string;
+              connectionId: string;
+              groupId: string;
+              kind: "oidc_client_secret";
+              updatedAt: number;
+            },
+            string,
+            Name
+          >;
+        };
+        update: FunctionReference<
+          "mutation",
+          "internal",
+          { connectionId: string; data: any },
+          null,
+          Name
+        >;
+      };
+      webhook: {
+        delivery: {
+          enqueue: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              auditEventId?: string;
+              connectionId: string;
+              endpointId: string;
+              eventType: string;
+              nextAttemptAt: number;
+              payload: any;
+            },
+            string,
+            Name
+          >;
+          list: FunctionReference<
+            "query",
+            "internal",
+            { connectionId?: string; limit?: number; now?: number },
+            Array<{
+              _creationTime: number;
+              _id: string;
+              attemptCount: number;
+              auditEventId?: string;
+              connectionId: string;
+              endpointId: string;
+              eventType: string;
+              lastAttemptAt?: number;
+              lastError?: string;
+              lastResponseStatus?: number;
+              nextAttemptAt: number;
+              payload: any;
+              status: "pending" | "processing" | "delivered" | "failed";
+            }>,
+            Name
+          >;
+          update: FunctionReference<
+            "mutation",
+            "internal",
+            { data: any; deliveryId: string },
+            null,
+            Name
+          >;
+        };
+        endpoint: {
+          create: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              connectionId: string;
+              createdByUserId?: string;
+              extend?: any;
+              groupId: string;
+              secretHash: string;
+              status?: "active" | "disabled";
+              subscriptions: Array<string>;
+              url: string;
+            },
+            string,
+            Name
+          >;
+          get: FunctionReference<
+            "query",
+            "internal",
+            { endpointId: string },
+            {
+              _creationTime: number;
+              _id: string;
+              connectionId: string;
+              createdByUserId?: string;
+              extend?: any;
+              failureCount: number;
+              groupId: string;
+              lastFailureAt?: number;
+              lastSuccessAt?: number;
+              secretHash: string;
+              status: "active" | "disabled";
+              subscriptions: Array<string>;
+              url: string;
+            } | null,
+            Name
+          >;
+          list: FunctionReference<
+            "query",
+            "internal",
+            { connectionId: string },
+            Array<{
+              _creationTime: number;
+              _id: string;
+              connectionId: string;
+              createdByUserId?: string;
+              extend?: any;
+              failureCount: number;
+              groupId: string;
+              lastFailureAt?: number;
+              lastSuccessAt?: number;
+              secretHash: string;
+              status: "active" | "disabled";
+              subscriptions: Array<string>;
+              url: string;
+            }>,
+            Name
+          >;
+          update: FunctionReference<
+            "mutation",
+            "internal",
+            { data: any; endpointId: string },
+            null,
+            Name
+          >;
+        };
+      };
     };
     user: {
       create: FunctionReference<

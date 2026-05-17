@@ -1676,52 +1676,58 @@ type AuthComponentApi = {
       delete: FunctionReference<"mutation", "internal">;
     };
   };
-  public: {
-    groupConnectionCreate: FunctionReference<"mutation", "internal", any, any>;
-    groupConnectionGet: FunctionReference<"query", "internal", any, any>;
-    groupConnectionGetByDomain: FunctionReference<"query", "internal", any, any>;
-    groupConnectionList: FunctionReference<"query", "internal", any, any>;
-    groupConnectionUpdate: FunctionReference<"mutation", "internal", any, any>;
-    groupConnectionDelete: FunctionReference<"mutation", "internal", any, any>;
-    groupConnectionDomainAdd: FunctionReference<"mutation", "internal", any, any>;
-    groupConnectionDomainList: FunctionReference<"query", "internal", any, any>;
-    groupConnectionDomainDelete: FunctionReference<"mutation", "internal", any, any>;
-    groupConnectionDomainVerificationGet: FunctionReference<"query", "internal", any, any>;
-    groupConnectionDomainVerificationUpsert: FunctionReference<"mutation", "internal", any, any>;
-    groupConnectionDomainVerificationDelete: FunctionReference<"mutation", "internal", any, any>;
-    groupConnectionDomainVerify: FunctionReference<"mutation", "internal", any, any>;
-    groupConnectionSecretUpsert: FunctionReference<"mutation", "internal", any, any>;
-    groupConnectionSecretGet: FunctionReference<"query", "internal", any, any>;
-    groupConnectionSecretDelete: FunctionReference<"mutation", "internal", any, any>;
-    groupConnectionScimConfigUpsert: FunctionReference<"mutation", "internal", any, any>;
-    groupConnectionScimConfigGetByGroupConnection: FunctionReference<"query", "internal", any, any>;
-    groupConnectionScimConfigGetByTokenHash: FunctionReference<"query", "internal", any, any>;
-    groupConnectionScimIdentityGet: FunctionReference<"query", "internal", any, any>;
-    groupConnectionScimIdentityGetByUser: FunctionReference<"query", "internal", any, any>;
-    groupConnectionScimIdentityGetByGroupConnectionAndUser: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
-    groupConnectionScimIdentityGetByMappedGroup: FunctionReference<"query", "internal", any, any>;
-    groupConnectionScimIdentityListByGroupConnection: FunctionReference<
-      "query",
-      "internal",
-      any,
-      any
-    >;
-    groupConnectionScimIdentityUpsert: FunctionReference<"mutation", "internal", any, any>;
-    groupConnectionScimIdentityDelete: FunctionReference<"mutation", "internal", any, any>;
-    groupAuditEventCreate: FunctionReference<"mutation", "internal", any, any>;
-    groupAuditEventList: FunctionReference<"query", "internal", any, any>;
-    groupWebhookEndpointCreate: FunctionReference<"mutation", "internal", any, any>;
-    groupWebhookEndpointList: FunctionReference<"query", "internal", any, any>;
-    groupWebhookEndpointGet: FunctionReference<"query", "internal", any, any>;
-    groupWebhookEndpointUpdate: FunctionReference<"mutation", "internal", any, any>;
-    groupWebhookDeliveryEnqueue: FunctionReference<"mutation", "internal", any, any>;
-    groupWebhookDeliveryListReady: FunctionReference<"query", "internal", any, any>;
-    groupWebhookDeliveryPatch: FunctionReference<"mutation", "internal", any, any>;
+  sso: {
+    connection: {
+      get: FunctionReference<"query", "internal">;
+      list: FunctionReference<"query", "internal">;
+      create: FunctionReference<"mutation", "internal">;
+      update: FunctionReference<"mutation", "internal">;
+      delete: FunctionReference<"mutation", "internal">;
+      domain: {
+        list: FunctionReference<"query", "internal">;
+        create: FunctionReference<"mutation", "internal">;
+        delete: FunctionReference<"mutation", "internal">;
+        verify: FunctionReference<"mutation", "internal">;
+        verification: {
+          get: FunctionReference<"query", "internal">;
+          upsert: FunctionReference<"mutation", "internal">;
+          delete: FunctionReference<"mutation", "internal">;
+        };
+      };
+      secret: {
+        get: FunctionReference<"query", "internal">;
+        upsert: FunctionReference<"mutation", "internal">;
+        delete: FunctionReference<"mutation", "internal">;
+      };
+      scimConfig: {
+        get: FunctionReference<"query", "internal">;
+        upsert: FunctionReference<"mutation", "internal">;
+      };
+      scimIdentity: {
+        get: FunctionReference<"query", "internal">;
+        getMany: FunctionReference<"query", "internal">;
+        list: FunctionReference<"query", "internal">;
+        upsert: FunctionReference<"mutation", "internal">;
+        delete: FunctionReference<"mutation", "internal">;
+      };
+    };
+    audit: {
+      list: FunctionReference<"query", "internal">;
+      create: FunctionReference<"mutation", "internal">;
+    };
+    webhook: {
+      endpoint: {
+        get: FunctionReference<"query", "internal">;
+        list: FunctionReference<"query", "internal">;
+        create: FunctionReference<"mutation", "internal">;
+        update: FunctionReference<"mutation", "internal">;
+      };
+      delivery: {
+        list: FunctionReference<"query", "internal">;
+        enqueue: FunctionReference<"mutation", "internal">;
+        update: FunctionReference<"mutation", "internal">;
+      };
+    };
   };
 };
 

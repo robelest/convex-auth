@@ -66,7 +66,7 @@ export function createGroupWebhookDomain(deps: WebhookDeps) {
   return {
     endpoint: {
       get: async (ctx: ComponentReadCtx, endpointId: string) => {
-        return await getWebhookEndpoint(ctx, config.component.public, endpointId);
+        return await getWebhookEndpoint(ctx, config.component.sso, endpointId);
       },
       create: async (
         ctx: ComponentCtx,
@@ -86,7 +86,7 @@ export function createGroupWebhookDomain(deps: WebhookDeps) {
           });
         }
         const secretHash = await sha256(data.secret);
-        const endpointId = await createWebhookEndpoint(ctx, config.component.public, {
+        const endpointId = await createWebhookEndpoint(ctx, config.component.sso, {
           connectionId: connection._id,
           groupId: connection.groupId,
           url: data.url,
@@ -107,10 +107,10 @@ export function createGroupWebhookDomain(deps: WebhookDeps) {
         return { endpointId };
       },
       list: async (ctx: ComponentReadCtx, connectionId: string) => {
-        return await listWebhookEndpoints(ctx, config.component.public, connectionId);
+        return await listWebhookEndpoints(ctx, config.component.sso, connectionId);
       },
       disable: async (ctx: ComponentCtx, endpointId: string) => {
-        await updateWebhookEndpoint(ctx, config.component.public, {
+        await updateWebhookEndpoint(ctx, config.component.sso, {
           endpointId,
           data: { status: "disabled" },
         });
@@ -130,16 +130,16 @@ export function createGroupWebhookDomain(deps: WebhookDeps) {
     },
     delivery: {
       list: async (ctx: ComponentReadCtx, data: { connectionId: string; limit?: number }) => {
-        return await listWebhookDeliveries(ctx, config.component.public, data);
+        return await listWebhookDeliveries(ctx, config.component.sso, data);
       },
       listReady: async (ctx: ComponentReadCtx, limit?: number) => {
-        return await listReadyWebhookDeliveries(ctx, config.component.public, {
+        return await listReadyWebhookDeliveries(ctx, config.component.sso, {
           now: Date.now(),
           limit,
         });
       },
       markDelivered: async (ctx: ComponentCtx, deliveryId: string, responseStatus?: number) => {
-        await patchWebhookDelivery(ctx, config.component.public, {
+        await patchWebhookDelivery(ctx, config.component.sso, {
           deliveryId,
           data: {
             status: "delivered",
@@ -159,7 +159,7 @@ export function createGroupWebhookDomain(deps: WebhookDeps) {
           retryAt?: number;
         },
       ) => {
-        await patchWebhookDelivery(ctx, config.component.public, {
+        await patchWebhookDelivery(ctx, config.component.sso, {
           deliveryId,
           data: {
             status: data.retryAt ? "pending" : "failed",

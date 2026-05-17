@@ -99,7 +99,7 @@ export function createGroupScimDomain(deps: ScimDeps) {
       message?: string;
     }> = [];
 
-    const connection = await getGroupConnection(ctx, config.component.public, connectionId);
+    const connection = await getGroupConnection(ctx, config.component.sso, connectionId);
 
     if (!connection) {
       return {
@@ -116,7 +116,7 @@ export function createGroupScimDomain(deps: ScimDeps) {
     }
 
     const policy = await loadGroupPolicyOrThrow(ctx, connection.groupId);
-    const scimConfig = await getScimConfigByConnection(ctx, config.component.public, connectionId);
+    const scimConfig = await getScimConfigByConnection(ctx, config.component.sso, connectionId);
 
     const hasConfig = scimConfig !== null && scimConfig !== undefined;
     checks.push({
@@ -214,7 +214,7 @@ export function createGroupScimDomain(deps: ScimDeps) {
         };
       },
     ) => {
-      const connection = await getGroupConnection(ctx, config.component.public, data.connectionId);
+      const connection = await getGroupConnection(ctx, config.component.sso, data.connectionId);
       if (connection === null) {
         throw convexError({
           code: "INVALID_PARAMETERS",
@@ -224,7 +224,7 @@ export function createGroupScimDomain(deps: ScimDeps) {
       const rawToken = generateRandomString(48, INVITE_TOKEN_ALPHABET);
       const tokenHash = await sha256(rawToken);
       const basePath = getScimBasePath(connection._id);
-      const configId = await upsertScimConfig(ctx, config.component.public, {
+      const configId = await upsertScimConfig(ctx, config.component.sso, {
         connectionId: connection._id,
         groupId: connection.groupId,
         status: data.status ?? "active",
@@ -261,7 +261,7 @@ export function createGroupScimDomain(deps: ScimDeps) {
     get: async (ctx: ComponentReadCtx, connectionId: string) => {
       const scimConfig = await getScimConfigByConnection(
         ctx,
-        config.component.public,
+        config.component.sso,
         connectionId,
       );
       if (!scimConfig) {
@@ -277,7 +277,7 @@ export function createGroupScimDomain(deps: ScimDeps) {
     status: async (ctx: ComponentReadCtx, connectionId: string) => {
       const currentConfig = await getScimConfigByConnection(
         ctx,
-        config.component.public,
+        config.component.sso,
         connectionId,
       );
       const result = await validateScim(ctx, connectionId);
@@ -291,7 +291,7 @@ export function createGroupScimDomain(deps: ScimDeps) {
       };
     },
     getConfigByToken: async (ctx: ComponentReadCtx, token: string) => {
-      return await getScimConfigByTokenHash(ctx, config.component.public, await sha256(token));
+      return await getScimConfigByTokenHash(ctx, config.component.sso, await sha256(token));
     },
     validate: async (ctx: ComponentReadCtx, connectionId: string) => {
       return await validateScim(ctx, connectionId);
@@ -305,7 +305,7 @@ export function createGroupScimDomain(deps: ScimDeps) {
           externalId: string;
         },
       ) => {
-        return await getScimIdentity(ctx, config.component.public, data);
+        return await getScimIdentity(ctx, config.component.sso, data);
       },
       upsert: async (
         ctx: ComponentCtx,
@@ -320,7 +320,7 @@ export function createGroupScimDomain(deps: ScimDeps) {
           raw?: Record<string, unknown>;
         },
       ) => {
-        return await upsertScimIdentity(ctx, config.component.public, {
+        return await upsertScimIdentity(ctx, config.component.sso, {
           ...data,
           lastProvisionedAt: Date.now(),
         });

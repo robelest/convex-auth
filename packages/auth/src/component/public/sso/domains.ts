@@ -18,18 +18,6 @@ import { vGroupConnectionDomainDoc, vGroupConnectionDomainVerificationDoc } from
  * @param args.isPrimary - Whether this domain should be set as the primary domain for the connection. Defaults to `true` for the first domain.
  * @returns The ID of the created or updated `GroupConnectionDomain` document.
  *
- * @example
- * ```ts
- * const domainId = await ctx.runMutation(
- *   components.auth.connection.groupConnectionDomainAdd,
- *   {
- *     connectionId,
- *     groupId: orgGroupId,
- *     domain: "acme.com",
- *     isPrimary: true,
- *   },
- * );
- * ```
  */
 export const groupConnectionDomainAdd = mutation({
   args: {
@@ -92,16 +80,6 @@ export const groupConnectionDomainAdd = mutation({
  * @param args.connectionId - The ID of the connection whose domains to list.
  * @returns An array of connection domain documents.
  *
- * @example
- * ```ts
- * const domains = await ctx.runQuery(
- *   components.auth.connection.groupConnectionDomainList,
- *   { connectionId },
- * );
- * for (const d of domains) {
- *   console.log(d.domain, d.isPrimary, d.verifiedAt);
- * }
- * ```
  */
 export const groupConnectionDomainList = query({
   args: {
@@ -133,13 +111,6 @@ export const groupConnectionDomainList = query({
  * @param args.domainId - The document ID of the connection domain to remove.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   components.auth.connection.groupConnectionDomainDelete,
- *   { domainId },
- * );
- * ```
  */
 export const groupConnectionDomainDelete = mutation({
   args: { domainId: v.id("GroupConnectionDomain") },
@@ -166,16 +137,6 @@ export const groupConnectionDomainDelete = mutation({
  * @param args.domainId - The document ID of the connection domain whose verification to retrieve.
  * @returns The domain verification document, or `null` if none exists.
  *
- * @example
- * ```ts
- * const verification = await ctx.runQuery(
- *   components.auth.connection.groupConnectionDomainVerificationGet,
- *   { domainId },
- * );
- * if (verification) {
- *   console.log(verification.recordName, verification.expiresAt);
- * }
- * ```
  */
 export const groupConnectionDomainVerificationGet = query({
   args: { domainId: v.id("GroupConnectionDomain") },
@@ -207,23 +168,6 @@ export const groupConnectionDomainVerificationGet = query({
  * @param args.expiresAt - Epoch timestamp (ms) after which the challenge expires.
  * @returns The ID of the created or updated `GroupConnectionDomainVerification` document.
  *
- * @example
- * ```ts
- * const verificationId = await ctx.runMutation(
- *   components.auth.connection.groupConnectionDomainVerificationUpsert,
- *   {
- *     connectionId,
- *     groupId: orgGroupId,
- *     domainId,
- *     domain: "acme.com",
- *     recordName: "_convex-verify.acme.com",
- *     token: "abc123",
- *     tokenHash: "sha256:...",
- *     requestedAt: Date.now(),
- *     expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
- *   },
- * );
- * ```
  */
 export const groupConnectionDomainVerificationUpsert = mutation({
   args: {
@@ -265,13 +209,6 @@ export const groupConnectionDomainVerificationUpsert = mutation({
  * @param args.domainId - The document ID of the connection domain whose verification to delete.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   components.auth.connection.groupConnectionDomainVerificationDelete,
- *   { domainId },
- * );
- * ```
  */
 export const groupConnectionDomainVerificationDelete = mutation({
   args: { domainId: v.id("GroupConnectionDomain") },
@@ -299,14 +236,6 @@ export const groupConnectionDomainVerificationDelete = mutation({
  * @param args.verifiedAt - Epoch timestamp (ms) at which the domain was verified.
  * @returns The updated connection domain document with the `verifiedAt` field set.
  *
- * @example
- * ```ts
- * const verifiedDomain = await ctx.runMutation(
- *   components.auth.connection.groupConnectionDomainVerify,
- *   { domainId, verifiedAt: Date.now() },
- * );
- * console.log("Domain verified:", verifiedDomain.domain);
- * ```
  */
 export const groupConnectionDomainVerify = mutation({
   args: {

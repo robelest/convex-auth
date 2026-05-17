@@ -2,7 +2,7 @@ import type { ComponentCtx as ComponentWriteCtx, ComponentReadCtx } from "./comp
 import { cached, invalidateCtxCache } from "./cache/context";
 import type { ConvexAuthMaterializedConfig } from "./types";
 
-type ComponentPublic = ConvexAuthMaterializedConfig["component"]["public"];
+type ComponentSso = ConvexAuthMaterializedConfig["component"]["sso"];
 type ComponentUser = ConvexAuthMaterializedConfig["component"]["user"];
 type UntypedRunQuery = <TArgs extends Record<string, unknown>, TResult>(
   ref: unknown,
@@ -158,33 +158,33 @@ const mutate = <TArgs extends Record<string, unknown>, TResult>(
 
 export const getGroupConnection = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   connectionId: string,
 ) =>
   cached(ctx, `group-connection:${connectionId}`, () =>
     query<{ connectionId: string }, GroupConnectionRecord | null>(
       ctx,
-      componentPublic.groupConnectionGet,
+      componentSso.connection.get,
       { connectionId },
     ),
   );
 
 export const getGroupConnectionByDomain = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   domain: string,
 ) =>
   cached(ctx, `group-connection-domain:${domain}`, () =>
     query<{ domain: string }, GroupConnectionDomainLookupRecord | null>(
       ctx,
-      componentPublic.groupConnectionGetByDomain,
+      componentSso.connection.get,
       { domain },
     ),
   );
 
 export const listGroupConnections = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: {
     where?: {
       groupId?: string;
@@ -196,11 +196,11 @@ export const listGroupConnections = (
     orderBy?: "_creationTime" | "name" | "slug" | "status";
     order?: "asc" | "desc";
   },
-) => query<typeof args, GroupConnectionListResult>(ctx, componentPublic.groupConnectionList, args);
+) => query<typeof args, GroupConnectionListResult>(ctx, componentSso.connection.list, args);
 
 export const createGroupConnection = (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: {
     groupId: string;
     protocol: "oidc" | "saml";
@@ -210,14 +210,14 @@ export const createGroupConnection = (
     config?: Record<string, unknown>;
     extend?: Record<string, unknown>;
   },
-) => mutate<typeof args, string>(ctx, componentPublic.groupConnectionCreate, args);
+) => mutate<typeof args, string>(ctx, componentSso.connection.create, args);
 
 export const updateGroupConnection = async (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: { connectionId: string; data: Record<string, unknown> },
 ) => {
-  const result = await mutate<typeof args, null>(ctx, componentPublic.groupConnectionUpdate, args);
+  const result = await mutate<typeof args, null>(ctx, componentSso.connection.update, args);
   invalidateCtxCache(ctx, `group-connection:${args.connectionId}`);
   invalidateCtxCache(ctx, "group-connection-domain");
   return result;
@@ -225,12 +225,12 @@ export const updateGroupConnection = async (
 
 export const deleteGroupConnection = async (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   connectionId: string,
 ) => {
   const result = await mutate<{ connectionId: string }, null>(
     ctx,
-    componentPublic.groupConnectionDelete,
+    componentSso.connection.delete,
     { connectionId },
   );
   invalidateCtxCache(ctx, `group-connection:${connectionId}`);
@@ -251,20 +251,20 @@ export const getGroup = (
 
 export const listConnectionDomains = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   connectionId: string,
 ) =>
   cached(ctx, `connection-domains:${connectionId}`, () =>
     query<{ connectionId: string }, ConnectionDomainRecord[]>(
       ctx,
-      componentPublic.groupConnectionDomainList,
+      componentSso.connection.domain.list,
       { connectionId },
     ),
   );
 
 export const addConnectionDomain = async (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: {
     connectionId: string;
     groupId: string;
@@ -274,7 +274,7 @@ export const addConnectionDomain = async (
 ) => {
   const result = await mutate<typeof args, string>(
     ctx,
-    componentPublic.groupConnectionDomainAdd,
+    componentSso.connection.domain.create,
     args,
   );
   invalidateCtxCache(ctx, `connection-domains:${args.connectionId}`);
@@ -284,12 +284,12 @@ export const addConnectionDomain = async (
 
 export const deleteConnectionDomain = async (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   domainId: string,
 ) => {
   const result = await mutate<{ domainId: string }, null>(
     ctx,
-    componentPublic.groupConnectionDomainDelete,
+    componentSso.connection.domain.delete,
     { domainId },
   );
   invalidateCtxCache(ctx, "connection-domains");
@@ -299,31 +299,31 @@ export const deleteConnectionDomain = async (
 
 export const getScimConfigByConnection = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   connectionId: string,
 ) =>
   cached(ctx, `scim-config-by-connection:${connectionId}`, () =>
     query<{ connectionId: string }, ScimConfigRecord | null>(
       ctx,
-      componentPublic.groupConnectionScimConfigGetByGroupConnection,
+      componentSso.connection.scimConfig.get,
       { connectionId },
     ),
   );
 
 export const getScimConfigByTokenHash = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   tokenHash: string,
 ) =>
   query<{ tokenHash: string }, ScimConfigRecord | null>(
     ctx,
-    componentPublic.groupConnectionScimConfigGetByTokenHash,
+    componentSso.connection.scimConfig.get,
     { tokenHash },
   );
 
 export const upsertScimConfig = async (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: {
     connectionId: string;
     groupId: string;
@@ -336,7 +336,7 @@ export const upsertScimConfig = async (
 ) => {
   const result = await mutate<typeof args, string>(
     ctx,
-    componentPublic.groupConnectionScimConfigUpsert,
+    componentSso.connection.scimConfig.upsert,
     args,
   );
   invalidateCtxCache(ctx, `scim-config-by-connection:${args.connectionId}`);
@@ -345,18 +345,18 @@ export const upsertScimConfig = async (
 
 export const getConnectionDomainVerification = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   domainId: string,
 ) =>
   query<{ domainId: string }, ConnectionDomainVerificationRecord | null>(
     ctx,
-    componentPublic.groupConnectionDomainVerificationGet,
+    componentSso.connection.domain.verification.get,
     { domainId },
   );
 
 export const upsertConnectionDomainVerification = (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: {
     connectionId: string;
     groupId: string;
@@ -368,39 +368,39 @@ export const upsertConnectionDomainVerification = (
     requestedAt: number;
     expiresAt: number;
   },
-) => mutate<typeof args, null>(ctx, componentPublic.groupConnectionDomainVerificationUpsert, args);
+) => mutate<typeof args, null>(ctx, componentSso.connection.domain.verification.upsert, args);
 
 export const deleteConnectionDomainVerification = (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   domainId: string,
 ) =>
-  mutate<{ domainId: string }, null>(ctx, componentPublic.groupConnectionDomainVerificationDelete, {
+  mutate<{ domainId: string }, null>(ctx, componentSso.connection.domain.verification.delete, {
     domainId,
   });
 
 export const verifyConnectionDomain = (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: { domainId: string; verifiedAt: number },
-) => mutate<typeof args, null>(ctx, componentPublic.groupConnectionDomainVerify, args);
+) => mutate<typeof args, null>(ctx, componentSso.connection.domain.verify, args);
 
 export const getGroupConnectionSecret = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: { connectionId: string; kind: string },
 ) =>
   cached(ctx, `group-connection-secret:${args.connectionId}:${args.kind}`, () =>
     query<typeof args, GroupConnectionSecretRecord | null>(
       ctx,
-      componentPublic.groupConnectionSecretGet,
+      componentSso.connection.secret.get,
       args,
     ),
   );
 
 export const upsertGroupConnectionSecret = async (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: {
     connectionId: string;
     groupId: string;
@@ -411,7 +411,7 @@ export const upsertGroupConnectionSecret = async (
 ) => {
   const result = await mutate<typeof args, null>(
     ctx,
-    componentPublic.groupConnectionSecretUpsert,
+    componentSso.connection.secret.upsert,
     args,
   );
   invalidateCtxCache(ctx, `group-connection-secret:${args.connectionId}:${args.kind}`);
@@ -420,45 +420,45 @@ export const upsertGroupConnectionSecret = async (
 
 export const listWebhookEndpoints = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   connectionId: string,
 ) =>
   query<{ connectionId: string }, WebhookEndpointRecord[]>(
     ctx,
-    componentPublic.groupWebhookEndpointList,
+    componentSso.webhook.endpoint.list,
     { connectionId },
   );
 
 export const listWebhookDeliveries = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: { connectionId: string; limit?: number },
 ) =>
   query<typeof args, WebhookDeliveryRecord[]>(
     ctx,
-    (componentPublic as Record<string, unknown>)["groupWebhookDeliveryList"],
+    componentSso.webhook.delivery.list,
     args,
   );
 
 export const listScimIdentitiesByConnection = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   connectionId: string,
 ) =>
   query<{ connectionId: string }, ScimIdentityRecord[]>(
     ctx,
-    componentPublic.groupConnectionScimIdentityListByGroupConnection,
+    componentSso.connection.scimIdentity.list,
     { connectionId },
   );
 
 export const getScimIdentityByConnectionAndUser = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: { connectionId: string; userId: string },
 ) =>
   query<typeof args, ScimIdentityRecord | null>(
     ctx,
-    componentPublic.groupConnectionScimIdentityGetByGroupConnectionAndUser,
+    componentSso.connection.scimIdentity.get,
     args,
   );
 
@@ -471,31 +471,29 @@ export const getScimIdentityByConnectionAndUser = (
  */
 export const getScimIdentityByConnectionAndUsers = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: { connectionId: string; userIds: string[] },
 ) =>
   query<typeof args, Array<{ userId: string; identity: ScimIdentityRecord | null }>>(
     ctx,
-    (componentPublic as Record<string, unknown>)[
-      "groupConnectionScimIdentityGetByGroupConnectionAndUsers"
-    ],
+    componentSso.connection.scimIdentity.getMany,
     args,
   );
 
 export const getScimIdentityByMappedGroup = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   mappedGroupId: string,
 ) =>
   query<{ mappedGroupId: string }, ScimIdentityRecord | null>(
     ctx,
-    componentPublic.groupConnectionScimIdentityGetByMappedGroup,
+    componentSso.connection.scimIdentity.get,
     { mappedGroupId },
   );
 
 export const upsertScimIdentity = (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: {
     connectionId: string;
     groupId: string;
@@ -507,14 +505,14 @@ export const upsertScimIdentity = (
     raw?: Record<string, unknown>;
     lastProvisionedAt?: number;
   },
-) => mutate<typeof args, string>(ctx, componentPublic.groupConnectionScimIdentityUpsert, args);
+) => mutate<typeof args, string>(ctx, componentSso.connection.scimIdentity.upsert, args);
 
 export const deleteScimIdentity = (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   identityId: string,
 ) =>
-  mutate<{ identityId: string }, null>(ctx, componentPublic.groupConnectionScimIdentityDelete, {
+  mutate<{ identityId: string }, null>(ctx, componentSso.connection.scimIdentity.delete, {
     identityId,
   });
 
@@ -542,7 +540,7 @@ export const patchUser = (
 
 export const getScimIdentity = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: {
     connectionId: string;
     resourceType: "user" | "group";
@@ -551,30 +549,30 @@ export const getScimIdentity = (
 ) =>
   query<typeof args, ScimIdentityRecord | null>(
     ctx,
-    componentPublic.groupConnectionScimIdentityGet,
+    componentSso.connection.scimIdentity.get,
     args,
   );
 
 export const listAuditEvents = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: { connectionId?: string; groupId?: string; limit?: number },
-) => query<typeof args, AuditEventRecord[]>(ctx, componentPublic.groupAuditEventList, args);
+) => query<typeof args, AuditEventRecord[]>(ctx, componentSso.audit.list, args);
 
 export const getWebhookEndpoint = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   endpointId: string,
 ) =>
   query<{ endpointId: string }, WebhookEndpointRecord | null>(
     ctx,
-    componentPublic.groupWebhookEndpointGet,
+    componentSso.webhook.endpoint.get,
     { endpointId },
   );
 
 export const createWebhookEndpoint = (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: {
     connectionId: string;
     groupId: string;
@@ -583,27 +581,27 @@ export const createWebhookEndpoint = (
     subscriptions: string[];
     createdByUserId?: string;
   },
-) => mutate<typeof args, string>(ctx, componentPublic.groupWebhookEndpointCreate, args);
+) => mutate<typeof args, string>(ctx, componentSso.webhook.endpoint.create, args);
 
 export const updateWebhookEndpoint = (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: { endpointId: string; data: Record<string, unknown> },
-) => mutate<typeof args, null>(ctx, componentPublic.groupWebhookEndpointUpdate, args);
+) => mutate<typeof args, null>(ctx, componentSso.webhook.endpoint.update, args);
 
 export const listReadyWebhookDeliveries = (
   ctx: ComponentReadCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: { now: number; limit?: number },
 ) =>
   query<typeof args, WebhookDeliveryRecord[]>(
     ctx,
-    componentPublic.groupWebhookDeliveryListReady,
+    componentSso.webhook.delivery.list,
     args,
   );
 
 export const patchWebhookDelivery = (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentSso: ComponentSso,
   args: { deliveryId: string; data: Record<string, unknown> },
-) => mutate<typeof args, null>(ctx, componentPublic.groupWebhookDeliveryPatch, args);
+) => mutate<typeof args, null>(ctx, componentSso.webhook.delivery.update, args);

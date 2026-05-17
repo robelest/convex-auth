@@ -50,127 +50,109 @@ export const groupConnectionScimConfigUpsert = mutation({
 });
 
 /**
- * Retrieve the SCIM configuration for a specific group.sso.
+ * Read a SCIM configuration by identity.
  *
- * Looks up the SCIM config document by group connection ID using the
- * `group_connection_id` index. Returns `null` if SCIM has not been configured.
+ * Accepts exactly one selector:
+ * - `connectionId` — the SCIM config for a group connection, via the
+ *   `group_connection_id` index.
+ * - `tokenHash` — resolve which connection a bearer token belongs to,
+ *   via the `token_hash` index (used during SCIM request auth).
  *
- * @param args.connectionId - The ID of the group connection whose SCIM config to retrieve.
- * @returns The SCIM configuration document, or `null` if not configured.
+ * @param connectionId - Optional `_id` of the `GroupConnection`.
+ * @param tokenHash - Optional bearer-token hash from an incoming request.
+ * @returns The matching SCIM configuration document, or `null`.
  *
  */
-export const groupConnectionScimConfigGetByGroupConnection = query({
-  args: { connectionId: v.id("GroupConnection") },
+export const groupConnectionScimConfigGet = query({
+  args: {
+    connectionId: v.optional(v.id("GroupConnection")),
+    tokenHash: v.optional(v.string()),
+  },
   returns: v.union(vGroupConnectionScimConfigDoc, v.null()),
-  handler: async (ctx, { connectionId }) => {
+  handler: async (ctx, args) => {
+    if (args.tokenHash !== undefined) {
+      return await ctx.db
+        .query("GroupConnectionScimConfig")
+        .withIndex("token_hash", (idx) => idx.eq("tokenHash", args.tokenHash!))
+        .first();
+    }
+    if (args.connectionId === undefined) return null;
     return await ctx.db
       .query("GroupConnectionScimConfig")
-      .withIndex("group_connection_id", (idx) => idx.eq("connectionId", connectionId))
+      .withIndex("group_connection_id", (idx) => idx.eq("connectionId", args.connectionId!))
       .first();
   },
 });
 
 /**
- * Look up a SCIM configuration by its bearer token hash.
+ * Read a single SCIM identity by identity.
  *
- * Used during SCIM request authentication to resolve which group connection a
- * given bearer token belongs to. Returns `null` if no config matches.
+ * Accepts exactly one selector (checked most-specific first):
+ * - `connectionId` + `resourceType` + `externalId` — the composite
+ *   `(connectionId, resourceType, externalId)` index. Primary lookup for
+ *   incoming SCIM user/group operations.
+ * - `connectionId` + `userId` — the `(connectionId, userId)` index, for
+ *   a user's identity scoped to one connection.
+ * - `userId` — the first identity for a user, via the `user_id` index.
+ * - `mappedGroupId` — the identity mapped to an internal group, via the
+ *   `mapped_group_id` index.
  *
- * @param args.tokenHash - The hash of the bearer token from the incoming SCIM request.
- * @returns The matching SCIM configuration document, or `null` if not found.
+ * For batched user lookups under one connection, use `getMany`.
  *
- */
-export const groupConnectionScimConfigGetByTokenHash = query({
-  args: { tokenHash: v.string() },
-  returns: v.union(vGroupConnectionScimConfigDoc, v.null()),
-  handler: async (ctx, { tokenHash }) => {
-    return await ctx.db
-      .query("GroupConnectionScimConfig")
-      .withIndex("token_hash", (idx) => idx.eq("tokenHash", tokenHash))
-      .first();
-  },
-});
-
-/**
- * Retrieve a SCIM identity by group connection, resource type, and external ID.
- *
- * Looks up a SCIM-provisioned identity using the composite index on
- * `(connectionId, resourceType, externalId)`. This is the primary lookup
- * used when processing incoming SCIM user or group operations.
- *
- * @param args.connectionId - The ID of the group connection that owns the SCIM identity.
- * @param args.resourceType - The SCIM resource type: `"user"` or `"group"`.
- * @param args.externalId - The external identifier assigned by the identity provider.
- * @returns The SCIM identity document, or `null` if not found.
+ * @param connectionId - Optional `_id` of the `GroupConnection`.
+ * @param resourceType - Optional SCIM resource type (`"user"` | `"group"`).
+ * @param externalId - Optional external identifier from the IdP.
+ * @param userId - Optional `_id` of the linked `User`.
+ * @param mappedGroupId - Optional `_id` of the mapped internal `Group`.
+ * @returns The matching SCIM identity document, or `null`.
  *
  */
 export const groupConnectionScimIdentityGet = query({
   args: {
-    connectionId: v.id("GroupConnection"),
-    resourceType: vScimResourceType,
-    externalId: v.string(),
+    connectionId: v.optional(v.id("GroupConnection")),
+    resourceType: v.optional(vScimResourceType),
+    externalId: v.optional(v.string()),
+    userId: v.optional(v.id("User")),
+    mappedGroupId: v.optional(v.id("Group")),
   },
   returns: v.union(vGroupConnectionScimIdentityDoc, v.null()),
   handler: async (ctx, args) => {
-    return await ctx.db
-      .query("GroupConnectionScimIdentity")
-      .withIndex("group_connection_id_resource_type_external_id", (idx) =>
-        idx
-          .eq("connectionId", args.connectionId)
-          .eq("resourceType", args.resourceType)
-          .eq("externalId", args.externalId),
-      )
-      .first();
-  },
-});
-
-/**
- * Retrieve the SCIM identity linked to a specific user.
- *
- * Looks up the first SCIM identity document associated with the given user ID
- * via the `user_id` index. Useful for checking whether a user was provisioned
- * through SCIM.
- *
- * @param args.userId - The document ID of the user whose SCIM identity to retrieve.
- * @returns The SCIM identity document, or `null` if the user has no SCIM identity.
- *
- */
-export const groupConnectionScimIdentityGetByUser = query({
-  args: { userId: v.id("User") },
-  returns: v.union(vGroupConnectionScimIdentityDoc, v.null()),
-  handler: async (ctx, { userId }) => {
-    return await ctx.db
-      .query("GroupConnectionScimIdentity")
-      .withIndex("user_id", (idx) => idx.eq("userId", userId))
-      .first();
-  },
-});
-
-/**
- * Retrieve the SCIM identity for a specific user within a specific group.sso.
- *
- * Uses the composite `(connectionId, userId)` index to find the SCIM identity
- * that links a user to a particular group.sso. This is useful when a user may
- * belong to multiple group connections.
- *
- * @param args.connectionId - The ID of the group connection to scope the lookup to.
- * @param args.userId - The document ID of the user.
- * @returns The SCIM identity document, or `null` if not found.
- *
- */
-export const groupConnectionScimIdentityGetByGroupConnectionAndUser = query({
-  args: {
-    connectionId: v.id("GroupConnection"),
-    userId: v.id("User"),
-  },
-  returns: v.union(vGroupConnectionScimIdentityDoc, v.null()),
-  handler: async (ctx, { connectionId, userId }) => {
-    return await ctx.db
-      .query("GroupConnectionScimIdentity")
-      .withIndex("group_connection_id_user_id", (idx) =>
-        idx.eq("connectionId", connectionId).eq("userId", userId),
-      )
-      .first();
+    if (
+      args.connectionId !== undefined &&
+      args.resourceType !== undefined &&
+      args.externalId !== undefined
+    ) {
+      return await ctx.db
+        .query("GroupConnectionScimIdentity")
+        .withIndex("group_connection_id_resource_type_external_id", (idx) =>
+          idx
+            .eq("connectionId", args.connectionId!)
+            .eq("resourceType", args.resourceType!)
+            .eq("externalId", args.externalId!),
+        )
+        .first();
+    }
+    if (args.connectionId !== undefined && args.userId !== undefined) {
+      return await ctx.db
+        .query("GroupConnectionScimIdentity")
+        .withIndex("group_connection_id_user_id", (idx) =>
+          idx.eq("connectionId", args.connectionId!).eq("userId", args.userId!),
+        )
+        .first();
+    }
+    if (args.userId !== undefined) {
+      return await ctx.db
+        .query("GroupConnectionScimIdentity")
+        .withIndex("user_id", (idx) => idx.eq("userId", args.userId!))
+        .first();
+    }
+    if (args.mappedGroupId !== undefined) {
+      return await ctx.db
+        .query("GroupConnectionScimIdentity")
+        .withIndex("mapped_group_id", (idx) => idx.eq("mappedGroupId", args.mappedGroupId!))
+        .first();
+    }
+    return null;
   },
 });
 
@@ -218,28 +200,6 @@ export const groupConnectionScimIdentityGetByGroupConnectionAndUsers = query({
       userId,
       identity: byUserId.get(userId) ?? null,
     }));
-  },
-});
-
-/**
- * Retrieve the SCIM identity that is mapped to a specific group.
- *
- * Looks up a SCIM identity by its `mappedGroupId` field. This is used when
- * a SCIM group resource has been mapped to an internal group, and you need
- * to find the corresponding SCIM identity record.
- *
- * @param args.mappedGroupId - The document ID of the internal group that a SCIM group is mapped to.
- * @returns The SCIM identity document, or `null` if no mapping exists.
- *
- */
-export const groupConnectionScimIdentityGetByMappedGroup = query({
-  args: { mappedGroupId: v.id("Group") },
-  returns: v.union(vGroupConnectionScimIdentityDoc, v.null()),
-  handler: async (ctx, { mappedGroupId }) => {
-    return await ctx.db
-      .query("GroupConnectionScimIdentity")
-      .withIndex("mapped_group_id", (idx) => idx.eq("mappedGroupId", mappedGroupId))
-      .first();
   },
 });
 

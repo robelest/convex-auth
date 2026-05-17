@@ -867,10 +867,9 @@ export function createCoreDomains(deps: CoreDeps) {
       }
     }
     if (toFetch.length > 0) {
-      const sharedFetch = (ctx.runQuery as UntypedRunQuery)(
-        (config.component.public as Record<string, unknown>)["groupGetMany"],
-        { groupIds: toFetch },
-      ) as Promise<Array<GroupDocLike>>;
+      const sharedFetch = (ctx.runQuery as UntypedRunQuery)(config.component.group.get, {
+        ids: toFetch,
+      }) as Promise<Array<GroupDocLike>>;
       for (let i = 0; i < toFetch.length; i += 1) {
         const id = toFetch[i]!;
         const indexInBatch = i;
@@ -1161,8 +1160,7 @@ export function createCoreDomains(deps: CoreDeps) {
       ctx: ComponentReadCtx,
       opts: { groupId: string; maxDepth?: number; includeSelf?: boolean },
     ) => {
-      const ancestorsRef = (config.component.public as Record<string, unknown>)["groupAncestors"];
-      const result = (await (ctx.runQuery as UntypedRunQuery)(ancestorsRef, {
+      const result = (await (ctx.runQuery as UntypedRunQuery)(config.component.group.ancestors, {
         groupId: opts.groupId,
         maxDepth: opts.maxDepth,
         includeSelf: opts.includeSelf,
@@ -1220,7 +1218,7 @@ export function createCoreDomains(deps: CoreDeps) {
       }
       if (toFetch.length > 0) {
         const sharedFetch = (ctx.runQuery as UntypedRunQuery)(
-          (config.component.public as Record<string, unknown>)["memberGetByGroupAndUserMany"],
+          config.component.group.member.getMany,
           { userId, groupIds: toFetch },
         ) as Promise<Array<MemberDocLike>>;
         for (let i = 0; i < toFetch.length; i += 1) {
@@ -1267,11 +1265,8 @@ export function createCoreDomains(deps: CoreDeps) {
     let membership: MemberDocLike = null;
 
     if (useAncestry) {
-      const memberResolveRef = (config.component.public as Record<string, unknown>)[
-        "memberResolve"
-      ];
       const result = (await cached(ctx, cacheKey, () =>
-        (ctx.runQuery as UntypedRunQuery)(memberResolveRef, {
+        (ctx.runQuery as UntypedRunQuery)(config.component.group.member.resolve, {
           userId: opts.userId,
           groupId: opts.groupId,
           maxDepth,

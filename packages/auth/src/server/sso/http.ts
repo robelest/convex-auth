@@ -829,7 +829,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         });
         const identities = await listScimIdentitiesByConnection(
           state.ctx,
-          config.component.public,
+          config.component.sso,
           state.connection._id,
         );
         const identityByUserId = new Map(
@@ -931,7 +931,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
           })) as typeof extracted | undefined) ?? extracted;
         const externalId = provisionProfile.externalId;
         const existingIdentity = externalId
-          ? await getScimIdentity(state.ctx, config.component.public, {
+          ? await getScimIdentity(state.ctx, config.component.sso, {
               connectionId: state.connection._id,
               resourceType: "user",
               externalId,
@@ -1022,7 +1022,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
           });
         }
         if (externalId) {
-          await upsertScimIdentity(state.ctx, config.component.public, {
+          await upsertScimIdentity(state.ctx, config.component.sso, {
             connectionId: state.connection._id,
             groupId: state.connection.groupId,
             resourceType: "user",
@@ -1070,7 +1070,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         }
         const existingIdentity = await getScimIdentityByConnectionAndUser(
           state.ctx,
-          config.component.public,
+          config.component.sso,
           {
             connectionId: state.connection._id,
             userId,
@@ -1191,7 +1191,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
               provisionProfile.active === false || nextActive === false ? "inactive" : "active",
           });
         }
-        await upsertScimIdentity(state.ctx, config.component.public, {
+        await upsertScimIdentity(state.ctx, config.component.sso, {
           connectionId: state.connection._id,
           groupId: state.connection.groupId,
           resourceType: "user",
@@ -1229,7 +1229,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         const userId = state.parsedPath.resourceId!;
         const identity = await getScimIdentityByConnectionAndUser(
           state.ctx,
-          config.component.public,
+          config.component.sso,
           {
             connectionId: state.connection._id,
             userId,
@@ -1246,9 +1246,9 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
           await auth.member.delete(state.ctx, resolution.membership._id);
         }
         if (state.policy.provisioning.deprovision.mode === "hard") {
-          await deleteScimIdentity(state.ctx, config.component.public, identity._id);
+          await deleteScimIdentity(state.ctx, config.component.sso, identity._id);
         } else {
-          await upsertScimIdentity(state.ctx, config.component.public, {
+          await upsertScimIdentity(state.ctx, config.component.sso, {
             connectionId: identity.connectionId,
             groupId: identity.groupId,
             resourceType: identity.resourceType,
@@ -1271,7 +1271,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         });
         const identities = await listScimIdentitiesByConnection(
           state.ctx,
-          config.component.public,
+          config.component.sso,
           state.connection._id,
         );
         const identityByGroupId = new Map(
@@ -1356,7 +1356,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         const body = await readScimJson(state.request);
         const externalId = typeof body.externalId === "string" ? body.externalId : undefined;
         const existingIdentity = externalId
-          ? await getScimIdentity(state.ctx, config.component.public, {
+          ? await getScimIdentity(state.ctx, config.component.sso, {
               connectionId: state.connection._id,
               resourceType: "group",
               externalId,
@@ -1399,7 +1399,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
             { Location: location },
           );
         }
-        await upsertScimIdentity(state.ctx, config.component.public, {
+        await upsertScimIdentity(state.ctx, config.component.sso, {
           connectionId: state.connection._id,
           groupId: state.connection.groupId,
           resourceType: "group",
@@ -1470,7 +1470,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         const groupId = state.parsedPath.resourceId!;
         const identity = await getScimIdentityByMappedGroup(
           state.ctx,
-          config.component.public,
+          config.component.sso,
           groupId,
         );
         if (!identity || identity.connectionId !== state.connection._id) {
@@ -1606,14 +1606,14 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         const groupId = state.parsedPath.resourceId!;
         const identity = await getScimIdentityByMappedGroup(
           state.ctx,
-          config.component.public,
+          config.component.sso,
           groupId,
         );
         if (!identity || identity.connectionId !== state.connection._id) {
           return scimError(404, "notFound", "Group not found.");
         }
         await auth.group.delete(state.ctx, groupId);
-        await deleteScimIdentity(state.ctx, config.component.public, identity._id);
+        await deleteScimIdentity(state.ctx, config.component.sso, identity._id);
         await state.recordScimEvent("group.sso.scim.group.deleted", true, "group", groupId);
         return new Response(null, { status: 204 });
       };

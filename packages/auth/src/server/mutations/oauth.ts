@@ -129,7 +129,7 @@ export async function userOAuthImpl(
   const existingAccount = await db.accounts.get(provider, providerAccountId);
   const connection =
     connectionId !== null
-      ? await getGroupConnection(ctx, config.component.public, connectionId)
+      ? await getGroupConnection(ctx, config.component.sso, connectionId)
       : null;
   const group =
     connection !== null ? await getGroup(ctx, config.component.group, connection.groupId) : null;
@@ -139,7 +139,7 @@ export async function userOAuthImpl(
     connectionId !== null &&
     existingAccount === null &&
     connectionPolicy?.provisioning.scimReuse.user === "externalId"
-      ? await ctx.runQuery(config.component.public.groupConnectionScimIdentityGet, {
+      ? await ctx.runQuery(config.component.sso.connection.scimIdentity.get, {
           connectionId,
           resourceType: "user",
           externalId: providerAccountId,

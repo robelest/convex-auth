@@ -24,18 +24,6 @@ import {
  * @param args.extend - An optional arbitrary extension object for custom fields.
  * @returns The ID of the newly created `Group Connection` document.
  *
- * @example
- * ```ts
- * const connectionId = await ctx.runMutation(
- *   components.auth.group.sso.groupConnectionCreate,
- *   {
- *     groupId: orgGroupId,
- *     slug: "acme-corp",
- *     name: "Acme Corporation",
- *     status: "active",
- *   },
- * );
- * ```
  */
 export const groupConnectionCreate = mutation({
   args: {
@@ -57,77 +45,52 @@ export const groupConnectionCreate = mutation({
 });
 
 /**
- * Retrieve a single group connection record by its document ID.
+ * Read a group connection by identity.
  *
- * Returns the full group connection document if it exists, or `null` if no
- * group connection is found with the given ID.
+ * Accepts exactly one selector:
+ * - `connectionId` — direct document lookup, returning the
+ *   `GroupConnection` document or `null`.
+ * - `domain` — resolve the connection that owns a linked domain. Looks
+ *   up the `GroupConnectionDomain` row, then its parent connection, and
+ *   returns `{ connection, domain }` (or `null` if the domain is not
+ *   registered or its connection no longer exists).
  *
- * @param args.connectionId - The document ID of the group connection to retrieve.
- * @returns The group connection document, or `null` if not found.
+ * @param connectionId - Optional `_id` of the `GroupConnection`.
+ * @param domain - Optional domain name to resolve (e.g. `"acme.com"`).
+ * @returns For `connectionId`: the connection document or `null`. For
+ *   `domain`: `{ connection, domain }` or `null`.
  *
- * @example
- * ```ts
- * const connection = await ctx.runQuery(
- *   components.auth.group.sso.groupConnectionGet,
- *   { connectionId },
- * );
- * if (connection) {
- *   console.log(group.sso.name, group.sso.status);
- * }
- * ```
  */
 export const groupConnectionGet = query({
-  args: { connectionId: v.id("GroupConnection") },
-  returns: v.union(vGroupConnectionDoc, v.null()),
-  handler: async (ctx, { connectionId }) => {
-    return await ctx.db.get("GroupConnection", connectionId);
+  args: {
+    connectionId: v.optional(v.id("GroupConnection")),
+    domain: v.optional(v.string()),
   },
-});
-
-/**
- * Retrieve an group connection record by one of its linked domain names.
- *
- * Looks up a `GroupConnectionDomain` row matching the given domain string, then
- * resolves the parent group.sso. Returns both the group connection and the matched
- * domain document, or `null` if the domain is not registered or its group connection
- * no longer exists.
- *
- * @param args.domain - The domain name to search for (e.g. `"acme.com"`).
- * @returns An object containing the `group connection` and `domain` documents, or `null` if not found.
- *
- * @example
- * ```ts
- * const result = await ctx.runQuery(
- *   components.auth.group.sso.groupConnectionGetByDomain,
- *   { domain: "acme.com" },
- * );
- * if (result) {
- *   console.log(result.connection.name, result.domain.verifiedAt);
- * }
- * ```
- */
-export const groupConnectionGetByDomain = query({
-  args: { domain: v.string() },
   returns: v.union(
+    vGroupConnectionDoc,
     v.object({
       connection: vGroupConnectionDoc,
       domain: vGroupConnectionDomainDoc,
     }),
     v.null(),
   ),
-  handler: async (ctx, { domain }) => {
-    const domainRow = await ctx.db
-      .query("GroupConnectionDomain")
-      .withIndex("domain", (idx) => idx.eq("domain", domain))
-      .first();
-    if (!domainRow) {
-      return null;
+  handler: async (ctx, args) => {
+    if (args.domain !== undefined) {
+      const domainRow = await ctx.db
+        .query("GroupConnectionDomain")
+        .withIndex("domain", (idx) => idx.eq("domain", args.domain!))
+        .first();
+      if (!domainRow) {
+        return null;
+      }
+      const connection = await ctx.db.get("GroupConnection", domainRow.connectionId);
+      if (!connection) {
+        return null;
+      }
+      return { connection, domain: domainRow };
     }
-    const connection = await ctx.db.get("GroupConnection", domainRow.connectionId);
-    if (!connection) {
-      return null;
-    }
-    return { connection, domain: domainRow };
+    if (args.connectionId === undefined) return null;
+    return await ctx.db.get("GroupConnection", args.connectionId);
   },
 });
 
@@ -146,25 +109,6 @@ export const groupConnectionGetByDomain = query({
  * @param args.order - Sort direction: `"asc"` or `"desc"` (defaults to `"desc"`).
  * @returns A paginated result containing `items` (array of group connection documents) and `nextCursor` (`string | null`).
  *
- * @example
- * ```ts
- * const page = await ctx.runQuery(
- *   components.auth.group.sso.groupConnectionList,
- *   {
- *     where: { status: "active" },
- *     limit: 25,
- *     order: "asc",
- *   },
- * );
- * for (const ent of page.items) {
- *   console.log(ent.name);
- * }
- * // Fetch next page:
- * const nextPage = await ctx.runQuery(
- *   components.auth.group.sso.groupConnectionList,
- *   { where: { status: "active" }, cursor: page.nextCursor },
- * );
- * ```
  */
 export const groupConnectionList = query({
   args: {
@@ -247,16 +191,6 @@ export const groupConnectionList = query({
  * @param args.data - An object containing the fields to update (e.g. `{ name, status, policy }`).
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   components.auth.group.sso.groupConnectionUpdate,
- *   {
- *     connectionId,
- *     data: { status: "active", name: "Acme Corp (Renamed)" },
- *   },
- * );
- * ```
  */
 export const groupConnectionUpdate = mutation({
   args: { connectionId: v.id("GroupConnection"), data: v.any() },
@@ -278,13 +212,6 @@ export const groupConnectionUpdate = mutation({
  * @param args.connectionId - The document ID of the group connection to delete.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   components.auth.group.sso.groupConnectionDelete,
- *   { connectionId },
- * );
- * ```
  */
 export const groupConnectionDelete = mutation({
   args: { connectionId: v.id("GroupConnection") },

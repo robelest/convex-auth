@@ -25,19 +25,6 @@ import {
  * @param args.extend - An optional arbitrary extension object for custom endpoint metadata.
  * @returns The ID of the newly created `GroupWebhookEndpoint` document.
  *
- * @example
- * ```ts
- * const endpointId = await ctx.runMutation(
- *   components.auth.group.sso.groupWebhookEndpointCreate,
- *   {
- *     connectionId,
- *     groupId: orgGroupId,
- *     url: "https://acme.com/webhooks/auth",
- *     secretHash: "sha256:whsec_...",
- *     subscriptions: ["user.login", "user.created", "scim.provision"],
- *   },
- * );
- * ```
  */
 export const groupWebhookEndpointCreate = mutation({
   args: {
@@ -69,16 +56,6 @@ export const groupWebhookEndpointCreate = mutation({
  * @param args.connectionId - The ID of the group connection whose webhook endpoints to list.
  * @returns An array of webhook endpoint documents.
  *
- * @example
- * ```ts
- * const endpoints = await ctx.runQuery(
- *   components.auth.group.sso.groupWebhookEndpointList,
- *   { connectionId },
- * );
- * for (const ep of endpoints) {
- *   console.log(ep.url, ep.status, ep.subscriptions);
- * }
- * ```
  */
 export const groupWebhookEndpointList = query({
   args: { connectionId: v.id("GroupConnection") },
@@ -100,16 +77,6 @@ export const groupWebhookEndpointList = query({
  * @param args.endpointId - The document ID of the webhook endpoint to retrieve.
  * @returns The webhook endpoint document, or `null` if not found.
  *
- * @example
- * ```ts
- * const endpoint = await ctx.runQuery(
- *   components.auth.group.sso.groupWebhookEndpointGet,
- *   { endpointId },
- * );
- * if (endpoint) {
- *   console.log(endpoint.url, endpoint.failureCount);
- * }
- * ```
  */
 export const groupWebhookEndpointGet = query({
   args: { endpointId: v.id("GroupWebhookEndpoint") },
@@ -131,19 +98,6 @@ export const groupWebhookEndpointGet = query({
  * @param args.data - An object containing the fields to update (e.g. `{ url, status, subscriptions }`).
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   components.auth.group.sso.groupWebhookEndpointUpdate,
- *   {
- *     endpointId,
- *     data: {
- *       status: "paused",
- *       subscriptions: ["user.login"],
- *     },
- *   },
- * );
- * ```
  */
 export const groupWebhookEndpointUpdate = mutation({
   args: { endpointId: v.id("GroupWebhookEndpoint"), data: v.any() },
@@ -169,20 +123,6 @@ export const groupWebhookEndpointUpdate = mutation({
  * @param args.nextAttemptAt - Epoch timestamp (ms) when the delivery should first be attempted.
  * @returns The ID of the newly created `GroupWebhookDelivery` document.
  *
- * @example
- * ```ts
- * const deliveryId = await ctx.runMutation(
- *   components.auth.group.sso.groupWebhookDeliveryEnqueue,
- *   {
- *     connectionId,
- *     endpointId,
- *     auditEventId,
- *     eventType: "user.created",
- *     payload: { userId, email: "jane@acme.com" },
- *     nextAttemptAt: Date.now(),
- *   },
- * );
- * ```
  */
 export const groupWebhookDeliveryEnqueue = mutation({
   args: {
@@ -204,73 +144,45 @@ export const groupWebhookDeliveryEnqueue = mutation({
 });
 
 /**
- * List pending webhook deliveries that are ready to be attempted.
+ * List webhook deliveries.
  *
- * Queries the `status_next_attempt_at` index for deliveries with status
- * `"pending"` whose `nextAttemptAt` is at or before the provided timestamp.
- * This is used by the delivery worker to find deliveries due for processing.
+ * Accepts exactly one selector:
+ * - `connectionId` — all deliveries for a connection, most recent first
+ *   (via `group_connection_id`). Includes every status; useful for an
+ *   admin delivery-history view.
+ * - `now` — pending deliveries due for dispatch: status `"pending"` with
+ *   `nextAttemptAt <= now` (via `status_next_attempt_at`). Used by the
+ *   delivery worker to find work.
  *
- * @param args.now - The current epoch timestamp (ms) used as the cutoff for `nextAttemptAt`.
- * @param args.limit - Maximum number of deliveries to return (clamped between 1 and 100, defaults to 50).
- * @returns An array of webhook delivery documents ready for dispatch.
+ * @param connectionId - Optional `_id` of the `GroupConnection`.
+ * @param now - Optional epoch timestamp (ms) cutoff for `nextAttemptAt`.
+ * @param limit - Max deliveries to return (clamped 1–100, default 50).
+ * @returns An array of webhook delivery documents.
  *
- * @example
- * ```ts
- * const ready = await ctx.runQuery(
- *   components.auth.group.sso.groupWebhookDeliveryListReady,
- *   { now: Date.now(), limit: 10 },
- * );
- * for (const delivery of ready) {
- *   await dispatchWebhook(delivery);
- * }
- * ```
- */
-export const groupWebhookDeliveryListReady = query({
-  args: { now: v.number(), limit: v.optional(v.number()) },
-  returns: v.array(vGroupWebhookDeliveryDoc),
-  handler: async (ctx, { now, limit }) => {
-    return await ctx.db
-      .query("GroupWebhookDelivery")
-      .withIndex("status_next_attempt_at", (idx) =>
-        idx.eq("status", "pending").lte("nextAttemptAt", now),
-      )
-      .take(Math.min(Math.max(limit ?? 50, 1), 100));
-  },
-});
-
-/**
- * List webhook deliveries for a specific group connection, ordered by most recent first.
- *
- * Returns deliveries in reverse chronological order, useful for displaying
- * delivery history in an admin dashboard. Includes deliveries of all statuses.
- *
- * @param args.connectionId - The ID of the group connection whose deliveries to list.
- * @param args.limit - Maximum number of deliveries to return (clamped between 1 and 100, defaults to 50).
- * @returns An array of webhook delivery documents, most recent first.
- *
- * @example
- * ```ts
- * const deliveries = await ctx.runQuery(
- *   components.auth.group.sso.groupWebhookDeliveryList,
- *   { connectionId, limit: 25 },
- * );
- * for (const d of deliveries) {
- *   console.log(d.eventType, d.status, d.attemptCount);
- * }
- * ```
  */
 export const groupWebhookDeliveryList = query({
   args: {
-    connectionId: v.id("GroupConnection"),
+    connectionId: v.optional(v.id("GroupConnection")),
+    now: v.optional(v.number()),
     limit: v.optional(v.number()),
   },
   returns: v.array(vGroupWebhookDeliveryDoc),
-  handler: async (ctx, { connectionId, limit }) => {
+  handler: async (ctx, args) => {
+    const take = Math.min(Math.max(args.limit ?? 50, 1), 100);
+    if (args.now !== undefined) {
+      return await ctx.db
+        .query("GroupWebhookDelivery")
+        .withIndex("status_next_attempt_at", (idx) =>
+          idx.eq("status", "pending").lte("nextAttemptAt", args.now!),
+        )
+        .take(take);
+    }
+    if (args.connectionId === undefined) return [];
     return await ctx.db
       .query("GroupWebhookDelivery")
-      .withIndex("group_connection_id", (idx) => idx.eq("connectionId", connectionId))
+      .withIndex("group_connection_id", (idx) => idx.eq("connectionId", args.connectionId!))
       .order("desc")
-      .take(Math.min(Math.max(limit ?? 50, 1), 100));
+      .take(take);
   },
 });
 
@@ -286,19 +198,6 @@ export const groupWebhookDeliveryList = query({
  * @param args.data - An object containing the fields to update (e.g. `{ status, attemptCount, nextAttemptAt }`).
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   components.auth.group.sso.groupWebhookDeliveryPatch,
- *   {
- *     deliveryId,
- *     data: {
- *       status: "delivered",
- *       attemptCount: 1,
- *     },
- *   },
- * );
- * ```
  */
 export const groupWebhookDeliveryPatch = mutation({
   args: { deliveryId: v.id("GroupWebhookDelivery"), data: v.any() },

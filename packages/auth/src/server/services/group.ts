@@ -49,7 +49,7 @@ export function createGroupService(deps: {
     connectionId: string,
     kind: "oidc_client_secret",
   ) => {
-    return await queryGroupConnectionSecret(ctx, config.component.public, {
+    return await queryGroupConnectionSecret(ctx, config.component.sso, {
       connectionId,
       kind,
     });
@@ -69,7 +69,7 @@ export function createGroupService(deps: {
     const [connection, secret] = await Promise.all([
       preloadedConnection !== undefined
         ? Promise.resolve(preloadedConnection)
-        : getGroupConnection(ctx, config.component.public, connectionId),
+        : getGroupConnection(ctx, config.component.sso, connectionId),
       getGroupConnectionSecret(ctx, connectionId, "oidc_client_secret"),
     ]);
     if (!connection) {
@@ -108,7 +108,7 @@ export function createGroupService(deps: {
     ctx: ComponentReadCtx,
     connectionId: string,
   ): Promise<RuntimeGroupConnection> => {
-    const connection = await getGroupConnection(ctx, config.component.public, connectionId);
+    const connection = await getGroupConnection(ctx, config.component.sso, connectionId);
     if (!connection) {
       throw convexError({
         code: "INVALID_PARAMETERS",
@@ -261,7 +261,7 @@ export function createGroupService(deps: {
     },
   ) => {
     const { ok, ...rest } = data;
-    return (await ctx.runMutation(config.component.public.groupAuditEventCreate, {
+    return (await ctx.runMutation(config.component.sso.audit.create, {
       ...rest,
       status: ok ? "success" : "failure",
       occurredAt: Date.now(),
@@ -277,12 +277,12 @@ export function createGroupService(deps: {
       auditEventId?: string;
     },
   ) => {
-    const endpoints = await listWebhookEndpoints(ctx, config.component.public, data.connectionId);
+    const endpoints = await listWebhookEndpoints(ctx, config.component.sso, data.connectionId);
     for (const endpoint of endpoints) {
       if (endpoint.status !== "active" || !endpoint.subscriptions.includes(data.eventType)) {
         continue;
       }
-      await ctx.runMutation(config.component.public.groupWebhookDeliveryEnqueue, {
+      await ctx.runMutation(config.component.sso.webhook.delivery.enqueue, {
         connectionId: data.connectionId,
         endpointId: endpoint._id,
         auditEventId: data.auditEventId,
@@ -308,7 +308,7 @@ export function createGroupService(deps: {
     // to prevent timing attacks on the bearer token.
     const scimConfig = await getScimConfigByConnection(
       ctx,
-      config.component.public,
+      config.component.sso,
       parsedPath.connectionId,
     );
     const tokenHash = await sha256(token);
@@ -326,7 +326,7 @@ export function createGroupService(deps: {
 
     const connection = await getGroupConnection(
       ctx,
-      config.component.public,
+      config.component.sso,
       scimConfig.connectionId,
     );
     if (connection === null) {

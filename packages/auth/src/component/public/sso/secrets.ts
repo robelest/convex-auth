@@ -18,19 +18,6 @@ import { vGroupConnectionSecretDoc, vGroupConnectionSecretKind } from "../../mod
  * @param args.updatedAt - Epoch timestamp (ms) when the secret was last updated.
  * @returns The ID of the created or updated `GroupConnectionSecret` document.
  *
- * @example
- * ```ts
- * const secretId = await ctx.runMutation(
- *   components.auth.connection.groupConnectionSecretUpsert,
- *   {
- *     connectionId,
- *     groupId: orgGroupId,
- *     kind: "oidc_client_secret",
- *     ciphertext: "encrypted:aes256:...",
- *     updatedAt: Date.now(),
- *   },
- * );
- * ```
  */
 export const groupConnectionSecretUpsert = mutation({
   args: {
@@ -71,16 +58,6 @@ export const groupConnectionSecretUpsert = mutation({
  * @param args.kind - The type of secret to look up (e.g. `"oidc_client_secret"`).
  * @returns The connection secret document, or `null` if not found.
  *
- * @example
- * ```ts
- * const secret = await ctx.runQuery(
- *   components.auth.connection.groupConnectionSecretGet,
- *   { connectionId, kind: "oidc_client_secret" },
- * );
- * if (secret) {
- *   const plaintext = decrypt(secret.ciphertext);
- * }
- * ```
  */
 export const groupConnectionSecretGet = query({
   args: {
@@ -108,13 +85,6 @@ export const groupConnectionSecretGet = query({
  * @param args.kind - The type of secret to remove (e.g. `"oidc_client_secret"`).
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   components.auth.connection.groupConnectionSecretDelete,
- *   { connectionId, kind: "oidc_client_secret" },
- * );
- * ```
  */
 export const groupConnectionSecretDelete = mutation({
   args: {

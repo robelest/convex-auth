@@ -62,7 +62,7 @@ test("group connection component stores group connection records and domains", a
   });
 
   const connectionId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupConnectionCreate, {
+    return await ctx.runMutation(components.auth.sso.connection.create, {
       groupId,
       slug: "acme",
       name: "Acme Corp",
@@ -73,7 +73,7 @@ test("group connection component stores group connection records and domains", a
   });
 
   const domainId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupConnectionDomainAdd, {
+    return await ctx.runMutation(components.auth.sso.connection.domain.create, {
       connectionId,
       groupId,
       domain: "acme.com",
@@ -82,17 +82,17 @@ test("group connection component stores group connection records and domains", a
   });
 
   const connection = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupConnectionGet, {
+    return (await ctx.runQuery(components.auth.sso.connection.get, {
       connectionId,
-    });
+    })) as any;
   });
   const lookup = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupConnectionGetByDomain, {
+    return await ctx.runQuery(components.auth.sso.connection.get, {
       domain: "acme.com",
     });
   });
   const domains = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupConnectionDomainList, {
+    return await ctx.runQuery(components.auth.sso.connection.domain.list, {
       connectionId,
     });
   });
@@ -299,7 +299,7 @@ test("group connection component stores scim config, audit events, and webhook d
     });
   });
   const connectionId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupConnectionCreate, {
+    return await ctx.runMutation(components.auth.sso.connection.create, {
       groupId,
       slug: "globex",
       name: "Globex",
@@ -323,7 +323,7 @@ test("group connection component stores scim config, audit events, and webhook d
   const rawToken = configured.token;
 
   const identityId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupConnectionScimIdentityUpsert, {
+    return await ctx.runMutation(components.auth.sso.connection.scimIdentity.upsert, {
       connectionId,
       groupId,
       resourceType: "user",
@@ -333,7 +333,7 @@ test("group connection component stores scim config, audit events, and webhook d
     });
   });
   const auditEventId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupAuditEventCreate, {
+    return await ctx.runMutation(components.auth.sso.audit.create, {
       connectionId,
       groupId,
       eventType: "group.sso.scim.configured",
@@ -352,7 +352,7 @@ test("group connection component stores scim config, audit events, and webhook d
     });
   });
   await t.run(async (ctx) => {
-    await ctx.runMutation(components.auth.public.groupWebhookDeliveryEnqueue, {
+    await ctx.runMutation(components.auth.sso.webhook.delivery.enqueue, {
       connectionId,
       endpointId,
       eventType: "group.sso.scim.configured",
@@ -363,12 +363,12 @@ test("group connection component stores scim config, audit events, and webhook d
   });
 
   const scimConfig = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupConnectionScimConfigGetByTokenHash, {
+    return await ctx.runQuery(components.auth.sso.connection.scimConfig.get, {
       tokenHash: await sha256(rawToken),
     });
   });
   const identity = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupConnectionScimIdentityGet, {
+    return await ctx.runQuery(components.auth.sso.connection.scimIdentity.get, {
       connectionId,
       resourceType: "user",
       externalId: "scim-user-1",
@@ -381,7 +381,7 @@ test("group connection component stores scim config, audit events, and webhook d
     });
   });
   const readyDeliveries = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupWebhookDeliveryListReady, {
+    return await ctx.runQuery(components.auth.sso.webhook.delivery.list, {
       now: Date.now(),
       limit: 10,
     });
@@ -422,14 +422,14 @@ test("group connection scim identity lookup is scoped to the group connection", 
       name: "First Group Connection",
       slug: "first-group-connection",
     });
-    const connectionId = await ctx.runMutation(components.auth.public.groupConnectionCreate, {
+    const connectionId = await ctx.runMutation(components.auth.sso.connection.create, {
       groupId,
       slug: "first-group-connection",
       name: "First Group Connection",
       status: "active",
       protocol: "oidc",
     });
-    await ctx.runMutation(components.auth.public.groupConnectionScimIdentityUpsert, {
+    await ctx.runMutation(components.auth.sso.connection.scimIdentity.upsert, {
       connectionId,
       groupId,
       resourceType: "user",
@@ -445,14 +445,14 @@ test("group connection scim identity lookup is scoped to the group connection", 
       name: "Second Group Connection",
       slug: "second-group-connection",
     });
-    const connectionId = await ctx.runMutation(components.auth.public.groupConnectionCreate, {
+    const connectionId = await ctx.runMutation(components.auth.sso.connection.create, {
       groupId,
       slug: "second-group-connection",
       name: "Second Group Connection",
       status: "active",
       protocol: "oidc",
     });
-    await ctx.runMutation(components.auth.public.groupConnectionScimIdentityUpsert, {
+    await ctx.runMutation(components.auth.sso.connection.scimIdentity.upsert, {
       connectionId,
       groupId,
       resourceType: "user",
@@ -465,7 +465,7 @@ test("group connection scim identity lookup is scoped to the group connection", 
 
   const firstIdentities = await t.run(async (ctx) => {
     return await ctx.runQuery(
-      (components.auth.public as any).groupConnectionScimIdentityListByGroupConnection,
+      components.auth.sso.connection.scimIdentity.list,
       {
         connectionId: first.connectionId as any,
       },
@@ -474,7 +474,7 @@ test("group connection scim identity lookup is scoped to the group connection", 
 
   const secondIdentities = await t.run(async (ctx) => {
     return await ctx.runQuery(
-      (components.auth.public as any).groupConnectionScimIdentityListByGroupConnection,
+      components.auth.sso.connection.scimIdentity.list,
       {
         connectionId: second.connectionId as any,
       },
@@ -584,7 +584,7 @@ test("group saml.register persists config directly on group connection", async (
     });
   });
   const connectionId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupConnectionCreate, {
+    return await ctx.runMutation(components.auth.sso.connection.create, {
       groupId,
       slug: "saml-register-co",
       name: "SAML Register Co",
@@ -626,17 +626,17 @@ test("group saml.register persists config directly on group connection", async (
   });
 
   const connection = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupConnectionGet, {
+    return (await ctx.runQuery(components.auth.sso.connection.get, {
       connectionId,
-    });
+    })) as any;
   });
   const domains = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupConnectionDomainList, {
+    return await ctx.runQuery(components.auth.sso.connection.domain.list, {
       connectionId,
     });
   });
   const auditEvents = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupAuditEventList, {
+    return await ctx.runQuery(components.auth.sso.audit.list, {
       connectionId,
       limit: 10,
     });
@@ -860,7 +860,7 @@ test("group oidc.register merges config and client.signIn requires verified doma
     });
   });
   const connectionId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupConnectionCreate, {
+    return await ctx.runMutation(components.auth.sso.connection.create, {
       groupId,
       slug: "oidc-co",
       name: "OIDC Co",
@@ -870,7 +870,7 @@ test("group oidc.register merges config and client.signIn requires verified doma
     });
   });
   await t.run(async (ctx) => {
-    await ctx.runMutation(components.auth.public.groupConnectionDomainAdd, {
+    await ctx.runMutation(components.auth.sso.connection.domain.create, {
       connectionId,
       groupId,
       domain: "oidc.example.com",
@@ -907,18 +907,18 @@ test("group oidc.register merges config and client.signIn requires verified doma
   });
 
   const connection = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupConnectionGet, {
+    return (await ctx.runQuery(components.auth.sso.connection.get, {
       connectionId,
-    });
+    })) as any;
   });
   const secret = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupConnectionSecretGet, {
+    return await ctx.runQuery(components.auth.sso.connection.secret.get, {
       connectionId,
       kind: "oidc_client_secret",
     } as any);
   });
   const auditEvents = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupAuditEventList, {
+    return await ctx.runQuery(components.auth.sso.audit.list, {
       connectionId,
       limit: 10,
     });
@@ -1108,7 +1108,7 @@ test("provisioned membership stores resolved roleIds queryable via memberGetByGr
   });
 
   await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupConnectionCreate, {
+    return await ctx.runMutation(components.auth.sso.connection.create, {
       groupId,
       slug: "role-assert-conn",
       name: "Role Assert Connection",
@@ -1398,7 +1398,7 @@ test("group connection scim.configure stores hashed token and enqueues subscribe
     });
   });
   const connectionId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.groupConnectionCreate, {
+    return await ctx.runMutation(components.auth.sso.connection.create, {
       groupId,
       slug: "scim-corp",
       name: "SCIM Corp",
@@ -1407,7 +1407,7 @@ test("group connection scim.configure stores hashed token and enqueues subscribe
     });
   });
   await t.run(async (ctx) => {
-    await ctx.runMutation(components.auth.public.groupWebhookEndpointCreate, {
+    await ctx.runMutation(components.auth.sso.webhook.endpoint.create, {
       connectionId,
       groupId,
       url: "https://hooks.example.com/a",
@@ -1415,7 +1415,7 @@ test("group connection scim.configure stores hashed token and enqueues subscribe
       secretHash: "hash-a",
       subscriptions: ["group.sso.scim.configured"],
     } as any);
-    await ctx.runMutation(components.auth.public.groupWebhookEndpointCreate, {
+    await ctx.runMutation(components.auth.sso.webhook.endpoint.create, {
       connectionId,
       groupId,
       url: "https://hooks.example.com/b",
@@ -1423,7 +1423,7 @@ test("group connection scim.configure stores hashed token and enqueues subscribe
       secretHash: "hash-b",
       subscriptions: ["group.sso.scim.configured"],
     } as any);
-    await ctx.runMutation(components.auth.public.groupWebhookEndpointCreate, {
+    await ctx.runMutation(components.auth.sso.webhook.endpoint.create, {
       connectionId,
       groupId,
       url: "https://hooks.example.com/c",
@@ -1450,7 +1450,7 @@ test("group connection scim.configure stores hashed token and enqueues subscribe
     return await auth.group.sso.scim.get(ctx as any, connectionId);
   });
   const lookedUpByToken = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupConnectionScimConfigGetByTokenHash, {
+    return await ctx.runQuery(components.auth.sso.connection.scimConfig.get, {
       tokenHash: await sha256(configured.token),
     });
   });
@@ -1462,13 +1462,13 @@ test("group connection scim.configure stores hashed token and enqueues subscribe
   expect(scimConfig?.profile?.mapping?.email).toBe("emails.primary");
   expect(scimConfig?.profile?.mapping?.active).toBe("active");
   const auditEvents = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupAuditEventList, {
+    return await ctx.runQuery(components.auth.sso.audit.list, {
       connectionId,
       limit: 10,
     });
   });
   const deliveries = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.groupWebhookDeliveryListReady, {
+    return await ctx.runQuery(components.auth.sso.webhook.delivery.list, {
       now: Date.now(),
       limit: 10,
     });
