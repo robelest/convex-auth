@@ -126,7 +126,7 @@ export const publicQuery = customQuery(rawQuery, auth.ctx({ optional: true }));
 const authCtx = auth.ctx({
   resolve: async (_ctx, user, authState) => {
     return {
-      activeGroupId: authState.groupId ?? user?.extend?.lastActiveGroup ?? null,
+      activeGroupId: authState.groupId ?? null,
       canManageMembers: authState.grants.includes("members.create"),
     };
   },

@@ -408,7 +408,7 @@ test("group connection scim identity lookup is scoped to the group connection", 
   const t = convexTest(schema);
 
   const userId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.userInsert, {
+    return await ctx.runMutation(components.auth.user.create, {
       data: {
         name: "Shared User",
         email: "shared-scim@example.com",
@@ -656,7 +656,7 @@ test("group saml.register persists config directly on group connection", async (
   });
   expect(connection?.config?.protocols?.saml?.accountLinking).toBeUndefined();
   expect(connection?.config?.protocols?.saml?.reuseScimUserBy).toBeUndefined();
-  expect(policy.identity.accountLinking.saml).toBe("verifiedEmail");
+  expect(policy.identity.accountLinking.saml).toBe("sameConnection");
   expect(policy.provisioning.scimReuse.user).toBe("externalId");
   // These are hardcoded sensible defaults — no longer configurable per-tenant.
   expect(domains[0]?.domain).toBe("register.example.com");
@@ -770,7 +770,7 @@ test("group policy defaults and updates are normalized through auth.group.sso.po
     return await auth.group.sso.policy.validate(ctx as any, groupId);
   });
 
-  expect(defaults.identity.accountLinking.oidc).toBe("verifiedEmail");
+  expect(defaults.identity.accountLinking.oidc).toBe("sameConnection");
   expect(defaults.provisioning.user.createOnSignIn).toBe(true);
   expect(defaults.provisioning.user.updateProfileOnLogin).toBe("missing");
   expect(defaults.provisioning.user.updateProfileFromScim).toBe("always");
@@ -1118,7 +1118,7 @@ test("provisioned membership stores resolved roleIds queryable via memberGetByGr
   });
 
   const userId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.userInsert, {
+    return await ctx.runMutation(components.auth.user.create, {
       data: {
         name: "Role User",
         email: "role-user@example.com",

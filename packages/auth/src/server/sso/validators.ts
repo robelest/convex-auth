@@ -13,8 +13,20 @@ export const groupPolicyPatchValidator = v.object({
     v.object({
       accountLinking: v.optional(
         v.object({
-          oidc: v.optional(v.union(v.literal("verifiedEmail"), v.literal("none"))),
-          saml: v.optional(v.union(v.literal("verifiedEmail"), v.literal("none"))),
+          oidc: v.optional(
+            v.union(
+              v.literal("verifiedEmail"),
+              v.literal("none"),
+              v.literal("sameConnection"),
+            ),
+          ),
+          saml: v.optional(
+            v.union(
+              v.literal("verifiedEmail"),
+              v.literal("none"),
+              v.literal("sameConnection"),
+            ),
+          ),
         }),
       ),
     }),

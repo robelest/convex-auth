@@ -34,6 +34,8 @@ import type * as public_sso_domains from "../public/sso/domains.js";
 import type * as public_sso_scim from "../public/sso/scim.js";
 import type * as public_sso_secrets from "../public/sso/secrets.js";
 import type * as public_sso_webhooks from "../public/sso/webhooks.js";
+import type * as user from "../user.js";
+import type * as user_email from "../user/email.js";
 
 import type {
   ApiFromModules,
@@ -69,6 +71,8 @@ const fullApi: ApiFromModules<{
   "public/sso/scim": typeof public_sso_scim;
   "public/sso/secrets": typeof public_sso_secrets;
   "public/sso/webhooks": typeof public_sso_webhooks;
+  user: typeof user;
+  "user/email": typeof user_email;
 }> = anyApi as any;
 
 /**

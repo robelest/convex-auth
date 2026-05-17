@@ -465,7 +465,7 @@ export function createAuth<
      * ```ts
      * createAuth(components.auth, {
      *   providers: [password()],
-     *   extend: { User: v.object({ lastActiveGroup: v.optional(v.string()) }) },
+     *   extend: { User: v.object({ stripeCustomerId: v.optional(v.string()) }) },
      * });
      * ```
      */

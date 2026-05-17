@@ -5,8 +5,8 @@ const DEFAULT_GROUP_CONNECTION_POLICY: GroupConnectionPolicy = {
   version: 1,
   identity: {
     accountLinking: {
-      oidc: "verifiedEmail",
-      saml: "verifiedEmail",
+      oidc: "sameConnection",
+      saml: "sameConnection",
     },
   },
   provisioning: {
@@ -82,8 +82,16 @@ export function normalizeGroupConnectionPolicy(policy: unknown): GroupConnection
     version: 1,
     identity: {
       accountLinking: {
-        oidc: oneOf(accountLinking.oidc, ["none"], d.identity.accountLinking.oidc),
-        saml: oneOf(accountLinking.saml, ["none"], d.identity.accountLinking.saml),
+        oidc: oneOf(
+          accountLinking.oidc,
+          ["none", "verifiedEmail", "sameConnection"],
+          d.identity.accountLinking.oidc,
+        ),
+        saml: oneOf(
+          accountLinking.saml,
+          ["none", "verifiedEmail", "sameConnection"],
+          d.identity.accountLinking.saml,
+        ),
       },
     },
     provisioning: {

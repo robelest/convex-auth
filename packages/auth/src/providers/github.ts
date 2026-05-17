@@ -113,9 +113,18 @@ export function github(config: GitHubConfig) {
         emails.find((email) => email.verified)?.verified ??
         false;
 
+      const allEmails = emails
+        .filter((e): e is GitHubEmail & { email: string } => typeof e.email === "string")
+        .map((e) => ({
+          email: e.email,
+          primary: e.primary === true,
+          verified: e.verified === true,
+        }));
+
       return {
         id: String(user.id),
         email: typeof primaryEmail === "string" ? primaryEmail : undefined,
+        emails: allEmails.length > 0 ? allEmails : undefined,
         emailVerified: verifiedEmail,
         name: typeof user.name === "string" ? user.name : undefined,
         image: typeof user.avatar_url === "string" ? user.avatar_url : undefined,

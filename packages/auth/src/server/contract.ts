@@ -3,6 +3,7 @@ import { cached, invalidateCtxCache } from "./cache/context";
 import type { ConvexAuthMaterializedConfig } from "./types";
 
 type ComponentPublic = ConvexAuthMaterializedConfig["component"]["public"];
+type ComponentUser = ConvexAuthMaterializedConfig["component"]["user"];
 type UntypedRunQuery = <TArgs extends Record<string, unknown>, TResult>(
   ref: unknown,
   args: TArgs,
@@ -529,15 +530,15 @@ export const insertAccount = (
 
 export const insertUser = (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentUser: ComponentUser,
   data: Record<string, unknown>,
-) => mutate<{ data: Record<string, unknown> }, string>(ctx, componentPublic.userInsert, { data });
+) => mutate<{ data: Record<string, unknown> }, string>(ctx, componentUser.create, { data });
 
 export const patchUser = (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentUser: ComponentUser,
   args: { userId: string; data: Record<string, unknown> },
-) => mutate<typeof args, null>(ctx, componentPublic.userPatch, args);
+) => mutate<typeof args, null>(ctx, componentUser.update, args);
 
 export const getScimIdentity = (
   ctx: ComponentReadCtx,

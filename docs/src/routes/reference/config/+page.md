@@ -30,7 +30,7 @@ const auth = createAuth(components.auth, {
   // Type the `extend` field of each table. Drives both the inferred
   // type of `auth.v.*` and runtime validation of return shapes.
   extend: {
-    User: v.object({ lastActiveGroup: v.optional(v.string()) }),
+    User: v.object({ stripeCustomerId: v.optional(v.string()) }),
   },
   session: {
     totalDurationMs: 30 * 24 * 60 * 60 * 1000, // 30 days

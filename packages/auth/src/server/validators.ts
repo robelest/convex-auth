@@ -20,6 +20,7 @@ import {
   vGroupDoc,
   vPaginated,
   vUserDoc,
+  vUserEmailDoc,
 } from "../component/model";
 
 /**
@@ -74,7 +75,7 @@ const docWithExtend = <
  * @example
  * ```ts
  * const av = buildAuthValidators({
- *   User: v.object({ lastActiveGroup: v.optional(v.string()) }),
+ *   User: v.object({ stripeCustomerId: v.optional(v.string()) }),
  * });
  * // Infer<typeof av.viewer> -> User document with typed `extend`
  * ```
@@ -98,6 +99,7 @@ export function buildAuthValidators<TExtend extends AuthExtendValidators>(
     (extend.GroupMember ?? v.any()) as ExtendFor<TExtend, "GroupMember">,
   );
   const invite = vGroupInviteDoc;
+  const email = vUserEmailDoc;
   const viewer = v.union(user, v.null());
 
   return {
@@ -109,6 +111,8 @@ export function buildAuthValidators<TExtend extends AuthExtendValidators>(
     member,
     /** Single GroupInvite document validator. */
     invite,
+    /** Single UserEmail document validator. */
+    email,
     /** `User | null` — for a `viewer`/current-user query. */
     viewer,
     /** Wrap any item validator in the `{ items, nextCursor }` page shape. */

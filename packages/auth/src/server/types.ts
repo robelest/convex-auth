@@ -518,10 +518,15 @@ export interface SSOProviderConfig {
 /**
  * Account linking strategy for group SSO sign-in.
  *
- * - `"verifiedEmail"` — link accounts when the IdP-provided email matches a verified email on an existing user.
+ * - `"sameConnection"` (default) — only link to a user already associated
+ *   with **this** connection (via its account/externalId). Never link across
+ *   IdPs by email. This prevents cross-IdP/tenant account takeover.
+ * - `"verifiedEmail"` — link accounts when the IdP-provided email matches a
+ *   verified email on an existing user. Opt-in; only safe when every
+ *   connection that can assert this email is mutually trusted.
  * - `"none"` — never auto-link; always create a new account.
  */
-type GroupConnectionAccountLinkingPolicy = "verifiedEmail" | "none";
+type GroupConnectionAccountLinkingPolicy = "verifiedEmail" | "none" | "sameConnection";
 
 /**
  * Policy for reusing existing users during SCIM provisioning.
@@ -892,10 +897,22 @@ export interface TotpProviderConfig {
  *
  * `id` is the provider-specific account identifier (e.g. GitHub user ID).
  */
+export interface ProfileEmail {
+  email: string;
+  primary?: boolean;
+  verified?: boolean;
+}
+
 export interface OAuthProfile {
   id: string;
   name?: string;
   email?: string;
+  /**
+   * All emails the provider reported (e.g. GitHub `/user/emails`). When
+   * present, every entry is recorded; `email` remains the primary for
+   * back-compat. Single-email providers omit this.
+   */
+  emails?: ProfileEmail[];
   image?: string;
   /** Additional claims from the ID token or userinfo endpoint. */
   [key: string]: unknown;
@@ -1243,7 +1260,7 @@ export interface OAuthMaterializedConfig {
    * Account-linking policy for OAuth identities. Defaults to verified email linking.
    * @readonly
    */
-  readonly accountLinking?: "verifiedEmail" | "none";
+  readonly accountLinking?: "verifiedEmail" | "none" | "sameConnection";
 }
 
 /**
@@ -1546,15 +1563,22 @@ export interface CorsConfig {
  * Component function references required by core auth runtime.
  */
 type AuthComponentApi = {
+  user: {
+    get: FunctionReference<"query", "internal">;
+    list: FunctionReference<"query", "internal">;
+    create: FunctionReference<"mutation", "internal">;
+    upsert: FunctionReference<"mutation", "internal">;
+    update: FunctionReference<"mutation", "internal">;
+    delete: FunctionReference<"mutation", "internal">;
+    email: {
+      list: FunctionReference<"query", "internal">;
+      findOwner: FunctionReference<"query", "internal">;
+      upsert: FunctionReference<"mutation", "internal">;
+      setPrimary: FunctionReference<"mutation", "internal">;
+      delete: FunctionReference<"mutation", "internal">;
+    };
+  };
   public: {
-    userGetById: FunctionReference<"query", "internal">;
-    userList: FunctionReference<"query", "internal">;
-    userFindByVerifiedEmail: FunctionReference<"query", "internal">;
-    userFindByVerifiedPhone: FunctionReference<"query", "internal">;
-    userInsert: FunctionReference<"mutation", "internal">;
-    userUpsert: FunctionReference<"mutation", "internal">;
-    userPatch: FunctionReference<"mutation", "internal">;
-    userDelete: FunctionReference<"mutation", "internal">;
     accountGet: FunctionReference<"query", "internal">;
     accountGetById: FunctionReference<"query", "internal">;
     accountInsert: FunctionReference<"mutation", "internal">;
@@ -1801,8 +1825,8 @@ export async function queryUserById(
   ctx: ComponentCallCtx,
   userId: string,
 ): Promise<CrossComponentUserDoc | null> {
-  return (await ctx.runQuery(ctx.auth.config.component.public.userGetById, {
-    userId,
+  return (await ctx.runQuery(ctx.auth.config.component.user.get, {
+    id: userId,
   })) as CrossComponentUserDoc | null;
 }
 
@@ -1810,8 +1834,8 @@ export async function queryUserByVerifiedEmail(
   ctx: ComponentCallCtx,
   email: string,
 ): Promise<CrossComponentUserDoc | null> {
-  return (await ctx.runQuery(ctx.auth.config.component.public.userFindByVerifiedEmail, {
-    email,
+  return (await ctx.runQuery(ctx.auth.config.component.user.get, {
+    verifiedEmail: email,
   })) as CrossComponentUserDoc | null;
 }
 

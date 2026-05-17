@@ -35,7 +35,7 @@ test("refresh telemetry returns raw identity attributes when explicitly enabled"
   const ctx = {
     runQuery: vi.fn(async (ref: unknown, args: unknown) => {
       expect(ref).toBe(refs.userGetById);
-      expect(args).toEqual({ userId: "user-1" });
+      expect(args).toEqual({ id: "user-1" });
       return { _id: "user-1", email: "user@example.com" };
     }),
   } as any;
@@ -43,8 +43,8 @@ test("refresh telemetry returns raw identity attributes when explicitly enabled"
   const config = configDefaults({
     providers: [],
     component: {
-      public: {
-        userGetById: refs.userGetById,
+      user: {
+        get: refs.userGetById,
       },
     } as any,
     telemetry: {

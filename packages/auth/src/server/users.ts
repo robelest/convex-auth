@@ -17,6 +17,7 @@ type CreateOrUpdateUserArgs = {
   provider: AuthProviderMaterializedConfig;
   profile: AuthProfile;
   accountExtend?: AuthAccountExtend;
+  emails?: Array<{ email: string; primary?: boolean; verified?: boolean }>;
   shouldLinkViaEmail?: boolean;
   shouldLinkViaPhone?: boolean;
 };
@@ -181,6 +182,70 @@ async function checkAllowLink(
   return allowed !== false;
 }
 
+/**
+ * Persist the emails this sign-in asserts onto the resolved user.
+ *
+ * The profile's primary email is recorded as the primary `UserEmail`
+ * row; any provider-reported secondaries (e.g. GitHub `/user/emails`)
+ * are recorded non-primary, each keeping its own verified state.
+ * Provenance (`source`, `provider`, `connectionId`) is captured so SSO
+ * linking can stay connection-scoped.
+ *
+ * @param db - The component-backed auth DB facade.
+ * @param userId - The resolved (created or linked) user.
+ * @param args - The create-or-update args (provider, accountExtend, emails).
+ * @param profile - The provisioned profile (already destructured).
+ * @param emailVerified - Whether the primary email is verified.
+ */
+async function recordOwnedEmails(
+  db: ReturnType<typeof authDb>,
+  userId: GenericId<"User">,
+  args: CreateOrUpdateUserArgs,
+  profile: Record<string, unknown>,
+  emailVerified: boolean,
+): Promise<void> {
+  const identity = args.accountExtend?.identity;
+  const protocol = typeof identity?.protocol === "string" ? identity.protocol : undefined;
+  const source: "password" | "oauth" | "oidc" | "saml" | "scim" =
+    protocol === "saml"
+      ? "saml"
+      : protocol === "oidc"
+        ? "oidc"
+        : args.provider.type === "oauth"
+          ? "oauth"
+          : "password";
+  const provider = typeof args.provider.id === "string" ? args.provider.id : undefined;
+  const connectionId =
+    typeof identity?.connectionId === "string" ? identity.connectionId : undefined;
+  const primaryEmail =
+    typeof profile.email === "string" ? profile.email.toLowerCase() : null;
+
+  if (primaryEmail !== null) {
+    await db.emails.upsert({
+      userId,
+      email: primaryEmail,
+      verified: emailVerified,
+      isPrimary: true,
+      source,
+      provider,
+      connectionId,
+    });
+  }
+  for (const entry of args.emails ?? []) {
+    const addr = entry.email.toLowerCase();
+    if (addr === primaryEmail) continue;
+    await db.emails.upsert({
+      userId,
+      email: addr,
+      verified: entry.verified === true,
+      isPrimary: false,
+      source,
+      provider,
+      connectionId,
+    });
+  }
+}
+
 async function updateExistingUser(
   db: ReturnType<typeof authDb>,
   userId: GenericId<"User">,
@@ -257,8 +322,20 @@ async function defaultCreateOrUpdateUser(
   const emailVerified =
     profileEmailVerified ?? (provider.type === "oauth" && provider.accountLinking !== "none");
   const phoneVerified = profilePhoneVerified ?? false;
-  const shouldLinkViaEmail = args.shouldLinkViaEmail || emailVerified || provider.type === "email";
-  const shouldLinkViaPhone = args.shouldLinkViaPhone || phoneVerified || provider.type === "phone";
+  // Security: `"sameConnection"` (default for SSO connections) must never
+  // globally merge users by email across IdPs/tenants — a connection may
+  // only link to a user it already owns via its own account/externalId
+  // (resolved upstream as `existingAccount`/`existingUserIdOverride`). The
+  // email is still recorded as verified on the resolved user below; only
+  // cross-user email linking is disabled here.
+  const connectionScopedLinking =
+    provider.type === "oauth" && provider.accountLinking === "sameConnection";
+  const shouldLinkViaEmail =
+    !connectionScopedLinking &&
+    (args.shouldLinkViaEmail || emailVerified || provider.type === "email");
+  const shouldLinkViaPhone =
+    !connectionScopedLinking &&
+    (args.shouldLinkViaPhone || phoneVerified || provider.type === "phone");
 
   let userId = existingUserId ?? existingUserIdOverride;
   if (existingUserId === null) {
@@ -288,6 +365,8 @@ async function defaultCreateOrUpdateUser(
     }
     userId = (await db.users.insert(userData)) as GenericId<"User">;
   }
+
+  await recordOwnedEmails(db, userId, args, profile, emailVerified === true);
 
   const after = config.callbacks?.after;
   if (after !== undefined) {

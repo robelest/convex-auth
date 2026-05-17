@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 
 import { mutation, query } from "../../functions";
-import { vPaginated, vUserDoc } from "../../model";
+import { vPaginated, vUserDoc, vUserEmailDoc, vUserEmailSource } from "../../model";
 
 /**
  * List users with optional filtering, sorting, and cursor-based pagination.
@@ -487,7 +487,296 @@ export const userDelete = mutation({
         ...totps.map((t) => ctx.db.delete("TotpFactor", t._id)),
       ]);
     }
+    const ownedEmails = await ctx.db
+      .query("UserEmail")
+      .withIndex("user_id", (q) => q.eq("userId", userId))
+      .collect();
+    await Promise.all(ownedEmails.map((e) => ctx.db.delete("UserEmail", e._id)));
+
     await ctx.db.delete("User", userId);
+    return null;
+  },
+});
+
+/**
+ * List every email a user owns (across providers/SSO connections).
+ *
+ * @param args.userId - The user whose emails to list.
+ * @returns The user's `UserEmail` documents (may be empty).
+ *
+ * @example
+ * ```ts
+ * const emails = await ctx.runQuery(
+ *   component.identity.users.userEmailListByUser,
+ *   { userId },
+ * );
+ * const primary = emails.find((e) => e.isPrimary);
+ * ```
+ */
+export const userEmailListByUser = query({
+  args: { userId: v.id("User") },
+  returns: v.array(vUserEmailDoc),
+  handler: async (ctx, { userId }) => {
+    return await ctx.db
+      .query("UserEmail")
+      .withIndex("user_id", (q) => q.eq("userId", userId))
+      .collect();
+  },
+});
+
+/**
+ * Find a verified-email owner, optionally scoped to a single SSO
+ * connection. Returns the matching user document if exactly one verified
+ * `UserEmail` matches (preserving the "one-or-null" linking contract).
+ *
+ * Pass `connectionId` for SSO logins so a verified email only matches a
+ * row asserted by that same connection — never across IdPs.
+ *
+ * @param args.email - Email address (exact match).
+ * @param args.connectionId - Restrict to this connection's emails (SSO).
+ * @returns The owning user document, or `null` when zero or 2+ match.
+ *
+ * @example
+ * ```ts
+ * const user = await ctx.runQuery(
+ *   component.identity.users.userEmailFindVerified,
+ *   { email: "alice@example.com", connectionId },
+ * );
+ * ```
+ */
+export const userEmailFindVerified = query({
+  args: { email: v.string(), connectionId: v.optional(v.id("GroupConnection")) },
+  returns: v.union(vUserDoc, v.null()),
+  handler: async (ctx, { email, connectionId }) => {
+    const rows =
+      connectionId === undefined
+        ? await ctx.db
+            .query("UserEmail")
+            .withIndex("email_verified", (q) =>
+              q.eq("email", email).gt("verificationTime", undefined),
+            )
+            .take(2)
+        : (
+            await ctx.db
+              .query("UserEmail")
+              .withIndex("connection_id_email", (q) =>
+                q.eq("connectionId", connectionId).eq("email", email),
+              )
+              .take(2)
+          ).filter((r) => typeof r.verificationTime === "number");
+    if (rows.length !== 1) return null;
+    return await ctx.db.get("User", rows[0].userId);
+  },
+});
+
+/**
+ * Record (insert or update) an email a user owns. When `isPrimary` is
+ * `true`, any existing primary for the user is demoted and the
+ * denormalized `User.email` / `emailVerificationTime` pointer is synced.
+ *
+ * Keyed by `(userId, email)`. Provenance (`source`, `connectionId`,
+ * `accountId`, `provider`) is recorded so SSO linking can stay
+ * connection-scoped.
+ *
+ * @param args.userId - Owner of the email.
+ * @param args.email - The email address (store lowercased).
+ * @param args.verified - Mark verified (sets `verificationTime`).
+ * @param args.isPrimary - Promote to the user's primary email.
+ * @param args.source - Which mechanism asserted it (`oauth`, `saml`, …).
+ * @param args.accountId - Originating account, when applicable.
+ * @param args.provider - Originating provider id, when applicable.
+ * @param args.connectionId - Originating SSO connection, when applicable.
+ * @returns The `UserEmail` document ID.
+ *
+ * @example
+ * ```ts
+ * await ctx.runMutation(component.identity.users.userEmailUpsert, {
+ *   userId,
+ *   email: "alice@example.com",
+ *   verified: true,
+ *   isPrimary: true,
+ *   source: "oauth",
+ * });
+ * ```
+ */
+export const userEmailUpsert = mutation({
+  args: {
+    userId: v.id("User"),
+    email: v.string(),
+    verified: v.optional(v.boolean()),
+    isPrimary: v.optional(v.boolean()),
+    source: vUserEmailSource,
+    accountId: v.optional(v.id("Account")),
+    provider: v.optional(v.string()),
+    connectionId: v.optional(v.id("GroupConnection")),
+  },
+  returns: v.id("UserEmail"),
+  handler: async (ctx, args) => {
+    const owned = await ctx.db
+      .query("UserEmail")
+      .withIndex("user_id", (q) => q.eq("userId", args.userId))
+      .collect();
+    const existing = owned.find((e) => e.email === args.email) ?? null;
+    const makePrimary = args.isPrimary === true || owned.length === 0;
+    const verificationTime =
+      args.verified === true
+        ? (existing?.verificationTime ?? Date.now())
+        : existing?.verificationTime;
+
+    if (makePrimary) {
+      await Promise.all(
+        owned
+          .filter((e) => e.isPrimary && e._id !== existing?._id)
+          .map((e) => ctx.db.patch("UserEmail", e._id, { isPrimary: false })),
+      );
+    }
+
+    let id;
+    if (existing !== null) {
+      await ctx.db.patch("UserEmail", existing._id, {
+        verificationTime,
+        isPrimary: makePrimary ? true : existing.isPrimary,
+        source: args.source,
+        accountId: args.accountId ?? existing.accountId,
+        provider: args.provider ?? existing.provider,
+        connectionId: args.connectionId ?? existing.connectionId,
+      });
+      id = existing._id;
+    } else {
+      id = await ctx.db.insert("UserEmail", {
+        userId: args.userId,
+        email: args.email,
+        verificationTime,
+        isPrimary: makePrimary,
+        source: args.source,
+        accountId: args.accountId,
+        provider: args.provider,
+        connectionId: args.connectionId,
+      });
+    }
+
+    if (makePrimary) {
+      await ctx.db.patch("User", args.userId, {
+        email: args.email,
+        ...(verificationTime !== undefined
+          ? { emailVerificationTime: verificationTime }
+          : {}),
+      });
+    }
+    return id;
+  },
+});
+
+/**
+ * Promote one of the user's emails to primary, syncing the denormalized
+ * `User.email` / `emailVerificationTime` pointer. The target must exist
+ * and be verified.
+ *
+ * @param args.userId - Owner of the email.
+ * @param args.email - The address to promote (must be owned + verified).
+ * @returns `null`.
+ * @throws `INVALID_PARAMETERS` if the email is not owned or not verified.
+ *
+ * @example
+ * ```ts
+ * await ctx.runMutation(component.identity.users.userEmailSetPrimary, {
+ *   userId,
+ *   email: "alice@work.com",
+ * });
+ * ```
+ */
+export const userEmailSetPrimary = mutation({
+  args: { userId: v.id("User"), email: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { userId, email }) => {
+    const owned = await ctx.db
+      .query("UserEmail")
+      .withIndex("user_id", (q) => q.eq("userId", userId))
+      .collect();
+    const target = owned.find((e) => e.email === email);
+    if (target === undefined) {
+      throw new ConvexError({
+        code: "INVALID_PARAMETERS",
+        message: "Email is not owned by this user.",
+      });
+    }
+    if (target.verificationTime === undefined) {
+      throw new ConvexError({
+        code: "INVALID_PARAMETERS",
+        message: "Cannot make an unverified email primary.",
+      });
+    }
+    await Promise.all(
+      owned
+        .filter((e) => e.isPrimary && e._id !== target._id)
+        .map((e) => ctx.db.patch("UserEmail", e._id, { isPrimary: false })),
+    );
+    await ctx.db.patch("UserEmail", target._id, { isPrimary: true });
+    await ctx.db.patch("User", userId, {
+      email: target.email,
+      emailVerificationTime: target.verificationTime,
+    });
+    return null;
+  },
+});
+
+/**
+ * Remove an email a user owns. Guards: cannot remove the primary, the
+ * last verified email, or a connection-managed row (`saml`/`oidc`/`scim`
+ * with a `connectionId` — owned by the IdP/SCIM, not the user).
+ *
+ * @param args.userId - Owner of the email.
+ * @param args.email - The address to remove (must be owned).
+ * @returns `null`.
+ * @throws `INVALID_PARAMETERS` if not owned, primary, the only verified
+ *   email, or connection-managed.
+ *
+ * @example
+ * ```ts
+ * await ctx.runMutation(component.identity.users.userEmailRemove, {
+ *   userId,
+ *   email: "old@example.com",
+ * });
+ * ```
+ */
+export const userEmailRemove = mutation({
+  args: { userId: v.id("User"), email: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { userId, email }) => {
+    const owned = await ctx.db
+      .query("UserEmail")
+      .withIndex("user_id", (q) => q.eq("userId", userId))
+      .collect();
+    const target = owned.find((e) => e.email === email);
+    if (target === undefined) {
+      throw new ConvexError({
+        code: "INVALID_PARAMETERS",
+        message: "Email is not owned by this user.",
+      });
+    }
+    if (target.isPrimary) {
+      throw new ConvexError({
+        code: "INVALID_PARAMETERS",
+        message: "Cannot remove the primary email; set another primary first.",
+      });
+    }
+    if (
+      target.connectionId !== undefined &&
+      (target.source === "saml" || target.source === "oidc" || target.source === "scim")
+    ) {
+      throw new ConvexError({
+        code: "INVALID_PARAMETERS",
+        message: "This email is managed by an SSO/SCIM connection.",
+      });
+    }
+    const verifiedCount = owned.filter((e) => e.verificationTime !== undefined).length;
+    if (target.verificationTime !== undefined && verifiedCount <= 1) {
+      throw new ConvexError({
+        code: "INVALID_PARAMETERS",
+        message: "Cannot remove the only verified email.",
+      });
+    }
+    await ctx.db.delete("UserEmail", target._id);
     return null;
   },
 });

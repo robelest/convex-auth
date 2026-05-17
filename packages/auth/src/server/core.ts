@@ -182,8 +182,8 @@ export function createCoreDomains(deps: CoreDeps) {
   ): Promise<UserDocLike | Array<UserDocLike>> {
     if (typeof input === "string") {
       return (await cached(ctx, `user:${input}`, () =>
-        ctx.runQuery(config.component.public.userGetById, {
-          userId: input,
+        ctx.runQuery(config.component.user.get, {
+          id: input,
         }),
       )) as UserDocLike;
     }
@@ -197,10 +197,9 @@ export function createCoreDomains(deps: CoreDeps) {
       }
     }
     if (toFetch.length > 0) {
-      const sharedFetch = (ctx.runQuery as UntypedRunQuery)(
-        (config.component.public as Record<string, unknown>)["userGetMany"],
-        { userIds: toFetch },
-      ) as Promise<Array<UserDocLike>>;
+      const sharedFetch = ctx.runQuery(config.component.user.get, {
+        ids: toFetch,
+      }) as Promise<Array<UserDocLike>>;
       for (let i = 0; i < toFetch.length; i += 1) {
         const id = toFetch[i]!;
         const indexInBatch = i;
@@ -213,7 +212,7 @@ export function createCoreDomains(deps: CoreDeps) {
     return (await Promise.all(
       userIds.map((id) =>
         cached(ctx, `user:${id}`, () =>
-          ctx.runQuery(config.component.public.userGetById, { userId: id }),
+          ctx.runQuery(config.component.user.get, { id }),
         ),
       ),
     )) as Array<UserDocLike>;
@@ -268,7 +267,7 @@ export function createCoreDomains(deps: CoreDeps) {
       } = {},
     ) => {
       return (await ctx.runQuery(
-        config.component.public.userList,
+        config.component.user.list,
         opts,
       )) as Paginated<Doc<"User">>;
     },
@@ -292,6 +291,120 @@ export function createCoreDomains(deps: CoreDeps) {
       return await user.get(ctx, userId);
     },
     /**
+     * Provider-agnostic management of the emails a user owns. Singular
+     * `email` namespace (consistent with `auth.member` / `auth.active`);
+     * the collection is exposed via `.list`.
+     *
+     * - `list(ctx)` — every `UserEmail` the user owns (provenance incl.).
+     * - `add(ctx, email)` — record an **unverified** address. Does not
+     *   verify (verification stays proof-driven via sign-in flows) and
+     *   does not become primary.
+     * - `remove(ctx, email)` — delete an address. Throws if it is the
+     *   primary, the only verified email, or a connection-managed row.
+     * - `primary(ctx)` — read the current primary `UserEmail | null`.
+     * - `primary(ctx, email)` — promote a **verified** address to primary
+     *   (syncs the denormalized `User.email`).
+     *
+     * `userId` defaults to the current session user everywhere.
+     */
+    email: (() => {
+      async function primary(
+        ctx: ComponentAuthReadCtx,
+        opts?: { userId?: string },
+      ): Promise<Doc<"UserEmail"> | null>;
+      async function primary(
+        ctx: ComponentCtx & { auth: Auth },
+        email: string,
+        opts?: { userId?: string },
+      ): Promise<{ email: string }>;
+      async function primary(
+        ctx: ComponentAuthReadCtx | (ComponentCtx & { auth: Auth }),
+        emailOrOpts?: string | { userId?: string },
+        maybeOpts?: { userId?: string },
+      ): Promise<(Doc<"UserEmail"> | null) | { email: string }> {
+        const setting = typeof emailOrOpts === "string";
+        const opts = (setting ? maybeOpts : emailOrOpts) as
+          | { userId?: string }
+          | undefined;
+        const userId = opts?.userId ?? (await getSessionUserId(ctx));
+        if (userId === null || userId === undefined) {
+          if (setting) {
+            throw new ConvexError({
+              code: "NOT_SIGNED_IN",
+              message: "Authentication required.",
+            });
+          }
+          return null;
+        }
+        if (setting) {
+          await (ctx as ComponentCtx).runMutation(
+            config.component.user.email.setPrimary,
+            { userId, email: (emailOrOpts as string).toLowerCase() },
+          );
+          return { email: (emailOrOpts as string).toLowerCase() };
+        }
+        const rows = (await ctx.runQuery(
+          config.component.user.email.list,
+          { userId },
+        )) as Doc<"UserEmail">[];
+        return rows.find((r) => r.isPrimary) ?? null;
+      }
+      return {
+        list: async (
+          ctx: ComponentAuthReadCtx,
+          opts?: { userId?: string },
+        ): Promise<Doc<"UserEmail">[]> => {
+          const userId = opts?.userId ?? (await getSessionUserId(ctx));
+          if (userId === null || userId === undefined) return [];
+          return (await ctx.runQuery(config.component.user.email.list, {
+            userId,
+          })) as Doc<"UserEmail">[];
+        },
+        add: async (
+          ctx: ComponentCtx & { auth: Auth },
+          email: string,
+          opts?: { userId?: string },
+        ): Promise<{ email: string }> => {
+          const userId = opts?.userId ?? (await getSessionUserId(ctx));
+          if (userId === null || userId === undefined) {
+            throw new ConvexError({
+              code: "NOT_SIGNED_IN",
+              message: "Authentication required.",
+            });
+          }
+          const addr = email.toLowerCase();
+          await ctx.runMutation(config.component.user.email.upsert, {
+            userId,
+            email: addr,
+            verified: false,
+            isPrimary: false,
+            source: "password",
+          });
+          return { email: addr };
+        },
+        remove: async (
+          ctx: ComponentCtx & { auth: Auth },
+          email: string,
+          opts?: { userId?: string },
+        ): Promise<{ email: string }> => {
+          const userId = opts?.userId ?? (await getSessionUserId(ctx));
+          if (userId === null || userId === undefined) {
+            throw new ConvexError({
+              code: "NOT_SIGNED_IN",
+              message: "Authentication required.",
+            });
+          }
+          const addr = email.toLowerCase();
+          await ctx.runMutation(config.component.user.email.delete, {
+            userId,
+            email: addr,
+          });
+          return { email: addr };
+        },
+        primary,
+      };
+    })(),
+    /**
      * Patch a user document. Accepts any fields defined on the User schema
      * (e.g. `name`, `image`, `email`, `extend`).
      *
@@ -309,7 +422,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     update: async (ctx: ComponentCtx, userId: string, data: Record<string, unknown>) => {
-      await ctx.runMutation(config.component.public.userPatch, {
+      await ctx.runMutation(config.component.user.update, {
         userId,
         data,
       });
@@ -330,7 +443,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * @throws `INVALID_PARAMETERS` if `cascade` is `false` but the user has linked data.
      */
     delete: async (ctx: ComponentCtx, userId: string, opts?: { cascade?: boolean }) => {
-      await ctx.runMutation(config.component.public.userDelete, {
+      await ctx.runMutation(config.component.user.delete, {
         userId,
         cascade: opts?.cascade !== false,
       });
@@ -1476,36 +1589,13 @@ export function createCoreDomains(deps: CoreDeps) {
   };
 
   const readLastActiveGroup = (doc: Doc<"User"> | null): string | null => {
-    if (
-      doc !== null &&
-      doc.extend !== null &&
-      typeof doc.extend === "object" &&
-      !Array.isArray(doc.extend)
-    ) {
-      const val = (doc.extend as Record<string, unknown>).lastActiveGroup;
-      if (typeof val === "string") return val;
-    }
-    return null;
-  };
-  const writeExtend = async (
-    ctx: ComponentCtx,
-    userId: string,
-    mutate: (extend: Record<string, unknown>) => Record<string, unknown>,
-  ) => {
-    const doc = await user.get(ctx, userId);
-    const existing =
-      doc !== null &&
-      doc.extend !== null &&
-      typeof doc.extend === "object" &&
-      !Array.isArray(doc.extend)
-        ? { ...(doc.extend as Record<string, unknown>) }
-        : {};
-    await user.update(ctx, userId, { extend: mutate(existing) });
+    const val = doc?.lastActiveGroup;
+    return typeof val === "string" ? val : null;
   };
 
   /**
    * The current user's active group — the workspace selection persisted
-   * in `user.extend.lastActiveGroup`. Reuses the existing `get/set/clear`
+   * natively on `User.lastActiveGroup`. Reuses the existing `get/set/clear`
    * vocabulary instead of bespoke `setActiveGroup`/`getActiveGroup`.
    */
   const active = {
@@ -1575,10 +1665,7 @@ export function createCoreDomains(deps: CoreDeps) {
           message: "User is not a member of this group.",
         });
       }
-      await writeExtend(ctx, userId, (extend) => ({
-        ...extend,
-        lastActiveGroup: groupId,
-      }));
+      await user.update(ctx, userId, { lastActiveGroup: groupId });
       return { groupId };
     },
     /**
@@ -1598,7 +1685,7 @@ export function createCoreDomains(deps: CoreDeps) {
           message: "Authentication required.",
         });
       }
-      await writeExtend(ctx, userId, ({ lastActiveGroup: _omit, ...rest }) => rest);
+      await user.update(ctx, userId, { lastActiveGroup: undefined });
       return { groupId: null };
     },
   };

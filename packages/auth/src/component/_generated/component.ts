@@ -458,8 +458,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               extend?: any;
               identity: {
                 accountLinking: {
-                  oidc: "verifiedEmail" | "none";
-                  saml: "verifiedEmail" | "none";
+                  oidc: "verifiedEmail" | "none" | "sameConnection";
+                  saml: "verifiedEmail" | "none" | "sameConnection";
                 };
               };
               provisioning: {
@@ -1002,8 +1002,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             extend?: any;
             identity: {
               accountLinking: {
-                oidc: "verifiedEmail" | "none";
-                saml: "verifiedEmail" | "none";
+                oidc: "verifiedEmail" | "none" | "sameConnection";
+                saml: "verifiedEmail" | "none" | "sameConnection";
               };
             };
             provisioning: {
@@ -1055,8 +1055,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             extend?: any;
             identity: {
               accountLinking: {
-                oidc: "verifiedEmail" | "none";
-                saml: "verifiedEmail" | "none";
+                oidc: "verifiedEmail" | "none" | "sameConnection";
+                saml: "verifiedEmail" | "none" | "sameConnection";
               };
             };
             provisioning: {
@@ -1123,8 +1123,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               extend?: any;
               identity: {
                 accountLinking: {
-                  oidc: "verifiedEmail" | "none";
-                  saml: "verifiedEmail" | "none";
+                  oidc: "verifiedEmail" | "none" | "sameConnection";
+                  saml: "verifiedEmail" | "none" | "sameConnection";
                 };
               };
               provisioning: {
@@ -1181,8 +1181,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   extend?: any;
                   identity: {
                     accountLinking: {
-                      oidc: "verifiedEmail" | "none";
-                      saml: "verifiedEmail" | "none";
+                      oidc: "verifiedEmail" | "none" | "sameConnection";
+                      saml: "verifiedEmail" | "none" | "sameConnection";
                     };
                   };
                   provisioning: {
@@ -1258,8 +1258,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 extend?: any;
                 identity: {
                   accountLinking: {
-                    oidc: "verifiedEmail" | "none";
-                    saml: "verifiedEmail" | "none";
+                    oidc: "verifiedEmail" | "none" | "sameConnection";
+                    saml: "verifiedEmail" | "none" | "sameConnection";
                   };
                 };
                 provisioning: {
@@ -1311,8 +1311,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 extend?: any;
                 identity: {
                   accountLinking: {
-                    oidc: "verifiedEmail" | "none";
-                    saml: "verifiedEmail" | "none";
+                    oidc: "verifiedEmail" | "none" | "sameConnection";
+                    saml: "verifiedEmail" | "none" | "sameConnection";
                   };
                 };
                 provisioning: {
@@ -1379,8 +1379,8 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                   extend?: any;
                   identity: {
                     accountLinking: {
-                      oidc: "verifiedEmail" | "none";
-                      saml: "verifiedEmail" | "none";
+                      oidc: "verifiedEmail" | "none" | "sameConnection";
+                      saml: "verifiedEmail" | "none" | "sameConnection";
                     };
                   };
                   provisioning: {
@@ -2148,6 +2148,74 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             null,
             Name
           >;
+          userEmailFindVerified: FunctionReference<
+            "query",
+            "internal",
+            { connectionId?: string; email: string },
+            {
+              _creationTime: number;
+              _id: string;
+              email?: string;
+              emailVerificationTime?: number;
+              extend?: any;
+              hasTotp?: boolean;
+              image?: string;
+              isAnonymous?: boolean;
+              lastActiveGroup?: string;
+              name?: string;
+              phone?: string;
+              phoneVerificationTime?: number;
+            } | null,
+            Name
+          >;
+          userEmailListByUser: FunctionReference<
+            "query",
+            "internal",
+            { userId: string },
+            Array<{
+              _creationTime: number;
+              _id: string;
+              accountId?: string;
+              connectionId?: string;
+              email: string;
+              isPrimary: boolean;
+              provider?: string;
+              source: "password" | "oauth" | "oidc" | "saml" | "scim";
+              userId: string;
+              verificationTime?: number;
+            }>,
+            Name
+          >;
+          userEmailRemove: FunctionReference<
+            "mutation",
+            "internal",
+            { email: string; userId: string },
+            null,
+            Name
+          >;
+          userEmailSetPrimary: FunctionReference<
+            "mutation",
+            "internal",
+            { email: string; userId: string },
+            null,
+            Name
+          >;
+          userEmailUpsert: FunctionReference<
+            "mutation",
+            "internal",
+            {
+              accountId?: string;
+              connectionId?: string;
+              email: string;
+              isPrimary?: boolean;
+              provider?: string;
+              source: "password" | "oauth" | "oidc" | "saml" | "scim";
+              userId: string;
+              verified?: boolean;
+            },
+            string,
+            Name
+          >;
           userFindByVerifiedEmail: FunctionReference<
             "query",
             "internal",
@@ -2161,6 +2229,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               hasTotp?: boolean;
               image?: string;
               isAnonymous?: boolean;
+              lastActiveGroup?: string;
               name?: string;
               phone?: string;
               phoneVerificationTime?: number;
@@ -2180,6 +2249,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               hasTotp?: boolean;
               image?: string;
               isAnonymous?: boolean;
+              lastActiveGroup?: string;
               name?: string;
               phone?: string;
               phoneVerificationTime?: number;
@@ -2199,6 +2269,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               hasTotp?: boolean;
               image?: string;
               isAnonymous?: boolean;
+              lastActiveGroup?: string;
               name?: string;
               phone?: string;
               phoneVerificationTime?: number;
@@ -2218,6 +2289,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               hasTotp?: boolean;
               image?: string;
               isAnonymous?: boolean;
+              lastActiveGroup?: string;
               name?: string;
               phone?: string;
               phoneVerificationTime?: number;
@@ -2256,6 +2328,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 hasTotp?: boolean;
                 image?: string;
                 isAnonymous?: boolean;
+                lastActiveGroup?: string;
                 name?: string;
                 phone?: string;
                 phoneVerificationTime?: number;
@@ -3900,143 +3973,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null,
         Name
       >;
-      userDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { cascade?: boolean; userId: string },
-        null,
-        Name
-      >;
-      userFindByVerifiedEmail: FunctionReference<
-        "query",
-        "internal",
-        { email: string },
-        {
-          _creationTime: number;
-          _id: string;
-          email?: string;
-          emailVerificationTime?: number;
-          extend?: any;
-          hasTotp?: boolean;
-          image?: string;
-          isAnonymous?: boolean;
-          name?: string;
-          phone?: string;
-          phoneVerificationTime?: number;
-        } | null,
-        Name
-      >;
-      userFindByVerifiedPhone: FunctionReference<
-        "query",
-        "internal",
-        { phone: string },
-        {
-          _creationTime: number;
-          _id: string;
-          email?: string;
-          emailVerificationTime?: number;
-          extend?: any;
-          hasTotp?: boolean;
-          image?: string;
-          isAnonymous?: boolean;
-          name?: string;
-          phone?: string;
-          phoneVerificationTime?: number;
-        } | null,
-        Name
-      >;
-      userGetById: FunctionReference<
-        "query",
-        "internal",
-        { userId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          email?: string;
-          emailVerificationTime?: number;
-          extend?: any;
-          hasTotp?: boolean;
-          image?: string;
-          isAnonymous?: boolean;
-          name?: string;
-          phone?: string;
-          phoneVerificationTime?: number;
-        } | null,
-        Name
-      >;
-      userGetMany: FunctionReference<
-        "query",
-        "internal",
-        { userIds: Array<string> },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          email?: string;
-          emailVerificationTime?: number;
-          extend?: any;
-          hasTotp?: boolean;
-          image?: string;
-          isAnonymous?: boolean;
-          name?: string;
-          phone?: string;
-          phoneVerificationTime?: number;
-        } | null>,
-        Name
-      >;
-      userInsert: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any },
-        string,
-        Name
-      >;
-      userList: FunctionReference<
-        "query",
-        "internal",
-        {
-          cursor?: string | null;
-          limit?: number;
-          order?: "asc" | "desc";
-          orderBy?: "_creationTime" | "name" | "email" | "phone";
-          where?: {
-            email?: string;
-            isAnonymous?: boolean;
-            name?: string;
-            phone?: string;
-          };
-        },
-        {
-          items: Array<{
-            _creationTime: number;
-            _id: string;
-            email?: string;
-            emailVerificationTime?: number;
-            extend?: any;
-            hasTotp?: boolean;
-            image?: string;
-            isAnonymous?: boolean;
-            name?: string;
-            phone?: string;
-            phoneVerificationTime?: number;
-          }>;
-          nextCursor: string | null;
-        },
-        Name
-      >;
-      userPatch: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; userId: string },
-        null,
-        Name
-      >;
-      userUpsert: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; userId?: string },
-        string,
-        Name
-      >;
       verificationCodeCreate: FunctionReference<
         "mutation",
         "internal",
@@ -4138,6 +4074,180 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         { data: any; verifierId: string },
         null,
+        Name
+      >;
+    };
+    user: {
+      create: FunctionReference<
+        "mutation",
+        "internal",
+        { data: any },
+        string,
+        Name
+      >;
+      delete: FunctionReference<
+        "mutation",
+        "internal",
+        { cascade?: boolean; userId: string },
+        null,
+        Name
+      >;
+      email: {
+        delete: FunctionReference<
+          "mutation",
+          "internal",
+          { email: string; userId: string },
+          null,
+          Name
+        >;
+        findOwner: FunctionReference<
+          "query",
+          "internal",
+          { connectionId?: string; email: string },
+          {
+            _creationTime: number;
+            _id: string;
+            email?: string;
+            emailVerificationTime?: number;
+            extend?: any;
+            hasTotp?: boolean;
+            image?: string;
+            isAnonymous?: boolean;
+            lastActiveGroup?: string;
+            name?: string;
+            phone?: string;
+            phoneVerificationTime?: number;
+          } | null,
+          Name
+        >;
+        list: FunctionReference<
+          "query",
+          "internal",
+          { userId: string },
+          Array<{
+            _creationTime: number;
+            _id: string;
+            accountId?: string;
+            connectionId?: string;
+            email: string;
+            isPrimary: boolean;
+            provider?: string;
+            source: "password" | "oauth" | "oidc" | "saml" | "scim";
+            userId: string;
+            verificationTime?: number;
+          }>,
+          Name
+        >;
+        setPrimary: FunctionReference<
+          "mutation",
+          "internal",
+          { email: string; userId: string },
+          null,
+          Name
+        >;
+        upsert: FunctionReference<
+          "mutation",
+          "internal",
+          {
+            accountId?: string;
+            connectionId?: string;
+            email: string;
+            isPrimary?: boolean;
+            provider?: string;
+            source: "password" | "oauth" | "oidc" | "saml" | "scim";
+            userId: string;
+            verified?: boolean;
+          },
+          string,
+          Name
+        >;
+      };
+      get: FunctionReference<
+        "query",
+        "internal",
+        {
+          id?: string;
+          ids?: Array<string>;
+          verifiedEmail?: string;
+          verifiedPhone?: string;
+        },
+        | {
+            _creationTime: number;
+            _id: string;
+            email?: string;
+            emailVerificationTime?: number;
+            extend?: any;
+            hasTotp?: boolean;
+            image?: string;
+            isAnonymous?: boolean;
+            lastActiveGroup?: string;
+            name?: string;
+            phone?: string;
+            phoneVerificationTime?: number;
+          }
+        | null
+        | Array<{
+            _creationTime: number;
+            _id: string;
+            email?: string;
+            emailVerificationTime?: number;
+            extend?: any;
+            hasTotp?: boolean;
+            image?: string;
+            isAnonymous?: boolean;
+            lastActiveGroup?: string;
+            name?: string;
+            phone?: string;
+            phoneVerificationTime?: number;
+          } | null>,
+        Name
+      >;
+      list: FunctionReference<
+        "query",
+        "internal",
+        {
+          cursor?: string | null;
+          limit?: number;
+          order?: "asc" | "desc";
+          orderBy?: "_creationTime" | "name" | "email" | "phone";
+          where?: {
+            email?: string;
+            isAnonymous?: boolean;
+            name?: string;
+            phone?: string;
+          };
+        },
+        {
+          items: Array<{
+            _creationTime: number;
+            _id: string;
+            email?: string;
+            emailVerificationTime?: number;
+            extend?: any;
+            hasTotp?: boolean;
+            image?: string;
+            isAnonymous?: boolean;
+            lastActiveGroup?: string;
+            name?: string;
+            phone?: string;
+            phoneVerificationTime?: number;
+          }>;
+          nextCursor: string | null;
+        },
+        Name
+      >;
+      update: FunctionReference<
+        "mutation",
+        "internal",
+        { data: any; userId: string },
+        null,
+        Name
+      >;
+      upsert: FunctionReference<
+        "mutation",
+        "internal",
+        { data: any; userId?: string },
+        string,
         Name
       >;
     };

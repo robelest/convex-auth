@@ -642,7 +642,7 @@ export function createSyntheticOAuthMaterializedConfig(
     type: "oauth",
     provider: null,
     scopes: [],
-    accountLinking: options?.accountLinking ?? "verifiedEmail",
+    accountLinking: options?.accountLinking ?? "sameConnection",
   };
 }
 

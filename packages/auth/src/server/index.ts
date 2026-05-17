@@ -37,6 +37,7 @@ export {
   vGroupMemberDoc,
   vPaginated,
   vUserDoc,
+  vUserEmailDoc,
 } from "../component/model";
 export type { HttpAuthContext, HttpAuthContextConfig, OptionalHttpAuthContext } from "./http";
 export type {

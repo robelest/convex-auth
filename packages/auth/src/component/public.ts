@@ -22,6 +22,5 @@ export * from "./public/security/limits";
 export * from "./public/identity/tokens";
 export * from "./public/identity/sessions";
 export * from "./public/factors/totp";
-export * from "./public/identity/users";
 export * from "./public/identity/codes";
 export * from "./public/identity/verifiers";

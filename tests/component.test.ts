@@ -11,13 +11,13 @@ test("auth component registers and serves public core functions", async () => {
   const t = convexTest(schema);
 
   const userId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.userInsert, {
+    return await ctx.runMutation(components.auth.user.create, {
       data: { email: "component-user@example.com" },
     });
   });
 
   const user = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.userGetById, { userId });
+    return await ctx.runQuery(components.auth.user.get, { id: userId });
   });
 
   expect(user).not.toBeNull();
@@ -28,7 +28,7 @@ test("refresh token exchange mismatch does not delete supplied session", async (
   const t = convexTest(schema);
 
   const userId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.userInsert, {
+    return await ctx.runMutation(components.auth.user.create, {
       data: { email: "refresh-mismatch@example.com" },
     });
   });
@@ -94,7 +94,7 @@ test("auth.member.inspect returns membership, roleIds, and grants", async () => 
   const t = convexTest(schema);
 
   const userId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.userInsert, {
+    return await ctx.runMutation(components.auth.user.create, {
       data: { email: "member-inspect@example.com" },
     });
   });
@@ -132,7 +132,7 @@ test("auth.member.require throws ConvexError on invalid role ids", async () => {
   const t = convexTest(schema);
 
   const userId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.userInsert, {
+    return await ctx.runMutation(components.auth.user.create, {
       data: { email: "invalid-role@example.com" },
     });
   });

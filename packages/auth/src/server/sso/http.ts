@@ -948,7 +948,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         });
         const userId = existingUser?._id
           ? existingUser._id
-          : await insertUser(state.ctx, config.component.public, {
+          : await insertUser(state.ctx, config.component.user, {
               name: provisionProfile.name,
               ...(typeof provisionProfile.firstName === "string"
                 ? { firstName: provisionProfile.firstName }
@@ -999,7 +999,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
             source: "scim",
           });
           if (Object.keys(patchData).length > 0) {
-            await patchUser(state.ctx, config.component.public, {
+            await patchUser(state.ctx, config.component.user, {
               userId,
               data: patchData,
             });
@@ -1174,7 +1174,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
           source: "scim",
         });
         if (Object.keys(nextPatchData).length > 0) {
-          await patchUser(state.ctx, config.component.public, {
+          await patchUser(state.ctx, config.component.user, {
             userId,
             data: nextPatchData,
           });

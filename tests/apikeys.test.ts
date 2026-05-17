@@ -19,7 +19,7 @@ function expectKey(result: any) {
 /** Create a test user and return their userId. */
 async function createUser(t: any, email = "test@example.com") {
   return await t.run(async (ctx: any) => {
-    return await ctx.runMutation(components.auth.public.userInsert, {
+    return await ctx.runMutation(components.auth.user.create, {
       data: { email, emailVerificationTime: Date.now() },
     });
   });

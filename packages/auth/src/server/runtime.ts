@@ -439,7 +439,7 @@ export function Auth(config_: ConvexAuthConfig) {
               cookies,
             );
             const oauthCookies = result.cookies;
-            const { id: profileId, ...profileData } = result.profile;
+            const { id: profileId, emails: profileEmails, ...profileData } = result.profile;
             const { signature } = result;
             const { redirectTo: stateRedirectTo } = decodeOAuthState(params.get("state") ?? "");
             const destinationUrl = await redirectAbsoluteUrl(ctx, config, {
@@ -450,6 +450,7 @@ export function Auth(config_: ConvexAuthConfig) {
               provider: providerId,
               providerAccountId: profileId,
               profile: profileData as AuthProfile,
+              emails: profileEmails,
               signature,
             });
 
@@ -632,7 +633,7 @@ export function Auth(config_: ConvexAuthConfig) {
                 cookies,
               );
               const oauthCookies = result.cookies;
-              const { id: profileId, ...profileData } = result.profile;
+              const { id: profileId, emails: profileEmails, ...profileData } = result.profile;
               const { signature } = result;
               const { redirectTo: stateRedirectTo } = decodeOAuthState(params.get("state") ?? "");
               const destinationUrl = await redirectAbsoluteUrl(ctx, config, {
@@ -643,6 +644,7 @@ export function Auth(config_: ConvexAuthConfig) {
                 provider: providerId,
                 providerAccountId: profileId,
                 profile: profileData as AuthProfile,
+                emails: profileEmails,
                 signature,
               });
 

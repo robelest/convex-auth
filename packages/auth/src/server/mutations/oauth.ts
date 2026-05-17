@@ -8,6 +8,7 @@ import { authDb } from "../db";
 import { log } from "../log";
 import type { AuthAccountExtend, AuthProfile } from "../payloads";
 import { accountExtendValidator, payloadRecordValidator } from "../payloads";
+import { vProfileEmail } from "../../component/model";
 import { generateRandomString, sha256 } from "../random";
 import { createSyntheticOAuthMaterializedConfig } from "../sso/oidc";
 import { normalizeGroupConnectionPolicy, resolveProvisionedRoleIds } from "../sso/policy";
@@ -27,6 +28,7 @@ export const userOAuthArgs = v.object({
   provider: v.string(),
   providerAccountId: v.string(),
   profile: payloadRecordValidator,
+  emails: v.optional(v.array(vProfileEmail)),
   signature: v.string(),
   accountExtend: v.optional(accountExtendValidator),
 });
@@ -194,6 +196,7 @@ export async function userOAuthImpl(
           })
         : getProviderOrThrow(provider)) as AuthProviderMaterializedConfig,
       profile: profileForProvisioning as AuthProfile,
+      emails: args.emails,
       accountExtend: normalizeAccountExtend(provider, providerAccountId, accountExtend),
     },
     config,

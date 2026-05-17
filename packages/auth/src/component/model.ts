@@ -2,6 +2,7 @@ import { v, Validator } from "convex/values";
 
 export const TABLES = {
   User: "User",
+  UserEmail: "UserEmail",
   Session: "Session",
   Account: "Account",
   AuthVerifier: "AuthVerifier",
@@ -51,6 +52,7 @@ export const vDeviceStatus = v.union(
 export const vGroupConnectionAccountLinkingPolicy = v.union(
   v.literal("verifiedEmail"),
   v.literal("none"),
+  v.literal("sameConnection"),
 );
 
 export const vGroupConnectionScimReuseUserPolicy = v.union(
@@ -198,7 +200,34 @@ export const vUserDoc = v.object({
   phoneVerificationTime: v.optional(v.number()),
   isAnonymous: v.optional(v.boolean()),
   hasTotp: v.optional(v.boolean()),
+  lastActiveGroup: v.optional(v.id(TABLES.Group)),
   extend: v.optional(v.any()),
+});
+
+export const vUserEmailSource = v.union(
+  v.literal("password"),
+  v.literal("oauth"),
+  v.literal("oidc"),
+  v.literal("saml"),
+  v.literal("scim"),
+);
+
+export const vProfileEmail = v.object({
+  email: v.string(),
+  primary: v.optional(v.boolean()),
+  verified: v.optional(v.boolean()),
+});
+
+export const vUserEmailDoc = v.object({
+  ...vDocMeta(TABLES.UserEmail),
+  userId: v.id(TABLES.User),
+  email: v.string(),
+  verificationTime: v.optional(v.number()),
+  isPrimary: v.boolean(),
+  source: vUserEmailSource,
+  accountId: v.optional(v.id(TABLES.Account)),
+  provider: v.optional(v.string()),
+  connectionId: v.optional(v.id(TABLES.GroupConnection)),
 });
 
 export const vSessionDoc = v.object({

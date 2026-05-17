@@ -41,12 +41,46 @@ export default defineSchema({
     phoneVerificationTime: v.optional(v.number()),
     isAnonymous: v.optional(v.boolean()),
     hasTotp: v.optional(v.boolean()),
+    lastActiveGroup: v.optional(v.id("Group")),
     extend: v.optional(v.any()),
   })
     .index("email", ["email"])
     .index("email_verified", ["email", "emailVerificationTime"])
     .index("phone", ["phone"])
     .index("phone_verified", ["phone", "phoneVerificationTime"]),
+
+  /**
+   * All emails a user owns, across providers/connections. `User.email`
+   * remains the single denormalized primary pointer (the row with
+   * `isPrimary: true`); this table is the source of truth for the full
+   * set and carries provenance so SSO linking can be connection-scoped.
+   *
+   * `verificationTime` present ⇔ the email is verified. `source` and
+   * `connectionId` record which provider/SSO connection asserted it —
+   * email-based account linking for SSO must stay scoped to the same
+   * `connectionId` (see server/users.ts) to avoid cross-IdP takeover.
+   */
+  UserEmail: defineTable({
+    userId: v.id("User"),
+    email: v.string(),
+    verificationTime: v.optional(v.number()),
+    isPrimary: v.boolean(),
+    source: v.union(
+      v.literal("password"),
+      v.literal("oauth"),
+      v.literal("oidc"),
+      v.literal("saml"),
+      v.literal("scim"),
+    ),
+    accountId: v.optional(v.id("Account")),
+    provider: v.optional(v.string()),
+    connectionId: v.optional(v.id("GroupConnection")),
+  })
+    .index("email", ["email"])
+    .index("email_verified", ["email", "verificationTime"])
+    .index("user_id", ["userId"])
+    .index("user_id_primary", ["userId", "isPrimary"])
+    .index("connection_id_email", ["connectionId", "email"]),
 
   /**
    * Active sessions. A single user can have multiple concurrent sessions

@@ -93,10 +93,12 @@ function createCredentialsMutationHarness(args: {
 
   const config = {
     component: {
+      user: {
+        get: refs.userGetById,
+        update: refs.userPatch,
+      },
       public: {
         accountGet: refs.accountGet,
-        userGetById: refs.userGetById,
-        userPatch: refs.userPatch,
         sessionIssue: refs.sessionIssue,
         rateLimitGet: refs.rateLimitGet,
         rateLimitDelete: refs.rateLimitDelete,

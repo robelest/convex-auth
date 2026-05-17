@@ -14,13 +14,22 @@ type ActionCtxLike = Pick<
 type CtxLike = MutationCtxLike | ActionCtxLike;
 
 type AuthComponentApiLike = {
+  user: {
+    get: FunctionReference<"query", "internal">;
+    list: FunctionReference<"query", "internal">;
+    create: FunctionReference<"mutation", "internal">;
+    upsert: FunctionReference<"mutation", "internal">;
+    update: FunctionReference<"mutation", "internal">;
+    delete: FunctionReference<"mutation", "internal">;
+    email: {
+      list: FunctionReference<"query", "internal">;
+      findOwner: FunctionReference<"query", "internal">;
+      upsert: FunctionReference<"mutation", "internal">;
+      setPrimary: FunctionReference<"mutation", "internal">;
+      delete: FunctionReference<"mutation", "internal">;
+    };
+  };
   public: {
-    userGetById: FunctionReference<"query", "internal">;
-    userFindByVerifiedEmail: FunctionReference<"query", "internal">;
-    userFindByVerifiedPhone: FunctionReference<"query", "internal">;
-    userInsert: FunctionReference<"mutation", "internal">;
-    userPatch: FunctionReference<"mutation", "internal">;
-    userUpsert: FunctionReference<"mutation", "internal">;
     accountGet: FunctionReference<"query", "internal">;
     accountGetById: FunctionReference<"query", "internal">;
     accountInsert: FunctionReference<"mutation", "internal">;
@@ -66,22 +75,38 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
   const component = config.component;
   return {
     users: {
-      getById: (userId: string) => ctx.runQuery(component.public.userGetById, { userId }),
+      getById: (userId: string) => ctx.runQuery(component.user.get, { id: userId }),
       findByVerifiedEmail: (email: string) =>
-        ctx.runQuery(component.public.userFindByVerifiedEmail, { email }),
+        ctx.runQuery(component.user.get, { verifiedEmail: email }),
       findByVerifiedPhone: (phone: string) =>
-        ctx.runQuery(component.public.userFindByVerifiedPhone, { phone }),
+        ctx.runQuery(component.user.get, { verifiedPhone: phone }),
       insert: (data: Record<string, unknown>) =>
-        ctx.runMutation(component.public.userInsert, {
+        ctx.runMutation(component.user.create, {
           data,
         }) as Promise<string>,
       patch: (userId: string, data: Record<string, unknown>) =>
-        ctx.runMutation(component.public.userPatch, { userId, data }),
+        ctx.runMutation(component.user.update, { userId, data }),
       upsert: (userId: string | undefined, data: Record<string, unknown>) =>
-        ctx.runMutation(component.public.userUpsert, {
+        ctx.runMutation(component.user.upsert, {
           userId,
           data,
         }) as Promise<string>,
+    },
+    emails: {
+      upsert: (args: {
+        userId: string;
+        email: string;
+        verified?: boolean;
+        isPrimary?: boolean;
+        source: "password" | "oauth" | "oidc" | "saml" | "scim";
+        accountId?: string;
+        provider?: string;
+        connectionId?: string;
+      }) => ctx.runMutation(component.user.email.upsert, args) as Promise<string>,
+      listByUser: (userId: string) =>
+        ctx.runQuery(component.user.email.list, { userId }),
+      findVerified: (email: string, connectionId?: string) =>
+        ctx.runQuery(component.user.email.findOwner, { email, connectionId }),
     },
     accounts: {
       get: (provider: string, providerAccountId: string) =>
