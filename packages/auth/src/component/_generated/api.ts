@@ -9,6 +9,9 @@
  */
 
 import type * as account from "../account.js";
+import type * as factor_device from "../factor/device.js";
+import type * as factor_passkey from "../factor/passkey.js";
+import type * as factor_totp from "../factor/totp.js";
 import type * as functions from "../functions.js";
 import type * as group from "../group.js";
 import type * as group_invite from "../group/invite.js";
@@ -56,6 +59,9 @@ import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
   account: typeof account;
+  "factor/device": typeof factor_device;
+  "factor/passkey": typeof factor_passkey;
+  "factor/totp": typeof factor_totp;
   functions: typeof functions;
   group: typeof group;
   "group/invite": typeof group_invite;

@@ -697,7 +697,7 @@ export function createCoreDomains(deps: CoreDeps) {
       opts: { userId: string },
     ): Promise<Doc<"Passkey">[]> => {
       return (await ctx.runQuery(
-        config.component.public.passkeyListByUserId,
+        config.component.factor.passkey.listByUser,
         opts,
       )) as Doc<"Passkey">[];
     },
@@ -719,7 +719,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     renamePasskey: async (ctx: ComponentCtx, passkeyId: string, name: string) => {
-      await ctx.runMutation(config.component.public.passkeyUpdateMeta, {
+      await ctx.runMutation(config.component.factor.passkey.update, {
         passkeyId,
         data: { name },
       });
@@ -742,7 +742,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     deletePasskey: async (ctx: ComponentCtx, passkeyId: string) => {
-      await ctx.runMutation(config.component.public.passkeyDelete, {
+      await ctx.runMutation(config.component.factor.passkey.delete, {
         passkeyId,
       });
       return { passkeyId };
@@ -769,7 +769,7 @@ export function createCoreDomains(deps: CoreDeps) {
       opts: { userId: string },
     ): Promise<Doc<"TotpFactor">[]> => {
       return (await ctx.runQuery(
-        config.component.public.totpListByUserId,
+        config.component.factor.totp.listByUser,
         opts,
       )) as Doc<"TotpFactor">[];
     },
@@ -790,7 +790,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     deleteTotp: async (ctx: ComponentCtx, totpId: string) => {
-      await ctx.runMutation(config.component.public.totpDelete, { totpId });
+      await ctx.runMutation(config.component.factor.totp.delete, { totpId });
       return { totpId };
     },
   };

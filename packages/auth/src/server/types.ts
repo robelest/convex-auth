@@ -1651,27 +1651,32 @@ type AuthComponentApi = {
       revoke: FunctionReference<"mutation", "internal">;
     };
   };
+  factor: {
+    passkey: {
+      get: FunctionReference<"query", "internal">;
+      listByUser: FunctionReference<"query", "internal">;
+      create: FunctionReference<"mutation", "internal">;
+      updateCounter: FunctionReference<"mutation", "internal">;
+      update: FunctionReference<"mutation", "internal">;
+      delete: FunctionReference<"mutation", "internal">;
+    };
+    totp: {
+      get: FunctionReference<"query", "internal">;
+      listByUser: FunctionReference<"query", "internal">;
+      create: FunctionReference<"mutation", "internal">;
+      markVerified: FunctionReference<"mutation", "internal">;
+      updateLastUsed: FunctionReference<"mutation", "internal">;
+      delete: FunctionReference<"mutation", "internal">;
+    };
+    device: {
+      get: FunctionReference<"query", "internal">;
+      create: FunctionReference<"mutation", "internal">;
+      authorize: FunctionReference<"mutation", "internal">;
+      updateLastPolled: FunctionReference<"mutation", "internal">;
+      delete: FunctionReference<"mutation", "internal">;
+    };
+  };
   public: {
-    passkeyInsert: FunctionReference<"mutation", "internal">;
-    passkeyGetById: FunctionReference<"query", "internal">;
-    passkeyGetByCredentialId: FunctionReference<"query", "internal">;
-    passkeyListByUserId: FunctionReference<"query", "internal">;
-    passkeyUpdateCounter: FunctionReference<"mutation", "internal">;
-    passkeyUpdateMeta: FunctionReference<"mutation", "internal">;
-    passkeyDelete: FunctionReference<"mutation", "internal">;
-    totpInsert: FunctionReference<"mutation", "internal", any, any>;
-    totpGetVerifiedByUserId: FunctionReference<"query", "internal", any, any>;
-    totpListByUserId: FunctionReference<"query", "internal", any, any>;
-    totpGetById: FunctionReference<"query", "internal", any, any>;
-    totpMarkVerified: FunctionReference<"mutation", "internal", any, any>;
-    totpUpdateLastUsed: FunctionReference<"mutation", "internal", any, any>;
-    totpDelete: FunctionReference<"mutation", "internal", any, any>;
-    deviceInsert: FunctionReference<"mutation", "internal", any, any>;
-    deviceGetByCodeHash: FunctionReference<"query", "internal", any, any>;
-    deviceGetByUserCode: FunctionReference<"query", "internal", any, any>;
-    deviceAuthorize: FunctionReference<"mutation", "internal", any, any>;
-    deviceUpdateLastPolled: FunctionReference<"mutation", "internal", any, any>;
-    deviceDelete: FunctionReference<"mutation", "internal", any, any>;
     groupConnectionCreate: FunctionReference<"mutation", "internal", any, any>;
     groupConnectionGet: FunctionReference<"query", "internal", any, any>;
     groupConnectionGetByDomain: FunctionReference<"query", "internal", any, any>;
@@ -1884,8 +1889,8 @@ export async function queryTotpById(
   ctx: ComponentCallCtx,
   totpId: string,
 ): Promise<TotpDoc | null> {
-  return (await ctx.runQuery(ctx.auth.config.component.public.totpGetById, {
-    totpId,
+  return (await ctx.runQuery(ctx.auth.config.component.factor.totp.get, {
+    id: totpId,
   })) as TotpDoc | null;
 }
 
@@ -1893,8 +1898,8 @@ export async function queryTotpVerifiedByUserId(
   ctx: ComponentCallCtx,
   userId: string,
 ): Promise<TotpDoc | null> {
-  return (await ctx.runQuery(ctx.auth.config.component.public.totpGetVerifiedByUserId, {
-    userId,
+  return (await ctx.runQuery(ctx.auth.config.component.factor.totp.get, {
+    verifiedForUserId: userId,
   })) as TotpDoc | null;
 }
 
@@ -1910,7 +1915,7 @@ export async function mutateTotpInsert(
     createdAt: number;
   },
 ): Promise<string> {
-  return (await ctx.runMutation(ctx.auth.config.component.public.totpInsert, args)) as string;
+  return (await ctx.runMutation(ctx.auth.config.component.factor.totp.create, args)) as string;
 }
 
 export async function mutateTotpMarkVerified(
@@ -1918,7 +1923,7 @@ export async function mutateTotpMarkVerified(
   totpId: string,
   lastUsedAt: number,
 ): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.public.totpMarkVerified, {
+  await ctx.runMutation(ctx.auth.config.component.factor.totp.markVerified, {
     totpId,
     lastUsedAt,
   });
@@ -1929,7 +1934,7 @@ export async function mutateTotpUpdateLastUsed(
   totpId: string,
   lastUsedAt: number,
 ): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.public.totpUpdateLastUsed, {
+  await ctx.runMutation(ctx.auth.config.component.factor.totp.updateLastUsed, {
     totpId,
     lastUsedAt,
   });
@@ -1941,7 +1946,7 @@ export async function queryPasskeysByUserId(
   ctx: ComponentCallCtx,
   userId: string,
 ): Promise<PasskeyDoc[]> {
-  return (await ctx.runQuery(ctx.auth.config.component.public.passkeyListByUserId, {
+  return (await ctx.runQuery(ctx.auth.config.component.factor.passkey.listByUser, {
     userId,
   })) as PasskeyDoc[];
 }
@@ -1950,7 +1955,7 @@ export async function queryPasskeyByCredentialId(
   ctx: ComponentCallCtx,
   credentialId: string,
 ): Promise<PasskeyDoc | null> {
-  return (await ctx.runQuery(ctx.auth.config.component.public.passkeyGetByCredentialId, {
+  return (await ctx.runQuery(ctx.auth.config.component.factor.passkey.get, {
     credentialId,
   })) as PasskeyDoc | null;
 }
@@ -1970,7 +1975,10 @@ export async function mutatePasskeyInsert(
     createdAt: number;
   },
 ): Promise<string> {
-  return (await ctx.runMutation(ctx.auth.config.component.public.passkeyInsert, args)) as string;
+  return (await ctx.runMutation(
+    ctx.auth.config.component.factor.passkey.create,
+    args,
+  )) as string;
 }
 
 export async function mutatePasskeyUpdateCounter(
@@ -1979,7 +1987,7 @@ export async function mutatePasskeyUpdateCounter(
   counter: number,
   lastUsedAt: number,
 ): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.public.passkeyUpdateCounter, {
+  await ctx.runMutation(ctx.auth.config.component.factor.passkey.updateCounter, {
     passkeyId,
     counter,
     lastUsedAt,
@@ -1990,13 +1998,13 @@ export async function queryPasskeyById(
   ctx: ComponentCallCtx,
   passkeyId: string,
 ): Promise<PasskeyDoc | null> {
-  return (await ctx.runQuery(ctx.auth.config.component.public.passkeyGetById, {
-    passkeyId,
+  return (await ctx.runQuery(ctx.auth.config.component.factor.passkey.get, {
+    id: passkeyId,
   })) as PasskeyDoc | null;
 }
 
 export async function mutatePasskeyDelete(ctx: ComponentCallCtx, passkeyId: string): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.public.passkeyDelete, {
+  await ctx.runMutation(ctx.auth.config.component.factor.passkey.delete, {
     passkeyId,
   });
 }
@@ -2022,7 +2030,7 @@ export async function mutateAccountDelete(
 // -- TOTP delete mutation --
 
 export async function mutateTotpDelete(ctx: ComponentCallCtx, totpId: string): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.public.totpDelete, { totpId });
+  await ctx.runMutation(ctx.auth.config.component.factor.totp.delete, { totpId });
 }
 
 // -- Device authorization queries / mutations --
@@ -2039,14 +2047,17 @@ export async function mutateDeviceInsert(
     status: "pending" | "authorized" | "denied";
   },
 ): Promise<string> {
-  return (await ctx.runMutation(ctx.auth.config.component.public.deviceInsert, args)) as string;
+  return (await ctx.runMutation(
+    ctx.auth.config.component.factor.device.create,
+    args,
+  )) as string;
 }
 
 export async function queryDeviceByCodeHash(
   ctx: ComponentCallCtx,
   deviceCodeHash: string,
 ): Promise<DeviceDoc | null> {
-  return (await ctx.runQuery(ctx.auth.config.component.public.deviceGetByCodeHash, {
+  return (await ctx.runQuery(ctx.auth.config.component.factor.device.get, {
     deviceCodeHash,
   })) as DeviceDoc | null;
 }
@@ -2055,7 +2066,7 @@ export async function queryDeviceByUserCode(
   ctx: ComponentCallCtx,
   userCode: string,
 ): Promise<DeviceDoc | null> {
-  return (await ctx.runQuery(ctx.auth.config.component.public.deviceGetByUserCode, {
+  return (await ctx.runQuery(ctx.auth.config.component.factor.device.get, {
     userCode,
   })) as DeviceDoc | null;
 }
@@ -2066,7 +2077,7 @@ export async function mutateDeviceAuthorize(
   userId: string,
   sessionId: string,
 ): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.public.deviceAuthorize, {
+  await ctx.runMutation(ctx.auth.config.component.factor.device.authorize, {
     deviceId,
     userId,
     sessionId,
@@ -2078,14 +2089,14 @@ export async function mutateDeviceUpdateLastPolled(
   deviceId: string,
   lastPolledAt: number,
 ): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.public.deviceUpdateLastPolled, {
+  await ctx.runMutation(ctx.auth.config.component.factor.device.updateLastPolled, {
     deviceId,
     lastPolledAt,
   });
 }
 
 export async function mutateDeviceDelete(ctx: ComponentCallCtx, deviceId: string): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.public.deviceDelete, {
+  await ctx.runMutation(ctx.auth.config.component.factor.device.delete, {
     deviceId,
   });
 }

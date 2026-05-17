@@ -37,49 +37,50 @@ export const deviceInsert = mutation({
 });
 
 /**
- * Look up a device authorization record by its hashed device code.
+ * Read a device authorization record by identity.
  *
- * Queries the `DeviceCode` table using the `device_code_hash` index.
- * This is the primary lookup used by the token endpoint when a device
- * client polls for authorization status.
+ * Accepts exactly one selector:
+ * - `id` — direct document lookup by `DeviceCode` `_id`.
+ * - `deviceCodeHash` — lookup via the `device_code_hash` index. This is
+ *   the primary lookup used by the token endpoint when a device client
+ *   polls for authorization status.
+ * - `userCode` — the first `"pending"` record matching the user-facing
+ *   code, via the `user_code_status` compound index. Used when an
+ *   authenticated user enters the code shown on the device to approve it.
  *
- * @param deviceCodeHash - SHA-256 hash of the device code to look up.
- * @returns The matching `DeviceCode` document, or `null` if no record
- *   exists for the given hash.
+ * @param id - Optional `_id` of the `DeviceCode` document to retrieve.
+ * @param deviceCodeHash - Optional SHA-256 hash of the device code.
+ * @param userCode - Optional short, human-readable code the user typed
+ *   in (e.g. `"ABCD-1234"`).
+ * @returns The matching `DeviceCode` document, or `null` if none matches.
  *
  */
-export const deviceGetByCodeHash = query({
-  args: { deviceCodeHash: v.string() },
-  returns: v.union(vDeviceCodeDoc, v.null()),
-  handler: async (ctx, { deviceCodeHash }) => {
-    return await ctx.db
-      .query("DeviceCode")
-      .withIndex("device_code_hash", (q) => q.eq("deviceCodeHash", deviceCodeHash))
-      .first();
+export const deviceGet = query({
+  args: {
+    id: v.optional(v.id("DeviceCode")),
+    deviceCodeHash: v.optional(v.string()),
+    userCode: v.optional(v.string()),
   },
-});
-
-/**
- * Look up a pending device authorization by its user-facing code.
- *
- * Queries the `DeviceCode` table using the `user_code_status` compound index,
- * filtering to only `"pending"` records. This is called when an authenticated
- * user enters the code shown on the device to approve the authorization.
- *
- * @param userCode - The short, human-readable code the user typed in
- *   (e.g. `"ABCD-1234"`).
- * @returns The matching pending `DeviceCode` document, or `null` if no
- *   pending authorization exists for the given user code.
- *
- */
-export const deviceGetByUserCode = query({
-  args: { userCode: v.string() },
   returns: v.union(vDeviceCodeDoc, v.null()),
-  handler: async (ctx, { userCode }) => {
-    return await ctx.db
-      .query("DeviceCode")
-      .withIndex("user_code_status", (q) => q.eq("userCode", userCode).eq("status", "pending"))
-      .first();
+  handler: async (ctx, args) => {
+    if (args.deviceCodeHash !== undefined) {
+      return await ctx.db
+        .query("DeviceCode")
+        .withIndex("device_code_hash", (q) =>
+          q.eq("deviceCodeHash", args.deviceCodeHash!),
+        )
+        .first();
+    }
+    if (args.userCode !== undefined) {
+      return await ctx.db
+        .query("DeviceCode")
+        .withIndex("user_code_status", (q) =>
+          q.eq("userCode", args.userCode!).eq("status", "pending"),
+        )
+        .first();
+    }
+    if (args.id === undefined) return null;
+    return await ctx.db.get("DeviceCode", args.id);
   },
 });
 

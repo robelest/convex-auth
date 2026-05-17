@@ -86,6 +86,219 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         Name
       >;
     };
+    factor: {
+      device: {
+        authorize: FunctionReference<
+          "mutation",
+          "internal",
+          { deviceId: string; sessionId: string; userId: string },
+          null,
+          Name
+        >;
+        create: FunctionReference<
+          "mutation",
+          "internal",
+          {
+            deviceCodeHash: string;
+            expiresAt: number;
+            interval: number;
+            status: "pending" | "authorized" | "denied";
+            userCode: string;
+          },
+          string,
+          Name
+        >;
+        delete: FunctionReference<
+          "mutation",
+          "internal",
+          { deviceId: string },
+          null,
+          Name
+        >;
+        get: FunctionReference<
+          "query",
+          "internal",
+          { deviceCodeHash?: string; id?: string; userCode?: string },
+          {
+            _creationTime: number;
+            _id: string;
+            deviceCodeHash: string;
+            expiresAt: number;
+            interval: number;
+            lastPolledAt?: number;
+            sessionId?: string;
+            status: "pending" | "authorized" | "denied";
+            userCode: string;
+            userId?: string;
+          } | null,
+          Name
+        >;
+        updateLastPolled: FunctionReference<
+          "mutation",
+          "internal",
+          { deviceId: string; lastPolledAt: number },
+          null,
+          Name
+        >;
+      };
+      passkey: {
+        create: FunctionReference<
+          "mutation",
+          "internal",
+          {
+            algorithm: number;
+            backedUp: boolean;
+            counter: number;
+            createdAt: number;
+            credentialId: string;
+            deviceType: string;
+            name?: string;
+            publicKey: ArrayBuffer;
+            transports?: Array<string>;
+            userId: string;
+          },
+          string,
+          Name
+        >;
+        delete: FunctionReference<
+          "mutation",
+          "internal",
+          { passkeyId: string },
+          null,
+          Name
+        >;
+        get: FunctionReference<
+          "query",
+          "internal",
+          { credentialId?: string; id?: string },
+          {
+            _creationTime: number;
+            _id: string;
+            algorithm: number;
+            backedUp: boolean;
+            counter: number;
+            createdAt: number;
+            credentialId: string;
+            deviceType: string;
+            lastUsedAt?: number;
+            name?: string;
+            publicKey: ArrayBuffer;
+            transports?: Array<string>;
+            userId: string;
+          } | null,
+          Name
+        >;
+        listByUser: FunctionReference<
+          "query",
+          "internal",
+          { userId: string },
+          Array<{
+            _creationTime: number;
+            _id: string;
+            algorithm: number;
+            backedUp: boolean;
+            counter: number;
+            createdAt: number;
+            credentialId: string;
+            deviceType: string;
+            lastUsedAt?: number;
+            name?: string;
+            publicKey: ArrayBuffer;
+            transports?: Array<string>;
+            userId: string;
+          }>,
+          Name
+        >;
+        update: FunctionReference<
+          "mutation",
+          "internal",
+          { data: any; passkeyId: string },
+          null,
+          Name
+        >;
+        updateCounter: FunctionReference<
+          "mutation",
+          "internal",
+          { counter: number; lastUsedAt: number; passkeyId: string },
+          null,
+          Name
+        >;
+      };
+      totp: {
+        create: FunctionReference<
+          "mutation",
+          "internal",
+          {
+            createdAt: number;
+            digits: number;
+            name?: string;
+            period: number;
+            secret: ArrayBuffer;
+            userId: string;
+            verified: boolean;
+          },
+          string,
+          Name
+        >;
+        delete: FunctionReference<
+          "mutation",
+          "internal",
+          { totpId: string },
+          null,
+          Name
+        >;
+        get: FunctionReference<
+          "query",
+          "internal",
+          { id?: string; verifiedForUserId?: string },
+          {
+            _creationTime: number;
+            _id: string;
+            createdAt: number;
+            digits: number;
+            lastUsedAt?: number;
+            name?: string;
+            period: number;
+            secret: ArrayBuffer;
+            userId: string;
+            verified: boolean;
+          } | null,
+          Name
+        >;
+        listByUser: FunctionReference<
+          "query",
+          "internal",
+          { userId: string },
+          Array<{
+            _creationTime: number;
+            _id: string;
+            createdAt: number;
+            digits: number;
+            lastUsedAt?: number;
+            name?: string;
+            period: number;
+            secret: ArrayBuffer;
+            userId: string;
+            verified: boolean;
+          }>,
+          Name
+        >;
+        markVerified: FunctionReference<
+          "mutation",
+          "internal",
+          { lastUsedAt: number; totpId: string },
+          null,
+          Name
+        >;
+        updateLastUsed: FunctionReference<
+          "mutation",
+          "internal",
+          { lastUsedAt: number; totpId: string },
+          null,
+          Name
+        >;
+      };
+    };
     group: {
       ancestors: FunctionReference<
         "query",
@@ -573,76 +786,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       >;
     };
     public: {
-      deviceAuthorize: FunctionReference<
-        "mutation",
-        "internal",
-        { deviceId: string; sessionId: string; userId: string },
-        null,
-        Name
-      >;
-      deviceDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { deviceId: string },
-        null,
-        Name
-      >;
-      deviceGetByCodeHash: FunctionReference<
-        "query",
-        "internal",
-        { deviceCodeHash: string },
-        {
-          _creationTime: number;
-          _id: string;
-          deviceCodeHash: string;
-          expiresAt: number;
-          interval: number;
-          lastPolledAt?: number;
-          sessionId?: string;
-          status: "pending" | "authorized" | "denied";
-          userCode: string;
-          userId?: string;
-        } | null,
-        Name
-      >;
-      deviceGetByUserCode: FunctionReference<
-        "query",
-        "internal",
-        { userCode: string },
-        {
-          _creationTime: number;
-          _id: string;
-          deviceCodeHash: string;
-          expiresAt: number;
-          interval: number;
-          lastPolledAt?: number;
-          sessionId?: string;
-          status: "pending" | "authorized" | "denied";
-          userCode: string;
-          userId?: string;
-        } | null,
-        Name
-      >;
-      deviceInsert: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          deviceCodeHash: string;
-          expiresAt: number;
-          interval: number;
-          status: "pending" | "authorized" | "denied";
-          userCode: string;
-        },
-        string,
-        Name
-      >;
-      deviceUpdateLastPolled: FunctionReference<
-        "mutation",
-        "internal",
-        { deviceId: string; lastPolledAt: number },
-        null,
-        Name
-      >;
       factors: {
         devices: {
           deviceAuthorize: FunctionReference<
@@ -659,28 +802,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             null,
             Name
           >;
-          deviceGetByCodeHash: FunctionReference<
+          deviceGet: FunctionReference<
             "query",
             "internal",
-            { deviceCodeHash: string },
-            {
-              _creationTime: number;
-              _id: string;
-              deviceCodeHash: string;
-              expiresAt: number;
-              interval: number;
-              lastPolledAt?: number;
-              sessionId?: string;
-              status: "pending" | "authorized" | "denied";
-              userCode: string;
-              userId?: string;
-            } | null,
-            Name
-          >;
-          deviceGetByUserCode: FunctionReference<
-            "query",
-            "internal",
-            { userCode: string },
+            { deviceCodeHash?: string; id?: string; userCode?: string },
             {
               _creationTime: number;
               _id: string;
@@ -724,31 +849,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             null,
             Name
           >;
-          passkeyGetByCredentialId: FunctionReference<
+          passkeyGet: FunctionReference<
             "query",
             "internal",
-            { credentialId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              algorithm: number;
-              backedUp: boolean;
-              counter: number;
-              createdAt: number;
-              credentialId: string;
-              deviceType: string;
-              lastUsedAt?: number;
-              name?: string;
-              publicKey: ArrayBuffer;
-              transports?: Array<string>;
-              userId: string;
-            } | null,
-            Name
-          >;
-          passkeyGetById: FunctionReference<
-            "query",
-            "internal",
-            { passkeyId: string },
+            { credentialId?: string; id?: string },
             {
               _creationTime: number;
               _id: string;
@@ -828,28 +932,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             null,
             Name
           >;
-          totpGetById: FunctionReference<
+          totpGet: FunctionReference<
             "query",
             "internal",
-            { totpId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              createdAt: number;
-              digits: number;
-              lastUsedAt?: number;
-              name?: string;
-              period: number;
-              secret: ArrayBuffer;
-              userId: string;
-              verified: boolean;
-            } | null,
-            Name
-          >;
-          totpGetVerifiedByUserId: FunctionReference<
-            "query",
-            "internal",
-            { userId: string },
+            { id?: string; verifiedForUserId?: string },
             {
               _creationTime: number;
               _id: string;
@@ -2429,108 +2515,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           >;
         };
       };
-      passkeyDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { passkeyId: string },
-        null,
-        Name
-      >;
-      passkeyGetByCredentialId: FunctionReference<
-        "query",
-        "internal",
-        { credentialId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          algorithm: number;
-          backedUp: boolean;
-          counter: number;
-          createdAt: number;
-          credentialId: string;
-          deviceType: string;
-          lastUsedAt?: number;
-          name?: string;
-          publicKey: ArrayBuffer;
-          transports?: Array<string>;
-          userId: string;
-        } | null,
-        Name
-      >;
-      passkeyGetById: FunctionReference<
-        "query",
-        "internal",
-        { passkeyId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          algorithm: number;
-          backedUp: boolean;
-          counter: number;
-          createdAt: number;
-          credentialId: string;
-          deviceType: string;
-          lastUsedAt?: number;
-          name?: string;
-          publicKey: ArrayBuffer;
-          transports?: Array<string>;
-          userId: string;
-        } | null,
-        Name
-      >;
-      passkeyInsert: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          algorithm: number;
-          backedUp: boolean;
-          counter: number;
-          createdAt: number;
-          credentialId: string;
-          deviceType: string;
-          name?: string;
-          publicKey: ArrayBuffer;
-          transports?: Array<string>;
-          userId: string;
-        },
-        string,
-        Name
-      >;
-      passkeyListByUserId: FunctionReference<
-        "query",
-        "internal",
-        { userId: string },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          algorithm: number;
-          backedUp: boolean;
-          counter: number;
-          createdAt: number;
-          credentialId: string;
-          deviceType: string;
-          lastUsedAt?: number;
-          name?: string;
-          publicKey: ArrayBuffer;
-          transports?: Array<string>;
-          userId: string;
-        }>,
-        Name
-      >;
-      passkeyUpdateCounter: FunctionReference<
-        "mutation",
-        "internal",
-        { counter: number; lastUsedAt: number; passkeyId: string },
-        null,
-        Name
-      >;
-      passkeyUpdateMeta: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; passkeyId: string },
-        null,
-        Name
-      >;
       security: {
         keys: {
           keyDelete: FunctionReference<
@@ -3298,96 +3282,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           >;
         };
       };
-      totpDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { totpId: string },
-        null,
-        Name
-      >;
-      totpGetById: FunctionReference<
-        "query",
-        "internal",
-        { totpId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          createdAt: number;
-          digits: number;
-          lastUsedAt?: number;
-          name?: string;
-          period: number;
-          secret: ArrayBuffer;
-          userId: string;
-          verified: boolean;
-        } | null,
-        Name
-      >;
-      totpGetVerifiedByUserId: FunctionReference<
-        "query",
-        "internal",
-        { userId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          createdAt: number;
-          digits: number;
-          lastUsedAt?: number;
-          name?: string;
-          period: number;
-          secret: ArrayBuffer;
-          userId: string;
-          verified: boolean;
-        } | null,
-        Name
-      >;
-      totpInsert: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          createdAt: number;
-          digits: number;
-          name?: string;
-          period: number;
-          secret: ArrayBuffer;
-          userId: string;
-          verified: boolean;
-        },
-        string,
-        Name
-      >;
-      totpListByUserId: FunctionReference<
-        "query",
-        "internal",
-        { userId: string },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          createdAt: number;
-          digits: number;
-          lastUsedAt?: number;
-          name?: string;
-          period: number;
-          secret: ArrayBuffer;
-          userId: string;
-          verified: boolean;
-        }>,
-        Name
-      >;
-      totpMarkVerified: FunctionReference<
-        "mutation",
-        "internal",
-        { lastUsedAt: number; totpId: string },
-        null,
-        Name
-      >;
-      totpUpdateLastUsed: FunctionReference<
-        "mutation",
-        "internal",
-        { lastUsedAt: number; totpId: string },
-        null,
-        Name
-      >;
     };
     rateLimit: {
       create: FunctionReference<

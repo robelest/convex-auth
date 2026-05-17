@@ -5,12 +5,9 @@
  * maintainability, while this module preserves the single flat component API
  * surface consumed by the auth runtime and app code.
  */
-export * from "./public/factors/devices";
 export * from "./public/sso/audit";
 export * from "./public/sso/core";
 export * from "./public/sso/domains";
 export * from "./public/sso/scim";
 export * from "./public/sso/secrets";
 export * from "./public/sso/webhooks";
-export * from "./public/factors/passkeys";
-export * from "./public/factors/totp";

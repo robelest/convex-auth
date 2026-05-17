@@ -53,47 +53,35 @@ export const passkeyInsert = mutation({
 });
 
 /**
- * Look up a passkey by its credential ID.
+ * Read a passkey by identity.
  *
- * Queries the `Passkey` table using the `credential_id` unique index.
- * This is the primary lookup during a WebAuthn authentication ceremony:
- * the authenticator provides a credential ID, and this function retrieves
- * the corresponding public key and counter for signature verification.
+ * Accepts exactly one selector:
+ * - `id` — direct document lookup by `Passkey` `_id`.
+ * - `credentialId` — lookup via the `credential_id` unique index. This
+ *   is the primary lookup during a WebAuthn authentication ceremony: the
+ *   authenticator provides a credential ID, and this resolves the
+ *   corresponding public key and counter for signature verification.
  *
- * @param credentialId - Base64url-encoded credential identifier to search for.
- * @returns The matching `Passkey` document, or `null` if no passkey exists
- *   with the given credential ID.
+ * @param id - Optional `_id` of the `Passkey` document to retrieve.
+ * @param credentialId - Optional base64url-encoded credential identifier.
+ * @returns The matching `Passkey` document, or `null` if none matches.
  *
  */
-export const passkeyGetByCredentialId = query({
-  args: { credentialId: v.string() },
-  returns: v.union(vPasskeyDoc, v.null()),
-  handler: async (ctx, { credentialId }) => {
-    return await ctx.db
-      .query("Passkey")
-      .withIndex("credential_id", (q) => q.eq("credentialId", credentialId))
-      .unique();
+export const passkeyGet = query({
+  args: {
+    id: v.optional(v.id("Passkey")),
+    credentialId: v.optional(v.string()),
   },
-});
-
-/**
- * Get a single passkey by its document ID.
- *
- * Performs a direct point lookup on the `Passkey` table. Returns `null`
- * when no passkey exists with the given ID (e.g. it was already deleted).
- * Useful when callers already hold a passkey ID and need to inspect the
- * document — for example to capture the owning `userId` before deletion.
- *
- * @param passkeyId - The `_id` of the `Passkey` document to retrieve.
- * @returns The `Passkey` document, or `null` if no passkey exists with the
- *   given ID.
- *
- */
-export const passkeyGetById = query({
-  args: { passkeyId: v.id("Passkey") },
   returns: v.union(vPasskeyDoc, v.null()),
-  handler: async (ctx, { passkeyId }) => {
-    return await ctx.db.get("Passkey", passkeyId);
+  handler: async (ctx, args) => {
+    if (args.credentialId !== undefined) {
+      return await ctx.db
+        .query("Passkey")
+        .withIndex("credential_id", (q) => q.eq("credentialId", args.credentialId!))
+        .unique();
+    }
+    if (args.id === undefined) return null;
+    return await ctx.db.get("Passkey", args.id);
   },
 });
 

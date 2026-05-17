@@ -140,13 +140,8 @@ async function credentialsSignInInner(
 
   let hasTotp = user.hasTotp;
   if (enforceTotp && hasTotp === undefined) {
-    const memberResolveRef = (config.component.public as Record<string, unknown>)[
-      "totpGetVerifiedByUserId"
-    ];
-    const totpDoc = (await (
-      ctx.runQuery as unknown as (ref: unknown, args: Record<string, unknown>) => Promise<unknown>
-    )(memberResolveRef, {
-      userId: existingAccount.userId,
+    const totpDoc = (await ctx.runQuery(config.component.factor.totp.get, {
+      verifiedForUserId: existingAccount.userId,
     })) as { _id: string } | null;
     hasTotp = totpDoc !== null;
     await db.users.patch(existingAccount.userId, { hasTotp });

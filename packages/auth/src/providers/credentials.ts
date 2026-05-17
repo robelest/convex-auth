@@ -39,7 +39,7 @@ export interface CredentialsConfig<DataModel extends GenericDataModel = GenericD
     userId: GenericId<"User">;
     sessionId?: GenericId<"Session">;
     /**
-     * TOTP step-up hint. `false` skips the `totpGetVerifiedByUserId` query;
+     * TOTP step-up hint. `false` skips the verified-TOTP lookup;
      * `true`/`undefined` falls back to it.
      */
     hasTotp?: boolean;

@@ -42,27 +42,38 @@ export const totpInsert = mutation({
 });
 
 /**
- * Get a verified TOTP enrollment for a user.
+ * Read a TOTP enrollment by identity.
  *
- * Queries the `TotpFactor` table using the `user_id_verified` compound
- * index to find the first enrollment that has been successfully verified.
- * This is the primary lookup during a TOTP authentication challenge --
- * only verified enrollments should be used to validate codes.
+ * Accepts exactly one selector:
+ * - `id` — direct document lookup by `TotpFactor` `_id`.
+ * - `verifiedForUserId` — the first verified enrollment for the given
+ *   user, via the `user_id_verified` compound index. This is the primary
+ *   lookup during a TOTP authentication challenge, since only verified
+ *   enrollments may validate codes.
  *
- * @param userId - The `_id` of the `User` whose verified TOTP enrollment
- *   to retrieve.
- * @returns The first verified `TotpFactor` document for the user, or
- *   `null` if the user has no verified TOTP enrollment.
+ * @param id - Optional `_id` of the `TotpFactor` document to retrieve.
+ * @param verifiedForUserId - Optional `_id` of the `User` whose first
+ *   verified enrollment to retrieve.
+ * @returns The matching `TotpFactor` document, or `null` if none matches.
  *
  */
-export const totpGetVerifiedByUserId = query({
-  args: { userId: v.id("User") },
+export const totpGet = query({
+  args: {
+    id: v.optional(v.id("TotpFactor")),
+    verifiedForUserId: v.optional(v.id("User")),
+  },
   returns: v.union(vTotpFactorDoc, v.null()),
-  handler: async (ctx, { userId }) => {
-    return await ctx.db
-      .query("TotpFactor")
-      .withIndex("user_id_verified", (q) => q.eq("userId", userId).eq("verified", true))
-      .first();
+  handler: async (ctx, args) => {
+    if (args.verifiedForUserId !== undefined) {
+      return await ctx.db
+        .query("TotpFactor")
+        .withIndex("user_id_verified", (q) =>
+          q.eq("userId", args.verifiedForUserId!).eq("verified", true),
+        )
+        .first();
+    }
+    if (args.id === undefined) return null;
+    return await ctx.db.get("TotpFactor", args.id);
   },
 });
 
@@ -88,27 +99,6 @@ export const totpListByUserId = query({
       .query("TotpFactor")
       .withIndex("user_id", (q) => q.eq("userId", userId))
       .collect();
-  },
-});
-
-/**
- * Get a single TOTP enrollment by its document ID.
- *
- * Performs a direct document lookup on the `TotpFactor` table. This is
- * used when you already have the enrollment's `_id` (e.g. from a
- * previous list query) and need to fetch its full details, including
- * the secret and verification status.
- *
- * @param totpId - The `_id` of the `TotpFactor` document to retrieve.
- * @returns The `TotpFactor` document, or `null` if no enrollment exists
- *   with the given ID.
- *
- */
-export const totpGetById = query({
-  args: { totpId: v.id("TotpFactor") },
-  returns: v.union(vTotpFactorDoc, v.null()),
-  handler: async (ctx, { totpId }) => {
-    return await ctx.db.get("TotpFactor", totpId);
   },
 });
 

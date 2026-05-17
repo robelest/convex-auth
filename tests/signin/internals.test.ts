@@ -105,8 +105,8 @@ function createCredentialsMutationHarness(args: {
         create: refs.rateLimitCreate,
         update: refs.rateLimitPatch,
       },
-      public: {
-        totpGetVerifiedByUserId: refs.totpGetVerifiedByUserId,
+      factor: {
+        totp: { get: refs.totpGetVerifiedByUserId },
       },
     },
   } as any;

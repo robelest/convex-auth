@@ -217,7 +217,7 @@ test("change password works for authenticated TOTP users", async () => {
   const userId = subjectToUserId(claims.sub);
 
   await t.run(async (ctx) => {
-    const totpId = await ctx.runMutation(components.auth.public.totpInsert, {
+    const totpId = await ctx.runMutation(components.auth.factor.totp.create, {
       userId: userId as never,
       secret: new ArrayBuffer(20),
       digits: 6,
@@ -225,7 +225,7 @@ test("change password works for authenticated TOTP users", async () => {
       verified: false,
       createdAt: Date.now(),
     });
-    await ctx.runMutation(components.auth.public.totpMarkVerified, {
+    await ctx.runMutation(components.auth.factor.totp.markVerified, {
       totpId,
       lastUsedAt: Date.now(),
     });

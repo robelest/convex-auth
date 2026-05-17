@@ -859,8 +859,8 @@ export function Auth(config_: ConvexAuthConfig) {
     ctx: GenericActionCtx<GenericDataModel>,
     args: { passkeyId: GenericId<"Passkey"> },
   ) => {
-    const passkeyDoc = (await ctx.runQuery(config.component.public.passkeyGetById, {
-      passkeyId: args.passkeyId,
+    const passkeyDoc = (await ctx.runQuery(config.component.factor.passkey.get, {
+      id: args.passkeyId,
     })) as { _id: string; userId: string } | null;
     if (passkeyDoc === null) {
       throw convexError({
@@ -868,7 +868,7 @@ export function Auth(config_: ConvexAuthConfig) {
         message: "Passkey not found.",
       });
     }
-    await ctx.runMutation(config.component.public.passkeyDelete, {
+    await ctx.runMutation(config.component.factor.passkey.delete, {
       passkeyId: args.passkeyId,
     });
     const userId = passkeyDoc.userId as GenericId<"User">;
@@ -884,8 +884,8 @@ export function Auth(config_: ConvexAuthConfig) {
     ctx: GenericActionCtx<GenericDataModel>,
     args: { totpId: GenericId<"TotpFactor"> },
   ) => {
-    const totpDoc = (await ctx.runQuery(config.component.public.totpGetById, {
-      totpId: args.totpId,
+    const totpDoc = (await ctx.runQuery(config.component.factor.totp.get, {
+      id: args.totpId,
     })) as { _id: string; userId: string } | null;
     if (totpDoc === null) {
       throw convexError({
@@ -895,7 +895,7 @@ export function Auth(config_: ConvexAuthConfig) {
     }
     // The component mutation atomically clears `User.hasTotp` when no other
     // verified factors remain, so callers do not need to coordinate that flag.
-    await ctx.runMutation(config.component.public.totpDelete, {
+    await ctx.runMutation(config.component.factor.totp.delete, {
       totpId: args.totpId,
     });
     const userId = totpDoc.userId as GenericId<"User">;
