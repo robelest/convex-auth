@@ -60,11 +60,30 @@ export const refreshTokenCreate = mutation({
  * }
  * ```
  */
-export const refreshTokenGetById = query({
-  args: { refreshTokenId: v.id("RefreshToken") },
+/**
+ * Read a refresh token by identity — one function, all-optional args,
+ * unioned return: `{ id }` (point lookup) or `{ activeForSession }`
+ * (newest unused token for a session). Replaces `refreshTokenGetById` /
+ * `refreshTokenGetActive`.
+ */
+export const refreshTokenGet = query({
+  args: {
+    id: v.optional(v.id("RefreshToken")),
+    activeForSession: v.optional(v.id("Session")),
+  },
   returns: v.union(vRefreshTokenDoc, v.null()),
-  handler: async (ctx, { refreshTokenId }) => {
-    return await ctx.db.get("RefreshToken", refreshTokenId);
+  handler: async (ctx, args) => {
+    if (args.activeForSession !== undefined) {
+      return await ctx.db
+        .query("RefreshToken")
+        .withIndex("session_id_first_used", (q) =>
+          q.eq("sessionId", args.activeForSession! as any).eq("firstUsedTime", undefined),
+        )
+        .order("desc")
+        .first();
+    }
+    if (args.id === undefined) return null;
+    return await ctx.db.get("RefreshToken", args.id);
   },
 });
 
@@ -342,39 +361,3 @@ export const refreshTokenExchange = mutation({
   },
 });
 
-/**
- * Get the active (unused) refresh token for a session.
- *
- * Queries the `RefreshToken` table using the `session_id_first_used` index to
- * find the most recently created token for the session that has not yet been
- * exchanged (i.e. `firstUsedTime` is `undefined`). This represents the current
- * valid refresh token the client should be holding.
- *
- * @param args.sessionId - The document ID of the session whose active refresh token should be retrieved.
- * @returns The most recent unused refresh token document, or `null` if no active token exists
- *   (e.g. all tokens have been consumed or the session has no tokens).
- *
- * @example
- * ```ts
- * const activeToken = await ctx.runQuery(
- *   component.identity.tokens.refreshTokenGetActive,
- *   { sessionId: session._id },
- * );
- * if (activeToken !== null) {
- *   console.log(`Active token expires at: ${activeToken.expirationTime}`);
- * }
- * ```
- */
-export const refreshTokenGetActive = query({
-  args: { sessionId: v.id("Session") },
-  returns: v.union(vRefreshTokenDoc, v.null()),
-  handler: async (ctx, { sessionId }) => {
-    return await ctx.db
-      .query("RefreshToken")
-      .withIndex("session_id_first_used", (q) =>
-        q.eq("sessionId", sessionId as any).eq("firstUsedTime", undefined),
-      )
-      .order("desc")
-      .first();
-  },
-});

@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as account from "../account.js";
 import type * as functions from "../functions.js";
 import type * as http from "../http.js";
 import type * as index from "../index.js";
@@ -34,8 +35,12 @@ import type * as public_sso_domains from "../public/sso/domains.js";
 import type * as public_sso_scim from "../public/sso/scim.js";
 import type * as public_sso_secrets from "../public/sso/secrets.js";
 import type * as public_sso_webhooks from "../public/sso/webhooks.js";
+import type * as refreshToken from "../refreshToken.js";
+import type * as session from "../session.js";
 import type * as user from "../user.js";
 import type * as user_email from "../user/email.js";
+import type * as verificationCode from "../verificationCode.js";
+import type * as verifier from "../verifier.js";
 
 import type {
   ApiFromModules,
@@ -45,6 +50,7 @@ import type {
 import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
+  account: typeof account;
   functions: typeof functions;
   http: typeof http;
   index: typeof index;
@@ -71,8 +77,12 @@ const fullApi: ApiFromModules<{
   "public/sso/scim": typeof public_sso_scim;
   "public/sso/secrets": typeof public_sso_secrets;
   "public/sso/webhooks": typeof public_sso_webhooks;
+  refreshToken: typeof refreshToken;
+  session: typeof session;
   user: typeof user;
   "user/email": typeof user_email;
+  verificationCode: typeof verificationCode;
+  verifier: typeof verifier;
 }> = anyApi as any;
 
 /**

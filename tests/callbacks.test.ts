@@ -143,7 +143,7 @@ test("accountDelete removes the account row", async () => {
     const userId = (await ctx.runMutation(components.auth.user.create, {
       data: { email: "account-unlink@example.com" },
     })) as string;
-    const accountId = await ctx.runMutation(components.auth.public.accountInsert, {
+    const accountId = await ctx.runMutation(components.auth.account.create, {
       userId: userId as never,
       provider: "google",
       providerAccountId: "google-1234",
@@ -152,15 +152,15 @@ test("accountDelete removes the account row", async () => {
   });
 
   const before = await t.run((ctx) =>
-    ctx.runQuery(components.auth.public.accountGetById, { accountId }),
+    ctx.runQuery(components.auth.account.get, { id: accountId }),
   );
   expect(before).not.toBeNull();
   expect(before?.provider).toBe("google");
 
-  await t.run((ctx) => ctx.runMutation(components.auth.public.accountDelete, { accountId }));
+  await t.run((ctx) => ctx.runMutation(components.auth.account.delete, { accountId }));
 
   const after = await t.run((ctx) =>
-    ctx.runQuery(components.auth.public.accountGetById, { accountId }),
+    ctx.runQuery(components.auth.account.get, { id: accountId }),
   );
   expect(after).toBeNull();
 });

@@ -512,7 +512,7 @@ export function createCoreDomains(deps: CoreDeps) {
       sessionId: string,
     ): Promise<Doc<"Session"> | null> => {
       return (await cached(ctx, `session:${sessionId}`, () =>
-        ctx.runQuery(config.component.public.sessionGetById, {
+        ctx.runQuery(config.component.session.get, {
           sessionId,
         }),
       )) as Doc<"Session"> | null;
@@ -538,7 +538,7 @@ export function createCoreDomains(deps: CoreDeps) {
       ctx: ComponentReadCtx,
       opts: { userId: string },
     ): Promise<Doc<"Session">[]> => {
-      return (await ctx.runQuery(config.component.public.sessionListByUser, {
+      return (await ctx.runQuery(config.component.session.listByUser, {
         userId: opts.userId,
       })) as Doc<"Session">[];
     },
@@ -666,7 +666,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     delete: async (ctx: ComponentCtx, accountId: string) => {
-      await ctx.runMutation(config.component.public.accountDelete, {
+      await ctx.runMutation(config.component.account.delete, {
         accountId,
         requireOtherAccount: true,
       });

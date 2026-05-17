@@ -60,44 +60,29 @@ export const accountListByUser = query({
  * }
  * ```
  */
-export const accountGet = query({
-  args: { provider: v.string(), providerAccountId: v.string() },
-  returns: v.union(vAccountDoc, v.null()),
-  handler: async (ctx, { provider, providerAccountId }) => {
-    return await ctx.db
-      .query("Account")
-      .withIndex("provider_account_id", (q) =>
-        q.eq("provider", provider).eq("providerAccountId", providerAccountId),
-      )
-      .unique();
-  },
-});
-
 /**
- * Retrieve a single account by its Convex document ID.
- *
- * Performs a direct point lookup on the `Account` table. Returns `null` if the
- * document has been deleted or never existed.
- *
- * @param args.accountId - The Convex document ID (`Id<"Account">`) of the account to retrieve.
- * @returns The account document if it exists, or `null` otherwise.
- *
- * @example
- * ```ts
- * const account = await ctx.runQuery(
- *   component.identity.accounts.accountGetById,
- *   { accountId: existingAccountId },
- * );
- * if (account !== null) {
- *   console.log(`Provider: ${account.provider}`);
- * }
- * ```
+ * Read an account by identity — one function, all-optional args, unioned
+ * return: `{ id }` (point lookup) or `{ provider, providerAccountId }`
+ * (unique provider index). Replaces `accountGet` / `accountGetById`.
  */
-export const accountGetById = query({
-  args: { accountId: v.id("Account") },
+export const accountGet = query({
+  args: {
+    id: v.optional(v.id("Account")),
+    provider: v.optional(v.string()),
+    providerAccountId: v.optional(v.string()),
+  },
   returns: v.union(vAccountDoc, v.null()),
-  handler: async (ctx, { accountId }) => {
-    return await ctx.db.get("Account", accountId);
+  handler: async (ctx, args) => {
+    if (args.provider !== undefined && args.providerAccountId !== undefined) {
+      return await ctx.db
+        .query("Account")
+        .withIndex("provider_account_id", (q) =>
+          q.eq("provider", args.provider!).eq("providerAccountId", args.providerAccountId!),
+        )
+        .unique();
+    }
+    if (args.id === undefined) return null;
+    return await ctx.db.get("Account", args.id);
   },
 });
 

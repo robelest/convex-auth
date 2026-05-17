@@ -1578,33 +1578,42 @@ type AuthComponentApi = {
       delete: FunctionReference<"mutation", "internal">;
     };
   };
+  account: {
+    get: FunctionReference<"query", "internal">;
+    listByUser: FunctionReference<"query", "internal">;
+    create: FunctionReference<"mutation", "internal">;
+    update: FunctionReference<"mutation", "internal">;
+    delete: FunctionReference<"mutation", "internal">;
+  };
+  session: {
+    get: FunctionReference<"query", "internal">;
+    list: FunctionReference<"query", "internal">;
+    listByUser: FunctionReference<"query", "internal">;
+    create: FunctionReference<"mutation", "internal">;
+    issue: FunctionReference<"mutation", "internal">;
+    delete: FunctionReference<"mutation", "internal">;
+  };
+  verificationCode: {
+    get: FunctionReference<"query", "internal">;
+    create: FunctionReference<"mutation", "internal">;
+    delete: FunctionReference<"mutation", "internal">;
+  };
+  refreshToken: {
+    get: FunctionReference<"query", "internal">;
+    list: FunctionReference<"query", "internal">;
+    listChildren: FunctionReference<"query", "internal">;
+    create: FunctionReference<"mutation", "internal">;
+    update: FunctionReference<"mutation", "internal">;
+    delete: FunctionReference<"mutation", "internal">;
+    exchange: FunctionReference<"mutation", "internal">;
+  };
+  verifier: {
+    get: FunctionReference<"query", "internal">;
+    create: FunctionReference<"mutation", "internal">;
+    update: FunctionReference<"mutation", "internal">;
+    delete: FunctionReference<"mutation", "internal">;
+  };
   public: {
-    accountGet: FunctionReference<"query", "internal">;
-    accountGetById: FunctionReference<"query", "internal">;
-    accountInsert: FunctionReference<"mutation", "internal">;
-    accountListByUser: FunctionReference<"query", "internal">;
-    accountPatch: FunctionReference<"mutation", "internal">;
-    accountDelete: FunctionReference<"mutation", "internal">;
-    sessionCreate: FunctionReference<"mutation", "internal">;
-    sessionGetById: FunctionReference<"query", "internal">;
-    sessionDelete: FunctionReference<"mutation", "internal">;
-    sessionListByUser: FunctionReference<"query", "internal">;
-    verifierCreate: FunctionReference<"mutation", "internal">;
-    verifierGetById: FunctionReference<"query", "internal">;
-    verifierGetBySignature: FunctionReference<"query", "internal">;
-    verifierPatch: FunctionReference<"mutation", "internal">;
-    verifierDelete: FunctionReference<"mutation", "internal">;
-    verificationCodeGetByAccountId: FunctionReference<"query", "internal">;
-    verificationCodeGetByCode: FunctionReference<"query", "internal">;
-    verificationCodeCreate: FunctionReference<"mutation", "internal">;
-    verificationCodeDelete: FunctionReference<"mutation", "internal">;
-    refreshTokenCreate: FunctionReference<"mutation", "internal">;
-    refreshTokenGetById: FunctionReference<"query", "internal">;
-    refreshTokenPatch: FunctionReference<"mutation", "internal">;
-    refreshTokenGetChildren: FunctionReference<"query", "internal">;
-    refreshTokenListBySession: FunctionReference<"query", "internal">;
-    refreshTokenDeleteAll: FunctionReference<"mutation", "internal">;
-    refreshTokenGetActive: FunctionReference<"query", "internal">;
     rateLimitGet: FunctionReference<"query", "internal">;
     rateLimitCreate: FunctionReference<"mutation", "internal">;
     rateLimitPatch: FunctionReference<"mutation", "internal">;
@@ -1845,8 +1854,8 @@ export async function queryVerifierById(
   ctx: ComponentCallCtx,
   verifierId: string,
 ): Promise<VerifierDoc | null> {
-  return (await ctx.runQuery(ctx.auth.config.component.public.verifierGetById, {
-    verifierId,
+  return (await ctx.runQuery(ctx.auth.config.component.verifier.get, {
+    id: verifierId,
   })) as VerifierDoc | null;
 }
 
@@ -1854,7 +1863,7 @@ export async function mutateVerifierDelete(
   ctx: ComponentCallCtx,
   verifierId: string,
 ): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.public.verifierDelete, {
+  await ctx.runMutation(ctx.auth.config.component.verifier.delete, {
     verifierId,
   });
 }
@@ -1988,8 +1997,8 @@ export async function queryAccountById(
   ctx: ComponentCallCtx,
   accountId: string,
 ): Promise<AccountDoc | null> {
-  return (await ctx.runQuery(ctx.auth.config.component.public.accountGetById, {
-    accountId,
+  return (await ctx.runQuery(ctx.auth.config.component.account.get, {
+    id: accountId,
   })) as AccountDoc | null;
 }
 
@@ -1997,7 +2006,7 @@ export async function mutateAccountDelete(
   ctx: ComponentCallCtx,
   args: { accountId: string; requireOtherAccount?: boolean },
 ): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.public.accountDelete, args);
+  await ctx.runMutation(ctx.auth.config.component.account.delete, args);
 }
 
 // -- TOTP delete mutation --

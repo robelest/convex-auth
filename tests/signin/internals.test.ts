@@ -97,9 +97,9 @@ function createCredentialsMutationHarness(args: {
         get: refs.userGetById,
         update: refs.userPatch,
       },
+      account: { get: refs.accountGet },
+      session: { issue: refs.sessionIssue },
       public: {
-        accountGet: refs.accountGet,
-        sessionIssue: refs.sessionIssue,
         rateLimitGet: refs.rateLimitGet,
         rateLimitDelete: refs.rateLimitDelete,
         rateLimitCreate: refs.rateLimitCreate,

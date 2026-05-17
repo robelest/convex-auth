@@ -70,48 +70,30 @@ export const verifierCreate = mutation({
  * }
  * ```
  */
-export const verifierGetById = query({
-  args: { verifierId: v.id("AuthVerifier") },
-  returns: v.union(vAuthVerifierDoc, v.null()),
-  handler: async (ctx, { verifierId }) => {
-    return await getUnexpiredVerifier(ctx, verifierId);
-  },
-});
-
 /**
- * Look up a verifier by its cryptographic signature.
- *
- * Queries the `AuthVerifier` table using the `signature` index to find the
- * unique verifier matching the given signature string. This is the primary
- * lookup used during the OAuth callback phase to correlate the incoming
- * authorization response with the original PKCE challenge.
- *
- * @param args.signature - The cryptographic signature string to search for (exact match).
- * @returns The matching verifier document, or `null` if no verifier has the given signature.
- *
- * @example
- * ```ts
- * const verifier = await ctx.runQuery(
- *   component.identity.verifiers.verifierGetBySignature,
- *   { signature: incomingStateParam },
- * );
- * if (verifier === null) {
- *   throw new Error("Invalid or expired OAuth state");
- * }
- * ```
+ * Read a verifier by identity — one function, all-optional args, unioned
+ * return: `{ id }` (point lookup) or `{ signature }` (unique index).
+ * Expiry enforced for both.
  */
-export const verifierGetBySignature = query({
-  args: { signature: v.string() },
+export const verifierGet = query({
+  args: {
+    id: v.optional(v.id("AuthVerifier")),
+    signature: v.optional(v.string()),
+  },
   returns: v.union(vAuthVerifierDoc, v.null()),
-  handler: async (ctx, { signature }) => {
-    const verifier = await ctx.db
-      .query("AuthVerifier")
-      .withIndex("signature", (q) => q.eq("signature", signature))
-      .unique();
-    if (verifier?.expirationTime !== undefined && verifier.expirationTime < Date.now()) {
-      return null;
+  handler: async (ctx, args) => {
+    if (args.signature !== undefined) {
+      const verifier = await ctx.db
+        .query("AuthVerifier")
+        .withIndex("signature", (q) => q.eq("signature", args.signature!))
+        .unique();
+      if (verifier?.expirationTime !== undefined && verifier.expirationTime < Date.now()) {
+        return null;
+      }
+      return verifier;
     }
-    return verifier;
+    if (args.id === undefined) return null;
+    return await getUnexpiredVerifier(ctx, args.id);
   },
 });
 

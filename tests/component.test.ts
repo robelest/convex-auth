@@ -34,12 +34,12 @@ test("refresh token exchange mismatch does not delete supplied session", async (
   });
 
   const [sessionA, sessionB] = await t.run(async (ctx) => {
-    const first = await ctx.runMutation(components.auth.public.sessionIssue, {
+    const first = await ctx.runMutation(components.auth.session.issue, {
       userId,
       sessionExpirationTime: Date.now() + 60_000,
       refreshTokenExpirationTime: Date.now() + 60_000,
     });
-    const second = await ctx.runMutation(components.auth.public.sessionIssue, {
+    const second = await ctx.runMutation(components.auth.session.issue, {
       userId,
       sessionExpirationTime: Date.now() + 60_000,
       refreshTokenExpirationTime: Date.now() + 60_000,
@@ -48,7 +48,7 @@ test("refresh token exchange mismatch does not delete supplied session", async (
   });
 
   const exchanged = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.refreshTokenExchange, {
+    return await ctx.runMutation(components.auth.refreshToken.exchange, {
       refreshTokenId: sessionA.refreshTokenId!,
       sessionId: sessionB.sessionId,
       now: Date.now(),
@@ -58,7 +58,7 @@ test("refresh token exchange mismatch does not delete supplied session", async (
   });
 
   const stillExists = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.sessionGetById, {
+    return await ctx.runQuery(components.auth.session.get, {
       sessionId: sessionB.sessionId,
     });
   });
@@ -71,17 +71,17 @@ test("auth verifier lookups ignore expired verifiers", async () => {
   const t = convexTest(schema);
 
   const verifierId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.public.verifierCreate, {
+    return await ctx.runMutation(components.auth.verifier.create, {
       signature: "expired-signature",
       expirationTime: Date.now() - 1,
     });
   });
 
   const byId = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.verifierGetById, { verifierId });
+    return await ctx.runQuery(components.auth.verifier.get, { id: verifierId });
   });
   const bySignature = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.public.verifierGetBySignature, {
+    return await ctx.runQuery(components.auth.verifier.get, {
       signature: "expired-signature",
     });
   });

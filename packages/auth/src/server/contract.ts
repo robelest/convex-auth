@@ -520,13 +520,13 @@ export const deleteScimIdentity = (
 
 export const insertAccount = (
   ctx: ComponentWriteCtx,
-  componentPublic: ComponentPublic,
+  componentAccount: ConvexAuthMaterializedConfig["component"]["account"],
   args: {
     userId: string;
     provider: string;
     providerAccountId: string;
   },
-) => mutate<typeof args, string>(ctx, componentPublic.accountInsert, args);
+) => mutate<typeof args, string>(ctx, componentAccount.create, args);
 
 export const insertUser = (
   ctx: ComponentWriteCtx,

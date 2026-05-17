@@ -23,49 +23,8 @@ import type { FunctionReference } from "convex/server";
  */
 export type ComponentApi<Name extends string | undefined = string | undefined> =
   {
-    public: {
-      accountDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { accountId: string; requireOtherAccount?: boolean },
-        null,
-        Name
-      >;
-      accountGet: FunctionReference<
-        "query",
-        "internal",
-        { provider: string; providerAccountId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          emailVerified?: string;
-          extend?: any;
-          phoneVerified?: string;
-          provider: string;
-          providerAccountId: string;
-          secret?: string;
-          userId: string;
-        } | null,
-        Name
-      >;
-      accountGetById: FunctionReference<
-        "query",
-        "internal",
-        { accountId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          emailVerified?: string;
-          extend?: any;
-          phoneVerified?: string;
-          provider: string;
-          providerAccountId: string;
-          secret?: string;
-          userId: string;
-        } | null,
-        Name
-      >;
-      accountInsert: FunctionReference<
+    account: {
+      create: FunctionReference<
         "mutation",
         "internal",
         {
@@ -78,7 +37,31 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         string,
         Name
       >;
-      accountListByUser: FunctionReference<
+      delete: FunctionReference<
+        "mutation",
+        "internal",
+        { accountId: string; requireOtherAccount?: boolean },
+        null,
+        Name
+      >;
+      get: FunctionReference<
+        "query",
+        "internal",
+        { id?: string; provider?: string; providerAccountId?: string },
+        {
+          _creationTime: number;
+          _id: string;
+          emailVerified?: string;
+          extend?: any;
+          phoneVerified?: string;
+          provider: string;
+          providerAccountId: string;
+          secret?: string;
+          userId: string;
+        } | null,
+        Name
+      >;
+      listByUser: FunctionReference<
         "query",
         "internal",
         { userId: string },
@@ -95,13 +78,15 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         }>,
         Name
       >;
-      accountPatch: FunctionReference<
+      update: FunctionReference<
         "mutation",
         "internal",
         { accountId: string; data: any },
         null,
         Name
       >;
+    };
+    public: {
       deviceAuthorize: FunctionReference<
         "mutation",
         "internal",
@@ -1840,24 +1825,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           accountGet: FunctionReference<
             "query",
             "internal",
-            { provider: string; providerAccountId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              emailVerified?: string;
-              extend?: any;
-              phoneVerified?: string;
-              provider: string;
-              providerAccountId: string;
-              secret?: string;
-              userId: string;
-            } | null,
-            Name
-          >;
-          accountGetById: FunctionReference<
-            "query",
-            "internal",
-            { accountId: string },
+            { id?: string; provider?: string; providerAccountId?: string },
             {
               _creationTime: number;
               _id: string;
@@ -1932,27 +1900,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             null,
             Name
           >;
-          verificationCodeGetByAccountId: FunctionReference<
+          verificationCodeGet: FunctionReference<
             "query",
             "internal",
-            { accountId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              accountId: string;
-              code: string;
-              emailVerified?: string;
-              expirationTime: number;
-              phoneVerified?: string;
-              provider: string;
-              verifier?: string;
-            } | null,
-            Name
-          >;
-          verificationCodeGetByCode: FunctionReference<
-            "query",
-            "internal",
-            { code: string },
+            { accountId?: string; code?: string },
             {
               _creationTime: number;
               _id: string;
@@ -2076,24 +2027,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             } | null,
             Name
           >;
-          refreshTokenGetActive: FunctionReference<
+          refreshTokenGet: FunctionReference<
             "query",
             "internal",
-            { sessionId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              expirationTime: number;
-              firstUsedTime?: number;
-              parentRefreshTokenId?: string;
-              sessionId: string;
-            } | null,
-            Name
-          >;
-          refreshTokenGetById: FunctionReference<
-            "query",
-            "internal",
-            { refreshTokenId: string },
+            { activeForSession?: string; id?: string },
             {
               _creationTime: number;
               _id: string;
@@ -2367,23 +2304,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             null,
             Name
           >;
-          verifierGetById: FunctionReference<
+          verifierGet: FunctionReference<
             "query",
             "internal",
-            { verifierId: string },
-            {
-              _creationTime: number;
-              _id: string;
-              expirationTime?: number;
-              sessionId?: string;
-              signature?: string;
-            } | null,
-            Name
-          >;
-          verifierGetBySignature: FunctionReference<
-            "query",
-            "internal",
-            { signature: string },
+            { id?: string; signature?: string },
             {
               _creationTime: number;
               _id: string;
@@ -2926,100 +2850,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null,
         Name
       >;
-      refreshTokenCreate: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          expirationTime: number;
-          parentRefreshTokenId?: string;
-          sessionId: string;
-        },
-        string,
-        Name
-      >;
-      refreshTokenDeleteAll: FunctionReference<
-        "mutation",
-        "internal",
-        { sessionId: string },
-        null,
-        Name
-      >;
-      refreshTokenExchange: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          now: number;
-          refreshTokenExpirationTime: number;
-          refreshTokenId: string;
-          reuseWindowMs: number;
-          sessionId: string;
-        },
-        { refreshTokenId: string; sessionId: string; userId: string } | null,
-        Name
-      >;
-      refreshTokenGetActive: FunctionReference<
-        "query",
-        "internal",
-        { sessionId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          expirationTime: number;
-          firstUsedTime?: number;
-          parentRefreshTokenId?: string;
-          sessionId: string;
-        } | null,
-        Name
-      >;
-      refreshTokenGetById: FunctionReference<
-        "query",
-        "internal",
-        { refreshTokenId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          expirationTime: number;
-          firstUsedTime?: number;
-          parentRefreshTokenId?: string;
-          sessionId: string;
-        } | null,
-        Name
-      >;
-      refreshTokenGetChildren: FunctionReference<
-        "query",
-        "internal",
-        { parentRefreshTokenId: string; sessionId: string },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          expirationTime: number;
-          firstUsedTime?: number;
-          parentRefreshTokenId?: string;
-          sessionId: string;
-        }>,
-        Name
-      >;
-      refreshTokenListBySession: FunctionReference<
-        "query",
-        "internal",
-        { sessionId: string },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          expirationTime: number;
-          firstUsedTime?: number;
-          parentRefreshTokenId?: string;
-          sessionId: string;
-        }>,
-        Name
-      >;
-      refreshTokenPatch: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; refreshTokenId: string },
-        null,
-        Name
-      >;
       security: {
         keys: {
           keyDelete: FunctionReference<
@@ -3203,77 +3033,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           >;
         };
       };
-      sessionCreate: FunctionReference<
-        "mutation",
-        "internal",
-        { expirationTime: number; userId: string },
-        string,
-        Name
-      >;
-      sessionDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { sessionId: string },
-        null,
-        Name
-      >;
-      sessionGetById: FunctionReference<
-        "query",
-        "internal",
-        { sessionId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          expirationTime: number;
-          userId: string;
-        } | null,
-        Name
-      >;
-      sessionIssue: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          refreshTokenExpirationTime?: number;
-          replaceSessionId?: string;
-          sessionExpirationTime: number;
-          sessionId?: string;
-          userId: string;
-        },
-        { refreshTokenId?: string; sessionId: string; userId: string },
-        Name
-      >;
-      sessionList: FunctionReference<
-        "query",
-        "internal",
-        {
-          cursor?: string | null;
-          limit?: number;
-          order?: "asc" | "desc";
-          where?: { userId?: string };
-        },
-        {
-          items: Array<{
-            _creationTime: number;
-            _id: string;
-            expirationTime: number;
-            userId: string;
-          }>;
-          nextCursor: string | null;
-        },
-        Name
-      >;
-      sessionListByUser: FunctionReference<
-        "query",
-        "internal",
-        { userId: string },
-        Array<{
-          _creationTime: number;
-          _id: string;
-          expirationTime: number;
-          userId: string;
-        }>,
-        Name
-      >;
       sso: {
         audit: {
           groupAuditEventCreate: FunctionReference<
@@ -3973,107 +3732,159 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null,
         Name
       >;
-      verificationCodeCreate: FunctionReference<
+    };
+    refreshToken: {
+      create: FunctionReference<
         "mutation",
         "internal",
         {
-          accountId: string;
-          code: string;
-          emailVerified?: string;
           expirationTime: number;
-          phoneVerified?: string;
-          provider: string;
-          verifier?: string;
+          parentRefreshTokenId?: string;
+          sessionId: string;
         },
         string,
         Name
       >;
-      verificationCodeDelete: FunctionReference<
+      delete: FunctionReference<
         "mutation",
         "internal",
-        { verificationCodeId: string },
+        { sessionId: string },
         null,
         Name
       >;
-      verificationCodeGetByAccountId: FunctionReference<
-        "query",
-        "internal",
-        { accountId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          accountId: string;
-          code: string;
-          emailVerified?: string;
-          expirationTime: number;
-          phoneVerified?: string;
-          provider: string;
-          verifier?: string;
-        } | null,
-        Name
-      >;
-      verificationCodeGetByCode: FunctionReference<
-        "query",
-        "internal",
-        { code: string },
-        {
-          _creationTime: number;
-          _id: string;
-          accountId: string;
-          code: string;
-          emailVerified?: string;
-          expirationTime: number;
-          phoneVerified?: string;
-          provider: string;
-          verifier?: string;
-        } | null,
-        Name
-      >;
-      verifierCreate: FunctionReference<
+      exchange: FunctionReference<
         "mutation",
         "internal",
-        { expirationTime?: number; sessionId?: string; signature?: string },
+        {
+          now: number;
+          refreshTokenExpirationTime: number;
+          refreshTokenId: string;
+          reuseWindowMs: number;
+          sessionId: string;
+        },
+        { refreshTokenId: string; sessionId: string; userId: string } | null,
+        Name
+      >;
+      get: FunctionReference<
+        "query",
+        "internal",
+        { activeForSession?: string; id?: string },
+        {
+          _creationTime: number;
+          _id: string;
+          expirationTime: number;
+          firstUsedTime?: number;
+          parentRefreshTokenId?: string;
+          sessionId: string;
+        } | null,
+        Name
+      >;
+      list: FunctionReference<
+        "query",
+        "internal",
+        { sessionId: string },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          expirationTime: number;
+          firstUsedTime?: number;
+          parentRefreshTokenId?: string;
+          sessionId: string;
+        }>,
+        Name
+      >;
+      listChildren: FunctionReference<
+        "query",
+        "internal",
+        { parentRefreshTokenId: string; sessionId: string },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          expirationTime: number;
+          firstUsedTime?: number;
+          parentRefreshTokenId?: string;
+          sessionId: string;
+        }>,
+        Name
+      >;
+      update: FunctionReference<
+        "mutation",
+        "internal",
+        { data: any; refreshTokenId: string },
+        null,
+        Name
+      >;
+    };
+    session: {
+      create: FunctionReference<
+        "mutation",
+        "internal",
+        { expirationTime: number; userId: string },
         string,
         Name
       >;
-      verifierDelete: FunctionReference<
+      delete: FunctionReference<
         "mutation",
         "internal",
-        { verifierId: string },
+        { sessionId: string },
         null,
         Name
       >;
-      verifierGetById: FunctionReference<
+      get: FunctionReference<
         "query",
         "internal",
-        { verifierId: string },
+        { sessionId: string },
         {
           _creationTime: number;
           _id: string;
-          expirationTime?: number;
-          sessionId?: string;
-          signature?: string;
+          expirationTime: number;
+          userId: string;
         } | null,
         Name
       >;
-      verifierGetBySignature: FunctionReference<
-        "query",
-        "internal",
-        { signature: string },
-        {
-          _creationTime: number;
-          _id: string;
-          expirationTime?: number;
-          sessionId?: string;
-          signature?: string;
-        } | null,
-        Name
-      >;
-      verifierPatch: FunctionReference<
+      issue: FunctionReference<
         "mutation",
         "internal",
-        { data: any; verifierId: string },
-        null,
+        {
+          refreshTokenExpirationTime?: number;
+          replaceSessionId?: string;
+          sessionExpirationTime: number;
+          sessionId?: string;
+          userId: string;
+        },
+        { refreshTokenId?: string; sessionId: string; userId: string },
+        Name
+      >;
+      list: FunctionReference<
+        "query",
+        "internal",
+        {
+          cursor?: string | null;
+          limit?: number;
+          order?: "asc" | "desc";
+          where?: { userId?: string };
+        },
+        {
+          items: Array<{
+            _creationTime: number;
+            _id: string;
+            expirationTime: number;
+            userId: string;
+          }>;
+          nextCursor: string | null;
+        },
+        Name
+      >;
+      listByUser: FunctionReference<
+        "query",
+        "internal",
+        { userId: string },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          expirationTime: number;
+          userId: string;
+        }>,
         Name
       >;
     };
@@ -4248,6 +4059,83 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         { data: any; userId?: string },
         string,
+        Name
+      >;
+    };
+    verificationCode: {
+      create: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          accountId: string;
+          code: string;
+          emailVerified?: string;
+          expirationTime: number;
+          phoneVerified?: string;
+          provider: string;
+          verifier?: string;
+        },
+        string,
+        Name
+      >;
+      delete: FunctionReference<
+        "mutation",
+        "internal",
+        { verificationCodeId: string },
+        null,
+        Name
+      >;
+      get: FunctionReference<
+        "query",
+        "internal",
+        { accountId?: string; code?: string },
+        {
+          _creationTime: number;
+          _id: string;
+          accountId: string;
+          code: string;
+          emailVerified?: string;
+          expirationTime: number;
+          phoneVerified?: string;
+          provider: string;
+          verifier?: string;
+        } | null,
+        Name
+      >;
+    };
+    verifier: {
+      create: FunctionReference<
+        "mutation",
+        "internal",
+        { expirationTime?: number; sessionId?: string; signature?: string },
+        string,
+        Name
+      >;
+      delete: FunctionReference<
+        "mutation",
+        "internal",
+        { verifierId: string },
+        null,
+        Name
+      >;
+      get: FunctionReference<
+        "query",
+        "internal",
+        { id?: string; signature?: string },
+        {
+          _creationTime: number;
+          _id: string;
+          expirationTime?: number;
+          sessionId?: string;
+          signature?: string;
+        } | null,
+        Name
+      >;
+      update: FunctionReference<
+        "mutation",
+        "internal",
+        { data: any; verifierId: string },
+        null,
         Name
       >;
     };

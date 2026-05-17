@@ -24,46 +24,30 @@ import { vVerificationCodeDoc } from "../../model";
  * }
  * ```
  */
-export const verificationCodeGetByAccountId = query({
-  args: { accountId: v.id("Account") },
-  returns: v.union(vVerificationCodeDoc, v.null()),
-  handler: async (ctx, { accountId }) => {
-    return await ctx.db
-      .query("VerificationCode")
-      .withIndex("account_id", (q) => q.eq("accountId", accountId as any))
-      .unique();
-  },
-});
-
 /**
- * Find a verification code by its code string value.
- *
- * Queries the `VerificationCode` table using the `code` index to locate the
- * unique verification code document matching the given code string. This is
- * the primary lookup used when a user submits an OTP or clicks a magic link.
- *
- * @param args.code - The verification code string to look up (e.g. a 6-digit OTP or a magic-link token).
- * @returns The verification code document if a match is found, or `null` otherwise.
- *
- * @example
- * ```ts
- * const codeDoc = await ctx.runQuery(
- *   component.identity.codes.verificationCodeGetByCode,
- *   { code: "482910" },
- * );
- * if (codeDoc !== null && codeDoc.expirationTime > Date.now()) {
- *   console.log(`Code is valid for account: ${codeDoc.accountId}`);
- * }
- * ```
+ * Read a verification code by identity — one function, all-optional
+ * args, unioned return: `{ accountId }` (unique per account) or
+ * `{ code }` (code index). Replaces `verificationCodeGetByAccountId` /
+ * `verificationCodeGetByCode`.
  */
-export const verificationCodeGetByCode = query({
-  args: { code: v.string() },
+export const verificationCodeGet = query({
+  args: {
+    accountId: v.optional(v.id("Account")),
+    code: v.optional(v.string()),
+  },
   returns: v.union(vVerificationCodeDoc, v.null()),
-  handler: async (ctx, { code }) => {
+  handler: async (ctx, args) => {
+    if (args.code !== undefined) {
+      return await ctx.db
+        .query("VerificationCode")
+        .withIndex("code", (q) => q.eq("code", args.code!))
+        .first();
+    }
+    if (args.accountId === undefined) return null;
     return await ctx.db
       .query("VerificationCode")
-      .withIndex("code", (q) => q.eq("code", code))
-      .first();
+      .withIndex("account_id", (q) => q.eq("accountId", args.accountId! as any))
+      .unique();
   },
 });
 

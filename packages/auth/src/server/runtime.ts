@@ -832,8 +832,8 @@ export function Auth(config_: ConvexAuthConfig) {
     ctx: GenericActionCtx<GenericDataModel>,
     args: { accountId: GenericId<"Account"> },
   ) => {
-    const accountDoc = (await ctx.runQuery(config.component.public.accountGetById, {
-      accountId: args.accountId,
+    const accountDoc = (await ctx.runQuery(config.component.account.get, {
+      id: args.accountId,
     })) as { _id: string; userId: string; provider: string } | null;
     if (accountDoc === null) {
       throw convexError({
@@ -841,7 +841,7 @@ export function Auth(config_: ConvexAuthConfig) {
         message: "Account not found.",
       });
     }
-    await ctx.runMutation(config.component.public.accountDelete, {
+    await ctx.runMutation(config.component.account.delete, {
       accountId: args.accountId,
     });
     const userId = accountDoc.userId as GenericId<"User">;

@@ -971,7 +971,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
             state.connection.protocol === "oidc"
               ? groupOidcProviderId(state.connection._id)
               : groupSamlProviderId(state.connection._id);
-          await insertAccount(state.ctx, config.component.public, {
+          await insertAccount(state.ctx, config.component.account, {
             userId,
             provider: providerId,
             providerAccountId: externalId,
