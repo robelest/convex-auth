@@ -533,7 +533,15 @@ test("auth.context optional returns null-shaped auth when unauthenticated", asyn
   const t = convexTest(schema);
 
   const resolved = await t.run(async (ctx) => {
-    return await auth.context(ctx, { optional: true });
+    const c = await auth.context(ctx, { optional: true });
+    return {
+      userId: c.userId,
+      user: c.user,
+      groupId: c.groupId,
+      role: c.role,
+      grants: c.grants,
+      requireType: typeof c.require,
+    };
   });
 
   expect(resolved).toEqual({
@@ -542,6 +550,7 @@ test("auth.context optional returns null-shaped auth when unauthenticated", asyn
     groupId: null,
     role: null,
     grants: [],
+    requireType: "function",
   });
 });
 
@@ -581,7 +590,17 @@ test("auth.request.context optional returns null-shaped auth with no session and
 
   const resolved = await t.run(async (ctx) => {
     const request = new Request("https://example.com/api/data");
-    return await auth.request.context(ctx, request, { optional: true });
+    const c = await auth.request.context(ctx, request, { optional: true });
+    return {
+      userId: c.userId,
+      user: c.user,
+      groupId: c.groupId,
+      role: c.role,
+      grants: c.grants,
+      source: c.source,
+      key: c.key,
+      requireType: typeof c.require,
+    };
   });
 
   expect(resolved).toEqual({
@@ -592,6 +611,7 @@ test("auth.request.context optional returns null-shaped auth with no session and
     grants: [],
     source: null,
     key: null,
+    requireType: "function",
   });
 });
 
@@ -602,7 +622,17 @@ test("auth.request.context optional returns null-shaped auth with invalid Bearer
     const request = new Request("https://example.com/api/data", {
       headers: { Authorization: "Bearer sk_not_a_real_key" },
     });
-    return await auth.request.context(ctx, request, { optional: true });
+    const c = await auth.request.context(ctx, request, { optional: true });
+    return {
+      userId: c.userId,
+      user: c.user,
+      groupId: c.groupId,
+      role: c.role,
+      grants: c.grants,
+      source: c.source,
+      key: c.key,
+      requireType: typeof c.require,
+    };
   });
 
   expect(resolved).toEqual({
@@ -613,6 +643,7 @@ test("auth.request.context optional returns null-shaped auth with invalid Bearer
     grants: [],
     source: null,
     key: null,
+    requireType: "function",
   });
 });
 
@@ -629,7 +660,17 @@ test("auth.request.context optional returns null-shaped auth with revoked key", 
     const request = new Request("https://example.com/api/data", {
       headers: { Authorization: `Bearer ${secret}` },
     });
-    return await auth.request.context(ctx, request, { optional: true });
+    const c = await auth.request.context(ctx, request, { optional: true });
+    return {
+      userId: c.userId,
+      user: c.user,
+      groupId: c.groupId,
+      role: c.role,
+      grants: c.grants,
+      source: c.source,
+      key: c.key,
+      requireType: typeof c.require,
+    };
   });
 
   expect(resolved).toEqual({
@@ -640,6 +681,7 @@ test("auth.request.context optional returns null-shaped auth with revoked key", 
     grants: [],
     source: null,
     key: null,
+    requireType: "function",
   });
 });
 

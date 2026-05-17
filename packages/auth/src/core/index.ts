@@ -92,6 +92,7 @@ export function createAuthContext(
 
   const authLike: AuthLike = {
     user: domains.user,
+    active: domains.active,
     member: domains.member,
   };
 
@@ -103,6 +104,7 @@ export function createAuthContext(
     member: domains.member,
     invite: domains.invite,
     key: domains.key,
+    active: domains.active,
     ...(createAuthContextFacade(authLike) as AuthContextFacade),
   };
 }

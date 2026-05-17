@@ -62,6 +62,24 @@ type KeyDocLike = {
   rateLimit?: KeyDoc["rateLimit"];
   metadata?: KeyDoc["metadata"];
 };
+/** Cursor-paginated page shape returned by the `*List` component queries. */
+type Paginated<T> = { items: T[]; nextCursor: string | null };
+/** Options accepted by `member.list`. */
+type MemberListOpts = {
+  where?: { groupId?: string; userId?: string; roleId?: string; status?: string };
+  limit?: number;
+  cursor?: string | null;
+  orderBy?: "_creationTime" | "status";
+  order?: "asc" | "desc";
+  /** Join each item's `group` document. */
+  withGroup?: true;
+  /** Resolve each item's `roleIds` + `grants`. */
+  withGrants?: true;
+};
+/** A `member.list` item, enriched per the `withGroup`/`withGrants` options. */
+type MemberItem<O extends MemberListOpts | undefined> = Doc<"GroupMember"> &
+  (O extends { withGroup: true } ? { group: Doc<"Group"> | null } : unknown) &
+  (O extends { withGrants: true } ? { roleIds: string[]; grants: string[] } : unknown);
 
 type CoreDeps = {
   config: ReturnType<typeof configDefaults>;
@@ -249,7 +267,10 @@ export function createCoreDomains(deps: CoreDeps) {
         order?: "asc" | "desc";
       } = {},
     ) => {
-      return await ctx.runQuery(config.component.public.userList, opts);
+      return (await ctx.runQuery(
+        config.component.public.userList,
+        opts,
+      )) as Paginated<Doc<"User">>;
     },
     /**
      * Convenience method: resolve the current session user and fetch their
@@ -294,76 +315,6 @@ export function createCoreDomains(deps: CoreDeps) {
       });
       invalidateCtxCache(ctx, `user:${userId}`);
       return { userId };
-    },
-    /**
-     * Set the user's active group. Stored in `user.extend.lastActiveGroup`.
-     * Pass `groupId: null` to clear. Useful for multi-workspace apps
-     * where the UI needs to remember which workspace is selected.
-     *
-     * @param ctx - Convex mutation context.
-     * @param opts.userId - The user's document ID.
-     * @param opts.groupId - Group ID to set as active, or `null` to clear.
-     * @returns `{ userId, groupId }` confirming the active group was set (or cleared).
-     *
-     * @example
-     * ```ts
-     * // Switch to a workspace
-     * await auth.user.setActiveGroup(ctx, { userId, groupId: workspaceId });
-     *
-     * // Clear the active workspace
-     * await auth.user.setActiveGroup(ctx, { userId, groupId: null });
-     * ```
-     */
-    setActiveGroup: async (ctx: ComponentCtx, opts: { userId: string; groupId: string | null }) => {
-      const doc = await user.get(ctx, opts.userId);
-      const existingExtend =
-        doc !== null &&
-        doc.extend !== null &&
-        typeof doc.extend === "object" &&
-        !Array.isArray(doc.extend)
-          ? { ...(doc.extend as Record<string, unknown>) }
-          : {};
-      if (opts.groupId === null) {
-        const { lastActiveGroup: _omit, ...rest } = existingExtend;
-        await user.update(ctx, opts.userId, { extend: rest });
-        return { userId: opts.userId, groupId: null };
-      }
-      await user.update(ctx, opts.userId, {
-        extend: { ...existingExtend, lastActiveGroup: opts.groupId },
-      });
-      return { userId: opts.userId, groupId: opts.groupId };
-    },
-    /**
-     * Read the user's active group ID from `user.extend.lastActiveGroup`.
-     * Returns `null` if no active group is set.
-     *
-     * @param ctx - Convex query or mutation context.
-     * @param opts.userId - The user's document ID.
-     * @returns The active group's document ID, or `null` if none is set.
-     *
-     * @example
-     * ```ts
-     * const activeGroupId = await auth.user.getActiveGroup(ctx, { userId });
-     * if (activeGroupId) {
-     *   const group = await auth.group.get(ctx, activeGroupId);
-     * }
-     * ```
-     */
-    getActiveGroup: async (
-      ctx: ComponentReadCtx,
-      opts: { userId: string },
-    ): Promise<string | null> => {
-      const doc = await user.get(ctx, opts.userId);
-      if (
-        doc !== null &&
-        doc.extend !== null &&
-        typeof doc.extend === "object" &&
-        !Array.isArray(doc.extend)
-      ) {
-        const val = (doc.extend as Record<string, unknown>).lastActiveGroup;
-        if (typeof val === "string") return val;
-      }
-      return null;
     },
     /**
      * Delete a user and all associated data.
@@ -443,12 +394,15 @@ export function createCoreDomains(deps: CoreDeps) {
      * if (!session) throw new Error("Session not found");
      * ```
      */
-    get: async (ctx: ComponentReadCtx, sessionId: string) => {
-      return await cached(ctx, `session:${sessionId}`, () =>
+    get: async (
+      ctx: ComponentReadCtx,
+      sessionId: string,
+    ): Promise<Doc<"Session"> | null> => {
+      return (await cached(ctx, `session:${sessionId}`, () =>
         ctx.runQuery(config.component.public.sessionGetById, {
           sessionId,
         }),
-      );
+      )) as Doc<"Session"> | null;
     },
     /**
      * List all sessions belonging to a user.
@@ -467,10 +421,13 @@ export function createCoreDomains(deps: CoreDeps) {
      * console.log(`User has ${sessions.length} sessions`);
      * ```
      */
-    list: async (ctx: ComponentReadCtx, opts: { userId: string }) => {
-      return await ctx.runQuery(config.component.public.sessionListByUser, {
+    list: async (
+      ctx: ComponentReadCtx,
+      opts: { userId: string },
+    ): Promise<Doc<"Session">[]> => {
+      return (await ctx.runQuery(config.component.public.sessionListByUser, {
         userId: opts.userId,
-      });
+      })) as Doc<"Session">[];
     },
   };
 
@@ -622,8 +579,14 @@ export function createCoreDomains(deps: CoreDeps) {
      * }
      * ```
      */
-    listPasskeys: async (ctx: ComponentReadCtx, opts: { userId: string }) => {
-      return await ctx.runQuery(config.component.public.passkeyListByUserId, opts);
+    listPasskeys: async (
+      ctx: ComponentReadCtx,
+      opts: { userId: string },
+    ): Promise<Doc<"Passkey">[]> => {
+      return (await ctx.runQuery(
+        config.component.public.passkeyListByUserId,
+        opts,
+      )) as Doc<"Passkey">[];
     },
     /**
      * Rename a passkey credential.
@@ -688,8 +651,14 @@ export function createCoreDomains(deps: CoreDeps) {
      * const has2FA = totps.length > 0;
      * ```
      */
-    listTotps: async (ctx: ComponentReadCtx, opts: { userId: string }) => {
-      return await ctx.runQuery(config.component.public.totpListByUserId, opts);
+    listTotps: async (
+      ctx: ComponentReadCtx,
+      opts: { userId: string },
+    ): Promise<Doc<"TotpFactor">[]> => {
+      return (await ctx.runQuery(
+        config.component.public.totpListByUserId,
+        opts,
+      )) as Doc<"TotpFactor">[];
     },
     /**
      * Delete a TOTP factor.
@@ -807,6 +776,75 @@ export function createCoreDomains(deps: CoreDeps) {
     )) as Array<GroupDocLike>;
   }
 
+  type GroupTree = {
+    current: Doc<"Group">;
+    parent: Doc<"Group"> | null;
+    children: Array<Doc<"Group">>;
+    ancestors: Array<Doc<"Group">>;
+  };
+  function groupGetEx(ctx: ComponentReadCtx, groupId: string): Promise<GroupDocLike>;
+  function groupGetEx(
+    ctx: ComponentReadCtx,
+    groupIds: readonly string[],
+  ): Promise<Array<GroupDocLike>>;
+  function groupGetEx(
+    ctx: ComponentReadCtx,
+    selector: { slug: string },
+  ): Promise<GroupDocLike>;
+  function groupGetEx(
+    ctx: ComponentReadCtx,
+    groupId: string,
+    opts: { tree: true },
+  ): Promise<GroupTree | null>;
+  async function groupGetEx(
+    ctx: ComponentReadCtx,
+    input: string | readonly string[] | { slug: string },
+    opts?: { tree: true },
+  ): Promise<GroupDocLike | Array<GroupDocLike> | GroupTree | null> {
+    if (
+      typeof input === "object" &&
+      input !== null &&
+      !Array.isArray(input) &&
+      "slug" in input
+    ) {
+      const { items } = await group.list(ctx, {
+        where: { slug: (input as { slug: string }).slug },
+        limit: 1,
+      });
+      return items[0] ?? null;
+    }
+    if (opts?.tree === true && typeof input === "string") {
+      const current = await groupGet(ctx, input);
+      if (current === null) return null;
+      const parentId =
+        typeof current.parentGroupId === "string" ? current.parentGroupId : null;
+      const [parent, childrenPage] = await Promise.all([
+        parentId !== null ? groupGet(ctx, parentId) : Promise.resolve(null),
+        group.list(ctx, { where: { parentGroupId: input }, limit: 100 }),
+      ]);
+      const ancestors: Array<Doc<"Group">> = [];
+      let walk = parentId;
+      const seen = new Set<string>([input]);
+      while (walk !== null && !seen.has(walk)) {
+        seen.add(walk);
+        const ancestor = await groupGet(ctx, walk);
+        if (ancestor === null) break;
+        ancestors.push(ancestor);
+        walk =
+          typeof ancestor.parentGroupId === "string"
+            ? ancestor.parentGroupId
+            : null;
+      }
+      return {
+        current,
+        parent,
+        children: childrenPage.items,
+        ancestors,
+      };
+    }
+    return groupGet(ctx, input as string & readonly string[]);
+  }
+
   const group = {
     /**
      * Create a new group (organization, workspace, team, etc.).
@@ -868,8 +906,19 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```ts
      * const groups = await auth.group.get(ctx, membershipGroupIds);
      * ```
+     *
+     * @example By slug
+     * ```ts
+     * const group = await auth.group.get(ctx, { slug: "acme" });
+     * ```
+     *
+     * @example With hierarchy
+     * ```ts
+     * const { current, parent, children, ancestors } =
+     *   (await auth.group.get(ctx, groupId, { tree: true }))!;
+     * ```
      */
-    get: groupGet,
+    get: groupGetEx,
     /**
      * List groups with optional filtering, pagination, and ordering.
      *
@@ -920,13 +969,13 @@ export function createCoreDomains(deps: CoreDeps) {
         order?: "asc" | "desc";
       },
     ) => {
-      return await ctx.runQuery(config.component.public.groupList, {
+      return (await ctx.runQuery(config.component.public.groupList, {
         where: opts?.where,
         limit: opts?.limit,
         cursor: opts?.cursor,
         orderBy: opts?.orderBy,
         order: opts?.order,
-      });
+      })) as Paginated<Doc<"Group">>;
     },
     /**
      * Patch a group document.
@@ -1203,12 +1252,15 @@ export function createCoreDomains(deps: CoreDeps) {
      * console.log(membership.roleIds, membership.groupId);
      * ```
      */
-    get: async (ctx: ComponentReadCtx, memberId: string) => {
-      return await cached(ctx, `member:${memberId}`, () =>
+    get: async (
+      ctx: ComponentReadCtx,
+      memberId: string,
+    ): Promise<Doc<"GroupMember"> | null> => {
+      return (await cached(ctx, `member:${memberId}`, () =>
         ctx.runQuery(config.component.public.memberGet, {
           memberId,
         }),
-      );
+      )) as Doc<"GroupMember"> | null;
     },
     /**
      * List memberships with optional filtering and pagination.
@@ -1235,28 +1287,44 @@ export function createCoreDomains(deps: CoreDeps) {
      * });
      * ```
      */
-    list: async (
+    list: async <O extends MemberListOpts | undefined = undefined>(
       ctx: ComponentReadCtx,
-      opts?: {
-        where?: {
-          groupId?: string;
-          userId?: string;
-          roleId?: string;
-          status?: string;
-        };
-        limit?: number;
-        cursor?: string | null;
-        orderBy?: "_creationTime" | "status";
-        order?: "asc" | "desc";
-      },
-    ) => {
-      return await ctx.runQuery(config.component.public.memberList, {
+      opts?: O,
+    ): Promise<Paginated<MemberItem<NonNullable<O>>>> => {
+      const page = (await ctx.runQuery(config.component.public.memberList, {
         where: opts?.where,
         limit: opts?.limit,
         cursor: opts?.cursor,
         orderBy: opts?.orderBy,
         order: opts?.order,
-      });
+      })) as Paginated<Doc<"GroupMember">>;
+      if (opts?.withGroup !== true && opts?.withGrants !== true) {
+        return page as Paginated<MemberItem<NonNullable<O>>>;
+      }
+      const groupDocs = opts?.withGroup
+        ? await group.get(ctx, page.items.map((m) => m.groupId))
+        : null;
+      const items = await Promise.all(
+        page.items.map(async (m, i) => {
+          let enriched: Record<string, unknown> = { ...m };
+          if (groupDocs !== null) {
+            enriched.group = groupDocs[i] ?? null;
+          }
+          if (opts?.withGrants === true) {
+            const resolved = await memberInspect(ctx, {
+              userId: m.userId,
+              groupId: m.groupId,
+            });
+            enriched.roleIds = resolved.roleIds;
+            enriched.grants = resolved.grants;
+          }
+          return enriched;
+        }),
+      );
+      return {
+        items: items as Array<MemberItem<NonNullable<O>>>,
+        nextCursor: page.nextCursor,
+      };
     },
     /**
      * Remove a membership by its document ID.
@@ -1407,6 +1475,134 @@ export function createCoreDomains(deps: CoreDeps) {
     },
   };
 
+  const readLastActiveGroup = (doc: Doc<"User"> | null): string | null => {
+    if (
+      doc !== null &&
+      doc.extend !== null &&
+      typeof doc.extend === "object" &&
+      !Array.isArray(doc.extend)
+    ) {
+      const val = (doc.extend as Record<string, unknown>).lastActiveGroup;
+      if (typeof val === "string") return val;
+    }
+    return null;
+  };
+  const writeExtend = async (
+    ctx: ComponentCtx,
+    userId: string,
+    mutate: (extend: Record<string, unknown>) => Record<string, unknown>,
+  ) => {
+    const doc = await user.get(ctx, userId);
+    const existing =
+      doc !== null &&
+      doc.extend !== null &&
+      typeof doc.extend === "object" &&
+      !Array.isArray(doc.extend)
+        ? { ...(doc.extend as Record<string, unknown>) }
+        : {};
+    await user.update(ctx, userId, { extend: mutate(existing) });
+  };
+
+  /**
+   * The current user's active group — the workspace selection persisted
+   * in `user.extend.lastActiveGroup`. Reuses the existing `get/set/clear`
+   * vocabulary instead of bespoke `setActiveGroup`/`getActiveGroup`.
+   */
+  const active = {
+    /**
+     * Resolve the *effective* active group: the stored selection if it is
+     * still a current membership, otherwise the user's first membership.
+     *
+     * @param ctx - Convex query/mutation context with `auth`.
+     * @param opts.userId - Target user; defaults to the current session user.
+     * @returns `{ groupId, group, membership }`, or `null` when there is no
+     *   authenticated user or the user has no memberships.
+     *
+     * @example
+     * ```ts
+     * const active = await auth.active.get(ctx);
+     * if (active) console.log(active.group.name);
+     * ```
+     */
+    get: async (
+      ctx: ComponentAuthReadCtx,
+      opts?: { userId?: string },
+    ): Promise<{
+      groupId: string;
+      group: Doc<"Group"> | null;
+      membership: Doc<"GroupMember">;
+    } | null> => {
+      const userId = opts?.userId ?? (await getSessionUserId(ctx));
+      if (userId === null || userId === undefined) return null;
+      const [userDoc, { items: memberships }] = await Promise.all([
+        user.get(ctx, userId),
+        member.list(ctx, { where: { userId }, limit: 100 }),
+      ]);
+      if (memberships.length === 0) return null;
+      const stored = readLastActiveGroup(userDoc);
+      const chosen =
+        memberships.find((m) => m.groupId === stored) ?? memberships[0];
+      const groupDoc = await group.get(ctx, chosen.groupId);
+      return { groupId: chosen.groupId, group: groupDoc, membership: chosen };
+    },
+    /**
+     * Set the active group, validating the user is a member first.
+     *
+     * @param ctx - Convex mutation context with `auth`.
+     * @param groupId - Group to activate.
+     * @param opts.userId - Target user; defaults to the current session user.
+     * @throws `NOT_SIGNED_IN` if no user, `NOT_A_MEMBER` if not a member.
+     */
+    set: async (
+      ctx: ComponentCtx & { auth: Auth },
+      groupId: string,
+      opts?: { userId?: string },
+    ): Promise<{ groupId: string }> => {
+      const userId = opts?.userId ?? (await getSessionUserId(ctx));
+      if (userId === null || userId === undefined) {
+        throw new ConvexError({
+          code: "NOT_SIGNED_IN",
+          message: "Authentication required.",
+        });
+      }
+      const { items } = await member.list(ctx, {
+        where: { userId, groupId },
+        limit: 1,
+      });
+      if (items.length === 0) {
+        throw new ConvexError({
+          code: "NOT_A_MEMBER",
+          message: "User is not a member of this group.",
+        });
+      }
+      await writeExtend(ctx, userId, (extend) => ({
+        ...extend,
+        lastActiveGroup: groupId,
+      }));
+      return { groupId };
+    },
+    /**
+     * Clear the stored active group selection.
+     *
+     * @param ctx - Convex mutation context with `auth`.
+     * @param opts.userId - Target user; defaults to the current session user.
+     */
+    clear: async (
+      ctx: ComponentCtx & { auth: Auth },
+      opts?: { userId?: string },
+    ): Promise<{ groupId: null }> => {
+      const userId = opts?.userId ?? (await getSessionUserId(ctx));
+      if (userId === null || userId === undefined) {
+        throw new ConvexError({
+          code: "NOT_SIGNED_IN",
+          message: "Authentication required.",
+        });
+      }
+      await writeExtend(ctx, userId, ({ lastActiveGroup: _omit, ...rest }) => rest);
+      return { groupId: null };
+    },
+  };
+
   const invite = {
     /**
      * Create a pending invite. Returns a one-time `token` the recipient
@@ -1470,10 +1666,13 @@ export function createCoreDomains(deps: CoreDeps) {
      * }
      * ```
      */
-    get: async (ctx: ComponentReadCtx, inviteId: string) => {
-      return await ctx.runQuery(config.component.public.inviteGet, {
+    get: async (
+      ctx: ComponentReadCtx,
+      inviteId: string,
+    ): Promise<Doc<"GroupInvite"> | null> => {
+      return (await ctx.runQuery(config.component.public.inviteGet, {
         inviteId,
-      });
+      })) as Doc<"GroupInvite"> | null;
     },
     token: {
       /**
@@ -1495,9 +1694,14 @@ export function createCoreDomains(deps: CoreDeps) {
        * }
        * ```
        */
-      get: async (ctx: ComponentReadCtx, token: string) => {
+      get: async (
+        ctx: ComponentReadCtx,
+        token: string,
+      ): Promise<Doc<"GroupInvite"> | null> => {
         const tokenHash = await sha256(token);
-        return await ctx.runQuery(config.component.public.inviteGetByTokenHash, { tokenHash });
+        return (await ctx.runQuery(config.component.public.inviteGetByTokenHash, {
+          tokenHash,
+        })) as Doc<"GroupInvite"> | null;
       },
       /**
        * Accept an invite by token. Creates a membership and marks the invite as accepted.
@@ -1519,12 +1723,30 @@ export function createCoreDomains(deps: CoreDeps) {
        * });
        * ```
        */
-      accept: async (ctx: ComponentCtx, args: { token: string; acceptedByUserId: string }) => {
+      accept: async (
+        ctx: ComponentCtx,
+        args: { token: string; acceptedByUserId: string },
+      ): Promise<{
+        inviteId: string;
+        groupId: string | null;
+        memberId?: string;
+        inviteStatus: string;
+        membershipStatus: string;
+      }> => {
         const tokenHash = await sha256(args.token);
-        const result = await ctx.runMutation(config.component.public.inviteAcceptByToken, {
-          tokenHash,
-          acceptedByUserId: args.acceptedByUserId,
-        });
+        const result = (await ctx.runMutation(
+          config.component.public.inviteAcceptByToken,
+          {
+            tokenHash,
+            acceptedByUserId: args.acceptedByUserId,
+          },
+        )) as {
+          inviteId: string;
+          groupId: string | null;
+          memberId?: string;
+          inviteStatus: string;
+          membershipStatus: string;
+        };
         return { ...result };
       },
     },
@@ -1569,13 +1791,13 @@ export function createCoreDomains(deps: CoreDeps) {
         order?: "asc" | "desc";
       },
     ) => {
-      return await ctx.runQuery(config.component.public.inviteList, {
+      return (await ctx.runQuery(config.component.public.inviteList, {
         where: opts?.where,
         limit: opts?.limit,
         cursor: opts?.cursor,
         orderBy: opts?.orderBy,
         order: opts?.order,
-      });
+      })) as Paginated<Doc<"GroupInvite">>;
     },
     /**
      * Accept an invite by ID. Optionally specify who accepted it.
@@ -1777,13 +1999,13 @@ export function createCoreDomains(deps: CoreDeps) {
         order?: "asc" | "desc";
       },
     ) => {
-      return await ctx.runQuery(config.component.public.keyList, {
+      return (await ctx.runQuery(config.component.public.keyList, {
         where: opts?.where,
         limit: opts?.limit,
         cursor: opts?.cursor,
         orderBy: opts?.orderBy,
         order: opts?.order,
-      });
+      })) as Paginated<Doc<"ApiKey">>;
     },
     /**
      * Fetch an API key record by ID. Does not expose the raw key secret.
@@ -1949,5 +2171,6 @@ export function createCoreDomains(deps: CoreDeps) {
     member,
     invite,
     key,
+    active,
   };
 }

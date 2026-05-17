@@ -144,18 +144,18 @@ export const list = authQuery({
       order: "asc",
     });
     const groupIds: readonly string[] = memberships.items.map(
-      (m: (typeof memberships.items)[number]) => m.groupId,
+      (m) => m.groupId,
     );
     const groupDocs = await auth.group.get(ctx, groupIds);
     return memberships.items.flatMap(
-      (m: (typeof memberships.items)[number], i: number) => {
+      (m, i) => {
         const group = groupDocs[i];
         if (!group) return [];
         return [{
           groupId: group._id,
           name: group.name,
-          roleIds: m.roleIds,
-          userRoleLabel: getUserRoleLabel(m.roleIds),
+          roleIds: m.roleIds ?? [],
+          userRoleLabel: getUserRoleLabel(m.roleIds ?? []),
         }];
       },
     );
@@ -191,11 +191,11 @@ export const get = authQuery({
       limit: 20,
     });
 
-    const rootGroupIds = roots.items.map((g: (typeof roots.items)[number]) => g._id);
+    const rootGroupIds = roots.items.map((g) => g._id);
     const resolutions = await auth.member.inspect(ctx, { userId, groupIds: rootGroupIds });
 
     const groups: GroupSummary[] = roots.items.flatMap(
-      (g: (typeof roots.items)[number], i: number) => {
+      (g, i) => {
         const r = resolutions[i];
         if (!r || r.membership === null) return [];
         return [{ groupId: g._id, name: g.name, roleIds: r.roleIds, grants: r.grants }];
@@ -230,7 +230,7 @@ export const get = authQuery({
       }),
     ]);
 
-    const memberUserIds: readonly string[] = members.items.map((m: (typeof members.items)[number]) => m.userId);
+    const memberUserIds: readonly string[] = members.items.map((m) => m.userId);
     const memberUsers = await auth.user.get(ctx, memberUserIds);
 
     return {
@@ -252,7 +252,7 @@ export const get = authQuery({
           issueCount: p.issueCounter,
           openIssueCount: p.openIssueCount ?? 0,
         })),
-        members: members.items.map((m: (typeof members.items)[number], i: number) => {
+        members: members.items.map((m, i) => {
           const u = memberUsers[i];
           return {
             memberId: m._id,
@@ -285,7 +285,7 @@ export const listInvites = authQuery({
       order: "desc",
       limit: 20,
     });
-    return result.items.map((inv: (typeof result.items)[number]) => ({
+    return result.items.map((inv) => ({
       inviteId: inv._id,
       email: inv.email ?? null,
       roleIds: inv.roleIds ?? [],
@@ -340,7 +340,7 @@ export const updateMemberRole = authMutation({
     if (matched !== validRoleIds[0]) {
       const members = await auth.member.list(ctx, { where: { groupId: args.groupId }, limit: 50 });
       const adminCount = members.items.filter(
-        (m: (typeof members.items)[number]) =>
+        (m) =>
           m.roleIds?.includes(validRoleIds[0]) && m._id !== args.memberId,
       ).length;
       if (adminCount === 0) {

@@ -29,7 +29,12 @@ type HttpContextCtx = HttpIdentityCtx & HttpQueryCtx;
 type HttpContextAuthLike = {
   user: {
     get: (ctx: HttpQueryCtx, userId: string) => Promise<UserDoc>;
-    getActiveGroup: (ctx: HttpQueryCtx, args: { userId: string }) => Promise<string | null>;
+  };
+  active: {
+    get: (
+      ctx: HttpQueryCtx,
+      args: { userId: string },
+    ) => Promise<{ groupId: string } | null>;
   };
   member: {
     inspect: (

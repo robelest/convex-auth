@@ -78,6 +78,23 @@ export type AuthContext = {
   role: string | null;
   /** Resolved grant strings from the user's role definitions. */
   grants: string[];
+  /**
+   * Assert the current user holds the given grant(s); throws
+   * `ConvexError({ code: "MISSING_GRANTS" })` otherwise. Pass a
+   * group-owned document as the second argument to also assert the
+   * record belongs to the active group (`code: "FORBIDDEN"` if not).
+   *
+   * For a boolean check, read `grants` directly:
+   * `ctx.auth.grants.includes("issues.read")`.
+   *
+   * @example
+   * ```ts
+   * ctx.auth.require("members.manage");
+   * ctx.auth.require(["issues.edit", "issues.move"]);
+   * ctx.auth.require("issues.edit", issueDoc); // group-scoped
+   * ```
+   */
+  require: (grant: string | readonly string[], doc?: { groupId?: unknown }) => void;
 };
 
 /**
@@ -110,6 +127,13 @@ export type OptionalAuthContext = {
   role: string | null;
   /** Resolved grant strings for the active membership, or `[]`. */
   grants: string[];
+  /**
+   * Assert the current user holds the given grant(s); throws when
+   * missing (or, with a group-owned `doc`, when it is not in the active
+   * group). When unauthenticated this always throws. For a boolean
+   * check read `grants` directly.
+   */
+  require: (grant: string | readonly string[], doc?: { groupId?: unknown }) => void;
 };
 
 type AuthContextBase = {
@@ -174,7 +198,10 @@ type AuthContextFactory = {
 export type AuthLike = {
   user: {
     get: (...args: any[]) => Promise<UserDoc | null>;
-    getActiveGroup: (...args: any[]) => Promise<string | null>;
+    [key: string]: unknown;
+  };
+  active: {
+    get: (...args: any[]) => Promise<{ groupId: string } | null>;
     [key: string]: unknown;
   };
   member: {
@@ -214,6 +241,17 @@ export type AuthContextConfig<
    * of throwing `NOT_SIGNED_IN`.
    */
   optional?: boolean;
+  /**
+   * Enforce grant(s) inline — equivalent to calling `ctx.auth.require(...)`
+   * at the top of every handler built with this customization. Throws
+   * `ConvexError({ code: "MISSING_GRANTS" })` when missing.
+   */
+  require?: string | readonly string[];
+  /**
+   * Require an active group; throws `ConvexError({ code: "NO_ACTIVE_GROUP" })`
+   * when the resolved context has no `groupId`. Reuses the `active` concept.
+   */
+  active?: true;
   /**
    * Attach additional derived fields to the auth context after the base auth
    * context is resolved.
@@ -314,6 +352,28 @@ export function assertAuthResolverContext<TCtx>(ctx: TCtx): asserts ctx is TCtx 
 /**
  * Resolve the public auth context for a Convex handler context.
  *
+ * Enforce the `require` / `active` builder options against a resolved
+ * context. Reuses `ctx.auth.require` for grants so behavior is identical
+ * to an inline call.
+ *
+ * @internal
+ */
+function enforceAuthRequirements(
+  resolved: AuthContext,
+  config?: { require?: string | readonly string[]; active?: true },
+) {
+  if (config?.active === true && resolved.groupId === null) {
+    throw new ConvexError({
+      code: "NO_ACTIVE_GROUP",
+      message: "An active group is required.",
+    });
+  }
+  if (config?.require !== undefined) {
+    resolved.require(config.require);
+  }
+}
+
+/**
  * This low-level helper underpins `auth.context(...)`.
  */
 async function createPublicAuthContext<
@@ -328,6 +388,8 @@ async function createPublicAuthContext<
     }
     return createUnauthenticatedAuthContext();
   }
+
+  enforceAuthRequirements(resolved, config);
 
   const extra = config?.resolve ? await config.resolve(ctx, resolved.user, resolved) : {};
 
@@ -369,6 +431,8 @@ function createAuthContextCustomization<
           args: {},
         };
       }
+
+      enforceAuthRequirements(resolved, config);
 
       const extra = config?.resolve ? await config.resolve(ctx, resolved.user, resolved) : {};
 

@@ -1,4 +1,5 @@
 import type { UserIdentity } from "convex/server";
+import { ConvexError } from "convex/values";
 
 import type { AuthContext, AuthLike, OptionalAuthContext, UserDoc } from "./facade";
 import type { ComponentReadCtx as AuthQueryCtx } from "./component/context";
@@ -13,7 +14,12 @@ type AuthIdentityCtx = {
 type AuthContextResolverLike = {
   user: {
     get: (ctx: AuthQueryCtx, userId: string) => Promise<UserDoc | null>;
-    getActiveGroup: (ctx: AuthQueryCtx, args: { userId: string }) => Promise<string | null>;
+  };
+  active: {
+    get: (
+      ctx: AuthQueryCtx,
+      args: { userId: string },
+    ) => Promise<{ groupId: string } | null>;
   };
   member: {
     inspect: (
@@ -32,16 +38,50 @@ export async function getSessionUserId(ctx: AuthIdentityCtx): Promise<string | n
   return await getAuthenticatedUserIdOrNull(ctx);
 }
 
+/**
+ * Build the `ctx.auth.require` grant guard from the resolved grants and
+ * active group. `require(grant)` throws when a grant is missing;
+ * `require(grant, doc)` additionally asserts the group-owned `doc` belongs
+ * to the active group. Reuses `member.require`'s `MISSING_GRANTS` code.
+ *
+ * @internal
+ */
+function makeRequire(
+  groupId: string | null,
+  grants: readonly string[],
+): AuthContext["require"] {
+  return (grant, doc) => {
+    const needed = Array.isArray(grant) ? grant : [grant as string];
+    const missing = needed.filter((g) => !grants.includes(g));
+    if (missing.length > 0) {
+      throw new ConvexError({
+        code: "MISSING_GRANTS",
+        message: "User is missing required grants.",
+      });
+    }
+    if (doc !== undefined) {
+      const docGroupId = (doc as { groupId?: unknown }).groupId;
+      if (groupId === null || String(docGroupId) !== groupId) {
+        throw new ConvexError({
+          code: "FORBIDDEN",
+          message: "Record is not in the active group.",
+        });
+      }
+    }
+  };
+}
+
 /** @internal */
 export async function getAuthContextForUser(
   auth: AuthContextResolverLike,
   ctx: AuthQueryCtx,
   userId: string,
 ): Promise<AuthContext> {
-  const [user, groupId] = await Promise.all([
+  const [user, activeGroup] = await Promise.all([
     auth.user.get(ctx, userId),
-    auth.user.getActiveGroup(ctx, { userId }),
+    auth.active.get(ctx, { userId }),
   ]);
+  const groupId = activeGroup?.groupId ?? null;
   let role: string | null = null;
   let grants: string[] = [];
   if (groupId) {
@@ -57,6 +97,7 @@ export async function getAuthContextForUser(
     groupId,
     role,
     grants,
+    require: makeRequire(groupId, grants),
   };
 }
 
@@ -84,5 +125,6 @@ export function createUnauthenticatedAuthContext(): OptionalAuthContext {
     groupId: null,
     role: null,
     grants: [],
+    require: makeRequire(null, []),
   };
 }
