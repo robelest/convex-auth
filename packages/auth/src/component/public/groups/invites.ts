@@ -34,21 +34,6 @@ import {
  * @param args.extend - Optional arbitrary payload for application-specific metadata.
  * @returns The `Id<"GroupInvite">` of the newly created invite document.
  *
- * @example
- * ```ts
- * const inviteId = await ctx.runMutation(
- *   components.auth.groups.inviteCreate,
- *   {
- *     groupId: teamGroupId,
- *     invitedByUserId: currentUserId,
- *     email: "alice@example.com",
- *     tokenHash: hashedToken,
- *     roleIds: ["editor"],
- *     status: "pending",
- *     expiresTime: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
- *   },
- * );
- * ```
  */
 export const inviteCreate = mutation({
   args: {
@@ -125,25 +110,6 @@ export const inviteCreate = mutation({
 });
 
 /**
- * Retrieve an invite by its document ID.
- *
- * Performs a direct lookup in the `GroupInvite` table and returns the full
- * invite document, or `null` if no invite exists with the given ID.
- *
- * @param args.inviteId - The `Id<"GroupInvite">` of the invite to retrieve.
- * @returns The invite document (including `email`, `status`, `groupId`, `tokenHash`, etc.) or `null` if not found.
- *
- * @example
- * ```ts
- * const invite = await ctx.runQuery(components.auth.groups.inviteGet, {
- *   inviteId: existingInviteId,
- * });
- * if (invite !== null) {
- *   console.log(invite.email, invite.status);
- * }
- * ```
- */
-/**
  * Read an invite by identity — one function, all-optional args, unioned
  * return: `{ id }` (point lookup) or `{ tokenHash }` (token index).
  * Replaces `inviteGet` / `inviteGetByTokenHash`.
@@ -191,17 +157,6 @@ export const inviteGet = query({
  * @param args.order - Sort direction: `"asc"` or `"desc"` (defaults to `"desc"`).
  * @returns An object `{ items, nextCursor }` where `items` is an array of invite documents and `nextCursor` is `null` when there are no more pages.
  *
- * @example
- * ```ts
- * const { items, nextCursor } = await ctx.runQuery(
- *   components.auth.groups.inviteList,
- *   {
- *     where: { groupId: teamGroupId, status: "pending" },
- *     limit: 25,
- *     order: "desc",
- *   },
- * );
- * ```
  */
 export const inviteList = query({
   args: {
@@ -329,13 +284,6 @@ export const inviteList = query({
  * @throws `ConvexError` with code `INVITE_NOT_PENDING` if the invite has already been accepted, revoked, or otherwise finalized.
  * @throws `ConvexError` with code `INVITE_EXPIRED` if the invite's `expiresTime` has passed.
  *
- * @example
- * ```ts
- * await ctx.runMutation(components.auth.groups.inviteAccept, {
- *   inviteId: pendingInviteId,
- *   acceptedByUserId: currentUserId,
- * });
- * ```
  */
 export const inviteAccept = mutation({
   args: {
@@ -405,19 +353,6 @@ export const inviteAccept = mutation({
  * @throws `ConvexError` with code `INVITE_NOT_PENDING` if the invite has been revoked or is in another non-pending state.
  * @throws `ConvexError` with code `INVITE_EMAIL_MISMATCH` if the accepting user's email does not match the invite's email.
  *
- * @example
- * ```ts
- * const result = await ctx.runMutation(
- *   components.auth.groups.inviteAcceptByToken,
- *   {
- *     tokenHash: "sha256_abc123...",
- *     acceptedByUserId: currentUserId,
- *   },
- * );
- * if (result.membershipStatus === "joined") {
- *   console.log("Joined group", result.groupId, "as member", result.memberId);
- * }
- * ```
  */
 export const inviteAcceptByToken = mutation({
   args: {
@@ -538,12 +473,6 @@ export const inviteAcceptByToken = mutation({
  * @throws `ConvexError` with code `INVITE_NOT_FOUND` if the invite does not exist.
  * @throws `ConvexError` with code `INVITE_NOT_PENDING` if the invite has already been accepted, revoked, or expired.
  *
- * @example
- * ```ts
- * await ctx.runMutation(components.auth.groups.inviteRevoke, {
- *   inviteId: pendingInviteId,
- * });
- * ```
  */
 export const inviteRevoke = mutation({
   args: { inviteId: v.id("GroupInvite") },

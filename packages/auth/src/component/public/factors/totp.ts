@@ -24,21 +24,6 @@ import { vTotpFactorDoc } from "../../model";
  *   was created.
  * @returns The `_id` of the newly created `TotpFactor` document.
  *
- * @example
- * ```ts
- * const totpId = await ctx.runMutation(
- *   components.auth.factors.totp.totpInsert,
- *   {
- *     userId: user._id,
- *     secret: crypto.getRandomValues(new Uint8Array(20)),
- *     digits: 6,
- *     period: 30,
- *     verified: false,
- *     name: "Authenticator App",
- *     createdAt: Date.now(),
- *   },
- * );
- * ```
  */
 export const totpInsert = mutation({
   args: {
@@ -69,16 +54,6 @@ export const totpInsert = mutation({
  * @returns The first verified `TotpFactor` document for the user, or
  *   `null` if the user has no verified TOTP enrollment.
  *
- * @example
- * ```ts
- * const totp = await ctx.runQuery(
- *   components.auth.factors.totp.totpGetVerifiedByUserId,
- *   { userId: user._id },
- * );
- * if (totp === null) {
- *   // User does not have TOTP 2FA enabled
- * }
- * ```
  */
 export const totpGetVerifiedByUserId = query({
   args: { userId: v.id("User") },
@@ -104,15 +79,6 @@ export const totpGetVerifiedByUserId = query({
  * @returns An array of `TotpFactor` documents. Returns an empty array if
  *   the user has no TOTP enrollments.
  *
- * @example
- * ```ts
- * const factors = await ctx.runQuery(
- *   components.auth.factors.totp.totpListByUserId,
- *   { userId: user._id },
- * );
- * const verified = factors.filter((f) => f.verified);
- * const pending = factors.filter((f) => !f.verified);
- * ```
  */
 export const totpListByUserId = query({
   args: { userId: v.id("User") },
@@ -137,16 +103,6 @@ export const totpListByUserId = query({
  * @returns The `TotpFactor` document, or `null` if no enrollment exists
  *   with the given ID.
  *
- * @example
- * ```ts
- * const totp = await ctx.runQuery(
- *   components.auth.factors.totp.totpGetById,
- *   { totpId: enrollmentId },
- * );
- * if (totp !== null && !totp.verified) {
- *   // Enrollment is still pending confirmation
- * }
- * ```
  */
 export const totpGetById = query({
   args: { totpId: v.id("TotpFactor") },
@@ -170,17 +126,6 @@ export const totpGetById = query({
  *   the verification code was successfully validated.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * // After validating the user's TOTP code during setup
- * await ctx.runMutation(
- *   components.auth.factors.totp.totpMarkVerified,
- *   {
- *     totpId: enrollment._id,
- *     lastUsedAt: Date.now(),
- *   },
- * );
- * ```
  */
 export const totpMarkVerified = mutation({
   args: { totpId: v.id("TotpFactor"), lastUsedAt: v.number() },
@@ -210,16 +155,6 @@ export const totpMarkVerified = mutation({
  *   the TOTP code was most recently validated.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   components.auth.factors.totp.totpUpdateLastUsed,
- *   {
- *     totpId: totp._id,
- *     lastUsedAt: Date.now(),
- *   },
- * );
- * ```
  */
 export const totpUpdateLastUsed = mutation({
   args: { totpId: v.id("TotpFactor"), lastUsedAt: v.number() },
@@ -241,14 +176,6 @@ export const totpUpdateLastUsed = mutation({
  * @param totpId - The `_id` of the `TotpFactor` document to delete.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * // User disables TOTP 2FA
- * await ctx.runMutation(
- *   components.auth.factors.totp.totpDelete,
- *   { totpId: totp._id },
- * );
- * ```
  */
 export const totpDelete = mutation({
   args: { totpId: v.id("TotpFactor") },

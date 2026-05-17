@@ -14,16 +14,6 @@ import { vAccountDoc } from "../../model";
  * @returns An array of account documents associated with the user. Each document
  *   includes fields such as `provider`, `providerAccountId`, `secret`, and `extend`.
  *
- * @example
- * ```ts
- * const accounts = await ctx.runQuery(
- *   component.identity.accounts.accountListByUser,
- *   { userId: user._id },
- * );
- * for (const account of accounts) {
- *   console.log(`Provider: ${account.provider}, ID: ${account.providerAccountId}`);
- * }
- * ```
  */
 export const accountListByUser = query({
   args: { userId: v.id("User") },
@@ -36,30 +26,6 @@ export const accountListByUser = query({
   },
 });
 
-/**
- * Look up an account by its provider name and provider-specific account ID.
- *
- * Uses the `provider_account_id` index to find the unique account that matches
- * the given provider and external account identifier. This is the primary way
- * to resolve an incoming authentication event (e.g. an OAuth callback) to an
- * existing account in the system.
- *
- * @param args.provider - The name of the authentication provider (e.g. `"google"`, `"github"`, `"credentials"`).
- * @param args.providerAccountId - The unique identifier assigned to the user by the external provider.
- * @returns The matching account document, or `null` if no account exists for the
- *   given provider and provider account ID combination.
- *
- * @example
- * ```ts
- * const account = await ctx.runQuery(
- *   component.identity.accounts.accountGet,
- *   { provider: "google", providerAccountId: "1184210396400123" },
- * );
- * if (account !== null) {
- *   console.log(`Found account for user: ${account.userId}`);
- * }
- * ```
- */
 /**
  * Read an account by identity — one function, all-optional args, unioned
  * return: `{ id }` (point lookup) or `{ provider, providerAccountId }`
@@ -101,18 +67,6 @@ export const accountGet = query({
  * @param args.extend - Optional arbitrary data to store alongside the account for application-specific needs.
  * @returns The document ID of the newly created account.
  *
- * @example
- * ```ts
- * const accountId = await ctx.runMutation(
- *   component.identity.accounts.accountInsert,
- *   {
- *     userId: user._id,
- *     provider: "credentials",
- *     providerAccountId: "user@example.com",
- *     secret: hashedPassword,
- *   },
- * );
- * ```
  */
 export const accountInsert = mutation({
   args: {
@@ -139,16 +93,6 @@ export const accountInsert = mutation({
  * @param args.data - A partial object containing the fields to merge into the account document.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   component.identity.accounts.accountPatch,
- *   {
- *     accountId: account._id,
- *     data: { secret: newHashedPassword },
- *   },
- * );
- * ```
  */
 export const accountPatch = mutation({
   args: { accountId: v.id("Account"), data: v.any() },
@@ -170,13 +114,6 @@ export const accountPatch = mutation({
  * @param args.accountId - The document ID of the account to delete.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   component.identity.accounts.accountDelete,
- *   { accountId: account._id },
- * );
- * ```
  */
 export const accountDelete = mutation({
   args: {

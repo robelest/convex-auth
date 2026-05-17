@@ -21,19 +21,6 @@ import { vDeviceCodeDoc, vDeviceStatus } from "../../model";
  * @param status - Initial status of the device authorization (e.g. `"pending"`).
  * @returns The `_id` of the newly created `DeviceCode` document.
  *
- * @example
- * ```ts
- * const deviceCodeId = await ctx.runMutation(
- *   components.auth.factors.devices.deviceInsert,
- *   {
- *     deviceCodeHash: "a1b2c3d4e5f6...",
- *     userCode: "ABCD-1234",
- *     expiresAt: Date.now() + 10 * 60 * 1000,
- *     interval: 5,
- *     status: "pending",
- *   },
- * );
- * ```
  */
 export const deviceInsert = mutation({
   args: {
@@ -60,16 +47,6 @@ export const deviceInsert = mutation({
  * @returns The matching `DeviceCode` document, or `null` if no record
  *   exists for the given hash.
  *
- * @example
- * ```ts
- * const deviceCode = await ctx.runQuery(
- *   components.auth.factors.devices.deviceGetByCodeHash,
- *   { deviceCodeHash: "a1b2c3d4e5f6..." },
- * );
- * if (deviceCode && deviceCode.status === "authorized") {
- *   // Exchange for tokens
- * }
- * ```
  */
 export const deviceGetByCodeHash = query({
   args: { deviceCodeHash: v.string() },
@@ -94,16 +71,6 @@ export const deviceGetByCodeHash = query({
  * @returns The matching pending `DeviceCode` document, or `null` if no
  *   pending authorization exists for the given user code.
  *
- * @example
- * ```ts
- * const pending = await ctx.runQuery(
- *   components.auth.factors.devices.deviceGetByUserCode,
- *   { userCode: "ABCD-1234" },
- * );
- * if (pending === null) {
- *   throw new Error("Invalid or expired user code");
- * }
- * ```
  */
 export const deviceGetByUserCode = query({
   args: { userCode: v.string() },
@@ -130,17 +97,6 @@ export const deviceGetByUserCode = query({
  *   approving user's current login.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   components.auth.factors.devices.deviceAuthorize,
- *   {
- *     deviceId: pending._id,
- *     userId: currentUser._id,
- *     sessionId: currentSession._id,
- *   },
- * );
- * ```
  */
 export const deviceAuthorize = mutation({
   args: {
@@ -171,16 +127,6 @@ export const deviceAuthorize = mutation({
  *   recent poll request from the device client.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   components.auth.factors.devices.deviceUpdateLastPolled,
- *   {
- *     deviceId: deviceCode._id,
- *     lastPolledAt: Date.now(),
- *   },
- * );
- * ```
  */
 export const deviceUpdateLastPolled = mutation({
   args: { deviceId: v.id("DeviceCode"), lastPolledAt: v.number() },
@@ -201,14 +147,6 @@ export const deviceUpdateLastPolled = mutation({
  * @param deviceId - The `_id` of the `DeviceCode` document to delete.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * // Clean up after successful token exchange
- * await ctx.runMutation(
- *   components.auth.factors.devices.deviceDelete,
- *   { deviceId: deviceCode._id },
- * );
- * ```
  */
 export const deviceDelete = mutation({
   args: { deviceId: v.id("DeviceCode") },

@@ -26,13 +26,6 @@ async function getUnexpiredVerifier(ctx: QueryCtx, verifierId: string) {
  *   When provided, the verifier is scoped to the given session.
  * @returns The document ID of the newly created verifier.
  *
- * @example
- * ```ts
- * const verifierId = await ctx.runMutation(
- *   component.identity.verifiers.verifierCreate,
- *   { sessionId: session._id },
- * );
- * ```
  */
 export const verifierCreate = mutation({
   args: {
@@ -50,26 +43,6 @@ export const verifierCreate = mutation({
   },
 });
 
-/**
- * Retrieve a single verifier by its Convex document ID.
- *
- * Performs a direct point lookup on the `AuthVerifier` table. Returns `null` if
- * the verifier has been deleted or never existed.
- *
- * @param args.verifierId - The Convex document ID (`Id<"AuthVerifier">`) of the verifier to retrieve.
- * @returns The verifier document if it exists, or `null` otherwise.
- *
- * @example
- * ```ts
- * const verifier = await ctx.runQuery(
- *   component.identity.verifiers.verifierGetById,
- *   { verifierId: storedVerifierId },
- * );
- * if (verifier !== null) {
- *   console.log(`Verifier signature: ${verifier.signature}`);
- * }
- * ```
- */
 /**
  * Read a verifier by identity — one function, all-optional args, unioned
  * return: `{ id }` (point lookup) or `{ signature }` (unique index).
@@ -109,17 +82,6 @@ export const verifierGet = query({
  *   (e.g. `{ signature: string }` or `{ sessionId: Id<"Session"> }`).
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * // Set the PKCE signature on the verifier
- * await ctx.runMutation(
- *   component.identity.verifiers.verifierPatch,
- *   {
- *     verifierId: verifier._id,
- *     data: { signature: generatedSignature },
- *   },
- * );
- * ```
  */
 export const verifierPatch = mutation({
   args: { verifierId: v.id("AuthVerifier"), data: v.any() },
@@ -140,14 +102,6 @@ export const verifierPatch = mutation({
  * @param args.verifierId - The document ID of the verifier to delete.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * // Clean up the verifier after a successful OAuth exchange
- * await ctx.runMutation(
- *   component.identity.verifiers.verifierDelete,
- *   { verifierId: verifier._id },
- * );
- * ```
  */
 export const verifierDelete = mutation({
   args: { verifierId: v.id("AuthVerifier") },

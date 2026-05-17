@@ -21,17 +21,6 @@ import { vPaginated, vSessionDoc } from "../../model";
  * @returns An object with `items` (array of session documents) and `nextCursor`
  *   (`string | null`) for fetching subsequent pages.
  *
- * @example
- * ```ts
- * // List the 10 most recent sessions for a user
- * const page = await ctx.runQuery(
- *   component.identity.sessions.sessionList,
- *   { where: { userId: user._id }, limit: 10, order: "desc" },
- * );
- * for (const session of page.items) {
- *   console.log(`Session ${session._id} expires at ${session.expirationTime}`);
- * }
- * ```
  */
 export const sessionList = query({
   args: {
@@ -86,16 +75,6 @@ export const sessionList = query({
  * @param args.expirationTime - The Unix timestamp (in milliseconds) at which this session expires.
  * @returns The document ID of the newly created session.
  *
- * @example
- * ```ts
- * const sessionId = await ctx.runMutation(
- *   component.identity.sessions.sessionCreate,
- *   {
- *     userId: user._id,
- *     expirationTime: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
- *   },
- * );
- * ```
  */
 export const sessionCreate = mutation({
   args: { userId: v.id("User"), expirationTime: v.number() },
@@ -171,16 +150,6 @@ export const sessionIssue = mutation({
  * @param args.sessionId - The Convex document ID (`Id<"Session">`) of the session to retrieve.
  * @returns The session document if it exists, or `null` otherwise.
  *
- * @example
- * ```ts
- * const session = await ctx.runQuery(
- *   component.identity.sessions.sessionGetById,
- *   { sessionId: refreshToken.sessionId },
- * );
- * if (session !== null && session.expirationTime > Date.now()) {
- *   console.log("Session is still active");
- * }
- * ```
  */
 export const sessionGetById = query({
   args: { sessionId: v.id("Session") },
@@ -201,18 +170,6 @@ export const sessionGetById = query({
  * @param args.sessionId - The document ID of the session to delete.
  * @returns `null` on success (including when the session was already absent).
  *
- * @example
- * ```ts
- * // Revoke a session and its tokens
- * await ctx.runMutation(
- *   component.identity.sessions.sessionDelete,
- *   { sessionId: session._id },
- * );
- * await ctx.runMutation(
- *   component.identity.tokens.refreshTokenDeleteAll,
- *   { sessionId: session._id },
- * );
- * ```
  */
 export const sessionDelete = mutation({
   args: { sessionId: v.id("Session") },
@@ -235,14 +192,6 @@ export const sessionDelete = mutation({
  * @param args.userId - The document ID of the user whose sessions should be retrieved.
  * @returns An array of session documents for the specified user.
  *
- * @example
- * ```ts
- * const sessions = await ctx.runQuery(
- *   component.identity.sessions.sessionListByUser,
- *   { userId: user._id },
- * );
- * console.log(`User has ${sessions.length} active session(s)`);
- * ```
  */
 export const sessionListByUser = query({
   args: { userId: v.id("User") },

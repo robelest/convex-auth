@@ -17,16 +17,6 @@ import { vRefreshTokenDoc } from "../../model";
  *   exchanged to create this one. Omitted for the initial token in a session.
  * @returns The document ID of the newly created refresh token.
  *
- * @example
- * ```ts
- * const tokenId = await ctx.runMutation(
- *   component.identity.tokens.refreshTokenCreate,
- *   {
- *     sessionId: session._id,
- *     expirationTime: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
- *   },
- * );
- * ```
  */
 export const refreshTokenCreate = mutation({
   args: {
@@ -40,26 +30,6 @@ export const refreshTokenCreate = mutation({
   },
 });
 
-/**
- * Retrieve a single refresh token by its Convex document ID.
- *
- * Performs a direct point lookup on the `RefreshToken` table. Returns `null` if
- * the token has been deleted or never existed.
- *
- * @param args.refreshTokenId - The Convex document ID (`Id<"RefreshToken">`) of the token to retrieve.
- * @returns The refresh token document if it exists, or `null` otherwise.
- *
- * @example
- * ```ts
- * const token = await ctx.runQuery(
- *   component.identity.tokens.refreshTokenGetById,
- *   { refreshTokenId: storedTokenId },
- * );
- * if (token !== null && token.expirationTime > Date.now()) {
- *   console.log("Refresh token is still valid");
- * }
- * ```
- */
 /**
  * Read a refresh token by identity — one function, all-optional args,
  * unioned return: `{ id }` (point lookup) or `{ activeForSession }`
@@ -98,17 +68,6 @@ export const refreshTokenGet = query({
  * @param args.data - A partial object containing the fields to merge (e.g. `{ firstUsedTime: number }`).
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * // Mark the refresh token as used
- * await ctx.runMutation(
- *   component.identity.tokens.refreshTokenPatch,
- *   {
- *     refreshTokenId: token._id,
- *     data: { firstUsedTime: Date.now() },
- *   },
- * );
- * ```
  */
 export const refreshTokenPatch = mutation({
   args: { refreshTokenId: v.id("RefreshToken"), data: v.any() },
@@ -131,19 +90,6 @@ export const refreshTokenPatch = mutation({
  * @param args.parentRefreshTokenId - The document ID of the parent refresh token whose children to retrieve.
  * @returns An array of refresh token documents that were derived from the specified parent token.
  *
- * @example
- * ```ts
- * const children = await ctx.runQuery(
- *   component.identity.tokens.refreshTokenGetChildren,
- *   {
- *     sessionId: session._id,
- *     parentRefreshTokenId: parentToken._id,
- *   },
- * );
- * if (children.length > 1) {
- *   console.warn("Possible token reuse detected!");
- * }
- * ```
  */
 export const refreshTokenGetChildren = query({
   args: {
@@ -171,14 +117,6 @@ export const refreshTokenGetChildren = query({
  * @param args.sessionId - The document ID of the session whose refresh tokens should be retrieved.
  * @returns An array of all refresh token documents for the specified session.
  *
- * @example
- * ```ts
- * const tokens = await ctx.runQuery(
- *   component.identity.tokens.refreshTokenListBySession,
- *   { sessionId: session._id },
- * );
- * console.log(`Session has ${tokens.length} refresh token(s)`);
- * ```
  */
 export const refreshTokenListBySession = query({
   args: { sessionId: v.id("Session") },
@@ -202,14 +140,6 @@ export const refreshTokenListBySession = query({
  * @param args.sessionId - The document ID of the session whose refresh tokens should be deleted.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * // Invalidate all tokens for a compromised session
- * await ctx.runMutation(
- *   component.identity.tokens.refreshTokenDeleteAll,
- *   { sessionId: session._id },
- * );
- * ```
  */
 export const refreshTokenDeleteAll = mutation({
   args: { sessionId: v.id("Session") },

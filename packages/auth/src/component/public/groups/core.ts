@@ -43,15 +43,6 @@ function normalizeTags(tags: TagPair[]): TagPair[] {
  * @param args.extend - An optional arbitrary payload for application-specific metadata.
  * @returns The `Id<"Group">` of the newly created group document.
  *
- * @example
- * ```ts
- * const groupId = await ctx.runMutation(components.auth.groups.groupCreate, {
- *   name: "Acme Corp",
- *   slug: "acme-corp",
- *   type: "organization",
- *   tags: [{ key: "plan", value: "group-sso" }],
- * });
- * ```
  */
 export const groupCreate = mutation({
   args: {
@@ -97,25 +88,6 @@ export const groupCreate = mutation({
   },
 });
 
-/**
- * Retrieve a group by its document ID.
- *
- * Performs a direct lookup in the `Group` table and returns the full group
- * document, or `null` if no group exists with the given ID.
- *
- * @param args.groupId - The `Id<"Group">` of the group to retrieve.
- * @returns The group document (including `name`, `slug`, `type`, `tags`, hierarchy fields, etc.) or `null` if not found.
- *
- * @example
- * ```ts
- * const group = await ctx.runQuery(components.auth.groups.groupGet, {
- *   groupId: existingGroupId,
- * });
- * if (group !== null) {
- *   console.log(group.name, group.slug);
- * }
- * ```
- */
 /**
  * Read a group by identity — one function, all-optional args, unioned
  * return: `{ id }` → `Doc<"Group"> | null`, or `{ ids }` → ordered
@@ -227,17 +199,6 @@ export const groupAncestors = query({
  * @param args.order - Sort direction: `"asc"` or `"desc"` (defaults to `"desc"`).
  * @returns An object `{ items, nextCursor }` where `items` is an array of group documents and `nextCursor` is `null` when there are no more pages.
  *
- * @example
- * ```ts
- * const { items, nextCursor } = await ctx.runQuery(
- *   components.auth.groups.groupList,
- *   {
- *     where: { type: "team", isRoot: false },
- *     limit: 20,
- *     order: "asc",
- *   },
- * );
- * ```
  */
 export const groupList = query({
   args: {
@@ -393,16 +354,6 @@ export const groupList = query({
  * @param args.data - A partial object of fields to patch. Supported keys include `name`, `slug`, `type`, `parentGroupId`, `tags`, and `extend`.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(components.auth.groups.groupUpdate, {
- *   groupId: existingGroupId,
- *   data: {
- *     name: "Acme Corp (renamed)",
- *     tags: [{ key: "plan", value: "pro" }],
- *   },
- * });
- * ```
  */
 export const groupUpdate = mutation({
   args: { groupId: v.id("Group"), data: v.any() },
@@ -484,13 +435,6 @@ export const groupUpdate = mutation({
  * @param args.groupId - The `Id<"Group">` of the group to delete. All children are deleted recursively.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * // Delete an organization and everything nested under it
- * await ctx.runMutation(components.auth.groups.groupDelete, {
- *   groupId: organizationGroupId,
- * });
- * ```
  */
 export const groupDelete = mutation({
   args: { groupId: v.id("Group") },

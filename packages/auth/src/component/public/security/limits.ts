@@ -16,16 +16,6 @@ import { vRateLimitResult } from "../../model";
  * @returns The rate limit state object (including `attemptsLeft` and
  *   `lastAttemptTime`), or `null` if no entry exists for the identifier.
  *
- * @example
- * ```ts
- * const limit = await ctx.runQuery(
- *   components.auth.security.limits.rateLimitGet,
- *   { identifier: `login:${email}` },
- * );
- * if (limit !== null && limit.attemptsLeft <= 0) {
- *   throw new Error("Too many login attempts. Please try again later.");
- * }
- * ```
  */
 export const rateLimitGet = query({
   args: { identifier: v.string() },
@@ -63,17 +53,6 @@ export const rateLimitGet = query({
  *   initial attempt.
  * @returns The `_id` of the newly created `RateLimit` document.
  *
- * @example
- * ```ts
- * const rateLimitId = await ctx.runMutation(
- *   components.auth.security.limits.rateLimitCreate,
- *   {
- *     identifier: `login:${email}`,
- *     attemptsLeft: 4, // 5 max minus this attempt
- *     lastAttemptTime: Date.now(),
- *   },
- * );
- * ```
  */
 export const rateLimitCreate = mutation({
   args: {
@@ -107,20 +86,6 @@ export const rateLimitCreate = mutation({
  *   - `lastAttemptTime` -- Updated timestamp of the most recent attempt.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * // Decrement attempts after a failed login
- * await ctx.runMutation(
- *   components.auth.security.limits.rateLimitPatch,
- *   {
- *     rateLimitId: limit._id,
- *     data: {
- *       attemptsLeft: limit.attemptsLeft - 1,
- *       lastAttemptTime: Date.now(),
- *     },
- *   },
- * );
- * ```
  */
 export const rateLimitPatch = mutation({
   args: { rateLimitId: v.id("RateLimit"), data: v.any() },
@@ -151,14 +116,6 @@ export const rateLimitPatch = mutation({
  * @param rateLimitId - The `_id` of the `RateLimit` document to delete.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * // Admin resets a user's login rate limit
- * await ctx.runMutation(
- *   components.auth.security.limits.rateLimitDelete,
- *   { rateLimitId: limit._id },
- * );
- * ```
  */
 export const rateLimitDelete = mutation({
   args: { rateLimitId: v.id("RateLimit") },

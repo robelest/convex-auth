@@ -32,24 +32,6 @@ import { vPasskeyDoc } from "../../model";
  *   was registered.
  * @returns The `_id` of the newly created `Passkey` document.
  *
- * @example
- * ```ts
- * const passkeyId = await ctx.runMutation(
- *   components.auth.factors.passkeys.passkeyInsert,
- *   {
- *     userId: user._id,
- *     credentialId: "dGVzdC1jcmVkZW50aWFs",
- *     publicKey: publicKeyBytes,
- *     algorithm: -7,
- *     counter: 0,
- *     transports: ["internal"],
- *     deviceType: "multiDevice",
- *     backedUp: true,
- *     name: "MacBook Pro Touch ID",
- *     createdAt: Date.now(),
- *   },
- * );
- * ```
  */
 export const passkeyInsert = mutation({
   args: {
@@ -82,16 +64,6 @@ export const passkeyInsert = mutation({
  * @returns The matching `Passkey` document, or `null` if no passkey exists
  *   with the given credential ID.
  *
- * @example
- * ```ts
- * const passkey = await ctx.runQuery(
- *   components.auth.factors.passkeys.passkeyGetByCredentialId,
- *   { credentialId: "dGVzdC1jcmVkZW50aWFs" },
- * );
- * if (passkey === null) {
- *   throw new Error("Unknown credential");
- * }
- * ```
  */
 export const passkeyGetByCredentialId = query({
   args: { credentialId: v.string() },
@@ -116,16 +88,6 @@ export const passkeyGetByCredentialId = query({
  * @returns The `Passkey` document, or `null` if no passkey exists with the
  *   given ID.
  *
- * @example
- * ```ts
- * const passkey = await ctx.runQuery(
- *   components.auth.factors.passkeys.passkeyGetById,
- *   { passkeyId },
- * );
- * if (passkey === null) {
- *   throw new Error("Passkey not found");
- * }
- * ```
  */
 export const passkeyGetById = query({
   args: { passkeyId: v.id("Passkey") },
@@ -147,17 +109,6 @@ export const passkeyGetById = query({
  * @returns An array of `Passkey` documents. Returns an empty array if the
  *   user has no registered passkeys.
  *
- * @example
- * ```ts
- * const passkeys = await ctx.runQuery(
- *   components.auth.factors.passkeys.passkeyListByUserId,
- *   { userId: user._id },
- * );
- * // Display each passkey's name and creation date
- * for (const pk of passkeys) {
- *   console.log(pk.name, new Date(pk.createdAt));
- * }
- * ```
  */
 export const passkeyListByUserId = query({
   args: { userId: v.id("User") },
@@ -185,17 +136,6 @@ export const passkeyListByUserId = query({
  *   this passkey was most recently used to authenticate.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   components.auth.factors.passkeys.passkeyUpdateCounter,
- *   {
- *     passkeyId: passkey._id,
- *     counter: assertionResponse.counter,
- *     lastUsedAt: Date.now(),
- *   },
- * );
- * ```
  */
 export const passkeyUpdateCounter = mutation({
   args: {
@@ -222,16 +162,6 @@ export const passkeyUpdateCounter = mutation({
  *   includes `{ name: "New Label" }`, but accepts any valid passkey fields.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   components.auth.factors.passkeys.passkeyUpdateMeta,
- *   {
- *     passkeyId: passkey._id,
- *     data: { name: "YubiKey 5C NFC" },
- *   },
- * );
- * ```
  */
 export const passkeyUpdateMeta = mutation({
   args: { passkeyId: v.id("Passkey"), data: v.any() },
@@ -252,13 +182,6 @@ export const passkeyUpdateMeta = mutation({
  * @param passkeyId - The `_id` of the `Passkey` document to delete.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   components.auth.factors.passkeys.passkeyDelete,
- *   { passkeyId: passkey._id },
- * );
- * ```
  */
 export const passkeyDelete = mutation({
   args: { passkeyId: v.id("Passkey") },

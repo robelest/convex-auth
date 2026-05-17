@@ -23,18 +23,6 @@ import { vGroupMemberDoc, vPaginated } from "../../model";
  * @returns The `Id<"GroupMember">` of the newly created member document.
  * @throws `ConvexError` with code `DUPLICATE_MEMBERSHIP` if the user is already a member of this group.
  *
- * @example
- * ```ts
- * const memberId = await ctx.runMutation(
- *   components.auth.groups.memberAdd,
- *   {
- *     groupId: teamGroupId,
- *     userId: newUserId,
- *     roleIds: ["viewer"],
- *     status: "active",
- *   },
- * );
- * ```
  */
 export const memberAdd = mutation({
   args: {
@@ -63,25 +51,6 @@ export const memberAdd = mutation({
   },
 });
 
-/**
- * Retrieve a member record by its document ID.
- *
- * Performs a direct lookup in the `GroupMember` table and returns the full
- * member document, or `null` if no member exists with the given ID.
- *
- * @param args.memberId - The `Id<"GroupMember">` of the member record to retrieve.
- * @returns The member document (including `groupId`, `userId`, `roleIds`, `status`, etc.) or `null` if not found.
- *
- * @example
- * ```ts
- * const member = await ctx.runQuery(components.auth.groups.memberGet, {
- *   memberId: existingMemberId,
- * });
- * if (member !== null) {
- *   console.log(member.userId, member.roleIds);
- * }
- * ```
- */
 /**
  * Read a membership by identity — one function, all-optional args,
  * unioned return: `{ id }` (point lookup) or `{ groupId, userId }`
@@ -129,17 +98,6 @@ export const memberGet = query({
  * @param args.order - Sort direction: `"asc"` or `"desc"` (defaults to `"desc"`).
  * @returns An object `{ items, nextCursor }` where `items` is an array of member documents and `nextCursor` is `null` when there are no more pages.
  *
- * @example
- * ```ts
- * const { items, nextCursor } = await ctx.runQuery(
- *   components.auth.groups.memberList,
- *   {
- *     where: { groupId: teamGroupId, status: "active" },
- *     limit: 30,
- *     order: "asc",
- *   },
- * );
- * ```
  */
 export const memberList = query({
   args: {
@@ -234,13 +192,6 @@ export const memberList = query({
  *   each pair once).
  * @returns Array of member documents or `null` entries, in `groupIds` order.
  *
- * @example
- * ```ts
- * const members = await ctx.runQuery(
- *   components.auth.groups.memberGetByGroupAndUserMany,
- *   { userId: viewerId, groupIds: rootGroupIds },
- * );
- * ```
  */
 export const memberGetByGroupAndUserMany = query({
   args: {
@@ -292,23 +243,6 @@ export const memberGetByGroupAndUserMany = query({
  *   - `isInherited` — `true` when `depth > 0`.
  *   - `traversedGroupIds` — (only when `ancestry` is `true`) array of group IDs visited.
  *
- * @example
- * ```ts
- * const result = await ctx.runQuery(
- *   components.auth.groups.memberResolve,
- *   {
- *     userId: currentUserId,
- *     groupId: subTeamGroupId,
- *     maxDepth: 5,
- *     ancestry: true,
- *   },
- * );
- * if (result.membership !== null) {
- *   console.log(
- *     result.isDirect ? "Direct member" : `Inherited from depth ${result.depth}`,
- *   );
- * }
- * ```
  */
 export const memberResolve = query({
   args: {
@@ -383,12 +317,6 @@ export const memberResolve = query({
  * @param args.memberId - The `Id<"GroupMember">` of the member record to delete.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(components.auth.groups.memberRemove, {
- *   memberId: memberToRemoveId,
- * });
- * ```
  */
 export const memberRemove = mutation({
   args: { memberId: v.id("GroupMember") },
@@ -410,16 +338,6 @@ export const memberRemove = mutation({
  * @param args.data - A partial object of fields to patch. Supported keys include `roleIds`, `status`, and `extend`.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(components.auth.groups.memberUpdate, {
- *   memberId: existingMemberId,
- *   data: {
- *     roleIds: ["admin", "editor"],
- *     status: "active",
- *   },
- * });
- * ```
  */
 export const memberUpdate = mutation({
   args: { memberId: v.id("GroupMember"), data: v.any() },

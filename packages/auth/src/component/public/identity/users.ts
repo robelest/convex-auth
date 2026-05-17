@@ -24,23 +24,6 @@ import { vPaginated, vUserDoc, vUserEmailDoc, vUserEmailSource } from "../../mod
  * @returns An object with `items` (array of user documents) and `nextCursor`
  *   (`string | null`) for fetching subsequent pages.
  *
- * @example
- * ```ts
- * // Fetch the first page of non-anonymous users
- * const page1 = await ctx.runQuery(
- *   component.identity.users.userList,
- *   { where: { isAnonymous: false }, limit: 20 },
- * );
- * console.log(page1.items);
- *
- * // Fetch the next page
- * if (page1.nextCursor !== null) {
- *   const page2 = await ctx.runQuery(
- *     component.identity.users.userList,
- *     { where: { isAnonymous: false }, limit: 20, cursor: page1.nextCursor },
- *   );
- * }
- * ```
  */
 export const userList = query({
   args: {
@@ -111,144 +94,6 @@ export const userList = query({
   },
 });
 
-/**
- * Retrieve a single user by their Convex document ID.
- *
- * Performs a direct point lookup on the `User` table. Returns `null` if the
- * user has been deleted or never existed.
- *
- * @param args.userId - The Convex document ID (`Id<"User">`) of the user to retrieve.
- * @returns The user document if it exists, or `null` otherwise.
- *
- * @example
- * ```ts
- * const user = await ctx.runQuery(
- *   component.identity.users.userGetById,
- *   { userId: session.userId },
- * );
- * if (user !== null) {
- *   console.log(`Name: ${user.name}, Email: ${user.email}`);
- * }
- * ```
- */
-export const userGetById = query({
-  args: { userId: v.id("User") },
-  returns: v.union(vUserDoc, v.null()),
-  handler: async (ctx, { userId }) => {
-    return await ctx.db.get("User", userId);
-  },
-});
-
-/**
- * Fetch many user documents by ID in a single component round-trip.
- *
- * Equivalent to calling {@link userGetById} for each ID in parallel from the
- * app side, but collapses what would be `N` cross-component RPCs into one.
- * Returns the documents in the same order as the input IDs; missing users
- * appear as `null`. Input is de-duplicated internally so passing the same
- * ID twice costs exactly one `ctx.db.get`.
- *
- * Hot paths like `groups:getDashboard` (member summaries) and
- * `issues:projectIssues` (assignee/creator lookups) previously fanned out
- * N `userGetById` calls — this helper is the batched replacement.
- *
- * @param args.userIds - Array of user document IDs (order preserved, duplicates tolerated).
- * @returns Array of user documents or `null` entries, in the same order as `args.userIds`.
- *
- * @example
- * ```ts
- * const users = await ctx.runQuery(
- *   component.identity.users.userGetMany,
- *   { userIds: memberIds },
- * );
- * const byId = new Map(users.filter(u => u !== null).map(u => [u!._id, u!]));
- * ```
- */
-export const userGetMany = query({
-  args: { userIds: v.array(v.id("User")) },
-  returns: v.array(v.union(vUserDoc, v.null())),
-  handler: async (ctx, { userIds }) => {
-    if (userIds.length === 0) return [];
-    const unique = Array.from(new Set(userIds));
-    const docs = await Promise.all(unique.map((id) => ctx.db.get("User", id)));
-    const byId = new Map(unique.map((id, i) => [id, docs[i] ?? null]));
-    return userIds.map((id) => byId.get(id) ?? null);
-  },
-});
-
-/**
- * Find a user by their verified email address.
- *
- * Queries the `User` table using the `email_verified` index to locate users
- * whose `email` matches and whose `emailVerificationTime` is set. If exactly
- * one user is found, that document is returned. Returns `null` if no user has
- * this email verified or if multiple users share the same verified email
- * (an ambiguous state that should not occur in normal operation).
- *
- * @param args.email - The verified email address to search for (case-sensitive, exact match).
- * @returns The matching user document if exactly one verified user is found, or `null` otherwise.
- *
- * @example
- * ```ts
- * const user = await ctx.runQuery(
- *   component.identity.users.userFindByVerifiedEmail,
- *   { email: "alice@example.com" },
- * );
- * if (user !== null) {
- *   console.log(`Found verified user: ${user._id}`);
- * }
- * ```
- */
-export const userFindByVerifiedEmail = query({
-  args: { email: v.string() },
-  returns: v.union(vUserDoc, v.null()),
-  handler: async (ctx, { email }) => {
-    const users = await ctx.db
-      .query("User")
-      .withIndex("email_verified", (q) =>
-        q.eq("email", email).gt("emailVerificationTime", undefined),
-      )
-      .take(2);
-    return users.length === 1 ? users[0] : null;
-  },
-});
-
-/**
- * Find a user by their verified phone number.
- *
- * Queries the `User` table using the `phone_verified` index to locate users
- * whose `phone` matches and whose `phoneVerificationTime` is set. If exactly
- * one user is found, that document is returned. Returns `null` if no user has
- * this phone verified or if multiple users share the same verified phone
- * (an ambiguous state that should not occur in normal operation).
- *
- * @param args.phone - The verified phone number to search for (exact match, e.g. `"+15551234567"`).
- * @returns The matching user document if exactly one verified user is found, or `null` otherwise.
- *
- * @example
- * ```ts
- * const user = await ctx.runQuery(
- *   component.identity.users.userFindByVerifiedPhone,
- *   { phone: "+15551234567" },
- * );
- * if (user !== null) {
- *   console.log(`Found verified user: ${user._id}`);
- * }
- * ```
- */
-export const userFindByVerifiedPhone = query({
-  args: { phone: v.string() },
-  returns: v.union(vUserDoc, v.null()),
-  handler: async (ctx, { phone }) => {
-    const users = await ctx.db
-      .query("User")
-      .withIndex("phone_verified", (q) =>
-        q.eq("phone", phone).gt("phoneVerificationTime", undefined),
-      )
-      .take(2);
-    return users.length === 1 ? users[0] : null;
-  },
-});
 
 /**
  * Insert a new user document into the `User` table.
@@ -261,19 +106,6 @@ export const userFindByVerifiedPhone = query({
  *   `email`, `isAnonymous`, and any custom fields under `extend`.
  * @returns The document ID of the newly created user.
  *
- * @example
- * ```ts
- * const userId = await ctx.runMutation(
- *   component.identity.users.userInsert,
- *   {
- *     data: {
- *       name: "Alice",
- *       email: "alice@example.com",
- *       isAnonymous: false,
- *     },
- *   },
- * );
- * ```
  */
 export const userInsert = mutation({
   args: { data: v.any() },
@@ -298,17 +130,6 @@ export const userInsert = mutation({
  *   shape as the User table schema.
  * @returns The document ID of the created or updated user.
  *
- * @example
- * ```ts
- * // Create a new user if none exists, or update the existing one
- * const userId = await ctx.runMutation(
- *   component.identity.users.userUpsert,
- *   {
- *     userId: existingUserId ?? undefined,
- *     data: { name: "Alice", email: "alice@example.com" },
- *   },
- * );
- * ```
  */
 export const userUpsert = mutation({
   args: { userId: v.optional(v.id("User")), data: v.any() },
@@ -334,16 +155,6 @@ export const userUpsert = mutation({
  * @param args.data - A partial object containing the fields to merge into the user document.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   component.identity.users.userPatch,
- *   {
- *     userId: user._id,
- *     data: { name: "Alice Smith", image: "https://example.com/avatar.png" },
- *   },
- * );
- * ```
  */
 export const userPatch = mutation({
   args: { userId: v.id("User"), data: v.any() },
@@ -364,13 +175,6 @@ export const userPatch = mutation({
  * @param args.userId - The document ID of the user to delete.
  * @returns `null` on success (including when the user was already absent).
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   component.identity.users.userDelete,
- *   { userId: user._id },
- * );
- * ```
  */
 export const userDelete = mutation({
   args: {
@@ -504,14 +308,6 @@ export const userDelete = mutation({
  * @param args.userId - The user whose emails to list.
  * @returns The user's `UserEmail` documents (may be empty).
  *
- * @example
- * ```ts
- * const emails = await ctx.runQuery(
- *   component.identity.users.userEmailListByUser,
- *   { userId },
- * );
- * const primary = emails.find((e) => e.isPrimary);
- * ```
  */
 export const userEmailListByUser = query({
   args: { userId: v.id("User") },
@@ -536,13 +332,6 @@ export const userEmailListByUser = query({
  * @param args.connectionId - Restrict to this connection's emails (SSO).
  * @returns The owning user document, or `null` when zero or 2+ match.
  *
- * @example
- * ```ts
- * const user = await ctx.runQuery(
- *   component.identity.users.userEmailFindVerified,
- *   { email: "alice@example.com", connectionId },
- * );
- * ```
  */
 export const userEmailFindVerified = query({
   args: { email: v.string(), connectionId: v.optional(v.id("GroupConnection")) },
@@ -588,16 +377,6 @@ export const userEmailFindVerified = query({
  * @param args.connectionId - Originating SSO connection, when applicable.
  * @returns The `UserEmail` document ID.
  *
- * @example
- * ```ts
- * await ctx.runMutation(component.identity.users.userEmailUpsert, {
- *   userId,
- *   email: "alice@example.com",
- *   verified: true,
- *   isPrimary: true,
- *   source: "oauth",
- * });
- * ```
  */
 export const userEmailUpsert = mutation({
   args: {
@@ -677,13 +456,6 @@ export const userEmailUpsert = mutation({
  * @returns `null`.
  * @throws `INVALID_PARAMETERS` if the email is not owned or not verified.
  *
- * @example
- * ```ts
- * await ctx.runMutation(component.identity.users.userEmailSetPrimary, {
- *   userId,
- *   email: "alice@work.com",
- * });
- * ```
  */
 export const userEmailSetPrimary = mutation({
   args: { userId: v.id("User"), email: v.string() },
@@ -731,13 +503,6 @@ export const userEmailSetPrimary = mutation({
  * @throws `INVALID_PARAMETERS` if not owned, primary, the only verified
  *   email, or connection-managed.
  *
- * @example
- * ```ts
- * await ctx.runMutation(component.identity.users.userEmailRemove, {
- *   userId,
- *   email: "old@example.com",
- * });
- * ```
  */
 export const userEmailRemove = mutation({
   args: { userId: v.id("User"), email: v.string() },

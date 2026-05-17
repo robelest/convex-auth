@@ -24,20 +24,6 @@ import {
  * @param args.extend - An optional arbitrary extension object for custom SCIM settings.
  * @returns The ID of the created or updated `GroupConnectionScimConfig` document.
  *
- * @example
- * ```ts
- * const configId = await ctx.runMutation(
- *   components.auth.group.sso.groupConnectionScimConfigUpsert,
- *   {
- *     connectionId,
- *     groupId: orgGroupId,
- *     status: "active",
- *     basePath: "/scim/v2",
- *     tokenHash: "sha256:abc123...",
- *     lastRotatedAt: Date.now(),
- *   },
- * );
- * ```
  */
 export const groupConnectionScimConfigUpsert = mutation({
   args: {
@@ -72,16 +58,6 @@ export const groupConnectionScimConfigUpsert = mutation({
  * @param args.connectionId - The ID of the group connection whose SCIM config to retrieve.
  * @returns The SCIM configuration document, or `null` if not configured.
  *
- * @example
- * ```ts
- * const config = await ctx.runQuery(
- *   components.auth.public.groupConnectionScimConfigGetByGroupConnection,
- *   { connectionId },
- * );
- * if (config) {
- *   console.log(config.status, config.basePath);
- * }
- * ```
  */
 export const groupConnectionScimConfigGetByGroupConnection = query({
   args: { connectionId: v.id("GroupConnection") },
@@ -103,16 +79,6 @@ export const groupConnectionScimConfigGetByGroupConnection = query({
  * @param args.tokenHash - The hash of the bearer token from the incoming SCIM request.
  * @returns The matching SCIM configuration document, or `null` if not found.
  *
- * @example
- * ```ts
- * const config = await ctx.runQuery(
- *   components.auth.group.sso.groupConnectionScimConfigGetByTokenHash,
- *   { tokenHash: "sha256:abc123..." },
- * );
- * if (config) {
- *   console.log("Authenticated group:", config.connectionId);
- * }
- * ```
  */
 export const groupConnectionScimConfigGetByTokenHash = query({
   args: { tokenHash: v.string() },
@@ -137,17 +103,6 @@ export const groupConnectionScimConfigGetByTokenHash = query({
  * @param args.externalId - The external identifier assigned by the identity provider.
  * @returns The SCIM identity document, or `null` if not found.
  *
- * @example
- * ```ts
- * const identity = await ctx.runQuery(
- *   components.auth.group.sso.groupConnectionScimIdentityGet,
- *   {
- *     connectionId,
- *     resourceType: "user",
- *     externalId: "okta-user-abc123",
- *   },
- * );
- * ```
  */
 export const groupConnectionScimIdentityGet = query({
   args: {
@@ -179,16 +134,6 @@ export const groupConnectionScimIdentityGet = query({
  * @param args.userId - The document ID of the user whose SCIM identity to retrieve.
  * @returns The SCIM identity document, or `null` if the user has no SCIM identity.
  *
- * @example
- * ```ts
- * const scimIdentity = await ctx.runQuery(
- *   components.auth.group.sso.groupConnectionScimIdentityGetByUser,
- *   { userId },
- * );
- * if (scimIdentity) {
- *   console.log("User provisioned via SCIM:", scimIdentity.externalId);
- * }
- * ```
  */
 export const groupConnectionScimIdentityGetByUser = query({
   args: { userId: v.id("User") },
@@ -212,13 +157,6 @@ export const groupConnectionScimIdentityGetByUser = query({
  * @param args.userId - The document ID of the user.
  * @returns The SCIM identity document, or `null` if not found.
  *
- * @example
- * ```ts
- * const identity = await ctx.runQuery(
- *   components.auth.public.groupConnectionScimIdentityGetByGroupConnectionAndUser,
- *   { connectionId, userId },
- * );
- * ```
  */
 export const groupConnectionScimIdentityGetByGroupConnectionAndUser = query({
   args: {
@@ -293,16 +231,6 @@ export const groupConnectionScimIdentityGetByGroupConnectionAndUsers = query({
  * @param args.mappedGroupId - The document ID of the internal group that a SCIM group is mapped to.
  * @returns The SCIM identity document, or `null` if no mapping exists.
  *
- * @example
- * ```ts
- * const scimGroup = await ctx.runQuery(
- *   components.auth.public.groupConnectionScimIdentityGetByMappedGroup,
- *   { mappedGroupId: teamGroupId },
- * );
- * if (scimGroup) {
- *   console.log("SCIM external group ID:", scimGroup.externalId);
- * }
- * ```
  */
 export const groupConnectionScimIdentityGetByMappedGroup = query({
   args: { mappedGroupId: v.id("Group") },
@@ -325,15 +253,6 @@ export const groupConnectionScimIdentityGetByMappedGroup = query({
  * @param args.connectionId - The ID of the group connection whose SCIM identities to list.
  * @returns An array of SCIM identity documents.
  *
- * @example
- * ```ts
- * const identities = await ctx.runQuery(
- *   components.auth.public.groupConnectionScimIdentityListByGroupConnection,
- *   { connectionId },
- * );
- * const users = identities.filter((i) => i.resourceType === "user");
- * const groups = identities.filter((i) => i.resourceType === "group");
- * ```
  */
 export const groupConnectionScimIdentityListByGroupConnection = query({
   args: { connectionId: v.id("GroupConnection") },
@@ -365,22 +284,6 @@ export const groupConnectionScimIdentityListByGroupConnection = query({
  * @param args.raw - An optional raw SCIM payload stored for debugging or re-processing.
  * @returns The ID of the created or updated `GroupConnectionScimIdentity` document.
  *
- * @example
- * ```ts
- * const identityId = await ctx.runMutation(
- *   components.auth.group.sso.groupConnectionScimIdentityUpsert,
- *   {
- *     connectionId,
- *     groupId: orgGroupId,
- *     resourceType: "user",
- *     externalId: "okta-user-abc123",
- *     userId,
- *     active: true,
- *     lastProvisionedAt: Date.now(),
- *     raw: { schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"], userName: "jane@acme.com" },
- *   },
- * );
- * ```
  */
 export const groupConnectionScimIdentityUpsert = mutation({
   args: {
@@ -422,13 +325,6 @@ export const groupConnectionScimIdentityUpsert = mutation({
  * @param args.identityId - The document ID of the SCIM identity to delete.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   components.auth.group.sso.groupConnectionScimIdentityDelete,
- *   { identityId: scimIdentity._id },
- * );
- * ```
  */
 export const groupConnectionScimIdentityDelete = mutation({
   args: { identityId: v.id("GroupConnectionScimIdentity") },

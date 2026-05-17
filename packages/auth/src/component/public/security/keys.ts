@@ -37,20 +37,6 @@ import {
  * @param metadata - Optional arbitrary metadata to attach to the key record.
  * @returns The `_id` of the newly created `ApiKey` document.
  *
- * @example
- * ```ts
- * const keyId = await ctx.runMutation(
- *   components.auth.security.keys.keyInsert,
- *   {
- *     userId: user._id,
- *     prefix: "sk_live_",
- *     hashedKey: await sha256(rawKey),
- *     name: "Production Backend",
- *     scopes: [{ resource: "messages", actions: ["read", "write"] }],
- *     expiresAt: Date.now() + 90 * 24 * 60 * 60 * 1000,
- *   },
- * );
- * ```
  */
 export const keyInsert = mutation({
   args: {
@@ -78,31 +64,6 @@ export const keyInsert = mutation({
   },
 });
 
-/**
- * Look up an API key by its SHA-256 hash.
- *
- * Queries the `ApiKey` table using the `hashed_key` index. This is the
- * primary lookup path during Bearer token verification: the incoming
- * token is hashed and matched against stored hashes in constant time.
- * Returns the full key record including scopes, rate limit state, and
- * revocation status so the caller can perform authorization checks.
- *
- * @param hashedKey - SHA-256 hash of the API key string extracted from
- *   the `Authorization: Bearer <token>` header.
- * @returns The matching `ApiKey` document (including rate limit state),
- *   or `null` if no key matches the given hash.
- *
- * @example
- * ```ts
- * const apiKey = await ctx.runQuery(
- *   components.auth.security.keys.keyGetByHashedKey,
- *   { hashedKey: await sha256(bearerToken) },
- * );
- * if (apiKey === null || apiKey.revoked) {
- *   throw new Error("Invalid or revoked API key");
- * }
- * ```
- */
 /**
  * Read an API key by identity — one function, all-optional args, unioned
  * return: `{ id }` (point lookup) or `{ hashedKey }` (Bearer-verify
@@ -152,25 +113,6 @@ export const keyGet = query({
  * @returns An object with `items` (array of `ApiKey` documents) and
  *   `nextCursor` (string ID of the last item, or `null` if no more pages).
  *
- * @example
- * ```ts
- * // Fetch the first page of active keys for a user
- * const page = await ctx.runQuery(
- *   components.auth.security.keys.keyList,
- *   {
- *     where: { userId: user._id, revoked: false },
- *     limit: 20,
- *     order: "desc",
- *   },
- * );
- * // Fetch the next page
- * if (page.nextCursor) {
- *   const page2 = await ctx.runQuery(
- *     components.auth.security.keys.keyList,
- *     { where: { userId: user._id, revoked: false }, cursor: page.nextCursor },
- *   );
- * }
- * ```
  */
 export const keyList = query({
   args: {
@@ -259,29 +201,6 @@ export const keyList = query({
  *     recent API call using this key.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * // Revoke an API key
- * await ctx.runMutation(
- *   components.auth.security.keys.keyPatch,
- *   {
- *     keyId: apiKey._id,
- *     data: { revoked: true },
- *   },
- * );
- *
- * // Rename and update scopes
- * await ctx.runMutation(
- *   components.auth.security.keys.keyPatch,
- *   {
- *     keyId: apiKey._id,
- *     data: {
- *       name: "Read-Only Key",
- *       scopes: [{ resource: "messages", actions: ["read"] }],
- *     },
- *   },
- * );
- * ```
  */
 export const keyPatch = mutation({
   args: {
@@ -321,13 +240,6 @@ export const keyPatch = mutation({
  * @param keyId - The `_id` of the `ApiKey` document to delete.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * await ctx.runMutation(
- *   components.auth.security.keys.keyDelete,
- *   { keyId: apiKey._id },
- * );
- * ```
  */
 export const keyDelete = mutation({
   args: { keyId: v.id("ApiKey") },

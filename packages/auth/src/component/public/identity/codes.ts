@@ -4,27 +4,6 @@ import { mutation, query } from "../../functions";
 import { vVerificationCodeDoc } from "../../model";
 
 /**
- * Find a verification code by its associated account ID.
- *
- * Queries the `VerificationCode` table using the `account_id` index to locate
- * the unique verification code linked to the given account. Each account has at
- * most one active verification code at a time.
- *
- * @param args.accountId - The document ID of the account whose verification code should be retrieved.
- * @returns The verification code document if one exists for the account, or `null` otherwise.
- *
- * @example
- * ```ts
- * const code = await ctx.runQuery(
- *   component.identity.codes.verificationCodeGetByAccountId,
- *   { accountId: account._id },
- * );
- * if (code !== null && code.expirationTime > Date.now()) {
- *   console.log("Active verification code exists");
- * }
- * ```
- */
-/**
  * Read a verification code by identity — one function, all-optional
  * args, unioned return: `{ accountId }` (unique per account) or
  * `{ code }` (code index). Replaces `verificationCodeGetByAccountId` /
@@ -70,19 +49,6 @@ export const verificationCodeGet = query({
  *   code redemption.
  * @returns The document ID of the newly created verification code.
  *
- * @example
- * ```ts
- * const codeId = await ctx.runMutation(
- *   component.identity.codes.verificationCodeCreate,
- *   {
- *     accountId: account._id,
- *     provider: "resend-otp",
- *     code: "482910",
- *     expirationTime: Date.now() + 10 * 60 * 1000, // 10 minutes
- *     emailVerified: "alice@example.com",
- *   },
- * );
- * ```
  */
 export const verificationCodeCreate = mutation({
   args: {
@@ -110,14 +76,6 @@ export const verificationCodeCreate = mutation({
  * @param args.verificationCodeId - The document ID of the verification code to delete.
  * @returns `null` on success.
  *
- * @example
- * ```ts
- * // Delete the code after successful verification
- * await ctx.runMutation(
- *   component.identity.codes.verificationCodeDelete,
- *   { verificationCodeId: codeDoc._id },
- * );
- * ```
  */
 export const verificationCodeDelete = mutation({
   args: { verificationCodeId: v.id("VerificationCode") },
