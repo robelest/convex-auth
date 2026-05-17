@@ -22,6 +22,8 @@ import type {
   UserDoc,
 } from "./facade";
 import { Auth as AuthFactory } from "./runtime";
+import { buildAuthValidators } from "./validators";
+import type { AuthExtendValidators, AuthValidators } from "./validators";
 import type {
   AuthAuthorizationConfig,
   AuthGrant,
@@ -43,6 +45,7 @@ export type {
   OptionalAuthContext,
   UserDoc,
 };
+export type { AuthExtendValidators, AuthValidators };
 
 
 // ============================================================================
@@ -112,7 +115,60 @@ type MemberApiWithAuthorization<TAuthorization extends AuthAuthorizationConfig |
  * @typeParam TAuthorization - The authorization config, used to narrow
  *   role IDs and grant strings on the `member` API.
  */
-export type AuthApiBase<TAuthorization extends AuthAuthorizationConfig | undefined = undefined> = {
+export type AuthApiBase<
+  TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+  TExtend extends AuthExtendValidators = {},
+> = {
+  /**
+   * Convex `returns:` validators for the auth read surface.
+   *
+   * Set these as a function's `returns:` so client-side `useQuery`
+   * inference flows end-to-end without hand-rolled validators or DTO
+   * mappers. The `extend` field of each document carries the shape
+   * supplied via `createAuth({ extend: { ... } })`.
+   *
+   * Available validators:
+   * - `v.user` / `v.group` / `v.member` — single documents (extend-aware).
+   * - `v.invite` — a single group invite document.
+   * - `v.viewer` — `User | null`, for a current-user query.
+   * - `v.list(item)` — wraps an item validator in `{ items, nextCursor }`.
+   *
+   * Compose these for richer reads — e.g. a current user plus their
+   * memberships and groups — using the existing `auth.user.viewer`,
+   * `auth.member.list`, and `auth.group.get` facade methods.
+   *
+   * @example
+   * ```ts
+   * export const viewer = authQuery({
+   *   returns: auth.v.viewer,
+   *   handler: (ctx) => ctx.auth.user.viewer(ctx),
+   * });
+   *
+   * export const groups = authQuery({
+   *   returns: v.union(
+   *     v.object({
+   *       ...auth.v.user.fields,
+   *       memberships: v.array(auth.v.member),
+   *       groups: v.array(auth.v.group),
+   *     }),
+   *     v.null(),
+   *   ),
+   *   handler: async (ctx) => {
+   *     const me = await ctx.auth.user.viewer(ctx);
+   *     if (me === null) return null;
+   *     const { items: memberships } = await ctx.auth.member.list(ctx, {
+   *       where: { userId: me._id },
+   *     });
+   *     const groups = await ctx.auth.group.get(
+   *       ctx,
+   *       memberships.map((m) => m.groupId),
+   *     );
+   *     return { ...me, memberships, groups };
+   *   },
+   * });
+   * ```
+   */
+  v: AuthValidators<TExtend>;
   signIn: ReturnType<typeof AuthFactory>["signIn"];
   signOut: ReturnType<typeof AuthFactory>["signOut"];
   store: ReturnType<typeof AuthFactory>["store"];
@@ -305,12 +361,14 @@ type PublicGroupSsoApi = {
  * @typeParam TAuthorization - The authorization config, forwarded to
  *   {@link AuthApiBase} for typed role IDs and grant strings.
  */
-export type AuthApi<TAuthorization extends AuthAuthorizationConfig | undefined = undefined> =
-  AuthApiBase<TAuthorization> & {
-    group: AuthApiBase<TAuthorization>["group"] & {
-      sso: PublicGroupSsoApi;
-    };
+export type AuthApi<
+  TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+  TExtend extends AuthExtendValidators = {},
+> = AuthApiBase<TAuthorization, TExtend> & {
+  group: AuthApiBase<TAuthorization, TExtend>["group"] & {
+    sso: PublicGroupSsoApi;
   };
+};
 
 /**
  * The return type of {@link createAuth}.
@@ -330,7 +388,10 @@ export type AuthApi<TAuthorization extends AuthAuthorizationConfig | undefined =
 export type ConvexAuthResult<
   P extends AuthProviderConfig[],
   TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
-> = HasSSO<P> extends true ? AuthApi<TAuthorization> : AuthApiBase<TAuthorization>;
+  TExtend extends AuthExtendValidators = {},
+> = HasSSO<P> extends true
+  ? AuthApi<TAuthorization, TExtend>
+  : AuthApiBase<TAuthorization, TExtend>;
 
 /**
  * Infer the typed `AuthApiRefs` for the client SDK from a `createAuth` call.
@@ -387,13 +448,28 @@ export type InferClientApi<T> =
 export function createAuth<
   P extends AuthProviderConfig[],
   TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+  TExtend extends AuthExtendValidators = {},
 >(
   component: ConvexAuthConfig["component"],
   config: Omit<AuthConfig, "providers" | "authorization"> & {
     providers: P;
     authorization?: TAuthorization;
+    /**
+     * Validators for the `extend` field of each table. Drives both the
+     * inferred type of `auth.v.*` (so `viewer.extend.<field>` is typed)
+     * and runtime validation of consumer return shapes.
+     *
+     * @example
+     * ```ts
+     * createAuth(components.auth, {
+     *   providers: [password()],
+     *   extend: { User: v.object({ lastActiveGroup: v.optional(v.string()) }) },
+     * });
+     * ```
+     */
+    extend?: TExtend;
   },
-): ConvexAuthResult<P, TAuthorization> {
+): ConvexAuthResult<P, TAuthorization, TExtend> {
   const authResult = AuthFactory({
     ...config,
     component,
@@ -556,6 +632,7 @@ export function createAuth<
   };
 
   return {
+    v: buildAuthValidators(config.extend ?? ({} as TExtend)),
     signIn: authResult.signIn,
     signOut: authResult.signOut,
     store: authResult.store,

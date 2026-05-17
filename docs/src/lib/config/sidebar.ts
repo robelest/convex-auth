@@ -63,6 +63,7 @@ export const sidebar: SidebarGroup[] = [
       { title: "auth.invite", slug: "/api/invite" },
       { title: "auth.key", slug: "/api/key" },
       { title: "Configuration", slug: "/reference/config" },
+      { title: "Typed Returns (auth.v)", slug: "/reference/typed-returns" },
       { title: "Error Codes", slug: "/reference/errors" },
       { title: "CLI Reference", slug: "/reference/cli" },
       { title: "Architecture", slug: "/reference/architecture" },

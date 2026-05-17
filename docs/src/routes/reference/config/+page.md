@@ -20,12 +20,18 @@ description: createAuth options reference.
 ```ts
 import { createAuth } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
+import { v } from "convex/values";
 
 const auth = createAuth(components.auth, {
   providers: [
     /* ... */
   ],
   // All options below are optional
+  // Type the `extend` field of each table. Drives both the inferred
+  // type of `auth.v.*` and runtime validation of return shapes.
+  extend: {
+    User: v.object({ lastActiveGroup: v.optional(v.string()) }),
+  },
   session: {
     totalDurationMs: 30 * 24 * 60 * 60 * 1000, // 30 days
     inactiveDurationMs: 7 * 24 * 60 * 60 * 1000, // 7 days
@@ -68,6 +74,7 @@ const auth = createAuth(components.auth, {
 | Option                                | Type                   | Default  | Description                             |
 | ------------------------------------- | ---------------------- | -------- | --------------------------------------- |
 | `providers`                           | `AuthProviderConfig[]` | required | Auth methods to enable                  |
+| `extend`                              | `{ User?, Group?, GroupMember? }` Convex validators | `{}` | Validator for each table's `extend` field. Types `auth.v.*` (so `viewer.extend.<field>` is typed) and validates return shapes. |
 | `session.totalDurationMs`             | `number`               | 30 days  | Maximum session lifetime                |
 | `session.inactiveDurationMs`          | `number`               | varies   | Inactive session timeout                |
 | `jwt.durationMs`                      | `number`               | 60s      | JWT token lifetime                      |
@@ -97,12 +104,17 @@ authorization model.
 - `auth.invite.*` — Invite helpers
 - `auth.key.*` — API key helpers
 - `auth.request.*` — HTTP route helpers
+- `auth.v.*` — Convex `returns:` validators for the read surface
+  (`user`, `group`, `member`, `invite`, `viewer`, `list`). See
+  [Typed Returns](/reference/typed-returns).
 - `auth.group.sso.*` — inbound group SSO helpers (only when `sso()` is in
   providers)
 - `auth.group.sso.scim.*` — SCIM provisioning helpers (only when `sso()` is in
   providers)
 - `InferClientApi<typeof auth>` — Type-level utility; use as the generic for
   `client()` on the frontend to get conditional passkey/totp/device helpers
+- `Doc`, `Viewer`, `Group`, `Membership` — exported document types
+  (extend-aware), importable from `@robelest/convex-auth/server`
 
 ## API layers
 

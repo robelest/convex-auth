@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, Validator } from "convex/values";
 
 export const TABLES = {
   User: "User",
@@ -29,7 +29,7 @@ export const TABLES = {
 
 export const vTag = v.object({ key: v.string(), value: v.string() });
 
-export const vPaginated = (item: any) =>
+export const vPaginated = <V extends Validator<any, any, any>>(item: V) =>
   v.object({
     items: v.array(item),
     nextCursor: v.union(v.string(), v.null()),

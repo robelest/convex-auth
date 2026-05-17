@@ -16,12 +16,28 @@ export type {
   AuthContext,
   AuthContextConfig,
   AuthConfig,
+  AuthExtendValidators,
+  AuthValidators,
   ConvexAuthResult,
   InferAuth,
   InferClientApi,
   OptionalAuthContext,
   UserDoc,
 } from "./auth";
+export { buildAuthValidators } from "./validators";
+export type {
+  Group,
+  Membership,
+  Viewer,
+} from "./validators";
+export type { Doc, GenericDoc, AuthDataModel } from "./types";
+export {
+  vGroupDoc,
+  vGroupInviteDoc,
+  vGroupMemberDoc,
+  vPaginated,
+  vUserDoc,
+} from "../component/model";
 export type { HttpAuthContext, HttpAuthContextConfig, OptionalHttpAuthContext } from "./http";
 export type {
   GroupSsoAccessInput,

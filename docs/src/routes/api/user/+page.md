@@ -23,6 +23,11 @@ The `ctx.auth` examples on this page assume you created auth-aware builders such
 as `authQuery`, `authMutation`, or `authAction` with `auth.ctx()` in
 `convex/functions.ts`.
 
+`get`, `list`, and `viewer` are fully typed (`Doc<"User">`,
+`{ items: Doc<"User">[]; nextCursor }`), and the `extend` field is typed when
+configured. Pair them with `auth.v.*` as your function `returns:` — see
+[Typed Returns](/reference/typed-returns).
+
 ## Methods
 
 | Method           | Signature                            | Returns               | Description                                                                                                                                                              |
