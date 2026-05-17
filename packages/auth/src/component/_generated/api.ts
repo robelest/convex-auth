@@ -15,7 +15,6 @@ import type * as group_invite from "../group/invite.js";
 import type * as group_member from "../group/member.js";
 import type * as http from "../http.js";
 import type * as index from "../index.js";
-import type * as key from "../key.js";
 import type * as model from "../model.js";
 import type * as modules from "../modules.js";
 import type * as public_ from "../public.js";
@@ -44,6 +43,7 @@ import type * as refreshToken from "../refreshToken.js";
 import type * as session from "../session.js";
 import type * as user from "../user.js";
 import type * as user_email from "../user/email.js";
+import type * as user_key from "../user/key.js";
 import type * as verificationCode from "../verificationCode.js";
 import type * as verifier from "../verifier.js";
 
@@ -62,7 +62,6 @@ const fullApi: ApiFromModules<{
   "group/member": typeof group_member;
   http: typeof http;
   index: typeof index;
-  key: typeof key;
   model: typeof model;
   modules: typeof modules;
   public: typeof public_;
@@ -91,6 +90,7 @@ const fullApi: ApiFromModules<{
   session: typeof session;
   user: typeof user;
   "user/email": typeof user_email;
+  "user/key": typeof user_key;
   verificationCode: typeof verificationCode;
   verifier: typeof verifier;
 }> = anyApi as any;

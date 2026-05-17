@@ -13,4 +13,4 @@ export {
   keyInsert as create,
   keyPatch as update,
   keyDelete as delete,
-} from "./public/security/keys";
+} from "../public/security/keys";

@@ -1577,6 +1577,13 @@ type AuthComponentApi = {
       setPrimary: FunctionReference<"mutation", "internal">;
       delete: FunctionReference<"mutation", "internal">;
     };
+    key: {
+      get: FunctionReference<"query", "internal">;
+      list: FunctionReference<"query", "internal">;
+      create: FunctionReference<"mutation", "internal">;
+      update: FunctionReference<"mutation", "internal">;
+      delete: FunctionReference<"mutation", "internal">;
+    };
   };
   account: {
     get: FunctionReference<"query", "internal">;
@@ -1609,13 +1616,6 @@ type AuthComponentApi = {
   };
   verifier: {
     get: FunctionReference<"query", "internal">;
-    create: FunctionReference<"mutation", "internal">;
-    update: FunctionReference<"mutation", "internal">;
-    delete: FunctionReference<"mutation", "internal">;
-  };
-  key: {
-    get: FunctionReference<"query", "internal">;
-    list: FunctionReference<"query", "internal">;
     create: FunctionReference<"mutation", "internal">;
     update: FunctionReference<"mutation", "internal">;
     delete: FunctionReference<"mutation", "internal">;

@@ -12,7 +12,7 @@ const modules: Record<string, () => Promise<unknown>> = {
   "./component/group.ts": () => import("./group"),
   "./component/group/member.ts": () => import("./group/member"),
   "./component/group/invite.ts": () => import("./group/invite"),
-  "./component/key.ts": () => import("./key"),
+  "./component/user/key.ts": () => import("./user/key"),
   "./component/rateLimit.ts": () => import("./rateLimit"),
   "./component/account.ts": () => import("./account"),
   "./component/session.ts": () => import("./session"),
