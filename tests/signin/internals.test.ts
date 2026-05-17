@@ -99,11 +99,13 @@ function createCredentialsMutationHarness(args: {
       },
       account: { get: refs.accountGet },
       session: { issue: refs.sessionIssue },
+      rateLimit: {
+        get: refs.rateLimitGet,
+        delete: refs.rateLimitDelete,
+        create: refs.rateLimitCreate,
+        update: refs.rateLimitPatch,
+      },
       public: {
-        rateLimitGet: refs.rateLimitGet,
-        rateLimitDelete: refs.rateLimitDelete,
-        rateLimitCreate: refs.rateLimitCreate,
-        rateLimitPatch: refs.rateLimitPatch,
         totpGetVerifiedByUserId: refs.totpGetVerifiedByUserId,
       },
     },

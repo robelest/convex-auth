@@ -1613,11 +1613,20 @@ type AuthComponentApi = {
     update: FunctionReference<"mutation", "internal">;
     delete: FunctionReference<"mutation", "internal">;
   };
+  key: {
+    get: FunctionReference<"query", "internal">;
+    list: FunctionReference<"query", "internal">;
+    create: FunctionReference<"mutation", "internal">;
+    update: FunctionReference<"mutation", "internal">;
+    delete: FunctionReference<"mutation", "internal">;
+  };
+  rateLimit: {
+    get: FunctionReference<"query", "internal">;
+    create: FunctionReference<"mutation", "internal">;
+    update: FunctionReference<"mutation", "internal">;
+    delete: FunctionReference<"mutation", "internal">;
+  };
   public: {
-    rateLimitGet: FunctionReference<"query", "internal">;
-    rateLimitCreate: FunctionReference<"mutation", "internal">;
-    rateLimitPatch: FunctionReference<"mutation", "internal">;
-    rateLimitDelete: FunctionReference<"mutation", "internal">;
     groupCreate: FunctionReference<"mutation", "internal">;
     groupGet: FunctionReference<"query", "internal">;
     groupList: FunctionReference<"query", "internal">;
@@ -1636,12 +1645,6 @@ type AuthComponentApi = {
     inviteAccept: FunctionReference<"mutation", "internal">;
     inviteAcceptByToken: FunctionReference<"mutation", "internal">;
     inviteRevoke: FunctionReference<"mutation", "internal">;
-    keyInsert: FunctionReference<"mutation", "internal">;
-    keyGetByHashedKey: FunctionReference<"query", "internal">;
-    keyGetById: FunctionReference<"query", "internal">;
-    keyList: FunctionReference<"query", "internal">;
-    keyPatch: FunctionReference<"mutation", "internal">;
-    keyDelete: FunctionReference<"mutation", "internal">;
     passkeyInsert: FunctionReference<"mutation", "internal">;
     passkeyGetById: FunctionReference<"query", "internal">;
     passkeyGetByCredentialId: FunctionReference<"query", "internal">;

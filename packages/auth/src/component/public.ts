@@ -15,7 +15,5 @@ export * from "./public/sso/webhooks";
 export * from "./public/groups/core";
 export * from "./public/groups/invites";
 export * from "./public/groups/members";
-export * from "./public/security/keys";
 export * from "./public/factors/passkeys";
-export * from "./public/security/limits";
 export * from "./public/factors/totp";

@@ -1970,7 +1970,7 @@ export function createCoreDomains(deps: CoreDeps) {
       },
     ): Promise<{ keyId: string; secret: string }> => {
       const { raw, hashedKey, displayPrefix } = await generateApiKey("sk_");
-      const keyId = (await ctx.runMutation(config.component.public.keyInsert, {
+      const keyId = (await ctx.runMutation(config.component.key.create, {
         userId: opts.userId,
         prefix: displayPrefix,
         hashedKey,
@@ -2007,7 +2007,7 @@ export function createCoreDomains(deps: CoreDeps) {
       rawKey: string,
     ): Promise<{ userId: string; keyId: string; scopes: ScopeChecker }> => {
       const hashedKey = await hashApiKey(rawKey);
-      const doc = (await ctx.runQuery(config.component.public.keyGetByHashedKey, {
+      const doc = (await ctx.runQuery(config.component.key.get, {
         hashedKey,
       })) as KeyDoc | null;
       if (!doc) {
@@ -2040,7 +2040,7 @@ export function createCoreDomains(deps: CoreDeps) {
         }
         patchData.rateLimitState = newState;
       }
-      await ctx.runMutation(config.component.public.keyPatch, {
+      await ctx.runMutation(config.component.key.update, {
         keyId: k._id,
         data: patchData,
       });
@@ -2086,7 +2086,7 @@ export function createCoreDomains(deps: CoreDeps) {
         order?: "asc" | "desc";
       },
     ) => {
-      return (await ctx.runQuery(config.component.public.keyList, {
+      return (await ctx.runQuery(config.component.key.list, {
         where: opts?.where,
         limit: opts?.limit,
         cursor: opts?.cursor,
@@ -2113,8 +2113,8 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     get: async (ctx: ComponentReadCtx, keyId: string): Promise<KeyDoc | null> => {
-      const doc = (await ctx.runQuery(config.component.public.keyGetById, {
-        keyId,
+      const doc = (await ctx.runQuery(config.component.key.get, {
+        id: keyId,
       })) as KeyDoc | null;
       return doc ?? null;
     },
@@ -2146,7 +2146,7 @@ export function createCoreDomains(deps: CoreDeps) {
         rateLimit?: { maxRequests: number; windowMs: number };
       },
     ) => {
-      await ctx.runMutation(config.component.public.keyPatch, { keyId, data });
+      await ctx.runMutation(config.component.key.update, { keyId, data });
       return { keyId };
     },
     /**
@@ -2166,7 +2166,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     revoke: async (ctx: ComponentCtx, keyId: string) => {
-      await ctx.runMutation(config.component.public.keyPatch, {
+      await ctx.runMutation(config.component.key.update, {
         keyId,
         data: { revoked: true },
       });
@@ -2189,7 +2189,7 @@ export function createCoreDomains(deps: CoreDeps) {
      * ```
      */
     delete: async (ctx: ComponentCtx, keyId: string) => {
-      await ctx.runMutation(config.component.public.keyDelete, { keyId });
+      await ctx.runMutation(config.component.key.delete, { keyId });
       return { keyId };
     },
     /**
@@ -2218,8 +2218,8 @@ export function createCoreDomains(deps: CoreDeps) {
       keyId: string,
       opts?: { name?: string; expiresAt?: number },
     ): Promise<{ keyId: string; secret: string }> => {
-      const existing = await ctx.runQuery(config.component.public.keyGetById, {
-        keyId,
+      const existing = await ctx.runQuery(config.component.key.get, {
+        id: keyId,
       });
       if (!existing) {
         throw new ConvexError({
@@ -2234,7 +2234,7 @@ export function createCoreDomains(deps: CoreDeps) {
           message: "This API key has been revoked.",
         });
       }
-      await ctx.runMutation(config.component.public.keyPatch, {
+      await ctx.runMutation(config.component.key.update, {
         keyId,
         data: { revoked: true },
       });

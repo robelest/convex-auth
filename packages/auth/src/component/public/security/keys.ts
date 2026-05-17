@@ -103,14 +103,26 @@ export const keyInsert = mutation({
  * }
  * ```
  */
-export const keyGetByHashedKey = query({
-  args: { hashedKey: v.string() },
+/**
+ * Read an API key by identity — one function, all-optional args, unioned
+ * return: `{ id }` (point lookup) or `{ hashedKey }` (Bearer-verify
+ * index). Replaces `keyGetByHashedKey` / `keyGetById`.
+ */
+export const keyGet = query({
+  args: {
+    id: v.optional(v.id("ApiKey")),
+    hashedKey: v.optional(v.string()),
+  },
   returns: v.union(vApiKeyDoc, v.null()),
-  handler: async (ctx, { hashedKey }) => {
-    return await ctx.db
-      .query("ApiKey")
-      .withIndex("hashed_key", (q) => q.eq("hashedKey", hashedKey))
-      .first();
+  handler: async (ctx, args) => {
+    if (args.hashedKey !== undefined) {
+      return await ctx.db
+        .query("ApiKey")
+        .withIndex("hashed_key", (q) => q.eq("hashedKey", args.hashedKey!))
+        .first();
+    }
+    if (args.id === undefined) return null;
+    return await ctx.db.get("ApiKey", args.id);
   },
 });
 
@@ -224,35 +236,6 @@ export const keyList = query({
   },
 });
 
-/**
- * Get a single API key by its document ID.
- *
- * Performs a direct document lookup on the `ApiKey` table. Useful when
- * you already have the key's `_id` (e.g. from a list query or a stored
- * reference) and need to retrieve its full details.
- *
- * @param keyId - The `_id` of the `ApiKey` document to retrieve.
- * @returns The `ApiKey` document, or `null` if no key exists with the
- *   given ID.
- *
- * @example
- * ```ts
- * const apiKey = await ctx.runQuery(
- *   components.auth.security.keys.keyGetById,
- *   { keyId: storedKeyId },
- * );
- * if (apiKey !== null) {
- *   console.log(apiKey.name, apiKey.scopes);
- * }
- * ```
- */
-export const keyGetById = query({
-  args: { keyId: v.id("ApiKey") },
-  returns: v.union(vApiKeyDoc, v.null()),
-  handler: async (ctx, { keyId }) => {
-    return await ctx.db.get("ApiKey", keyId);
-  },
-});
 
 /**
  * Patch an API key record with partial updates.

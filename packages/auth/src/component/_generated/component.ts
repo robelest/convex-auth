@@ -86,6 +86,111 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         Name
       >;
     };
+    key: {
+      create: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          expiresAt?: number;
+          hashedKey: string;
+          metadata?: any;
+          name: string;
+          prefix: string;
+          rateLimit?: { maxRequests: number; windowMs: number };
+          scopes: Array<{ actions: Array<string>; resource: string }>;
+          userId: string;
+        },
+        string,
+        Name
+      >;
+      delete: FunctionReference<
+        "mutation",
+        "internal",
+        { keyId: string },
+        null,
+        Name
+      >;
+      get: FunctionReference<
+        "query",
+        "internal",
+        { hashedKey?: string; id?: string },
+        {
+          _creationTime: number;
+          _id: string;
+          createdAt: number;
+          expiresAt?: number;
+          hashedKey: string;
+          lastUsedAt?: number;
+          metadata?: any;
+          name: string;
+          prefix: string;
+          rateLimit?: { maxRequests: number; windowMs: number };
+          rateLimitState?: { attemptsLeft: number; lastAttemptTime: number };
+          revoked: boolean;
+          scopes: Array<{ actions: Array<string>; resource: string }>;
+          userId: string;
+        } | null,
+        Name
+      >;
+      list: FunctionReference<
+        "query",
+        "internal",
+        {
+          cursor?: string | null;
+          limit?: number;
+          order?: "asc" | "desc";
+          orderBy?:
+            | "_creationTime"
+            | "name"
+            | "lastUsedAt"
+            | "expiresAt"
+            | "revoked";
+          where?: {
+            name?: string;
+            prefix?: string;
+            revoked?: boolean;
+            userId?: string;
+          };
+        },
+        {
+          items: Array<{
+            _creationTime: number;
+            _id: string;
+            createdAt: number;
+            expiresAt?: number;
+            hashedKey: string;
+            lastUsedAt?: number;
+            metadata?: any;
+            name: string;
+            prefix: string;
+            rateLimit?: { maxRequests: number; windowMs: number };
+            rateLimitState?: { attemptsLeft: number; lastAttemptTime: number };
+            revoked: boolean;
+            scopes: Array<{ actions: Array<string>; resource: string }>;
+            userId: string;
+          }>;
+          nextCursor: string | null;
+        },
+        Name
+      >;
+      update: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          data: {
+            lastUsedAt?: number;
+            name?: string;
+            rateLimit?: { maxRequests: number; windowMs: number };
+            rateLimitState?: { attemptsLeft: number; lastAttemptTime: number };
+            revoked?: boolean;
+            scopes?: Array<{ actions: Array<string>; resource: string }>;
+          };
+          keyId: string;
+        },
+        null,
+        Name
+      >;
+    };
     public: {
       deviceAuthorize: FunctionReference<
         "mutation",
@@ -2454,131 +2559,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null,
         Name
       >;
-      keyDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { keyId: string },
-        null,
-        Name
-      >;
-      keyGetByHashedKey: FunctionReference<
-        "query",
-        "internal",
-        { hashedKey: string },
-        {
-          _creationTime: number;
-          _id: string;
-          createdAt: number;
-          expiresAt?: number;
-          hashedKey: string;
-          lastUsedAt?: number;
-          metadata?: any;
-          name: string;
-          prefix: string;
-          rateLimit?: { maxRequests: number; windowMs: number };
-          rateLimitState?: { attemptsLeft: number; lastAttemptTime: number };
-          revoked: boolean;
-          scopes: Array<{ actions: Array<string>; resource: string }>;
-          userId: string;
-        } | null,
-        Name
-      >;
-      keyGetById: FunctionReference<
-        "query",
-        "internal",
-        { keyId: string },
-        {
-          _creationTime: number;
-          _id: string;
-          createdAt: number;
-          expiresAt?: number;
-          hashedKey: string;
-          lastUsedAt?: number;
-          metadata?: any;
-          name: string;
-          prefix: string;
-          rateLimit?: { maxRequests: number; windowMs: number };
-          rateLimitState?: { attemptsLeft: number; lastAttemptTime: number };
-          revoked: boolean;
-          scopes: Array<{ actions: Array<string>; resource: string }>;
-          userId: string;
-        } | null,
-        Name
-      >;
-      keyInsert: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          expiresAt?: number;
-          hashedKey: string;
-          metadata?: any;
-          name: string;
-          prefix: string;
-          rateLimit?: { maxRequests: number; windowMs: number };
-          scopes: Array<{ actions: Array<string>; resource: string }>;
-          userId: string;
-        },
-        string,
-        Name
-      >;
-      keyList: FunctionReference<
-        "query",
-        "internal",
-        {
-          cursor?: string | null;
-          limit?: number;
-          order?: "asc" | "desc";
-          orderBy?:
-            | "_creationTime"
-            | "name"
-            | "lastUsedAt"
-            | "expiresAt"
-            | "revoked";
-          where?: {
-            name?: string;
-            prefix?: string;
-            revoked?: boolean;
-            userId?: string;
-          };
-        },
-        {
-          items: Array<{
-            _creationTime: number;
-            _id: string;
-            createdAt: number;
-            expiresAt?: number;
-            hashedKey: string;
-            lastUsedAt?: number;
-            metadata?: any;
-            name: string;
-            prefix: string;
-            rateLimit?: { maxRequests: number; windowMs: number };
-            rateLimitState?: { attemptsLeft: number; lastAttemptTime: number };
-            revoked: boolean;
-            scopes: Array<{ actions: Array<string>; resource: string }>;
-            userId: string;
-          }>;
-          nextCursor: string | null;
-        },
-        Name
-      >;
-      keyPatch: FunctionReference<
-        "mutation",
-        "internal",
-        {
-          data: {
-            lastUsedAt?: number;
-            name?: string;
-            rateLimit?: { maxRequests: number; windowMs: number };
-            rateLimitState?: { attemptsLeft: number; lastAttemptTime: number };
-            revoked?: boolean;
-            scopes?: Array<{ actions: Array<string>; resource: string }>;
-          };
-          keyId: string;
-        },
-        null,
-        Name
-      >;
       memberAdd: FunctionReference<
         "mutation",
         "internal",
@@ -2814,42 +2794,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         null,
         Name
       >;
-      rateLimitCreate: FunctionReference<
-        "mutation",
-        "internal",
-        { attemptsLeft: number; identifier: string; lastAttemptTime: number },
-        string,
-        Name
-      >;
-      rateLimitDelete: FunctionReference<
-        "mutation",
-        "internal",
-        { rateLimitId: string },
-        null,
-        Name
-      >;
-      rateLimitGet: FunctionReference<
-        "query",
-        "internal",
-        { identifier: string },
-        {
-          _creationTime: number;
-          _id: string;
-          attemptsLeft: number;
-          attempts_left: number;
-          identifier: string;
-          lastAttemptTime: number;
-          last_attempt_time: number;
-        } | null,
-        Name
-      >;
-      rateLimitPatch: FunctionReference<
-        "mutation",
-        "internal",
-        { data: any; rateLimitId: string },
-        null,
-        Name
-      >;
       security: {
         keys: {
           keyDelete: FunctionReference<
@@ -2859,35 +2803,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             null,
             Name
           >;
-          keyGetByHashedKey: FunctionReference<
+          keyGet: FunctionReference<
             "query",
             "internal",
-            { hashedKey: string },
-            {
-              _creationTime: number;
-              _id: string;
-              createdAt: number;
-              expiresAt?: number;
-              hashedKey: string;
-              lastUsedAt?: number;
-              metadata?: any;
-              name: string;
-              prefix: string;
-              rateLimit?: { maxRequests: number; windowMs: number };
-              rateLimitState?: {
-                attemptsLeft: number;
-                lastAttemptTime: number;
-              };
-              revoked: boolean;
-              scopes: Array<{ actions: Array<string>; resource: string }>;
-              userId: string;
-            } | null,
-            Name
-          >;
-          keyGetById: FunctionReference<
-            "query",
-            "internal",
-            { keyId: string },
+            { hashedKey?: string; id?: string },
             {
               _creationTime: number;
               _id: string;
@@ -3729,6 +3648,44 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "mutation",
         "internal",
         { lastUsedAt: number; totpId: string },
+        null,
+        Name
+      >;
+    };
+    rateLimit: {
+      create: FunctionReference<
+        "mutation",
+        "internal",
+        { attemptsLeft: number; identifier: string; lastAttemptTime: number },
+        string,
+        Name
+      >;
+      delete: FunctionReference<
+        "mutation",
+        "internal",
+        { rateLimitId: string },
+        null,
+        Name
+      >;
+      get: FunctionReference<
+        "query",
+        "internal",
+        { identifier: string },
+        {
+          _creationTime: number;
+          _id: string;
+          attemptsLeft: number;
+          attempts_left: number;
+          identifier: string;
+          lastAttemptTime: number;
+          last_attempt_time: number;
+        } | null,
+        Name
+      >;
+      update: FunctionReference<
+        "mutation",
+        "internal",
+        { data: any; rateLimitId: string },
         null,
         Name
       >;
