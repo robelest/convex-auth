@@ -17,7 +17,7 @@ test("auth component registers and serves public core functions", async () => {
   });
 
   const user = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.user.get, { id: userId });
+    return (await ctx.runQuery(components.auth.user.get, { id: userId })) as any;
   });
 
   expect(user).not.toBeNull();

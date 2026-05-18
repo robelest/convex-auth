@@ -368,11 +368,11 @@ test("group connection component stores scim config, audit events, and webhook d
     });
   });
   const identity = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.sso.connection.scim.identity.get, {
+    return (await ctx.runQuery(components.auth.sso.connection.scim.identity.get, {
       connectionId,
       resourceType: "user",
       externalId: "scim-user-1",
-    });
+    })) as any;
   });
   const auditEvents = await t.run(async (ctx) => {
     return await auth.group.sso.audit.list(ctx, {
@@ -1169,10 +1169,10 @@ test("provisioned membership stores resolved roleIds queryable via memberGetByGr
   });
 
   const membership = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.group.member.get, {
+    return (await ctx.runQuery(components.auth.group.member.get, {
       groupId,
       userId,
-    });
+    })) as any;
   });
 
   expect(membership).not.toBeNull();

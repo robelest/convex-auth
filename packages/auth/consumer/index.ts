@@ -58,6 +58,7 @@ const _inferredAuth: _InferredAuth = {
   grants: [],
   copiedGroupId: null,
   canWrite: true,
+  require: () => {},
 };
 
 void _inferredAuth;
