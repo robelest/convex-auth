@@ -138,16 +138,15 @@ async function credentialsSignInInner(
     };
   }
 
-  let hasTotp = user.hasTotp;
-  if (enforceTotp && hasTotp === undefined) {
+  let hasTotp = false;
+  if (enforceTotp) {
     const totpDoc = (await ctx.runQuery(config.component.factor.totp.get, {
       verifiedForUserId: existingAccount.userId,
     })) as { _id: string } | null;
     hasTotp = totpDoc !== null;
-    await db.users.patch(existingAccount.userId, { hasTotp });
   }
 
-  const totpRequired = enforceTotp && hasTotp === true;
+  const totpRequired = enforceTotp && hasTotp;
 
   const [issuance] = await Promise.all([
     issueSession(ctx, config, {

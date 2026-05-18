@@ -1110,8 +1110,7 @@ type AuthServerHelpers = {
   totp: {
     /**
      * Delete a TOTP factor by ID and fire the `totpRemoved` lifecycle
-     * event. If this was the user's last verified factor, the
-     * `User.hasTotp` flag is cleared as part of the same mutation.
+     * event.
      */
     delete: (
       ctx: GenericActionCtx<GenericDataModel>,
@@ -1664,7 +1663,6 @@ type AuthComponentApi = {
       get: FunctionReference<"query", "internal">;
       list: FunctionReference<"query", "internal">;
       create: FunctionReference<"mutation", "internal">;
-      markVerified: FunctionReference<"mutation", "internal">;
       update: FunctionReference<"mutation", "internal">;
       delete: FunctionReference<"mutation", "internal">;
     };
@@ -1929,9 +1927,9 @@ export async function mutateTotpMarkVerified(
   totpId: string,
   lastUsedAt: number,
 ): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.factor.totp.markVerified, {
+  await ctx.runMutation(ctx.auth.config.component.factor.totp.update, {
     totpId,
-    lastUsedAt,
+    data: { verified: true, lastUsedAt },
   });
 }
 

@@ -199,7 +199,6 @@ export const vUserDoc = v.object({
   phone: v.optional(v.string()),
   phoneVerificationTime: v.optional(v.number()),
   isAnonymous: v.optional(v.boolean()),
-  hasTotp: v.optional(v.boolean()),
   lastActiveGroup: v.optional(v.id(TABLES.Group)),
   extend: v.optional(v.any()),
 });

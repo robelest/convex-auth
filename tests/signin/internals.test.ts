@@ -164,7 +164,7 @@ test("credentialsSignIn skips session issuance when email verification is requir
   );
 });
 
-test("credentialsSignIn backfills hasTotp and returns the resolved value", async () => {
+test("credentialsSignIn resolves TOTP enrollment by query without caching", async () => {
   const harness = createCredentialsMutationHarness({
     emailVerified: "verified",
     hasTotp: undefined,
@@ -197,11 +197,14 @@ test("credentialsSignIn backfills hasTotp and returns the resolved value", async
     throw new Error("Expected sign-in result");
   }
   expect(result.user.hasTotp).toBe(false);
-  expect(harness.user().hasTotp).toBe(false);
-  expect(harness.runMutation).toHaveBeenCalledWith(harness.refs.userPatch, {
-    userId: "user1",
-    data: { hasTotp: false },
-  });
+  expect(harness.runQuery).toHaveBeenCalledWith(
+    harness.refs.totpGetVerifiedByUserId,
+    expect.anything(),
+  );
+  expect(harness.runMutation).not.toHaveBeenCalledWith(
+    harness.refs.userPatch,
+    expect.anything(),
+  );
   expect(harness.runMutation).toHaveBeenCalledWith(
     harness.refs.sessionIssue,
     expect.objectContaining({ userId: "user1" }),

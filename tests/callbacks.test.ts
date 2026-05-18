@@ -51,7 +51,7 @@ test("passkeyDelete removes the passkey row", async () => {
   expect(after).toBeNull();
 });
 
-test("totpDelete clears User.hasTotp when no verified factors remain", async () => {
+test("totp.delete removes the enrollment row", async () => {
   const t = convexTest(schema);
 
   const { userId, totpId } = await t.run(async (ctx) => {
@@ -67,24 +67,24 @@ test("totpDelete clears User.hasTotp when no verified factors remain", async () 
       verified: false,
       createdAt: Date.now(),
     });
-    await ctx.runMutation(components.auth.factor.totp.markVerified, {
+    await ctx.runMutation(components.auth.factor.totp.update, {
       totpId,
-      lastUsedAt: Date.now(),
+      data: { verified: true, lastUsedAt: Date.now() },
     });
     return { userId, totpId };
   });
 
-  const userBefore = await t.run((ctx) =>
-    ctx.runQuery(components.auth.user.get, { id: userId }),
+  const verifiedBefore = await t.run((ctx) =>
+    ctx.runQuery(components.auth.factor.totp.get, { verifiedForUserId: userId }),
   );
-  expect(userBefore?.hasTotp).toBe(true);
+  expect(verifiedBefore?._id).toBe(totpId);
 
   await t.run((ctx) => ctx.runMutation(components.auth.factor.totp.delete, { totpId }));
 
-  const userAfter = await t.run((ctx) =>
-    ctx.runQuery(components.auth.user.get, { id: userId }),
+  const verifiedAfter = await t.run((ctx) =>
+    ctx.runQuery(components.auth.factor.totp.get, { verifiedForUserId: userId }),
   );
-  expect(userAfter?.hasTotp).toBe(false);
+  expect(verifiedAfter).toBeNull();
 
   const totpDoc = await t.run((ctx) =>
     ctx.runQuery(components.auth.factor.totp.get, { id: totpId }),
@@ -92,10 +92,10 @@ test("totpDelete clears User.hasTotp when no verified factors remain", async () 
   expect(totpDoc).toBeNull();
 });
 
-test("totpDelete keeps hasTotp true when another verified factor exists", async () => {
+test("deleting one verified factor leaves another resolvable", async () => {
   const t = convexTest(schema);
 
-  const { userId, firstTotpId } = await t.run(async (ctx) => {
+  const { userId, firstTotpId, secondTotpId } = await t.run(async (ctx) => {
     const userId = (await ctx.runMutation(components.auth.user.create, {
       data: { email: "totp-multi@example.com" },
     })) as string;
@@ -107,9 +107,9 @@ test("totpDelete keeps hasTotp true when another verified factor exists", async 
       verified: false,
       createdAt: Date.now(),
     });
-    await ctx.runMutation(components.auth.factor.totp.markVerified, {
+    await ctx.runMutation(components.auth.factor.totp.update, {
       totpId: firstTotpId,
-      lastUsedAt: Date.now(),
+      data: { verified: true, lastUsedAt: Date.now() },
     });
     const secondTotpId = await ctx.runMutation(components.auth.factor.totp.create, {
       userId: userId as never,
@@ -119,21 +119,21 @@ test("totpDelete keeps hasTotp true when another verified factor exists", async 
       verified: false,
       createdAt: Date.now(),
     });
-    await ctx.runMutation(components.auth.factor.totp.markVerified, {
+    await ctx.runMutation(components.auth.factor.totp.update, {
       totpId: secondTotpId,
-      lastUsedAt: Date.now(),
+      data: { verified: true, lastUsedAt: Date.now() },
     });
-    return { userId, firstTotpId };
+    return { userId, firstTotpId, secondTotpId };
   });
 
   await t.run((ctx) =>
     ctx.runMutation(components.auth.factor.totp.delete, { totpId: firstTotpId }),
   );
 
-  const user = await t.run((ctx) =>
-    ctx.runQuery(components.auth.user.get, { id: userId }),
+  const stillVerified = await t.run((ctx) =>
+    ctx.runQuery(components.auth.factor.totp.get, { verifiedForUserId: userId }),
   );
-  expect(user?.hasTotp).toBe(true);
+  expect(stillVerified?._id).toBe(secondTotpId);
 });
 
 test("accountDelete removes the account row", async () => {

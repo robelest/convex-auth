@@ -893,8 +893,6 @@ export function Auth(config_: ConvexAuthConfig) {
         message: "TOTP factor not found.",
       });
     }
-    // The component mutation atomically clears `User.hasTotp` when no other
-    // verified factors remain, so callers do not need to coordinate that flag.
     await ctx.runMutation(config.component.factor.totp.delete, {
       totpId: args.totpId,
     });

@@ -152,8 +152,7 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
             params,
           });
         }
-        const hasTotp = (user as unknown as { hasTotp?: boolean }).hasTotp;
-        return { userId: user._id, hasTotp };
+        return { userId: user._id, hasTotp: false };
       };
 
       switch (flowDispatch.tag) {

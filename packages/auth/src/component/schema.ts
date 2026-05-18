@@ -40,7 +40,6 @@ export default defineSchema({
     phone: v.optional(v.string()),
     phoneVerificationTime: v.optional(v.number()),
     isAnonymous: v.optional(v.boolean()),
-    hasTotp: v.optional(v.boolean()),
     lastActiveGroup: v.optional(v.id("Group")),
     extend: v.optional(v.any()),
   })

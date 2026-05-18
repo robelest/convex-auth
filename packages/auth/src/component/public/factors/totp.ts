@@ -103,43 +103,12 @@ export const totpList = query({
 });
 
 /**
- * Mark a TOTP enrollment as verified, completing the setup process.
+ * Partially update a TOTP enrollment.
  *
- * Called after the user successfully submits a valid TOTP code during
- * enrollment. This transitions the factor from a pending state to an
- * active, verified state, enabling it for future authentication
- * challenges.
- *
- * @param totpId - The `_id` of the `TotpFactor` document to mark as
- *   verified.
- * @param lastUsedAt - Unix timestamp (in milliseconds) recording when
- *   the verification code was successfully validated.
- * @returns `null` on success.
- *
- */
-export const totpMarkVerified = mutation({
-  args: { totpId: v.id("TotpFactor"), lastUsedAt: v.number() },
-  returns: v.null(),
-  handler: async (ctx, { totpId, lastUsedAt }) => {
-    await ctx.db.patch("TotpFactor", totpId, { verified: true, lastUsedAt });
-    const factor = await ctx.db.get("TotpFactor", totpId);
-    if (factor !== null) {
-      const user = await ctx.db.get("User", factor.userId);
-      if (user !== null && user.hasTotp !== true) {
-        await ctx.db.patch("User", factor.userId, { hasTotp: true });
-      }
-    }
-    return null;
-  },
-});
-
-/**
- * Update a TOTP enrollment's last-used timestamp.
- *
- * Called after each successful TOTP code validation during sign-in.
- * Performs a partial patch on the `TotpFactor` document — e.g. bumping
- * `lastUsedAt` after a successful validation. Tracking last-used time
- * helps detect stale enrollments.
+ * Performs a partial patch on the `TotpFactor` document. Used to confirm
+ * an enrollment (`{ verified: true, lastUsedAt }`) and to bump
+ * `lastUsedAt` after each successful validation (stale-enrollment
+ * tracking).
  *
  * @param totpId - The `_id` of the `TotpFactor` document to update.
  * @param data - An object containing the fields to patch.
@@ -171,20 +140,7 @@ export const totpDelete = mutation({
   args: { totpId: v.id("TotpFactor") },
   returns: v.null(),
   handler: async (ctx, { totpId }) => {
-    const factor = await ctx.db.get("TotpFactor", totpId);
     await ctx.db.delete("TotpFactor", totpId);
-    if (factor !== null && factor.verified) {
-      const remaining = await ctx.db
-        .query("TotpFactor")
-        .withIndex("user_id_verified", (q) => q.eq("userId", factor.userId).eq("verified", true))
-        .first();
-      if (remaining === null) {
-        const user = await ctx.db.get("User", factor.userId);
-        if (user !== null && user.hasTotp === true) {
-          await ctx.db.patch("User", factor.userId, { hasTotp: false });
-        }
-      }
-    }
     return null;
   },
 });

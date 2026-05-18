@@ -225,9 +225,9 @@ test("change password works for authenticated TOTP users", async () => {
       verified: false,
       createdAt: Date.now(),
     });
-    await ctx.runMutation(components.auth.factor.totp.markVerified, {
+    await ctx.runMutation(components.auth.factor.totp.update, {
       totpId,
-      lastUsedAt: Date.now(),
+      data: { verified: true, lastUsedAt: Date.now() },
     });
   });
 

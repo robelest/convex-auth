@@ -276,13 +276,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           }>,
           Name
         >;
-        markVerified: FunctionReference<
-          "mutation",
-          "internal",
-          { lastUsedAt: number; totpId: string },
-          null,
-          Name
-        >;
         update: FunctionReference<
           "mutation",
           "internal",
@@ -967,13 +960,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               userId: string;
               verified: boolean;
             }>,
-            Name
-          >;
-          totpMarkVerified: FunctionReference<
-            "mutation",
-            "internal",
-            { lastUsedAt: number; totpId: string },
-            null,
             Name
           >;
           totpUpdate: FunctionReference<
@@ -1735,7 +1721,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               email?: string;
               emailVerificationTime?: number;
               extend?: any;
-              hasTotp?: boolean;
               image?: string;
               isAnonymous?: boolean;
               lastActiveGroup?: string;
@@ -1822,7 +1807,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 email?: string;
                 emailVerificationTime?: number;
                 extend?: any;
-                hasTotp?: boolean;
                 image?: string;
                 isAnonymous?: boolean;
                 lastActiveGroup?: string;
@@ -3360,7 +3344,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             email?: string;
             emailVerificationTime?: number;
             extend?: any;
-            hasTotp?: boolean;
             image?: string;
             isAnonymous?: boolean;
             lastActiveGroup?: string;
@@ -3427,7 +3410,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             email?: string;
             emailVerificationTime?: number;
             extend?: any;
-            hasTotp?: boolean;
             image?: string;
             isAnonymous?: boolean;
             lastActiveGroup?: string;
@@ -3442,7 +3424,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             email?: string;
             emailVerificationTime?: number;
             extend?: any;
-            hasTotp?: boolean;
             image?: string;
             isAnonymous?: boolean;
             lastActiveGroup?: string;
@@ -3585,7 +3566,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             email?: string;
             emailVerificationTime?: number;
             extend?: any;
-            hasTotp?: boolean;
             image?: string;
             isAnonymous?: boolean;
             lastActiveGroup?: string;
