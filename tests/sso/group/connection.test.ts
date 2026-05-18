@@ -323,7 +323,7 @@ test("group connection component stores scim config, audit events, and webhook d
   const rawToken = configured.token;
 
   const identityId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.sso.connection.scimIdentity.upsert, {
+    return await ctx.runMutation(components.auth.sso.connection.scim.identity.upsert, {
       connectionId,
       groupId,
       resourceType: "user",
@@ -363,12 +363,12 @@ test("group connection component stores scim config, audit events, and webhook d
   });
 
   const scimConfig = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.sso.connection.scimConfig.get, {
+    return await ctx.runQuery(components.auth.sso.connection.scim.config.get, {
       tokenHash: await sha256(rawToken),
     });
   });
   const identity = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.sso.connection.scimIdentity.get, {
+    return await ctx.runQuery(components.auth.sso.connection.scim.identity.get, {
       connectionId,
       resourceType: "user",
       externalId: "scim-user-1",
@@ -429,7 +429,7 @@ test("group connection scim identity lookup is scoped to the group connection", 
       status: "active",
       protocol: "oidc",
     });
-    await ctx.runMutation(components.auth.sso.connection.scimIdentity.upsert, {
+    await ctx.runMutation(components.auth.sso.connection.scim.identity.upsert, {
       connectionId,
       groupId,
       resourceType: "user",
@@ -452,7 +452,7 @@ test("group connection scim identity lookup is scoped to the group connection", 
       status: "active",
       protocol: "oidc",
     });
-    await ctx.runMutation(components.auth.sso.connection.scimIdentity.upsert, {
+    await ctx.runMutation(components.auth.sso.connection.scim.identity.upsert, {
       connectionId,
       groupId,
       resourceType: "user",
@@ -465,7 +465,7 @@ test("group connection scim identity lookup is scoped to the group connection", 
 
   const firstIdentities = await t.run(async (ctx) => {
     return await ctx.runQuery(
-      components.auth.sso.connection.scimIdentity.list,
+      components.auth.sso.connection.scim.identity.list,
       {
         connectionId: first.connectionId as any,
       },
@@ -474,7 +474,7 @@ test("group connection scim identity lookup is scoped to the group connection", 
 
   const secondIdentities = await t.run(async (ctx) => {
     return await ctx.runQuery(
-      components.auth.sso.connection.scimIdentity.list,
+      components.auth.sso.connection.scim.identity.list,
       {
         connectionId: second.connectionId as any,
       },
@@ -1450,7 +1450,7 @@ test("group connection scim.configure stores hashed token and enqueues subscribe
     return await auth.group.sso.scim.get(ctx as any, connectionId);
   });
   const lookedUpByToken = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.sso.connection.scimConfig.get, {
+    return await ctx.runQuery(components.auth.sso.connection.scim.config.get, {
       tokenHash: await sha256(configured.token),
     });
   });

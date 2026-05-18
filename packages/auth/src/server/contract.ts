@@ -305,7 +305,7 @@ export const getScimConfigByConnection = (
   cached(ctx, `scim-config-by-connection:${connectionId}`, () =>
     query<{ connectionId: string }, ScimConfigRecord | null>(
       ctx,
-      componentSso.connection.scimConfig.get,
+      componentSso.connection.scim.config.get,
       { connectionId },
     ),
   );
@@ -317,7 +317,7 @@ export const getScimConfigByTokenHash = (
 ) =>
   query<{ tokenHash: string }, ScimConfigRecord | null>(
     ctx,
-    componentSso.connection.scimConfig.get,
+    componentSso.connection.scim.config.get,
     { tokenHash },
   );
 
@@ -336,7 +336,7 @@ export const upsertScimConfig = async (
 ) => {
   const result = await mutate<typeof args, string>(
     ctx,
-    componentSso.connection.scimConfig.upsert,
+    componentSso.connection.scim.config.upsert,
     args,
   );
   invalidateCtxCache(ctx, `scim-config-by-connection:${args.connectionId}`);
@@ -447,7 +447,7 @@ export const listScimIdentitiesByConnection = (
 ) =>
   query<{ connectionId: string }, ScimIdentityRecord[]>(
     ctx,
-    componentSso.connection.scimIdentity.list,
+    componentSso.connection.scim.identity.list,
     { connectionId },
   );
 
@@ -458,7 +458,7 @@ export const getScimIdentityByConnectionAndUser = (
 ) =>
   query<typeof args, ScimIdentityRecord | null>(
     ctx,
-    componentSso.connection.scimIdentity.get,
+    componentSso.connection.scim.identity.get,
     args,
   );
 
@@ -476,7 +476,7 @@ export const getScimIdentityByConnectionAndUsers = (
 ) =>
   query<typeof args, Array<ScimIdentityRecord | null>>(
     ctx,
-    componentSso.connection.scimIdentity.get,
+    componentSso.connection.scim.identity.get,
     args,
   );
 
@@ -487,7 +487,7 @@ export const getScimIdentityByMappedGroup = (
 ) =>
   query<{ mappedGroupId: string }, ScimIdentityRecord | null>(
     ctx,
-    componentSso.connection.scimIdentity.get,
+    componentSso.connection.scim.identity.get,
     { mappedGroupId },
   );
 
@@ -505,14 +505,14 @@ export const upsertScimIdentity = (
     raw?: Record<string, unknown>;
     lastProvisionedAt?: number;
   },
-) => mutate<typeof args, string>(ctx, componentSso.connection.scimIdentity.upsert, args);
+) => mutate<typeof args, string>(ctx, componentSso.connection.scim.identity.upsert, args);
 
 export const deleteScimIdentity = (
   ctx: ComponentWriteCtx,
   componentSso: ComponentSso,
   identityId: string,
 ) =>
-  mutate<{ identityId: string }, null>(ctx, componentSso.connection.scimIdentity.delete, {
+  mutate<{ identityId: string }, null>(ctx, componentSso.connection.scim.identity.delete, {
     identityId,
   });
 
@@ -549,7 +549,7 @@ export const getScimIdentity = (
 ) =>
   query<typeof args, ScimIdentityRecord | null>(
     ctx,
-    componentSso.connection.scimIdentity.get,
+    componentSso.connection.scim.identity.get,
     args,
   );
 

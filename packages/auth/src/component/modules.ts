@@ -28,8 +28,8 @@ const modules: Record<string, () => Promise<unknown>> = {
   "./component/sso/connection/domain/verification.ts": () =>
     import("./sso/connection/domain/verification"),
   "./component/sso/connection/secret.ts": () => import("./sso/connection/secret"),
-  "./component/sso/connection/scimConfig.ts": () => import("./sso/connection/scimConfig"),
-  "./component/sso/connection/scimIdentity.ts": () => import("./sso/connection/scimIdentity"),
+  "./component/sso/connection/scim/config.ts": () => import("./sso/connection/scim/config"),
+  "./component/sso/connection/scim/identity.ts": () => import("./sso/connection/scim/identity"),
   "./component/sso/audit.ts": () => import("./sso/audit"),
   "./component/sso/webhook/endpoint.ts": () => import("./sso/webhook/endpoint"),
   "./component/sso/webhook/delivery.ts": () => import("./sso/webhook/delivery"),

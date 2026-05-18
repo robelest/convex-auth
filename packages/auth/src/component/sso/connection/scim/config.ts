@@ -1,5 +1,5 @@
 /**
- * `component.sso.connection.scimConfig.*` — SCIM provisioning config
+ * `component.sso.connection.scim.config.*` — SCIM provisioning config
  * for an SSO connection (sub-resource of connection).
  *
  * Reads collapse into one overloaded `get`
@@ -11,4 +11,4 @@
 export {
   groupConnectionScimConfigGet as get,
   groupConnectionScimConfigUpsert as upsert,
-} from "../../public/sso/scim";
+} from "../../../public/sso/scim";

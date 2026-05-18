@@ -139,7 +139,7 @@ export async function userOAuthImpl(
     connectionId !== null &&
     existingAccount === null &&
     connectionPolicy?.provisioning.scimReuse.user === "externalId"
-      ? await ctx.runQuery(config.component.sso.connection.scimIdentity.get, {
+      ? await ctx.runQuery(config.component.sso.connection.scim.identity.get, {
           connectionId,
           resourceType: "user",
           externalId: providerAccountId,

@@ -1,5 +1,5 @@
 /**
- * `component.sso.connection.scimIdentity.*` — SCIM-provisioned
+ * `component.sso.connection.scim.identity.*` — SCIM-provisioned
  * identities for an SSO connection (sub-resource of connection).
  *
  * `get` is overloaded — single lookup or, with `{ connectionId,
@@ -13,4 +13,4 @@ export {
   groupConnectionScimIdentityListByGroupConnection as list,
   groupConnectionScimIdentityUpsert as upsert,
   groupConnectionScimIdentityDelete as delete,
-} from "../../public/sso/scim";
+} from "../../../public/sso/scim";

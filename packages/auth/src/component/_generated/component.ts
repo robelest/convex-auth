@@ -2858,60 +2858,94 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           },
           Name
         >;
-        scimConfig: {
-          get: FunctionReference<
-            "query",
-            "internal",
-            { connectionId?: string; tokenHash?: string },
-            {
-              _creationTime: number;
-              _id: string;
-              basePath: string;
-              connectionId: string;
-              extend?: any;
-              groupId: string;
-              lastRotatedAt?: number;
-              status: "draft" | "active" | "disabled";
-              tokenHash: string;
-            } | null,
-            Name
-          >;
-          upsert: FunctionReference<
-            "mutation",
-            "internal",
-            {
-              basePath: string;
-              connectionId: string;
-              extend?: any;
-              groupId: string;
-              lastRotatedAt?: number;
-              status: "draft" | "active" | "disabled";
-              tokenHash: string;
-            },
-            string,
-            Name
-          >;
-        };
-        scimIdentity: {
-          delete: FunctionReference<
-            "mutation",
-            "internal",
-            { identityId: string },
-            null,
-            Name
-          >;
-          get: FunctionReference<
-            "query",
-            "internal",
-            {
-              connectionId?: string;
-              externalId?: string;
-              mappedGroupId?: string;
-              resourceType?: "user" | "group";
-              userId?: string;
-              userIds?: Array<string>;
-            },
-            | {
+        scim: {
+          config: {
+            get: FunctionReference<
+              "query",
+              "internal",
+              { connectionId?: string; tokenHash?: string },
+              {
+                _creationTime: number;
+                _id: string;
+                basePath: string;
+                connectionId: string;
+                extend?: any;
+                groupId: string;
+                lastRotatedAt?: number;
+                status: "draft" | "active" | "disabled";
+                tokenHash: string;
+              } | null,
+              Name
+            >;
+            upsert: FunctionReference<
+              "mutation",
+              "internal",
+              {
+                basePath: string;
+                connectionId: string;
+                extend?: any;
+                groupId: string;
+                lastRotatedAt?: number;
+                status: "draft" | "active" | "disabled";
+                tokenHash: string;
+              },
+              string,
+              Name
+            >;
+          };
+          identity: {
+            delete: FunctionReference<
+              "mutation",
+              "internal",
+              { identityId: string },
+              null,
+              Name
+            >;
+            get: FunctionReference<
+              "query",
+              "internal",
+              {
+                connectionId?: string;
+                externalId?: string;
+                mappedGroupId?: string;
+                resourceType?: "user" | "group";
+                userId?: string;
+                userIds?: Array<string>;
+              },
+              | {
+                  _creationTime: number;
+                  _id: string;
+                  active?: boolean;
+                  connectionId: string;
+                  externalId: string;
+                  groupId: string;
+                  lastProvisionedAt?: number;
+                  mappedGroupId?: string;
+                  raw?: any;
+                  resourceType: "user" | "group";
+                  userId?: string;
+                }
+              | null
+              | Array<{
+                  _creationTime: number;
+                  _id: string;
+                  active?: boolean;
+                  connectionId: string;
+                  externalId: string;
+                  groupId: string;
+                  lastProvisionedAt?: number;
+                  mappedGroupId?: string;
+                  raw?: any;
+                  resourceType: "user" | "group";
+                  userId?: string;
+                } | null>,
+              Name
+            >;
+            list: FunctionReference<
+              "query",
+              "internal",
+              { connectionId: string },
+              Array<{
                 _creationTime: number;
                 _id: string;
                 active?: boolean;
@@ -2923,11 +2957,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 raw?: any;
                 resourceType: "user" | "group";
                 userId?: string;
-              }
-            | null
-            | Array<{
-                _creationTime: number;
-                _id: string;
+              }>,
+              Name
+            >;
+            upsert: FunctionReference<
+              "mutation",
+              "internal",
+              {
                 active?: boolean;
                 connectionId: string;
                 externalId: string;
@@ -2937,45 +2973,11 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 raw?: any;
                 resourceType: "user" | "group";
                 userId?: string;
-              } | null>,
-            Name
-          >;
-          list: FunctionReference<
-            "query",
-            "internal",
-            { connectionId: string },
-            Array<{
-              _creationTime: number;
-              _id: string;
-              active?: boolean;
-              connectionId: string;
-              externalId: string;
-              groupId: string;
-              lastProvisionedAt?: number;
-              mappedGroupId?: string;
-              raw?: any;
-              resourceType: "user" | "group";
-              userId?: string;
-            }>,
-            Name
-          >;
-          upsert: FunctionReference<
-            "mutation",
-            "internal",
-            {
-              active?: boolean;
-              connectionId: string;
-              externalId: string;
-              groupId: string;
-              lastProvisionedAt?: number;
-              mappedGroupId?: string;
-              raw?: any;
-              resourceType: "user" | "group";
-              userId?: string;
-            },
-            string,
-            Name
-          >;
+              },
+              string,
+              Name
+            >;
+          };
         };
         secret: {
           delete: FunctionReference<

@@ -1696,15 +1696,17 @@ type AuthComponentApi = {
         upsert: FunctionReference<"mutation", "internal">;
         delete: FunctionReference<"mutation", "internal">;
       };
-      scimConfig: {
-        get: FunctionReference<"query", "internal">;
-        upsert: FunctionReference<"mutation", "internal">;
-      };
-      scimIdentity: {
-        get: FunctionReference<"query", "internal">;
-        list: FunctionReference<"query", "internal">;
-        upsert: FunctionReference<"mutation", "internal">;
-        delete: FunctionReference<"mutation", "internal">;
+      scim: {
+        config: {
+          get: FunctionReference<"query", "internal">;
+          upsert: FunctionReference<"mutation", "internal">;
+        };
+        identity: {
+          get: FunctionReference<"query", "internal">;
+          list: FunctionReference<"query", "internal">;
+          upsert: FunctionReference<"mutation", "internal">;
+          delete: FunctionReference<"mutation", "internal">;
+        };
       };
     };
     audit: {
