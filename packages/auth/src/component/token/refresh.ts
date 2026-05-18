@@ -1,5 +1,5 @@
 /**
- * `component.refreshToken.*` — session refresh tokens.
+ * `component.token.refresh.*` — session refresh tokens.
  *
  * Pure re-export barrel; namespace = module path. No `public` wrapper,
  * no entity prefix. Reads collapse into one overloaded `get`;
@@ -16,4 +16,4 @@ export {
   refreshTokenPatch as update,
   refreshTokenDeleteAll as delete,
   refreshTokenExchange as exchange,
-} from "./public/identity/tokens";
+} from "../public/identity/tokens";

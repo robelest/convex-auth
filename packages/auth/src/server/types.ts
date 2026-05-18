@@ -1600,25 +1600,27 @@ type AuthComponentApi = {
     issue: FunctionReference<"mutation", "internal">;
     delete: FunctionReference<"mutation", "internal">;
   };
-  verificationCode: {
-    get: FunctionReference<"query", "internal">;
-    create: FunctionReference<"mutation", "internal">;
-    delete: FunctionReference<"mutation", "internal">;
-  };
-  refreshToken: {
-    get: FunctionReference<"query", "internal">;
-    list: FunctionReference<"query", "internal">;
-    listChildren: FunctionReference<"query", "internal">;
-    create: FunctionReference<"mutation", "internal">;
-    update: FunctionReference<"mutation", "internal">;
-    delete: FunctionReference<"mutation", "internal">;
-    exchange: FunctionReference<"mutation", "internal">;
-  };
-  verifier: {
-    get: FunctionReference<"query", "internal">;
-    create: FunctionReference<"mutation", "internal">;
-    update: FunctionReference<"mutation", "internal">;
-    delete: FunctionReference<"mutation", "internal">;
+  token: {
+    refresh: {
+      get: FunctionReference<"query", "internal">;
+      list: FunctionReference<"query", "internal">;
+      listChildren: FunctionReference<"query", "internal">;
+      create: FunctionReference<"mutation", "internal">;
+      update: FunctionReference<"mutation", "internal">;
+      delete: FunctionReference<"mutation", "internal">;
+      exchange: FunctionReference<"mutation", "internal">;
+    };
+    verification: {
+      get: FunctionReference<"query", "internal">;
+      create: FunctionReference<"mutation", "internal">;
+      delete: FunctionReference<"mutation", "internal">;
+    };
+    pkce: {
+      get: FunctionReference<"query", "internal">;
+      create: FunctionReference<"mutation", "internal">;
+      update: FunctionReference<"mutation", "internal">;
+      delete: FunctionReference<"mutation", "internal">;
+    };
   };
   rateLimit: {
     get: FunctionReference<"query", "internal">;
@@ -1875,7 +1877,7 @@ export async function queryVerifierById(
   ctx: ComponentCallCtx,
   verifierId: string,
 ): Promise<VerifierDoc | null> {
-  return (await ctx.runQuery(ctx.auth.config.component.verifier.get, {
+  return (await ctx.runQuery(ctx.auth.config.component.token.pkce.get, {
     id: verifierId,
   })) as VerifierDoc | null;
 }
@@ -1884,7 +1886,7 @@ export async function mutateVerifierDelete(
   ctx: ComponentCallCtx,
   verifierId: string,
 ): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.verifier.delete, {
+  await ctx.runMutation(ctx.auth.config.component.token.pkce.delete, {
     verifierId,
   });
 }

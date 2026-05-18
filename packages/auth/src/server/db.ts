@@ -43,25 +43,27 @@ type AuthComponentApiLike = {
     issue?: FunctionReference<"mutation", "internal">;
     delete: FunctionReference<"mutation", "internal">;
   };
-  verificationCode: {
-    get: FunctionReference<"query", "internal">;
-    create: FunctionReference<"mutation", "internal">;
-    delete: FunctionReference<"mutation", "internal">;
-  };
-  refreshToken: {
-    get: FunctionReference<"query", "internal">;
-    list: FunctionReference<"query", "internal">;
-    listChildren: FunctionReference<"query", "internal">;
-    create: FunctionReference<"mutation", "internal">;
-    update: FunctionReference<"mutation", "internal">;
-    delete: FunctionReference<"mutation", "internal">;
-    exchange?: FunctionReference<"mutation", "internal">;
-  };
-  verifier: {
-    get: FunctionReference<"query", "internal">;
-    create: FunctionReference<"mutation", "internal">;
-    update: FunctionReference<"mutation", "internal">;
-    delete: FunctionReference<"mutation", "internal">;
+  token: {
+    refresh: {
+      get: FunctionReference<"query", "internal">;
+      list: FunctionReference<"query", "internal">;
+      listChildren: FunctionReference<"query", "internal">;
+      create: FunctionReference<"mutation", "internal">;
+      update: FunctionReference<"mutation", "internal">;
+      delete: FunctionReference<"mutation", "internal">;
+      exchange?: FunctionReference<"mutation", "internal">;
+    };
+    verification: {
+      get: FunctionReference<"query", "internal">;
+      create: FunctionReference<"mutation", "internal">;
+      delete: FunctionReference<"mutation", "internal">;
+    };
+    pkce: {
+      get: FunctionReference<"query", "internal">;
+      create: FunctionReference<"mutation", "internal">;
+      update: FunctionReference<"mutation", "internal">;
+      delete: FunctionReference<"mutation", "internal">;
+    };
   };
   rateLimit: {
     get: FunctionReference<"query", "internal">;
@@ -157,26 +159,26 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
     },
     verifiers: {
       create: (sessionId?: string, signature?: string) =>
-        ctx.runMutation(component.verifier.create, {
+        ctx.runMutation(component.token.pkce.create, {
           sessionId,
           signature,
         }) as Promise<string>,
       getById: (verifierId: string) =>
-        ctx.runQuery(component.verifier.get, { id: verifierId }),
+        ctx.runQuery(component.token.pkce.get, { id: verifierId }),
       getBySignature: (signature: string) =>
-        ctx.runQuery(component.verifier.get, { signature }),
+        ctx.runQuery(component.token.pkce.get, { signature }),
       patch: (verifierId: string, data: Record<string, unknown>) =>
-        ctx.runMutation(component.verifier.update, { verifierId, data }),
+        ctx.runMutation(component.token.pkce.update, { verifierId, data }),
       delete: (verifierId: string) =>
-        ctx.runMutation(component.verifier.delete, { verifierId }),
+        ctx.runMutation(component.token.pkce.delete, { verifierId }),
     },
     verificationCodes: {
       getByAccountId: (accountId: string) =>
-        ctx.runQuery(component.verificationCode.get, {
+        ctx.runQuery(component.token.verification.get, {
           accountId,
         }),
       getByCode: (code: string) =>
-        ctx.runQuery(component.verificationCode.get, { code }),
+        ctx.runQuery(component.token.verification.get, { code }),
       create: (args: {
         accountId: string;
         provider: string;
@@ -185,9 +187,9 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         verifier?: string;
         emailVerified?: string;
         phoneVerified?: string;
-      }) => ctx.runMutation(component.verificationCode.create, args),
+      }) => ctx.runMutation(component.token.verification.create, args),
       delete: (verificationCodeId: string) =>
-        ctx.runMutation(component.verificationCode.delete, {
+        ctx.runMutation(component.token.verification.delete, {
           verificationCodeId,
         }),
     },
@@ -196,7 +198,7 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         sessionId: string;
         expirationTime: number;
         parentRefreshTokenId?: string;
-      }) => ctx.runMutation(component.refreshToken.create, args) as Promise<string>,
+      }) => ctx.runMutation(component.token.refresh.create, args) as Promise<string>,
       exchange: (args: {
         refreshTokenId: string;
         sessionId: string;
@@ -204,29 +206,29 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         refreshTokenExpirationTime: number;
         reuseWindowMs: number;
       }) =>
-        ctx.runMutation(component.refreshToken.exchange!, args) as Promise<null | {
+        ctx.runMutation(component.token.refresh.exchange!, args) as Promise<null | {
           userId: string;
           sessionId: string;
           refreshTokenId: string;
         }>,
       getById: (refreshTokenId: string) =>
-        ctx.runQuery(component.refreshToken.get, { id: refreshTokenId }),
+        ctx.runQuery(component.token.refresh.get, { id: refreshTokenId }),
       patch: (refreshTokenId: string, data: Record<string, unknown>) =>
-        ctx.runMutation(component.refreshToken.update, {
+        ctx.runMutation(component.token.refresh.update, {
           refreshTokenId,
           data,
         }),
       getChildren: (sessionId: string, parentRefreshTokenId: string) =>
-        ctx.runQuery(component.refreshToken.listChildren, {
+        ctx.runQuery(component.token.refresh.listChildren, {
           sessionId,
           parentRefreshTokenId,
         }),
       listBySession: (sessionId: string) =>
-        ctx.runQuery(component.refreshToken.list, { sessionId }),
+        ctx.runQuery(component.token.refresh.list, { sessionId }),
       deleteAll: (sessionId: string) =>
-        ctx.runMutation(component.refreshToken.delete, { sessionId }),
+        ctx.runMutation(component.token.refresh.delete, { sessionId }),
       getActive: (sessionId: string) =>
-        ctx.runQuery(component.refreshToken.get, { activeForSession: sessionId }),
+        ctx.runQuery(component.token.refresh.get, { activeForSession: sessionId }),
     },
     rateLimits: {
       get: (identifier: string) => ctx.runQuery(component.rateLimit.get, { identifier }),

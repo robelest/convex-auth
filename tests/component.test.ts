@@ -48,7 +48,7 @@ test("refresh token exchange mismatch does not delete supplied session", async (
   });
 
   const exchanged = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.refreshToken.exchange, {
+    return await ctx.runMutation(components.auth.token.refresh.exchange, {
       refreshTokenId: sessionA.refreshTokenId!,
       sessionId: sessionB.sessionId,
       now: Date.now(),
@@ -71,17 +71,17 @@ test("auth verifier lookups ignore expired verifiers", async () => {
   const t = convexTest(schema);
 
   const verifierId = await t.run(async (ctx) => {
-    return await ctx.runMutation(components.auth.verifier.create, {
+    return await ctx.runMutation(components.auth.token.pkce.create, {
       signature: "expired-signature",
       expirationTime: Date.now() - 1,
     });
   });
 
   const byId = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.verifier.get, { id: verifierId });
+    return await ctx.runQuery(components.auth.token.pkce.get, { id: verifierId });
   });
   const bySignature = await t.run(async (ctx) => {
-    return await ctx.runQuery(components.auth.verifier.get, {
+    return await ctx.runQuery(components.auth.token.pkce.get, {
       signature: "expired-signature",
     });
   });

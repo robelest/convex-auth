@@ -41,7 +41,6 @@ import type * as public_sso_scim from "../public/sso/scim.js";
 import type * as public_sso_secrets from "../public/sso/secrets.js";
 import type * as public_sso_webhooks from "../public/sso/webhooks.js";
 import type * as rateLimit from "../rateLimit.js";
-import type * as refreshToken from "../refreshToken.js";
 import type * as session from "../session.js";
 import type * as sso_audit from "../sso/audit.js";
 import type * as sso_connection from "../sso/connection.js";
@@ -52,11 +51,12 @@ import type * as sso_connection_scimIdentity from "../sso/connection/scimIdentit
 import type * as sso_connection_secret from "../sso/connection/secret.js";
 import type * as sso_webhook_delivery from "../sso/webhook/delivery.js";
 import type * as sso_webhook_endpoint from "../sso/webhook/endpoint.js";
+import type * as token_pkce from "../token/pkce.js";
+import type * as token_refresh from "../token/refresh.js";
+import type * as token_verification from "../token/verification.js";
 import type * as user from "../user.js";
 import type * as user_email from "../user/email.js";
 import type * as user_key from "../user/key.js";
-import type * as verificationCode from "../verificationCode.js";
-import type * as verifier from "../verifier.js";
 
 import type {
   ApiFromModules,
@@ -99,7 +99,6 @@ const fullApi: ApiFromModules<{
   "public/sso/secrets": typeof public_sso_secrets;
   "public/sso/webhooks": typeof public_sso_webhooks;
   rateLimit: typeof rateLimit;
-  refreshToken: typeof refreshToken;
   session: typeof session;
   "sso/audit": typeof sso_audit;
   "sso/connection": typeof sso_connection;
@@ -110,11 +109,12 @@ const fullApi: ApiFromModules<{
   "sso/connection/secret": typeof sso_connection_secret;
   "sso/webhook/delivery": typeof sso_webhook_delivery;
   "sso/webhook/endpoint": typeof sso_webhook_endpoint;
+  "token/pkce": typeof token_pkce;
+  "token/refresh": typeof token_refresh;
+  "token/verification": typeof token_verification;
   user: typeof user;
   "user/email": typeof user_email;
   "user/key": typeof user_key;
-  verificationCode: typeof verificationCode;
-  verifier: typeof verifier;
 }> = anyApi as any;
 
 /**

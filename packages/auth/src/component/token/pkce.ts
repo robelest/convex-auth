@@ -1,5 +1,5 @@
 /**
- * `component.verifier.*` — PKCE verifiers.
+ * `component.token.pkce.*` — PKCE verifiers.
  *
  * Pure re-export barrel; namespace = module path. No `public` wrapper,
  * no entity prefix. Reads collapse into one overloaded `get`.
@@ -12,4 +12,4 @@ export {
   verifierCreate as create,
   verifierPatch as update,
   verifierDelete as delete,
-} from "./public/identity/verifiers";
+} from "../public/identity/verifiers";
