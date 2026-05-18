@@ -473,19 +473,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           null,
           Name
         >;
-        acceptByToken: FunctionReference<
-          "mutation",
-          "internal",
-          { acceptedByUserId: string; tokenHash: string },
-          {
-            groupId: string | null;
-            inviteId: string;
-            inviteStatus: "accepted" | "already_accepted";
-            memberId?: string;
-            membershipStatus: "joined" | "already_joined" | "not_applicable";
-          },
-          Name
-        >;
         create: FunctionReference<
           "mutation",
           "internal",
@@ -563,6 +550,19 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               tokenHash: string;
             }>;
             nextCursor: string | null;
+          },
+          Name
+        >;
+        redeem: FunctionReference<
+          "mutation",
+          "internal",
+          { acceptedByUserId: string; tokenHash: string },
+          {
+            groupId: string | null;
+            inviteId: string;
+            inviteStatus: "accepted" | "already_accepted";
+            memberId?: string;
+            membershipStatus: "joined" | "already_joined" | "not_applicable";
           },
           Name
         >;
@@ -668,33 +668,33 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         get: FunctionReference<
           "query",
           "internal",
-          { groupId?: string; id?: string; userId?: string },
           {
-            _creationTime: number;
-            _id: string;
-            extend?: any;
-            groupId: string;
-            role?: string;
-            roleIds?: Array<string>;
-            status?: string;
-            userId: string;
-          } | null,
-          Name
-        >;
-        getMany: FunctionReference<
-          "query",
-          "internal",
-          { groupIds: Array<string>; userId: string },
-          Array<{
-            _creationTime: number;
-            _id: string;
-            extend?: any;
-            groupId: string;
-            role?: string;
-            roleIds?: Array<string>;
-            status?: string;
-            userId: string;
-          } | null>,
+            groupId?: string;
+            groupIds?: Array<string>;
+            id?: string;
+            userId?: string;
+          },
+          | {
+              _creationTime: number;
+              _id: string;
+              extend?: any;
+              groupId: string;
+              role?: string;
+              roleIds?: Array<string>;
+              status?: string;
+              userId: string;
+            }
+          | null
+          | Array<{
+              _creationTime: number;
+              _id: string;
+              extend?: any;
+              groupId: string;
+              role?: string;
+              roleIds?: Array<string>;
+              status?: string;
+              userId: string;
+            } | null>,
           Name
         >;
         list: FunctionReference<
@@ -1238,19 +1238,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             null,
             Name
           >;
-          inviteAcceptByToken: FunctionReference<
-            "mutation",
-            "internal",
-            { acceptedByUserId: string; tokenHash: string },
-            {
-              groupId: string | null;
-              inviteId: string;
-              inviteStatus: "accepted" | "already_accepted";
-              memberId?: string;
-              membershipStatus: "joined" | "already_joined" | "not_applicable";
-            },
-            Name
-          >;
           inviteCreate: FunctionReference<
             "mutation",
             "internal",
@@ -1331,6 +1318,19 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             },
             Name
           >;
+          inviteRedeem: FunctionReference<
+            "mutation",
+            "internal",
+            { acceptedByUserId: string; tokenHash: string },
+            {
+              groupId: string | null;
+              inviteId: string;
+              inviteStatus: "accepted" | "already_accepted";
+              memberId?: string;
+              membershipStatus: "joined" | "already_joined" | "not_applicable";
+            },
+            Name
+          >;
           inviteRevoke: FunctionReference<
             "mutation",
             "internal",
@@ -1356,33 +1356,33 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           memberGet: FunctionReference<
             "query",
             "internal",
-            { groupId?: string; id?: string; userId?: string },
             {
-              _creationTime: number;
-              _id: string;
-              extend?: any;
-              groupId: string;
-              role?: string;
-              roleIds?: Array<string>;
-              status?: string;
-              userId: string;
-            } | null,
-            Name
-          >;
-          memberGetByGroupAndUserMany: FunctionReference<
-            "query",
-            "internal",
-            { groupIds: Array<string>; userId: string },
-            Array<{
-              _creationTime: number;
-              _id: string;
-              extend?: any;
-              groupId: string;
-              role?: string;
-              roleIds?: Array<string>;
-              status?: string;
-              userId: string;
-            } | null>,
+              groupId?: string;
+              groupIds?: Array<string>;
+              id?: string;
+              userId?: string;
+            },
+            | {
+                _creationTime: number;
+                _id: string;
+                extend?: any;
+                groupId: string;
+                role?: string;
+                roleIds?: Array<string>;
+                status?: string;
+                userId: string;
+              }
+            | null
+            | Array<{
+                _creationTime: number;
+                _id: string;
+                extend?: any;
+                groupId: string;
+                role?: string;
+                roleIds?: Array<string>;
+                status?: string;
+                userId: string;
+              } | null>,
             Name
           >;
           memberList: FunctionReference<
@@ -1711,25 +1711,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             null,
             Name
           >;
-          userEmailFindVerified: FunctionReference<
-            "query",
-            "internal",
-            { connectionId?: string; email: string },
-            {
-              _creationTime: number;
-              _id: string;
-              email?: string;
-              emailVerificationTime?: number;
-              extend?: any;
-              image?: string;
-              isAnonymous?: boolean;
-              lastActiveGroup?: string;
-              name?: string;
-              phone?: string;
-              phoneVerificationTime?: number;
-            } | null,
-            Name
-          >;
           userEmailListByUser: FunctionReference<
             "query",
             "internal",
@@ -1746,6 +1727,25 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               userId: string;
               verificationTime?: number;
             }>,
+            Name
+          >;
+          userEmailOwner: FunctionReference<
+            "query",
+            "internal",
+            { connectionId?: string; email: string },
+            {
+              _creationTime: number;
+              _id: string;
+              email?: string;
+              emailVerificationTime?: number;
+              extend?: any;
+              image?: string;
+              isAnonymous?: boolean;
+              lastActiveGroup?: string;
+              name?: string;
+              phone?: string;
+              phoneVerificationTime?: number;
+            } | null,
             Name
           >;
           userEmailRemove: FunctionReference<
@@ -2317,28 +2317,9 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               mappedGroupId?: string;
               resourceType?: "user" | "group";
               userId?: string;
+              userIds?: Array<string>;
             },
-            {
-              _creationTime: number;
-              _id: string;
-              active?: boolean;
-              connectionId: string;
-              externalId: string;
-              groupId: string;
-              lastProvisionedAt?: number;
-              mappedGroupId?: string;
-              raw?: any;
-              resourceType: "user" | "group";
-              userId?: string;
-            } | null,
-            Name
-          >;
-          groupConnectionScimIdentityGetByGroupConnectionAndUsers: FunctionReference<
-            "query",
-            "internal",
-            { connectionId: string; userIds: Array<string> },
-            Array<{
-              identity: {
+            | {
                 _creationTime: number;
                 _id: string;
                 active?: boolean;
@@ -2350,9 +2331,21 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 raw?: any;
                 resourceType: "user" | "group";
                 userId?: string;
-              } | null;
-              userId: string;
-            }>,
+              }
+            | null
+            | Array<{
+                _creationTime: number;
+                _id: string;
+                active?: boolean;
+                connectionId: string;
+                externalId: string;
+                groupId: string;
+                lastProvisionedAt?: number;
+                mappedGroupId?: string;
+                raw?: any;
+                resourceType: "user" | "group";
+                userId?: string;
+              } | null>,
             Name
           >;
           groupConnectionScimIdentityListByGroupConnection: FunctionReference<
@@ -2916,28 +2909,9 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               mappedGroupId?: string;
               resourceType?: "user" | "group";
               userId?: string;
+              userIds?: Array<string>;
             },
-            {
-              _creationTime: number;
-              _id: string;
-              active?: boolean;
-              connectionId: string;
-              externalId: string;
-              groupId: string;
-              lastProvisionedAt?: number;
-              mappedGroupId?: string;
-              raw?: any;
-              resourceType: "user" | "group";
-              userId?: string;
-            } | null,
-            Name
-          >;
-          getMany: FunctionReference<
-            "query",
-            "internal",
-            { connectionId: string; userIds: Array<string> },
-            Array<{
-              identity: {
+            | {
                 _creationTime: number;
                 _id: string;
                 active?: boolean;
@@ -2949,9 +2923,21 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 raw?: any;
                 resourceType: "user" | "group";
                 userId?: string;
-              } | null;
-              userId: string;
-            }>,
+              }
+            | null
+            | Array<{
+                _creationTime: number;
+                _id: string;
+                active?: boolean;
+                connectionId: string;
+                externalId: string;
+                groupId: string;
+                lastProvisionedAt?: number;
+                mappedGroupId?: string;
+                raw?: any;
+                resourceType: "user" | "group";
+                userId?: string;
+              } | null>,
             Name
           >;
           list: FunctionReference<
@@ -3334,25 +3320,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           null,
           Name
         >;
-        findOwner: FunctionReference<
-          "query",
-          "internal",
-          { connectionId?: string; email: string },
-          {
-            _creationTime: number;
-            _id: string;
-            email?: string;
-            emailVerificationTime?: number;
-            extend?: any;
-            image?: string;
-            isAnonymous?: boolean;
-            lastActiveGroup?: string;
-            name?: string;
-            phone?: string;
-            phoneVerificationTime?: number;
-          } | null,
-          Name
-        >;
         list: FunctionReference<
           "query",
           "internal",
@@ -3369,6 +3336,25 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             userId: string;
             verificationTime?: number;
           }>,
+          Name
+        >;
+        owner: FunctionReference<
+          "query",
+          "internal",
+          { connectionId?: string; email: string },
+          {
+            _creationTime: number;
+            _id: string;
+            email?: string;
+            emailVerificationTime?: number;
+            extend?: any;
+            image?: string;
+            isAnonymous?: boolean;
+            lastActiveGroup?: string;
+            name?: string;
+            phone?: string;
+            phoneVerificationTime?: number;
+          } | null,
           Name
         >;
         setPrimary: FunctionReference<

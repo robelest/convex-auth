@@ -474,9 +474,9 @@ export const getScimIdentityByConnectionAndUsers = (
   componentSso: ComponentSso,
   args: { connectionId: string; userIds: string[] },
 ) =>
-  query<typeof args, Array<{ userId: string; identity: ScimIdentityRecord | null }>>(
+  query<typeof args, Array<ScimIdentityRecord | null>>(
     ctx,
-    componentSso.connection.scimIdentity.getMany,
+    componentSso.connection.scimIdentity.get,
     args,
   );
 

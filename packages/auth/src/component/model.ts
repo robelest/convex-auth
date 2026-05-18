@@ -493,7 +493,7 @@ export const vRateLimitResult = v.object({
   lastAttemptTime: v.number(),
 });
 
-export const vInviteAcceptByTokenResult = v.object({
+export const vInviteRedeemResult = v.object({
   inviteId: v.id(TABLES.GroupInvite),
   groupId: v.union(v.id(TABLES.Group), v.null()),
   memberId: v.optional(v.id(TABLES.GroupMember)),

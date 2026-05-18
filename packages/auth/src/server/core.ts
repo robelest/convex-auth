@@ -1218,7 +1218,7 @@ export function createCoreDomains(deps: CoreDeps) {
       }
       if (toFetch.length > 0) {
         const sharedFetch = (ctx.runQuery as UntypedRunQuery)(
-          config.component.group.member.getMany,
+          config.component.group.member.get,
           { userId, groupIds: toFetch },
         ) as Promise<Array<MemberDocLike>>;
         for (let i = 0; i < toFetch.length; i += 1) {
@@ -1817,7 +1817,7 @@ export function createCoreDomains(deps: CoreDeps) {
       }> => {
         const tokenHash = await sha256(args.token);
         const result = (await ctx.runMutation(
-          config.component.group.invite.acceptByToken,
+          config.component.group.invite.redeem,
           {
             tokenHash,
             acceptedByUserId: args.acceptedByUserId,

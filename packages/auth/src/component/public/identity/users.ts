@@ -333,7 +333,7 @@ export const userEmailListByUser = query({
  * @returns The owning user document, or `null` when zero or 2+ match.
  *
  */
-export const userEmailFindVerified = query({
+export const userEmailOwner = query({
   args: { email: v.string(), connectionId: v.optional(v.id("GroupConnection")) },
   returns: v.union(vUserDoc, v.null()),
   handler: async (ctx, { email, connectionId }) => {

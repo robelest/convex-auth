@@ -1,8 +1,8 @@
 /**
  * `component.group.invite.*` — group invitations (sub-resource of group).
  *
- * `accept` / `acceptByToken` / `revoke` are kept
- * domain verbs (acceptance workflow with side-effects).
+ * `accept` (by id), `redeem` (by token), and `revoke` are domain verbs
+ * (acceptance workflow with side-effects).
  *
  * @module
  */
@@ -12,6 +12,6 @@ export {
   inviteList as list,
   inviteCreate as create,
   inviteAccept as accept,
-  inviteAcceptByToken as acceptByToken,
+  inviteRedeem as redeem,
   inviteRevoke as revoke,
 } from "../public/groups/invites";

@@ -23,7 +23,7 @@ type AuthComponentApiLike = {
     delete: FunctionReference<"mutation", "internal">;
     email: {
       list: FunctionReference<"query", "internal">;
-      findOwner: FunctionReference<"query", "internal">;
+      owner: FunctionReference<"query", "internal">;
       upsert: FunctionReference<"mutation", "internal">;
       setPrimary: FunctionReference<"mutation", "internal">;
       delete: FunctionReference<"mutation", "internal">;
@@ -115,7 +115,7 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
       listByUser: (userId: string) =>
         ctx.runQuery(component.user.email.list, { userId }),
       findVerified: (email: string, connectionId?: string) =>
-        ctx.runQuery(component.user.email.findOwner, { email, connectionId }),
+        ctx.runQuery(component.user.email.owner, { email, connectionId }),
     },
     accounts: {
       get: (provider: string, providerAccountId: string) =>

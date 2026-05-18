@@ -52,18 +52,43 @@ export const memberAdd = mutation({
 });
 
 /**
- * Read a membership by identity — one function, all-optional args,
- * unioned return: `{ id }` (point lookup) or `{ groupId, userId }`
- * (unique per group+user).
+ * Read a membership by identity. Accepts exactly one selector:
+ * - `{ id }` — point lookup → `Doc | null`.
+ * - `{ groupId, userId }` — unique per group+user → `Doc | null`.
+ * - `{ userId, groupIds }` — batch: resolve this user's membership in
+ *   each group, returning `(Doc | null)[]` aligned to `groupIds` order
+ *   (duplicates de-duplicated internally).
  */
 export const memberGet = query({
   args: {
     id: v.optional(v.id("GroupMember")),
     groupId: v.optional(v.id("Group")),
     userId: v.optional(v.id("User")),
+    groupIds: v.optional(v.array(v.id("Group"))),
   },
-  returns: v.union(vGroupMemberDoc, v.null()),
+  returns: v.union(
+    vGroupMemberDoc,
+    v.null(),
+    v.array(v.union(vGroupMemberDoc, v.null())),
+  ),
   handler: async (ctx, args) => {
+    if (args.userId !== undefined && args.groupIds !== undefined) {
+      const groupIds = args.groupIds;
+      if (groupIds.length === 0) return [];
+      const unique = Array.from(new Set(groupIds));
+      const docs = await Promise.all(
+        unique.map((groupId) =>
+          ctx.db
+            .query("GroupMember")
+            .withIndex("group_id_user_id", (q) =>
+              q.eq("groupId", groupId).eq("userId", args.userId!),
+            )
+            .unique(),
+        ),
+      );
+      const byGroupId = new Map(unique.map((id, i) => [id, docs[i] ?? null]));
+      return groupIds.map((id) => byGroupId.get(id) ?? null);
+    }
     if (args.groupId !== undefined && args.userId !== undefined) {
       return await ctx.db
         .query("GroupMember")
@@ -173,47 +198,6 @@ export const memberList = query({
     return { items, nextCursor };
   },
 });
-
-
-/**
- * Batched equivalent of {@link memberGetByGroupAndUser}. Resolves many
- * `(groupId, userId)` pairs for the same user in a single component
- * round-trip. Used by app-side handlers (e.g. `groups:getDashboard`) that
- * need to inspect the current user's membership across every root group
- * they can see.
- *
- * Each `groupId` is resolved using the `group_id_user_id` index; missing
- * memberships come back as `null` in the same slot order as the input.
- *
- * @param args.userId - The user whose memberships to look up.
- * @param args.groupIds - One or more groups to resolve. Order is preserved;
- *   duplicates tolerated (but de-duplicated internally so the DB only sees
- *   each pair once).
- * @returns Array of member documents or `null` entries, in `groupIds` order.
- *
- */
-export const memberGetByGroupAndUserMany = query({
-  args: {
-    userId: v.id("User"),
-    groupIds: v.array(v.id("Group")),
-  },
-  returns: v.array(v.union(vGroupMemberDoc, v.null())),
-  handler: async (ctx, { userId, groupIds }) => {
-    if (groupIds.length === 0) return [];
-    const unique = Array.from(new Set(groupIds));
-    const docs = await Promise.all(
-      unique.map((groupId) =>
-        ctx.db
-          .query("GroupMember")
-          .withIndex("group_id_user_id", (q) => q.eq("groupId", groupId).eq("userId", userId))
-          .unique(),
-      ),
-    );
-    const byGroupId = new Map(unique.map((id, i) => [id, docs[i] ?? null]));
-    return groupIds.map((id) => byGroupId.get(id) ?? null);
-  },
-});
-
 /**
  * Resolve a user's membership by walking the group hierarchy from the
  * requested group up to the root. Returns the first matching membership

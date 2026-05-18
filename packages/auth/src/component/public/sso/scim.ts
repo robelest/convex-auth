@@ -96,15 +96,19 @@ export const groupConnectionScimConfigGet = query({
  * - `userId` — the first identity for a user, via the `user_id` index.
  * - `mappedGroupId` — the identity mapped to an internal group, via the
  *   `mapped_group_id` index.
- *
- * For batched user lookups under one connection, use `getMany`.
+ * - `connectionId` + `userIds` — batch: resolve each user's identity
+ *   under the connection, returning `(Doc | null)[]` aligned to
+ *   `userIds` order (duplicates de-duplicated internally). One round-trip
+ *   for large SCIM syncs instead of a per-user fan-out.
  *
  * @param connectionId - Optional `_id` of the `GroupConnection`.
  * @param resourceType - Optional SCIM resource type (`"user"` | `"group"`).
  * @param externalId - Optional external identifier from the IdP.
  * @param userId - Optional `_id` of the linked `User`.
+ * @param userIds - Optional `_id[]` for a batched per-user lookup.
  * @param mappedGroupId - Optional `_id` of the mapped internal `Group`.
- * @returns The matching SCIM identity document, or `null`.
+ * @returns The matching SCIM identity document or `null`; for `userIds`,
+ *   an aligned `(Doc | null)[]`.
  *
  */
 export const groupConnectionScimIdentityGet = query({
@@ -113,10 +117,32 @@ export const groupConnectionScimIdentityGet = query({
     resourceType: v.optional(vScimResourceType),
     externalId: v.optional(v.string()),
     userId: v.optional(v.id("User")),
+    userIds: v.optional(v.array(v.id("User"))),
     mappedGroupId: v.optional(v.id("Group")),
   },
-  returns: v.union(vGroupConnectionScimIdentityDoc, v.null()),
+  returns: v.union(
+    vGroupConnectionScimIdentityDoc,
+    v.null(),
+    v.array(v.union(vGroupConnectionScimIdentityDoc, v.null())),
+  ),
   handler: async (ctx, args) => {
+    if (args.connectionId !== undefined && args.userIds !== undefined) {
+      const userIds = args.userIds;
+      if (userIds.length === 0) return [];
+      const unique = Array.from(new Set(userIds));
+      const docs = await Promise.all(
+        unique.map((userId) =>
+          ctx.db
+            .query("GroupConnectionScimIdentity")
+            .withIndex("group_connection_id_user_id", (idx) =>
+              idx.eq("connectionId", args.connectionId!).eq("userId", userId),
+            )
+            .first(),
+        ),
+      );
+      const byUserId = new Map(unique.map((id, i) => [id, docs[i] ?? null]));
+      return userIds.map((userId) => byUserId.get(userId) ?? null);
+    }
     if (
       args.connectionId !== undefined &&
       args.resourceType !== undefined &&
@@ -153,53 +179,6 @@ export const groupConnectionScimIdentityGet = query({
         .first();
     }
     return null;
-  },
-});
-
-/**
- * Batched variant of
- * {@link groupConnectionScimIdentityGetByGroupConnectionAndUser}. Resolves
- * SCIM identities for many users under the same connection in a single
- * component round-trip.
- *
- * Used by large SCIM syncs that previously walked the user list one at a
- * time — a 1000-user import was 1000 lookups. With this helper it's one.
- *
- * @param args.connectionId - The ID of the connection to scope to.
- * @param args.userIds - One or more user ids to look up. Duplicates are
- *   tolerated.
- * @returns Array of `{ userId, identity }` pairs in the input order; when
- *   a user has no SCIM identity under this connection, `identity` is `null`.
- */
-export const groupConnectionScimIdentityGetByGroupConnectionAndUsers = query({
-  args: {
-    connectionId: v.id("GroupConnection"),
-    userIds: v.array(v.id("User")),
-  },
-  returns: v.array(
-    v.object({
-      userId: v.id("User"),
-      identity: v.union(vGroupConnectionScimIdentityDoc, v.null()),
-    }),
-  ),
-  handler: async (ctx, { connectionId, userIds }) => {
-    if (userIds.length === 0) return [];
-    const unique = Array.from(new Set(userIds));
-    const docs = await Promise.all(
-      unique.map((userId) =>
-        ctx.db
-          .query("GroupConnectionScimIdentity")
-          .withIndex("group_connection_id_user_id", (idx) =>
-            idx.eq("connectionId", connectionId).eq("userId", userId),
-          )
-          .first(),
-      ),
-    );
-    const byUserId = new Map(unique.map((id, i) => [id, docs[i] ?? null]));
-    return userIds.map((userId) => ({
-      userId,
-      identity: byUserId.get(userId) ?? null,
-    }));
   },
 });
 

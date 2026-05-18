@@ -4,7 +4,7 @@ import type { Id } from "../../_generated/dataModel";
 import { mutation, query } from "../../functions";
 import {
   vGroupInviteDoc,
-  vInviteAcceptByTokenResult,
+  vInviteRedeemResult,
   vInviteStatus,
   vPaginated,
 } from "../../model";
@@ -274,7 +274,7 @@ export const inviteList = query({
  * automatically transitioned to `"expired"` and the acceptance is rejected.
  *
  * The caller is responsible for creating the corresponding member record
- * (see {@link inviteAcceptByToken} for an all-in-one alternative that also
+ * (see {@link inviteRedeem} for an all-in-one alternative that also
  * handles membership).
  *
  * @param args.inviteId - The `Id<"GroupInvite">` of the invite to accept.
@@ -354,12 +354,12 @@ export const inviteAccept = mutation({
  * @throws `ConvexError` with code `INVITE_EMAIL_MISMATCH` if the accepting user's email does not match the invite's email.
  *
  */
-export const inviteAcceptByToken = mutation({
+export const inviteRedeem = mutation({
   args: {
     tokenHash: v.string(),
     acceptedByUserId: v.id("User"),
   },
-  returns: vInviteAcceptByTokenResult,
+  returns: vInviteRedeemResult,
   handler: async (ctx, { tokenHash, acceptedByUserId }) => {
     const invite = await ctx.db
       .query("GroupInvite")

@@ -9,7 +9,7 @@
 
 export {
   userEmailListByUser as list,
-  userEmailFindVerified as findOwner,
+  userEmailOwner as owner,
   userEmailUpsert as upsert,
   userEmailSetPrimary as setPrimary,
   userEmailRemove as delete,

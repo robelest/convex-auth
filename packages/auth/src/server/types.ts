@@ -1571,7 +1571,7 @@ type AuthComponentApi = {
     delete: FunctionReference<"mutation", "internal">;
     email: {
       list: FunctionReference<"query", "internal">;
-      findOwner: FunctionReference<"query", "internal">;
+      owner: FunctionReference<"query", "internal">;
       upsert: FunctionReference<"mutation", "internal">;
       setPrimary: FunctionReference<"mutation", "internal">;
       delete: FunctionReference<"mutation", "internal">;
@@ -1635,7 +1635,6 @@ type AuthComponentApi = {
     delete: FunctionReference<"mutation", "internal">;
     member: {
       get: FunctionReference<"query", "internal">;
-      getMany: FunctionReference<"query", "internal">;
       list: FunctionReference<"query", "internal">;
       create: FunctionReference<"mutation", "internal">;
       update: FunctionReference<"mutation", "internal">;
@@ -1647,7 +1646,7 @@ type AuthComponentApi = {
       list: FunctionReference<"query", "internal">;
       create: FunctionReference<"mutation", "internal">;
       accept: FunctionReference<"mutation", "internal">;
-      acceptByToken: FunctionReference<"mutation", "internal">;
+      redeem: FunctionReference<"mutation", "internal">;
       revoke: FunctionReference<"mutation", "internal">;
     };
   };
@@ -1703,7 +1702,6 @@ type AuthComponentApi = {
       };
       scimIdentity: {
         get: FunctionReference<"query", "internal">;
-        getMany: FunctionReference<"query", "internal">;
         list: FunctionReference<"query", "internal">;
         upsert: FunctionReference<"mutation", "internal">;
         delete: FunctionReference<"mutation", "internal">;
