@@ -100,11 +100,10 @@ export function createAuthContext(
     user: domains.user,
     session: domains.session,
     account: domains.account,
-    group: domains.group,
+    group: { ...domains.group, active: domains.active },
     member: domains.member,
     invite: domains.invite,
     key: domains.key,
-    active: domains.active,
     ...(createAuthContextFacade(authLike) as AuthContextFacade),
   };
 }

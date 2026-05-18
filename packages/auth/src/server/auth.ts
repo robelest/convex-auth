@@ -177,12 +177,13 @@ export type AuthApiBase<
   session: ReturnType<typeof AuthFactory>["auth"]["session"];
   provider: ReturnType<typeof AuthFactory>["auth"]["provider"];
   account: ReturnType<typeof AuthFactory>["auth"]["account"];
-  group: ReturnType<typeof AuthFactory>["auth"]["group"];
+  group: ReturnType<typeof AuthFactory>["auth"]["group"] & {
+    /** Current user's active-group selection (`get` / `set` / `clear`). */
+    active: ReturnType<typeof AuthFactory>["auth"]["active"];
+  };
   member: MemberApiWithAuthorization<TAuthorization>;
   invite: ReturnType<typeof AuthFactory>["auth"]["invite"];
   key: ReturnType<typeof AuthFactory>["auth"]["key"];
-  /** Current user's active-group selection (`get` / `set` / `clear`). */
-  active: ReturnType<typeof AuthFactory>["auth"]["active"];
   request: ReturnType<typeof AuthFactory>["auth"]["request"];
   /**
    * Resolve the current request's auth context. Framework-agnostic — use
@@ -646,11 +647,11 @@ export function createAuth<
     group: {
       ...authResult.auth.group,
       sso: publicGroupSso,
+      active: authResult.auth.active,
     },
     member: authResult.auth.member,
     invite: authResult.auth.invite,
     key: authResult.auth.key,
-    active: authResult.auth.active,
     request: authResult.auth.request,
 
     ...(createAuthContextFacade(authResult.auth as AuthLike) as AuthContextFacade),

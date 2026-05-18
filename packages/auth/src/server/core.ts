@@ -292,7 +292,7 @@ export function createCoreDomains(deps: CoreDeps) {
     },
     /**
      * Provider-agnostic management of the emails a user owns. Singular
-     * `email` namespace (consistent with `auth.member` / `auth.active`);
+     * `email` namespace (consistent with `auth.member`);
      * the collection is exposed via `.list`.
      *
      * - `list(ctx)` — every `UserEmail` the user owns (provenance incl.).
@@ -1605,7 +1605,7 @@ export function createCoreDomains(deps: CoreDeps) {
      *
      * @example
      * ```ts
-     * const active = await auth.active.get(ctx);
+     * const active = await auth.group.active.get(ctx);
      * if (active) console.log(active.group.name);
      * ```
      */

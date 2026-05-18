@@ -38,8 +38,8 @@ configured. Pair them with `auth.v.*` as your function `returns:` — see
 | `viewer`         | `(ctx)`                              | `Doc<"User"> \| null` | Returns the current session user's full document, or `null` when unauthenticated.                                                                                        |
 | `delete`         | `(ctx, userId, { cascade? })`        | `{ userId }`          | Deletes a user. With `cascade: true`, also deletes all linked sessions, accounts, memberships, keys, and owned emails. Throws `ConvexError` with code `INVALID_PARAMETERS` on failure. |
 
-> Active-group selection lives on the dedicated `auth.active` namespace
-> (`get` / `set` / `clear`), not on `auth.user`.
+> Active-group selection lives on the dedicated `auth.group.active`
+> namespace (`get` / `set` / `clear`), not on `auth.user`.
 
 ### `auth.user.email`
 
@@ -87,13 +87,13 @@ await auth.user.delete(ctx, userId, { cascade: true });
 
 ### Active group
 
-Active-group selection lives on the `auth.active` namespace, not
+Active-group selection lives on the `auth.group.active` namespace, not
 `auth.user`:
 
 ```ts
-await auth.active.set(ctx, orgId, { userId });
+await auth.group.active.set(ctx, orgId, { userId });
 
-const active = await auth.active.get(ctx, { userId });
+const active = await auth.group.active.get(ctx, { userId });
 const activeGroupId = active?.groupId ?? null;
 ```
 
