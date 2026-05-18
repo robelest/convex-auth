@@ -54,8 +54,7 @@ export const memberAdd = mutation({
 /**
  * Read a membership by identity — one function, all-optional args,
  * unioned return: `{ id }` (point lookup) or `{ groupId, userId }`
- * (unique per group+user). Replaces `memberGet` /
- * `memberGetByGroupAndUser`.
+ * (unique per group+user).
  */
 export const memberGet = query({
   args: {

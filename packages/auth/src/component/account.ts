@@ -1,15 +1,15 @@
 /**
  * `component.account.*` — provider-linked auth accounts.
  *
- * Pure re-export barrel; namespace = module path. No `public` wrapper,
- * no entity prefix. Reads collapse into one overloaded `get`.
+ * Reads collapse into one overloaded `get`; `list`
+ * takes the owning `userId`.
  *
  * @module
  */
 
 export {
   accountGet as get,
-  accountListByUser as listByUser,
+  accountList as list,
   accountInsert as create,
   accountPatch as update,
   accountDelete as delete,

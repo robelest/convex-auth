@@ -117,23 +117,22 @@ export const deviceAuthorize = mutation({
 });
 
 /**
- * Update the last-polled timestamp on a device authorization record.
+ * Partially update a device authorization record.
  *
- * Called each time the device client polls the token endpoint. The
- * timestamp is used to enforce the minimum polling interval and to
- * detect slow-polling violations per RFC 8628.
+ * Performs a partial patch on the `DeviceCode` document — e.g. bumping
+ * `lastPolledAt` on each poll to enforce the minimum polling interval
+ * and detect slow-polling violations per RFC 8628.
  *
  * @param deviceId - The `_id` of the `DeviceCode` document to update.
- * @param lastPolledAt - Unix timestamp (in milliseconds) of the most
- *   recent poll request from the device client.
+ * @param data - An object containing the fields to patch.
  * @returns `null` on success.
  *
  */
-export const deviceUpdateLastPolled = mutation({
-  args: { deviceId: v.id("DeviceCode"), lastPolledAt: v.number() },
+export const deviceUpdate = mutation({
+  args: { deviceId: v.id("DeviceCode"), data: v.any() },
   returns: v.null(),
-  handler: async (ctx, { deviceId, lastPolledAt }) => {
-    await ctx.db.patch("DeviceCode", deviceId, { lastPolledAt });
+  handler: async (ctx, { deviceId, data }) => {
+    await ctx.db.patch("DeviceCode", deviceId, data);
     return null;
   },
 });

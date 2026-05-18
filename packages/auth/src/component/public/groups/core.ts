@@ -91,8 +91,7 @@ export const groupCreate = mutation({
 /**
  * Read a group by identity — one function, all-optional args, unioned
  * return: `{ id }` → `Doc<"Group"> | null`, or `{ ids }` → ordered
- * `(Doc<"Group"> | null)[]` (deduped). Replaces `groupGet` /
- * `groupGetMany`.
+ * `(Doc<"Group"> | null)[]` (deduped).
  */
 export const groupGet = query({
   args: {

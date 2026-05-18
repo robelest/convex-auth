@@ -1,8 +1,7 @@
 /**
  * `component.group.invite.*` — group invitations (sub-resource of group).
  *
- * Pure re-export barrel; namespace = module path. No `public` wrapper,
- * no entity prefix. `accept` / `acceptByToken` / `revoke` are kept
+ * `accept` / `acceptByToken` / `revoke` are kept
  * domain verbs (acceptance workflow with side-effects).
  *
  * @module

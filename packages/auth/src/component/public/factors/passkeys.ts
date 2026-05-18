@@ -98,7 +98,7 @@ export const passkeyGet = query({
  *   user has no registered passkeys.
  *
  */
-export const passkeyListByUserId = query({
+export const passkeyList = query({
   args: { userId: v.id("User") },
   returns: v.array(vPasskeyDoc),
   handler: async (ctx, { userId }) => {
@@ -110,48 +110,20 @@ export const passkeyListByUserId = query({
 });
 
 /**
- * Update a passkey's signature counter and last-used timestamp after
- * a successful authentication.
+ * Partially update a passkey document.
  *
- * After verifying a WebAuthn assertion, the relying party must persist
- * the new counter value reported by the authenticator. A counter that
- * does not increase may indicate a cloned credential.
+ * Performs a partial patch on the `Passkey` document. Used both to
+ * rename a passkey (`{ name }`) and to persist the signature counter
+ * and last-used timestamp after a successful WebAuthn assertion
+ * (`{ counter, lastUsedAt }`) — a counter that does not increase may
+ * indicate a cloned credential.
  *
  * @param passkeyId - The `_id` of the `Passkey` document to update.
- * @param counter - The new signature counter value returned by the
- *   authenticator in the assertion response.
- * @param lastUsedAt - Unix timestamp (in milliseconds) recording when
- *   this passkey was most recently used to authenticate.
+ * @param data - An object containing the fields to patch.
  * @returns `null` on success.
  *
  */
-export const passkeyUpdateCounter = mutation({
-  args: {
-    passkeyId: v.id("Passkey"),
-    counter: v.number(),
-    lastUsedAt: v.number(),
-  },
-  returns: v.null(),
-  handler: async (ctx, { passkeyId, counter, lastUsedAt }) => {
-    await ctx.db.patch("Passkey", passkeyId, { counter, lastUsedAt });
-    return null;
-  },
-});
-
-/**
- * Update a passkey's metadata fields.
- *
- * Performs a partial patch on the `Passkey` document. Typically used to
- * rename a passkey (e.g. from `"Security Key"` to `"YubiKey 5C"`), but
- * can update any mutable fields via the `data` argument.
- *
- * @param passkeyId - The `_id` of the `Passkey` document to update.
- * @param data - An object containing the fields to patch. Commonly
- *   includes `{ name: "New Label" }`, but accepts any valid passkey fields.
- * @returns `null` on success.
- *
- */
-export const passkeyUpdateMeta = mutation({
+export const passkeyUpdate = mutation({
   args: { passkeyId: v.id("Passkey"), data: v.any() },
   returns: v.null(),
   handler: async (ctx, { passkeyId, data }) => {

@@ -109,9 +109,9 @@ export const groupWebhookEndpointUpdate = mutation({
 });
 
 /**
- * Enqueue a webhook delivery for a specific endpoint.
+ * Create a webhook delivery for a specific endpoint.
  *
- * Creates a new `GroupWebhookDelivery` document with an initial status
+ * Inserts a new `GroupWebhookDelivery` document with an initial status
  * of `"pending"` and an attempt count of `0`. The delivery will be picked up
  * by the delivery worker once `nextAttemptAt` is reached.
  *
@@ -124,7 +124,7 @@ export const groupWebhookEndpointUpdate = mutation({
  * @returns The ID of the newly created `GroupWebhookDelivery` document.
  *
  */
-export const groupWebhookDeliveryEnqueue = mutation({
+export const groupWebhookDeliveryCreate = mutation({
   args: {
     connectionId: v.id("GroupConnection"),
     endpointId: v.id("GroupWebhookEndpoint"),

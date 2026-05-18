@@ -1,8 +1,7 @@
 /**
  * `component.token.refresh.*` — session refresh tokens.
  *
- * Pure re-export barrel; namespace = module path. No `public` wrapper,
- * no entity prefix. Reads collapse into one overloaded `get`;
+ * Reads collapse into one overloaded `get`;
  * `exchange` is a kept domain verb (rotation with replay detection).
  *
  * @module

@@ -33,8 +33,7 @@ export const refreshTokenCreate = mutation({
 /**
  * Read a refresh token by identity — one function, all-optional args,
  * unioned return: `{ id }` (point lookup) or `{ activeForSession }`
- * (newest unused token for a session). Replaces `refreshTokenGetById` /
- * `refreshTokenGetActive`.
+ * (newest unused token for a session).
  */
 export const refreshTokenGet = query({
   args: {

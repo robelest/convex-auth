@@ -1,18 +1,16 @@
 /**
  * `component.factor.passkey.*` — WebAuthn passkey credentials.
  *
- * Pure re-export barrel; namespace = module path. No `public` wrapper,
- * no entity prefix. Reads collapse into one overloaded `get`;
- * `updateCounter` is a kept domain verb (clone-detection counter sync).
+ * Reads collapse into one overloaded `get`; `update`
+ * also carries the post-assertion counter sync (clone detection).
  *
  * @module
  */
 
 export {
   passkeyGet as get,
-  passkeyListByUserId as listByUser,
+  passkeyList as list,
   passkeyInsert as create,
-  passkeyUpdateCounter as updateCounter,
-  passkeyUpdateMeta as update,
+  passkeyUpdate as update,
   passkeyDelete as delete,
 } from "../public/factors/passkeys";

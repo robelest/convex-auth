@@ -112,7 +112,7 @@ export const inviteCreate = mutation({
 /**
  * Read an invite by identity — one function, all-optional args, unioned
  * return: `{ id }` (point lookup) or `{ tokenHash }` (token index).
- * Replaces `inviteGet` / `inviteGetByTokenHash`.
+ *
  */
 export const inviteGet = query({
   args: {

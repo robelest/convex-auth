@@ -1,8 +1,6 @@
 /**
  * `component.user.*` — the User entity surface.
  *
- * Namespace = module path (`component/user.ts` → `user`), so functions
- * carry no redundant `user` prefix and there is no `public` wrapper.
  * Reads collapse into one overloaded `get`; the rest are 1:1 verbs.
  *
  * @module
@@ -23,9 +21,8 @@ export {
 
 /**
  * Read a user by identity. One overloaded function (single Convex
- * function with a unioned `args`/`returns`), replacing the former
- * `userGetById` / `userGetMany` / `userFindByVerifiedEmail` /
- * `userFindByVerifiedPhone`:
+ * function with a unioned `args`/`returns`). Accepts exactly one
+ * selector:
  *
  * - `{ id }`           → `Doc<"User"> | null`
  * - `{ ids }`          → `(Doc<"User"> | null)[]` (order preserved, deduped)

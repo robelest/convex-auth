@@ -538,7 +538,7 @@ export function createCoreDomains(deps: CoreDeps) {
       ctx: ComponentReadCtx,
       opts: { userId: string },
     ): Promise<Doc<"Session">[]> => {
-      return (await ctx.runQuery(config.component.session.listByUser, {
+      return (await ctx.runQuery(config.component.session.list, {
         userId: opts.userId,
       })) as Doc<"Session">[];
     },
@@ -697,7 +697,7 @@ export function createCoreDomains(deps: CoreDeps) {
       opts: { userId: string },
     ): Promise<Doc<"Passkey">[]> => {
       return (await ctx.runQuery(
-        config.component.factor.passkey.listByUser,
+        config.component.factor.passkey.list,
         opts,
       )) as Doc<"Passkey">[];
     },
@@ -769,7 +769,7 @@ export function createCoreDomains(deps: CoreDeps) {
       opts: { userId: string },
     ): Promise<Doc<"TotpFactor">[]> => {
       return (await ctx.runQuery(
-        config.component.factor.totp.listByUser,
+        config.component.factor.totp.list,
         opts,
       )) as Doc<"TotpFactor">[];
     },

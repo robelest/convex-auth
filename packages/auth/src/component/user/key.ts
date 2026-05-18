@@ -2,8 +2,7 @@
  * `component.user.key.*` — API keys (programmatic access credentials,
  * a sub-resource of user).
  *
- * Pure re-export barrel; namespace = module path. No `public` wrapper,
- * no entity prefix. Reads collapse into one overloaded `get`.
+ * Reads collapse into one overloaded `get`.
  *
  * @module
  */

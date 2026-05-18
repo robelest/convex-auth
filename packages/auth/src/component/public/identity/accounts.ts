@@ -15,7 +15,7 @@ import { vAccountDoc } from "../../model";
  *   includes fields such as `provider`, `providerAccountId`, `secret`, and `extend`.
  *
  */
-export const accountListByUser = query({
+export const accountList = query({
   args: { userId: v.id("User") },
   returns: v.array(vAccountDoc),
   handler: async (ctx, { userId }) => {
@@ -29,7 +29,7 @@ export const accountListByUser = query({
 /**
  * Read an account by identity — one function, all-optional args, unioned
  * return: `{ id }` (point lookup) or `{ provider, providerAccountId }`
- * (unique provider index). Replaces `accountGet` / `accountGetById`.
+ * (unique provider index).
  */
 export const accountGet = query({
   args: {

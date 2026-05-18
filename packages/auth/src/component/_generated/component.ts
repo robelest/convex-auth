@@ -61,7 +61,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         } | null,
         Name
       >;
-      listByUser: FunctionReference<
+      list: FunctionReference<
         "query",
         "internal",
         { userId: string },
@@ -133,10 +133,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           } | null,
           Name
         >;
-        updateLastPolled: FunctionReference<
+        update: FunctionReference<
           "mutation",
           "internal",
-          { deviceId: string; lastPolledAt: number },
+          { data: any; deviceId: string },
           null,
           Name
         >;
@@ -188,7 +188,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           } | null,
           Name
         >;
-        listByUser: FunctionReference<
+        list: FunctionReference<
           "query",
           "internal",
           { userId: string },
@@ -213,13 +213,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           "mutation",
           "internal",
           { data: any; passkeyId: string },
-          null,
-          Name
-        >;
-        updateCounter: FunctionReference<
-          "mutation",
-          "internal",
-          { counter: number; lastUsedAt: number; passkeyId: string },
           null,
           Name
         >;
@@ -265,7 +258,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           } | null,
           Name
         >;
-        listByUser: FunctionReference<
+        list: FunctionReference<
           "query",
           "internal",
           { userId: string },
@@ -290,10 +283,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           null,
           Name
         >;
-        updateLastUsed: FunctionReference<
+        update: FunctionReference<
           "mutation",
           "internal",
-          { lastUsedAt: number; totpId: string },
+          { data: any; totpId: string },
           null,
           Name
         >;
@@ -833,10 +826,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             string,
             Name
           >;
-          deviceUpdateLastPolled: FunctionReference<
+          deviceUpdate: FunctionReference<
             "mutation",
             "internal",
-            { deviceId: string; lastPolledAt: number },
+            { data: any; deviceId: string },
             null,
             Name
           >;
@@ -888,7 +881,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             string,
             Name
           >;
-          passkeyListByUserId: FunctionReference<
+          passkeyList: FunctionReference<
             "query",
             "internal",
             { userId: string },
@@ -909,14 +902,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             }>,
             Name
           >;
-          passkeyUpdateCounter: FunctionReference<
-            "mutation",
-            "internal",
-            { counter: number; lastUsedAt: number; passkeyId: string },
-            null,
-            Name
-          >;
-          passkeyUpdateMeta: FunctionReference<
+          passkeyUpdate: FunctionReference<
             "mutation",
             "internal",
             { data: any; passkeyId: string },
@@ -965,7 +951,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             string,
             Name
           >;
-          totpListByUserId: FunctionReference<
+          totpList: FunctionReference<
             "query",
             "internal",
             { userId: string },
@@ -990,10 +976,10 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             null,
             Name
           >;
-          totpUpdateLastUsed: FunctionReference<
+          totpUpdate: FunctionReference<
             "mutation",
             "internal",
-            { lastUsedAt: number; totpId: string },
+            { data: any; totpId: string },
             null,
             Name
           >;
@@ -1526,7 +1512,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             string,
             Name
           >;
-          accountListByUser: FunctionReference<
+          accountList: FunctionReference<
             "query",
             "internal",
             { userId: string },
@@ -1633,26 +1619,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             Name
           >;
           sessionList: FunctionReference<
-            "query",
-            "internal",
-            {
-              cursor?: string | null;
-              limit?: number;
-              order?: "asc" | "desc";
-              where?: { userId?: string };
-            },
-            {
-              items: Array<{
-                _creationTime: number;
-                _id: string;
-                expirationTime: number;
-                userId: string;
-              }>;
-              nextCursor: string | null;
-            },
-            Name
-          >;
-          sessionListByUser: FunctionReference<
             "query",
             "internal",
             { userId: string },
@@ -2480,7 +2446,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           >;
         };
         webhooks: {
-          groupWebhookDeliveryEnqueue: FunctionReference<
+          groupWebhookDeliveryCreate: FunctionReference<
             "mutation",
             "internal",
             {
@@ -2669,26 +2635,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         Name
       >;
       list: FunctionReference<
-        "query",
-        "internal",
-        {
-          cursor?: string | null;
-          limit?: number;
-          order?: "asc" | "desc";
-          where?: { userId?: string };
-        },
-        {
-          items: Array<{
-            _creationTime: number;
-            _id: string;
-            expirationTime: number;
-            userId: string;
-          }>;
-          nextCursor: string | null;
-        },
-        Name
-      >;
-      listByUser: FunctionReference<
         "query",
         "internal",
         { userId: string },
@@ -3108,7 +3054,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       };
       webhook: {
         delivery: {
-          enqueue: FunctionReference<
+          create: FunctionReference<
             "mutation",
             "internal",
             {

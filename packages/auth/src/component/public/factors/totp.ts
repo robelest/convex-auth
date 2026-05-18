@@ -91,7 +91,7 @@ export const totpGet = query({
  *   the user has no TOTP enrollments.
  *
  */
-export const totpListByUserId = query({
+export const totpList = query({
   args: { userId: v.id("User") },
   returns: v.array(vTotpFactorDoc),
   handler: async (ctx, { userId }) => {
@@ -137,20 +137,20 @@ export const totpMarkVerified = mutation({
  * Update a TOTP enrollment's last-used timestamp.
  *
  * Called after each successful TOTP code validation during sign-in.
- * Tracking the last-used time helps detect stale enrollments and can
- * be surfaced in security settings for user awareness.
+ * Performs a partial patch on the `TotpFactor` document — e.g. bumping
+ * `lastUsedAt` after a successful validation. Tracking last-used time
+ * helps detect stale enrollments.
  *
  * @param totpId - The `_id` of the `TotpFactor` document to update.
- * @param lastUsedAt - Unix timestamp (in milliseconds) recording when
- *   the TOTP code was most recently validated.
+ * @param data - An object containing the fields to patch.
  * @returns `null` on success.
  *
  */
-export const totpUpdateLastUsed = mutation({
-  args: { totpId: v.id("TotpFactor"), lastUsedAt: v.number() },
+export const totpUpdate = mutation({
+  args: { totpId: v.id("TotpFactor"), data: v.any() },
   returns: v.null(),
-  handler: async (ctx, { totpId, lastUsedAt }) => {
-    await ctx.db.patch("TotpFactor", totpId, { lastUsedAt });
+  handler: async (ctx, { totpId, data }) => {
+    await ctx.db.patch("TotpFactor", totpId, data);
     return null;
   },
 });

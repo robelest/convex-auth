@@ -2,8 +2,7 @@
  * `component.group.*` — hierarchical groups (the group entity root;
  * members/invites are sub-resources under `group.member` / `group.invite`).
  *
- * Pure re-export barrel; namespace = module path. No `public` wrapper,
- * no entity prefix. `ancestors` is a kept domain read (hierarchy walk).
+ * `ancestors` is a kept domain read (hierarchy walk).
  *
  * @module
  */

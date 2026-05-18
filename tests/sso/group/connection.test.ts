@@ -352,7 +352,7 @@ test("group connection component stores scim config, audit events, and webhook d
     });
   });
   await t.run(async (ctx) => {
-    await ctx.runMutation(components.auth.sso.webhook.delivery.enqueue, {
+    await ctx.runMutation(components.auth.sso.webhook.delivery.create, {
       connectionId,
       endpointId,
       eventType: "group.sso.scim.configured",

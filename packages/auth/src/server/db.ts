@@ -31,14 +31,14 @@ type AuthComponentApiLike = {
   };
   account: {
     get: FunctionReference<"query", "internal">;
-    listByUser: FunctionReference<"query", "internal">;
+    list: FunctionReference<"query", "internal">;
     create: FunctionReference<"mutation", "internal">;
     update: FunctionReference<"mutation", "internal">;
     delete: FunctionReference<"mutation", "internal">;
   };
   session: {
     get: FunctionReference<"query", "internal">;
-    listByUser: FunctionReference<"query", "internal">;
+    list: FunctionReference<"query", "internal">;
     create: FunctionReference<"mutation", "internal">;
     issue?: FunctionReference<"mutation", "internal">;
     delete: FunctionReference<"mutation", "internal">;
@@ -155,7 +155,7 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         }>,
       getById: (sessionId: string) => ctx.runQuery(component.session.get, { sessionId }),
       delete: (sessionId: string) => ctx.runMutation(component.session.delete, { sessionId }),
-      listByUser: (userId: string) => ctx.runQuery(component.session.listByUser, { userId }),
+      listByUser: (userId: string) => ctx.runQuery(component.session.list, { userId }),
     },
     verifiers: {
       create: (sessionId?: string, signature?: string) =>

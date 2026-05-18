@@ -6,8 +6,7 @@ import { vVerificationCodeDoc } from "../../model";
 /**
  * Read a verification code by identity — one function, all-optional
  * args, unioned return: `{ accountId }` (unique per account) or
- * `{ code }` (code index). Replaces `verificationCodeGetByAccountId` /
- * `verificationCodeGetByCode`.
+ * `{ code }` (code index).
  */
 export const verificationCodeGet = query({
   args: {

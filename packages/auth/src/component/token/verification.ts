@@ -1,8 +1,7 @@
 /**
  * `component.token.verification.*` — OTP / magic-link / OAuth codes.
  *
- * Pure re-export barrel; namespace = module path. No `public` wrapper,
- * no entity prefix. Reads collapse into one overloaded `get`.
+ * Reads collapse into one overloaded `get`.
  *
  * @module
  */

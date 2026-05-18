@@ -282,7 +282,7 @@ export function createGroupService(deps: {
       if (endpoint.status !== "active" || !endpoint.subscriptions.includes(data.eventType)) {
         continue;
       }
-      await ctx.runMutation(config.component.sso.webhook.delivery.enqueue, {
+      await ctx.runMutation(config.component.sso.webhook.delivery.create, {
         connectionId: data.connectionId,
         endpointId: endpoint._id,
         auditEventId: data.auditEventId,

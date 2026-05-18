@@ -1,68 +1,7 @@
 import { v } from "convex/values";
 
 import { mutation, query } from "../../functions";
-import { vPaginated, vSessionDoc } from "../../model";
-
-/**
- * List sessions with optional filtering and cursor-based pagination.
- *
- * Supports filtering by `userId` to retrieve only sessions belonging to a
- * specific user. When a `userId` filter is provided, the `user_id` index is
- * used for efficient lookup. Results are returned as a paginated response
- * `{ items, nextCursor }` -- pass `nextCursor` back as `cursor` to fetch the
- * next page, or receive `null` when all results have been exhausted.
- *
- * @param args.where - Optional filter object. Currently supports `userId` to
- *   restrict results to sessions for a specific user.
- * @param args.limit - Maximum number of sessions to return per page (1--100, default 50).
- * @param args.cursor - An opaque cursor string from a previous response's `nextCursor`
- *   to continue pagination, or `null` / omitted to start from the beginning.
- * @param args.order - Sort direction: `"asc"` or `"desc"` (default `"desc"`).
- * @returns An object with `items` (array of session documents) and `nextCursor`
- *   (`string | null`) for fetching subsequent pages.
- *
- */
-export const sessionList = query({
-  args: {
-    where: v.optional(
-      v.object({
-        userId: v.optional(v.id("User")),
-      }),
-    ),
-    limit: v.optional(v.number()),
-    cursor: v.optional(v.union(v.string(), v.null())),
-    order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
-  },
-  returns: vPaginated(vSessionDoc),
-  handler: async (ctx, args) => {
-    const where = args.where ?? {};
-    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
-    const order = args.order ?? "desc";
-
-    let q;
-    if (where.userId !== undefined) {
-      q = ctx.db.query("Session").withIndex("user_id", (idx) => idx.eq("userId", where.userId!));
-    } else {
-      q = ctx.db.query("Session");
-    }
-
-    q = q.order(order);
-
-    const all = await q.collect();
-    let startIdx = 0;
-    if (args.cursor) {
-      const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
-      if (cursorIdx !== -1) {
-        startIdx = cursorIdx + 1;
-      }
-    }
-    const page = all.slice(startIdx, startIdx + limit + 1);
-    const hasMore = page.length > limit;
-    const items = hasMore ? page.slice(0, limit) : page;
-    const nextCursor = hasMore ? items[items.length - 1]._id : null;
-    return { items, nextCursor };
-  },
-});
+import { vSessionDoc } from "../../model";
 
 /**
  * Create a new session for a user with a specified expiration time.
@@ -185,15 +124,14 @@ export const sessionDelete = mutation({
 /**
  * List all sessions belonging to a specific user.
  *
- * Queries the `Session` table using the `user_id` index to efficiently retrieve
- * every session document for the given user. Unlike `sessionList`, this returns
- * all matching sessions without pagination.
+ * Queries the `Session` table using the `user_id` index to retrieve
+ * every session document for the given user, as a flat array.
  *
  * @param args.userId - The document ID of the user whose sessions should be retrieved.
  * @returns An array of session documents for the specified user.
  *
  */
-export const sessionListByUser = query({
+export const sessionList = query({
   args: { userId: v.id("User") },
   returns: v.array(vSessionDoc),
   handler: async (ctx, { userId }) => {

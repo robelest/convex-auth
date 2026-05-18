@@ -1,8 +1,7 @@
 /**
  * `component.group.member.*` — group memberships (sub-resource of group).
  *
- * Pure re-export barrel; namespace = module path. No `public` wrapper,
- * no entity prefix. `resolve` is a kept domain read (hierarchy-aware
+ * `resolve` is a kept domain read (hierarchy-aware
  * membership resolution); `getMany` batches group+user pairs.
  *
  * @module

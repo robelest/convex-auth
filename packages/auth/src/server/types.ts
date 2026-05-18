@@ -1587,7 +1587,7 @@ type AuthComponentApi = {
   };
   account: {
     get: FunctionReference<"query", "internal">;
-    listByUser: FunctionReference<"query", "internal">;
+    list: FunctionReference<"query", "internal">;
     create: FunctionReference<"mutation", "internal">;
     update: FunctionReference<"mutation", "internal">;
     delete: FunctionReference<"mutation", "internal">;
@@ -1595,7 +1595,6 @@ type AuthComponentApi = {
   session: {
     get: FunctionReference<"query", "internal">;
     list: FunctionReference<"query", "internal">;
-    listByUser: FunctionReference<"query", "internal">;
     create: FunctionReference<"mutation", "internal">;
     issue: FunctionReference<"mutation", "internal">;
     delete: FunctionReference<"mutation", "internal">;
@@ -1656,25 +1655,24 @@ type AuthComponentApi = {
   factor: {
     passkey: {
       get: FunctionReference<"query", "internal">;
-      listByUser: FunctionReference<"query", "internal">;
+      list: FunctionReference<"query", "internal">;
       create: FunctionReference<"mutation", "internal">;
-      updateCounter: FunctionReference<"mutation", "internal">;
       update: FunctionReference<"mutation", "internal">;
       delete: FunctionReference<"mutation", "internal">;
     };
     totp: {
       get: FunctionReference<"query", "internal">;
-      listByUser: FunctionReference<"query", "internal">;
+      list: FunctionReference<"query", "internal">;
       create: FunctionReference<"mutation", "internal">;
       markVerified: FunctionReference<"mutation", "internal">;
-      updateLastUsed: FunctionReference<"mutation", "internal">;
+      update: FunctionReference<"mutation", "internal">;
       delete: FunctionReference<"mutation", "internal">;
     };
     device: {
       get: FunctionReference<"query", "internal">;
       create: FunctionReference<"mutation", "internal">;
       authorize: FunctionReference<"mutation", "internal">;
-      updateLastPolled: FunctionReference<"mutation", "internal">;
+      update: FunctionReference<"mutation", "internal">;
       delete: FunctionReference<"mutation", "internal">;
     };
   };
@@ -1726,7 +1724,7 @@ type AuthComponentApi = {
       };
       delivery: {
         list: FunctionReference<"query", "internal">;
-        enqueue: FunctionReference<"mutation", "internal">;
+        create: FunctionReference<"mutation", "internal">;
         update: FunctionReference<"mutation", "internal">;
       };
     };
@@ -1942,9 +1940,9 @@ export async function mutateTotpUpdateLastUsed(
   totpId: string,
   lastUsedAt: number,
 ): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.factor.totp.updateLastUsed, {
+  await ctx.runMutation(ctx.auth.config.component.factor.totp.update, {
     totpId,
-    lastUsedAt,
+    data: { lastUsedAt },
   });
 }
 
@@ -1954,7 +1952,7 @@ export async function queryPasskeysByUserId(
   ctx: ComponentCallCtx,
   userId: string,
 ): Promise<PasskeyDoc[]> {
-  return (await ctx.runQuery(ctx.auth.config.component.factor.passkey.listByUser, {
+  return (await ctx.runQuery(ctx.auth.config.component.factor.passkey.list, {
     userId,
   })) as PasskeyDoc[];
 }
@@ -1995,10 +1993,9 @@ export async function mutatePasskeyUpdateCounter(
   counter: number,
   lastUsedAt: number,
 ): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.factor.passkey.updateCounter, {
+  await ctx.runMutation(ctx.auth.config.component.factor.passkey.update, {
     passkeyId,
-    counter,
-    lastUsedAt,
+    data: { counter, lastUsedAt },
   });
 }
 
@@ -2097,9 +2094,9 @@ export async function mutateDeviceUpdateLastPolled(
   deviceId: string,
   lastPolledAt: number,
 ): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.factor.device.updateLastPolled, {
+  await ctx.runMutation(ctx.auth.config.component.factor.device.update, {
     deviceId,
-    lastPolledAt,
+    data: { lastPolledAt },
   });
 }
 

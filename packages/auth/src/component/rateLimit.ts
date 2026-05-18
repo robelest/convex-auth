@@ -1,8 +1,7 @@
 /**
  * `component.rateLimit.*` — failed sign-in brute-force throttle state.
  *
- * Pure re-export barrel; namespace = module path. No `public` wrapper,
- * no entity prefix. `get` is keyed by `identifier`.
+ * `get` is keyed by `identifier`.
  *
  * @module
  */

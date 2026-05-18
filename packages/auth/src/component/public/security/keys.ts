@@ -67,7 +67,7 @@ export const keyInsert = mutation({
 /**
  * Read an API key by identity — one function, all-optional args, unioned
  * return: `{ id }` (point lookup) or `{ hashedKey }` (Bearer-verify
- * index). Replaces `keyGetByHashedKey` / `keyGetById`.
+ * index).
  */
 export const keyGet = query({
   args: {
