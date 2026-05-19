@@ -200,6 +200,8 @@ export const vUserDoc = v.object({
   phoneVerificationTime: v.optional(v.number()),
   isAnonymous: v.optional(v.boolean()),
   lastActiveGroup: v.optional(v.id(TABLES.Group)),
+  // Deprecated tolerated field — see schema.ts. Strip via `dropHasTotp`.
+  hasTotp: v.optional(v.boolean()),
   extend: v.optional(v.any()),
 });
 

@@ -1739,6 +1739,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
               email?: string;
               emailVerificationTime?: number;
               extend?: any;
+              hasTotp?: boolean;
               image?: string;
               isAnonymous?: boolean;
               lastActiveGroup?: string;
@@ -1807,6 +1808,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
                 email?: string;
                 emailVerificationTime?: number;
                 extend?: any;
+                hasTotp?: boolean;
                 image?: string;
                 isAnonymous?: boolean;
                 lastActiveGroup?: string;
@@ -3350,6 +3352,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             email?: string;
             emailVerificationTime?: number;
             extend?: any;
+            hasTotp?: boolean;
             image?: string;
             isAnonymous?: boolean;
             lastActiveGroup?: string;
@@ -3398,6 +3401,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             email?: string;
             emailVerificationTime?: number;
             extend?: any;
+            hasTotp?: boolean;
             image?: string;
             isAnonymous?: boolean;
             lastActiveGroup?: string;
@@ -3412,6 +3416,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             email?: string;
             emailVerificationTime?: number;
             extend?: any;
+            hasTotp?: boolean;
             image?: string;
             isAnonymous?: boolean;
             lastActiveGroup?: string;
@@ -3554,6 +3559,7 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
             email?: string;
             emailVerificationTime?: number;
             extend?: any;
+            hasTotp?: boolean;
             image?: string;
             isAnonymous?: boolean;
             lastActiveGroup?: string;

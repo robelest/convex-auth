@@ -41,6 +41,11 @@ export default defineSchema({
     phoneVerificationTime: v.optional(v.number()),
     isAnonymous: v.optional(v.boolean()),
     lastActiveGroup: v.optional(v.id("Group")),
+    // Deprecated. Retained only so pre-existing rows still validate after
+    // the denormalized-cache removal. Not part of the typed surface or
+    // any verb — strip it from existing data via the `dropHasTotp`
+    // migration; it is removed from this schema in a future major.
+    hasTotp: v.optional(v.boolean()),
     extend: v.optional(v.any()),
   })
     .index("email", ["email"])

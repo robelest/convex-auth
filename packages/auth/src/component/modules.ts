@@ -7,6 +7,7 @@ const modules: Record<string, () => Promise<unknown>> = {
   "./component/functions.ts": () => import("./functions"),
   "./component/http.ts": () => import("./http"),
   "./component/index.ts": () => import("./index"),
+  "./component/migrations.ts": () => import("./migrations"),
   "./component/model.ts": () => import("./model"),
   "./component/group.ts": () => import("./group"),
   "./component/group/member.ts": () => import("./group/member"),

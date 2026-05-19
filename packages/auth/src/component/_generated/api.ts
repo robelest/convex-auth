@@ -18,6 +18,7 @@ import type * as group_invite from "../group/invite.js";
 import type * as group_member from "../group/member.js";
 import type * as http from "../http.js";
 import type * as index from "../index.js";
+import type * as migrations from "../migrations.js";
 import type * as model from "../model.js";
 import type * as modules from "../modules.js";
 import type * as public_factors_devices from "../public/factors/devices.js";
@@ -76,6 +77,7 @@ const fullApi: ApiFromModules<{
   "group/member": typeof group_member;
   http: typeof http;
   index: typeof index;
+  migrations: typeof migrations;
   model: typeof model;
   modules: typeof modules;
   "public/factors/devices": typeof public_factors_devices;
@@ -143,4 +145,6 @@ export const internal: FilterApi<
   FunctionReference<any, "internal">
 > = anyApi as any;
 
-export const components = componentsGeneric() as unknown as {};
+export const components = componentsGeneric() as unknown as {
+  migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
+};
