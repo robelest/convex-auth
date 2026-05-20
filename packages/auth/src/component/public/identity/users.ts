@@ -3,6 +3,19 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query } from "../../functions";
 import { vPaginated, vUserDoc, vUserEmailDoc, vUserEmailSource } from "../../model";
 
+const vUserInsertData = v.object({
+  name: v.optional(v.string()),
+  image: v.optional(v.string()),
+  email: v.optional(v.string()),
+  emailVerificationTime: v.optional(v.number()),
+  phone: v.optional(v.string()),
+  phoneVerificationTime: v.optional(v.number()),
+  isAnonymous: v.optional(v.boolean()),
+  lastActiveGroup: v.optional(v.id("Group")),
+  hasTotp: v.optional(v.boolean()),
+  extend: v.optional(v.any()),
+});
+
 /**
  * List users with optional filtering, sorting, and cursor-based pagination.
  *
@@ -77,20 +90,11 @@ export const userList = query({
 
     q = q.order(order);
 
-    // Cursor-based pagination: skip past the cursor ID
-    const all = await q.collect();
-    let startIdx = 0;
-    if (args.cursor) {
-      const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
-      if (cursorIdx !== -1) {
-        startIdx = cursorIdx + 1;
-      }
-    }
-    const page = all.slice(startIdx, startIdx + limit + 1);
-    const hasMore = page.length > limit;
-    const items = hasMore ? page.slice(0, limit) : page;
-    const nextCursor = hasMore ? items[items.length - 1]._id : null;
-    return { items, nextCursor };
+    const result = await q.paginate({ numItems: limit, cursor: args.cursor ?? null });
+    return {
+      items: result.page,
+      nextCursor: result.isDone ? null : result.continueCursor,
+    };
   },
 });
 
@@ -108,7 +112,7 @@ export const userList = query({
  *
  */
 export const userInsert = mutation({
-  args: { data: v.any() },
+  args: { data: vUserInsertData },
   returns: v.id("User"),
   handler: async (ctx, { data }) => {
     return await ctx.db.insert("User", data);
@@ -132,7 +136,7 @@ export const userInsert = mutation({
  *
  */
 export const userUpsert = mutation({
-  args: { userId: v.optional(v.id("User")), data: v.any() },
+  args: { userId: v.optional(v.id("User")), data: vUserInsertData },
   returns: v.id("User"),
   handler: async (ctx, { userId, data }) => {
     if (userId !== undefined) {
@@ -242,32 +246,47 @@ export const userDelete = mutation({
     }
 
     if (cascade === true) {
+      const CASCADE_MAX = 1000;
+      const tooMany = (count: number) => count > CASCADE_MAX;
       const [sessions, accounts, keys, members, passkeys, totps] = await Promise.all([
         ctx.db
           .query("Session")
           .withIndex("user_id", (q) => q.eq("userId", userId))
-          .collect(),
+          .take(CASCADE_MAX + 1),
         ctx.db
           .query("Account")
           .withIndex("user_id_provider", (q) => q.eq("userId", userId))
-          .collect(),
+          .take(CASCADE_MAX + 1),
         ctx.db
           .query("ApiKey")
           .withIndex("user_id", (q) => q.eq("userId", userId))
-          .collect(),
+          .take(CASCADE_MAX + 1),
         ctx.db
           .query("GroupMember")
           .withIndex("user_id", (q) => q.eq("userId", userId))
-          .collect(),
+          .take(CASCADE_MAX + 1),
         ctx.db
           .query("Passkey")
           .withIndex("user_id", (q) => q.eq("userId", userId))
-          .collect(),
+          .take(CASCADE_MAX + 1),
         ctx.db
           .query("TotpFactor")
           .withIndex("user_id", (q) => q.eq("userId", userId))
-          .collect(),
+          .take(CASCADE_MAX + 1),
       ]);
+      if (
+        tooMany(sessions.length) ||
+        tooMany(accounts.length) ||
+        tooMany(keys.length) ||
+        tooMany(members.length) ||
+        tooMany(passkeys.length) ||
+        tooMany(totps.length)
+      ) {
+        throw new ConvexError({
+          code: "CASCADE_TOO_LARGE",
+          message: `User has more than ${CASCADE_MAX} child rows in one or more tables; cascade delete is not safe in a single mutation. Use the migrations component to drain children first, then call delete without cascade.`,
+        });
+      }
       const refreshTokens =
         sessions.length > 0
           ? (
@@ -276,11 +295,17 @@ export const userDelete = mutation({
                   ctx.db
                     .query("RefreshToken")
                     .withIndex("session_id", (q) => q.eq("sessionId", s._id))
-                    .collect(),
+                    .take(CASCADE_MAX + 1),
                 ),
               )
             ).flat()
           : [];
+      if (tooMany(refreshTokens.length)) {
+        throw new ConvexError({
+          code: "CASCADE_TOO_LARGE",
+          message: `User has more than ${CASCADE_MAX} refresh tokens across sessions; cascade delete is not safe in a single mutation.`,
+        });
+      }
       await Promise.all([
         ...sessions.map((s) => ctx.db.delete("Session", s._id)),
         ...refreshTokens.map((r) => ctx.db.delete("RefreshToken", r._id)),

@@ -246,22 +246,15 @@ export const inviteList = query({
 
     q = q.order(order);
 
-    let all = await q.collect();
-    if (where.roleId !== undefined) {
-      all = all.filter((doc) => (doc.roleIds ?? []).includes(where.roleId!));
-    }
-    let startIdx = 0;
-    if (args.cursor) {
-      const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
-      if (cursorIdx !== -1) {
-        startIdx = cursorIdx + 1;
-      }
-    }
-    const page = all.slice(startIdx, startIdx + limit + 1);
-    const hasMore = page.length > limit;
-    const items = hasMore ? page.slice(0, limit) : page;
-    const nextCursor = hasMore ? items[items.length - 1]._id : null;
-    return { items, nextCursor };
+    const result = await q.paginate({ numItems: limit, cursor: args.cursor ?? null });
+    const items =
+      where.roleId === undefined
+        ? result.page
+        : result.page.filter((doc) => (doc.roleIds ?? []).includes(where.roleId!));
+    return {
+      items,
+      nextCursor: result.isDone ? null : result.continueCursor,
+    };
   },
 });
 

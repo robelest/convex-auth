@@ -122,10 +122,10 @@ async function getRateLimitState(
   const maxAttemptsPerHour =
     config.signIn?.maxFailedAttemptsPerHour ?? DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR;
   const elapsed = now - typedLimit.lastAttemptTime;
-  const maxAttemptsPerMs = maxAttemptsPerHour / (60 * 60 * 1000);
+  const HOUR_MS = 60 * 60 * 1000;
   const attemptsLeft = Math.min(
     maxAttemptsPerHour,
-    typedLimit.attemptsLeft + elapsed * maxAttemptsPerMs,
+    typedLimit.attemptsLeft + (elapsed * maxAttemptsPerHour) / HOUR_MS,
   );
   return { limit: typedLimit, attemptsLeft };
 }

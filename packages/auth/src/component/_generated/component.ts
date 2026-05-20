@@ -1782,7 +1782,20 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           userInsert: FunctionReference<
             "mutation",
             "internal",
-            { data: any },
+            {
+              data: {
+                email?: string;
+                emailVerificationTime?: number;
+                extend?: any;
+                hasTotp?: boolean;
+                image?: string;
+                isAnonymous?: boolean;
+                lastActiveGroup?: string;
+                name?: string;
+                phone?: string;
+                phoneVerificationTime?: number;
+              };
+            },
             string,
             Name
           >;
@@ -1830,7 +1843,21 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
           userUpsert: FunctionReference<
             "mutation",
             "internal",
-            { data: any; userId?: string },
+            {
+              data: {
+                email?: string;
+                emailVerificationTime?: number;
+                extend?: any;
+                hasTotp?: boolean;
+                image?: string;
+                isAnonymous?: boolean;
+                lastActiveGroup?: string;
+                name?: string;
+                phone?: string;
+                phoneVerificationTime?: number;
+              };
+              userId?: string;
+            },
             string,
             Name
           >;
@@ -3305,7 +3332,20 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       create: FunctionReference<
         "mutation",
         "internal",
-        { data: any },
+        {
+          data: {
+            email?: string;
+            emailVerificationTime?: number;
+            extend?: any;
+            hasTotp?: boolean;
+            image?: string;
+            isAnonymous?: boolean;
+            lastActiveGroup?: string;
+            name?: string;
+            phone?: string;
+            phoneVerificationTime?: number;
+          };
+        },
         string,
         Name
       >;
@@ -3581,7 +3621,21 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
       upsert: FunctionReference<
         "mutation",
         "internal",
-        { data: any; userId?: string },
+        {
+          data: {
+            email?: string;
+            emailVerificationTime?: number;
+            extend?: any;
+            hasTotp?: boolean;
+            image?: string;
+            isAnonymous?: boolean;
+            lastActiveGroup?: string;
+            name?: string;
+            phone?: string;
+            phoneVerificationTime?: number;
+          };
+          userId?: string;
+        },
         string,
         Name
       >;

@@ -159,20 +159,28 @@ async function exchangeCode(
     try: () => provider.validateAuthorizationCode({ code, codeVerifier }),
     catch: (error) => {
       if (error instanceof arctic.OAuth2RequestError) {
+        console.error("[auth] OAuth token exchange rejected by provider", {
+          providerCode: error.code,
+          description: error.description,
+        });
         return {
           code: "OAUTH_PROVIDER_ERROR",
-          message: `Token exchange failed: ${error.code}`,
+          message: "The identity provider rejected the token exchange.",
         };
       }
       if (error instanceof arctic.ArcticFetchError) {
+        console.error("[auth] Network error during OAuth token exchange", {
+          message: error.message,
+        });
         return {
           code: "OAUTH_PROVIDER_ERROR",
-          message: `Network error during token exchange: ${error.message}`,
+          message: "Could not reach the identity provider.",
         };
       }
+      console.error("[auth] Unexpected OAuth token-exchange error", { error });
       return {
         code: "OAUTH_PROVIDER_ERROR",
-        message: `Unexpected error during token exchange: ${error instanceof Error ? error.message : String(error)}`,
+        message: "Token exchange failed.",
       };
     },
   });

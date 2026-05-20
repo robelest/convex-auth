@@ -162,19 +162,11 @@ export const keyList = query({
 
     q = q.order(order);
 
-    const all = await q.collect();
-    let startIdx = 0;
-    if (args.cursor) {
-      const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
-      if (cursorIdx !== -1) {
-        startIdx = cursorIdx + 1;
-      }
-    }
-    const page = all.slice(startIdx, startIdx + limit + 1);
-    const hasMore = page.length > limit;
-    const items = hasMore ? page.slice(0, limit) : page;
-    const nextCursor = hasMore ? items[items.length - 1]._id : null;
-    return { items, nextCursor };
+    const result = await q.paginate({ numItems: limit, cursor: args.cursor ?? null });
+    return {
+      items: result.page,
+      nextCursor: result.isDone ? null : result.continueCursor,
+    };
   },
 });
 

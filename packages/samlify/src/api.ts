@@ -37,11 +37,22 @@ function loadDomParserCtor(): any {
   throw new Error("ERR_DOM_PARSER_NOT_AVAILABLE");
 }
 
+const DOCTYPE_OR_ENTITY = /<!\s*(DOCTYPE|ENTITY)\b/i;
+
+function rejectDoctypeOrEntity(xml: string): void {
+  if (DOCTYPE_OR_ENTITY.test(xml)) {
+    throw new Error("ERR_XML_DOCTYPE_OR_ENTITY_FORBIDDEN");
+  }
+}
+
 function createDOMParser(options: DOMParserOptions = {}): DOMParserLike {
   const DOMParserCtor = loadDomParserCtor();
   const parser = new DOMParserCtor(options);
   return {
-    parseFromString: (xml: string, mimeType = "text/xml") => parser.parseFromString(xml, mimeType),
+    parseFromString: (xml: string, mimeType = "text/xml") => {
+      rejectDoctypeOrEntity(xml);
+      return parser.parseFromString(xml, mimeType);
+    },
   };
 }
 
@@ -57,6 +68,17 @@ export function getContext() {
     context.dom = createDOMParser();
   }
   return context;
+}
+
+/**
+ * Parse XML through the configured DOMParser, with DOCTYPE/ENTITY rejection.
+ * Use this for any XML coming from a network peer (IdP responses, signed
+ * payloads, encrypted assertions) instead of constructing a `DOMParser`
+ * directly — direct construction bypasses the doctype/entity guard.
+ */
+export function safeParseXml(xml: string, mimeType: string = "text/xml"): any {
+  const { dom } = getContext();
+  return dom!.parseFromString(xml, mimeType);
 }
 
 export function setSchemaValidator(params: ValidatorContext) {

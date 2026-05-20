@@ -34,13 +34,14 @@ export async function encryptSecret(value: string) {
 
 /** @internal */
 export async function decryptSecret(ciphertext: string) {
-  const [ivEncoded, payloadEncoded] = ciphertext.split(".");
-  if (!ivEncoded || !payloadEncoded) {
+  const parts = ciphertext.split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
     throw new ConvexError({
       code: "INVALID_PARAMETERS",
       message: "Stored group connection secret is malformed.",
     });
   }
+  const [ivEncoded, payloadEncoded] = parts;
   const key = await getSecretCryptoKey();
   const decrypted = await crypto.subtle.decrypt(
     {

@@ -45,13 +45,28 @@ export type { AuthApiRefs, PlatformAuthClient as AuthClient } from "../client/in
 
 const secureStoreStorage = {
   async getItem(key: string): Promise<string | null> {
-    return await SecureStore.getItemAsync(key);
+    try {
+      return await SecureStore.getItemAsync(key);
+    } catch (err) {
+      console.error("[auth] Expo SecureStore.getItemAsync failed", { key, err });
+      return null;
+    }
   },
   async setItem(key: string, value: string): Promise<void> {
-    await SecureStore.setItemAsync(key, value);
+    try {
+      await SecureStore.setItemAsync(key, value);
+    } catch (err) {
+      console.error("[auth] Expo SecureStore.setItemAsync failed", { key, err });
+      throw err;
+    }
   },
   async removeItem(key: string): Promise<void> {
-    await SecureStore.deleteItemAsync(key);
+    try {
+      await SecureStore.deleteItemAsync(key);
+    } catch (err) {
+      console.error("[auth] Expo SecureStore.deleteItemAsync failed", { key, err });
+      throw err;
+    }
   },
 };
 

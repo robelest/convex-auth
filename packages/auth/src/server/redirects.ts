@@ -70,11 +70,25 @@ async function defaultRedirectCallback({ redirectTo }: { redirectTo: string }) {
 /** @internal */
 export function setURLSearchParam(absoluteUrl: string, param: string, value: string) {
   const pattern = /([^:]+):(.*)/;
-  const [, scheme, rest] = absoluteUrl.match(pattern)!;
+  const schemeMatch = absoluteUrl.match(pattern);
+  if (!schemeMatch) {
+    throw new ConvexError({
+      code: "INVALID_REDIRECT",
+      message: "Redirect URL is missing a scheme.",
+    });
+  }
+  const [, scheme, rest] = schemeMatch;
   const hasNoDomain = /^\/\/(?:\/|$|\?)/.test(rest);
   const startsWithPath = hasNoDomain && rest.startsWith("///");
   const url = new URL(`http:${hasNoDomain ? "//googblibok" + rest.slice(2) : rest}`);
   url.searchParams.set(param, value);
-  const [, , withParam] = url.toString().match(pattern)!;
+  const withParamMatch = url.toString().match(pattern);
+  if (!withParamMatch) {
+    throw new ConvexError({
+      code: "INVALID_REDIRECT",
+      message: "Internal URL serialization produced a malformed result.",
+    });
+  }
+  const [, , withParam] = withParamMatch;
   return `${scheme}:${hasNoDomain ? (startsWithPath ? "/" : "") + "//" + withParam.slice(13) : withParam}`;
 }

@@ -12,6 +12,7 @@ import * as Extractor from "./core-xml";
 
 // exposed methods for customizing samlify
 import { setSchemaValidator, setDOMParserOptions, setFileIO } from "./core-xml";
+import { safeParseXml } from "./api";
 
 export {
   Constants,
@@ -25,4 +26,5 @@ export {
   setSchemaValidator,
   setDOMParserOptions,
   setFileIO,
+  safeParseXml,
 };

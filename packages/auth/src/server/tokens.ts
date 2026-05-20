@@ -79,11 +79,17 @@ function normalizeAuthPrefix(prefix: string) {
 }
 
 try {
-  void getPrivateKey().catch(() => {});
-} catch {}
+  void getPrivateKey().catch((err) => {
+    console.error("[auth] JWT private key pre-warm failed", { err });
+  });
+} catch (err) {
+  console.error("[auth] JWT private key pre-warm threw synchronously", { err });
+}
 try {
   getIssuer();
-} catch {}
+} catch (err) {
+  console.error("[auth] JWT issuer pre-warm threw", { err });
+}
 
 /** @internal */
 export async function generateToken(

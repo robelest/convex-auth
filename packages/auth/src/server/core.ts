@@ -197,16 +197,13 @@ export function createCoreDomains(deps: CoreDeps) {
       }
     }
     if (toFetch.length > 0) {
-      const sharedFetch = ctx.runQuery(config.component.user.get, {
+      const docs = (await ctx.runQuery(config.component.user.get, {
         ids: toFetch,
-      }) as Promise<Array<UserDocLike>>;
+      })) as Array<UserDocLike>;
       for (let i = 0; i < toFetch.length; i += 1) {
         const id = toFetch[i]!;
-        const indexInBatch = i;
-        void cached(ctx, `user:${id}`, async () => {
-          const docs = await sharedFetch;
-          return docs[indexInBatch] ?? null;
-        });
+        const value = docs[i] ?? null;
+        void cached(ctx, `user:${id}`, () => Promise.resolve(value));
       }
     }
     return (await Promise.all(
@@ -867,16 +864,13 @@ export function createCoreDomains(deps: CoreDeps) {
       }
     }
     if (toFetch.length > 0) {
-      const sharedFetch = (ctx.runQuery as UntypedRunQuery)(config.component.group.get, {
+      const docs = (await (ctx.runQuery as UntypedRunQuery)(config.component.group.get, {
         ids: toFetch,
-      }) as Promise<Array<GroupDocLike>>;
+      })) as Array<GroupDocLike>;
       for (let i = 0; i < toFetch.length; i += 1) {
         const id = toFetch[i]!;
-        const indexInBatch = i;
-        void cached(ctx, `group:${id}`, async () => {
-          const docs = await sharedFetch;
-          return docs[indexInBatch] ?? null;
-        });
+        const value = docs[i] ?? null;
+        void cached(ctx, `group:${id}`, () => Promise.resolve(value));
       }
     }
     return (await Promise.all(
@@ -1217,17 +1211,16 @@ export function createCoreDomains(deps: CoreDeps) {
         }
       }
       if (toFetch.length > 0) {
-        const sharedFetch = (ctx.runQuery as UntypedRunQuery)(
+        const docs = (await (ctx.runQuery as UntypedRunQuery)(
           config.component.group.member.get,
           { userId, groupIds: toFetch },
-        ) as Promise<Array<MemberDocLike>>;
+        )) as Array<MemberDocLike>;
         for (let i = 0; i < toFetch.length; i += 1) {
           const groupId = toFetch[i]!;
-          const indexInBatch = i;
-          void cached(ctx, `member-inspect:${userId}:${groupId}:n`, async () => {
-            const docs = await sharedFetch;
-            return (docs[indexInBatch] ?? null) as MemberDocLike;
-          });
+          const value = (docs[i] ?? null) as MemberDocLike;
+          void cached(ctx, `member-inspect:${userId}:${groupId}:n`, () =>
+            Promise.resolve(value),
+          );
         }
       }
       return await Promise.all(

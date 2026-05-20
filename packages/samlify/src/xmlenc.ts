@@ -1,4 +1,4 @@
-import { DOMParser } from "@xmldom/xmldom";
+import { safeParseXml } from "./api";
 import { BigInteger, KEYUTIL, KJUR } from "jsrsasign";
 import { evaluateXPathToNodes } from "./fontoxpath";
 
@@ -585,7 +585,7 @@ export async function decryptAssertion(opts: DecryptAssertionOptions): Promise<s
     throw new Error("key option is mandatory and you should provide a valid RSA private key");
   }
 
-  const doc = new DOMParser().parseFromString(encryptedAssertionXml, "text/xml");
+  const doc = safeParseXml(encryptedAssertionXml, "text/xml");
   const encryptedDataNode = resolveEncryptedDataNode(doc);
 
   const dataEncMethodNode = selectNodes(

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 import type { Doc, Id } from "../../_generated/dataModel";
 import { mutation, query } from "../../functions";
@@ -316,26 +316,15 @@ export const groupList = query({
 
     q = q.order(order);
 
-    let all = await q.collect();
-
-    // Apply tag filter (intersect with resolved groupIds)
-    if (tagFilteredIds !== null) {
-      all = all.filter((doc) => tagFilteredIds!.has(doc._id as string));
-    }
-
-    // Cursor-based pagination
-    let startIdx = 0;
-    if (args.cursor) {
-      const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
-      if (cursorIdx !== -1) {
-        startIdx = cursorIdx + 1;
-      }
-    }
-    const page = all.slice(startIdx, startIdx + limit + 1);
-    const hasMore = page.length > limit;
-    const items = hasMore ? page.slice(0, limit) : page;
-    const nextCursor = hasMore ? items[items.length - 1]._id : null;
-    return { items, nextCursor };
+    const result = await q.paginate({ numItems: limit, cursor: args.cursor ?? null });
+    const items =
+      tagFilteredIds === null
+        ? result.page
+        : result.page.filter((doc) => tagFilteredIds!.has(doc._id as string));
+    return {
+      items,
+      nextCursor: result.isDone ? null : result.continueCursor,
+    };
   },
 });
 
@@ -440,10 +429,21 @@ export const groupDelete = mutation({
   returns: v.null(),
   handler: async (ctx, { groupId }) => {
     const deleteGroup = async (id: typeof groupId) => {
+      const CASCADE_MAX = 1000;
+      const refuseOverflow = (table: string, count: number) => {
+        if (count > CASCADE_MAX) {
+          throw new ConvexError({
+            code: "CASCADE_TOO_LARGE",
+            message: `Group ${id} has more than ${CASCADE_MAX} rows in ${table}; cascade delete is not safe in a single mutation. Drain via the migrations component first, then retry.`,
+          });
+        }
+      };
+
       const children = await ctx.db
         .query("Group")
         .withIndex("parent_group_id", (q) => q.eq("parentGroupId", id))
-        .collect();
+        .take(CASCADE_MAX + 1);
+      refuseOverflow("Group(children)", children.length);
       for (const child of children) {
         await deleteGroup(child._id);
       }
@@ -451,7 +451,8 @@ export const groupDelete = mutation({
       const members = await ctx.db
         .query("GroupMember")
         .withIndex("group_id", (q) => q.eq("groupId", id))
-        .collect();
+        .take(CASCADE_MAX + 1);
+      refuseOverflow("GroupMember", members.length);
       for (const member of members) {
         await ctx.db.delete("GroupMember", member._id);
       }
@@ -459,7 +460,8 @@ export const groupDelete = mutation({
       const invites = await ctx.db
         .query("GroupInvite")
         .withIndex("group_id", (q) => q.eq("groupId", id))
-        .collect();
+        .take(CASCADE_MAX + 1);
+      refuseOverflow("GroupInvite", invites.length);
       for (const invite of invites) {
         await ctx.db.delete("GroupInvite", invite._id);
       }
@@ -468,7 +470,8 @@ export const groupDelete = mutation({
       const tags = await ctx.db
         .query("GroupTag")
         .withIndex("by_group", (q) => q.eq("group_id", id))
-        .collect();
+        .take(CASCADE_MAX + 1);
+      refuseOverflow("GroupTag", tags.length);
       for (const tag of tags) {
         await ctx.db.delete("GroupTag", tag._id);
       }

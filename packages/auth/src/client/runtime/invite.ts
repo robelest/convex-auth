@@ -15,25 +15,32 @@ export function createInviteManager(args: {
   const urlInviteToken = param("invite");
   if (urlInviteToken) {
     pendingInvite = { token: urlInviteToken, email: param("email") };
-  } else {
-    void (async () => {
-      const storedToken = await storageGet(tokenKey);
-      if (storedToken && !pendingInvite) {
-        pendingInvite = {
-          token: storedToken,
-          email: (await storageGet(emailKey)) ?? null,
-        };
-        void storageRemove(tokenKey);
-        void storageRemove(emailKey);
-      }
-    })();
   }
+
+  const initPromise: Promise<void> = urlInviteToken
+    ? Promise.resolve()
+    : (async () => {
+        const storedToken = await storageGet(tokenKey);
+        if (storedToken && !pendingInvite) {
+          pendingInvite = {
+            token: storedToken,
+            email: (await storageGet(emailKey)) ?? null,
+          };
+          void storageRemove(tokenKey);
+          void storageRemove(emailKey);
+        }
+      })();
 
   return {
     getPendingInvite() {
       return pendingInvite;
     },
+    /** Resolves once the storage-restore step has completed. */
+    ready() {
+      return initPromise;
+    },
     async persistInvite() {
+      await initPromise;
       if (!pendingInvite) return;
       await storageSet(tokenKey, pendingInvite.token);
       if (pendingInvite.email) {
@@ -41,6 +48,7 @@ export function createInviteManager(args: {
       }
     },
     async acceptInvite(): Promise<{ token: string }> {
+      await initPromise;
       if (!pendingInvite) {
         throw new Error("No pending invite to accept.");
       }

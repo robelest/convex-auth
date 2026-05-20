@@ -734,6 +734,9 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     provider?: string,
     args?: FormData | Record<string, Value>,
   ): Promise<SignInResult> => {
+    if (destroyed) {
+      throw new Error("Convex auth client has been destroyed.");
+    }
     // Persist invite before potential OAuth redirect
     await persistInvite();
 
@@ -874,6 +877,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
    * signed-out user is a no-op.
    */
   const signOut = async () => {
+    if (destroyed) return;
     if (proxy) {
       try {
         await proxyFetch({ action: "auth:signOut", args: {} });
@@ -903,6 +907,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
   }: {
     forceRefreshToken: boolean;
   }): Promise<string | null> => {
+    if (destroyed) return null;
     if (!forceRefreshToken) return token;
 
     const mutex = runtime.mutex;
@@ -963,7 +968,12 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
         await setToken({ shouldStore: true, tokens: null, resyncConvexAuth: false });
         return null;
       }
-      await verifyCodeAndSetToken({ refreshToken }, { resyncConvexAuth: false });
+      try {
+        await verifyCodeAndSetToken({ refreshToken }, { resyncConvexAuth: false });
+      } catch (error) {
+        await setToken({ shouldStore: true, tokens: null, resyncConvexAuth: false });
+        throw error;
+      }
       return token;
     });
   };
@@ -1033,6 +1043,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
   };
 
   const initialize = async (): Promise<void> => {
+    if (destroyed) return;
     if (initializePromise !== null) {
       return await initializePromise;
     }
@@ -1102,6 +1113,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
   if (!proxy && runtime.sync) {
     disposeStorageListener =
       runtime.sync.subscribe(key(JWT_STORAGE_KEY), (value) => {
+        if (value === token) return;
         void setToken({
           shouldStore: false,
           tokens: value === null ? null : { token: value },
@@ -1123,6 +1135,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
       "[convex-auth] Client initialization failed:",
       error,
     ]);
+    finalizeLoadingState();
   });
 
   // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import { DOMParser } from "@xmldom/xmldom";
+import { safeParseXml } from "./api";
 import { C14nNode, C14nProcessOptions, getTransformByAlgorithm } from "./c14n";
 import { b64tohex, hextob64, KJUR, KEYUTIL, Signature } from "jsrsasign";
 import { evaluateXPathToNodes } from "./fontoxpath";
@@ -624,7 +624,7 @@ export class SignedXml {
 
     const signatureValueXml = `<${currentPrefix}SignatureValue>${this.signatureValue}</${currentPrefix}SignatureValue>`;
     const wrapper = `<${currentPrefix}Signature ${xmlNsAttr}="http://www.w3.org/2000/09/xmldsig#">${signatureValueXml}</${currentPrefix}Signature>`;
-    const doc = new DOMParser().parseFromString(wrapper, "text/xml");
+    const doc = safeParseXml(wrapper, "text/xml");
     return doc.documentElement.firstChild as Node;
   }
 
@@ -657,7 +657,7 @@ export class SignedXml {
 
   computeSignature(xml: string, options?: ComputeSignatureOptions) {
     options = options || {};
-    const doc = new DOMParser().parseFromString(xml, "text/xml");
+    const doc = safeParseXml(xml, "text/xml");
 
     let xmlNsAttr = "xmlns";
     const signatureAttrs: string[] = [];
@@ -703,7 +703,7 @@ export class SignedXml {
     });
 
     const dummySignatureWrapper = `<Dummy ${existingPrefixesString}>${signatureXml}</Dummy>`;
-    const nodeXml = new DOMParser().parseFromString(dummySignatureWrapper, "text/xml");
+    const nodeXml = safeParseXml(dummySignatureWrapper, "text/xml");
     const signatureDoc = nodeXml.documentElement.firstChild as Node;
 
     const referenceNode = selectNodes(location.reference, doc)[0];
@@ -825,7 +825,7 @@ export class SignedXml {
 
   loadSignature(signatureNode: string | Node) {
     if (typeof signatureNode === "string") {
-      this.signatureNode = new DOMParser().parseFromString(signatureNode, "text/xml");
+      this.signatureNode = safeParseXml(signatureNode, "text/xml");
     } else {
       this.signatureNode = signatureNode;
     }
@@ -869,7 +869,7 @@ export class SignedXml {
       signedInfoNodes[0],
     );
 
-    const temporaryCanonSignedInfoXml = new DOMParser().parseFromString(
+    const temporaryCanonSignedInfoXml = safeParseXml(
       temporaryCanonSignedInfo,
       "text/xml",
     );
@@ -949,7 +949,7 @@ export class SignedXml {
 
   checkSignature(xml: string): boolean {
     this.signedXml = xml;
-    const doc = new DOMParser().parseFromString(xml, "text/xml");
+    const doc = safeParseXml(xml, "text/xml");
 
     this.references = [];
     const unverifiedSignedInfoCanon = this.getCanonSignedInfoXml(doc);
@@ -957,7 +957,7 @@ export class SignedXml {
       throw new Error("Canonical signed info cannot be empty");
     }
 
-    const parsedUnverifiedSignedInfo = new DOMParser().parseFromString(
+    const parsedUnverifiedSignedInfo = safeParseXml(
       unverifiedSignedInfoCanon,
       "text/xml",
     );
