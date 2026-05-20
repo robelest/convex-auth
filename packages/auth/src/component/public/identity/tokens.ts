@@ -26,7 +26,7 @@ export const refreshTokenCreate = mutation({
   },
   returns: v.id("RefreshToken"),
   handler: async (ctx, args) => {
-    return await ctx.db.insert("RefreshToken", args as any);
+    return await ctx.db.insert("RefreshToken", args);
   },
 });
 
@@ -46,7 +46,7 @@ export const refreshTokenGet = query({
       return await ctx.db
         .query("RefreshToken")
         .withIndex("session_id_first_used", (q) =>
-          q.eq("sessionId", args.activeForSession! as any).eq("firstUsedTime", undefined),
+          q.eq("sessionId", args.activeForSession!).eq("firstUsedTime", undefined),
         )
         .order("desc")
         .first();
@@ -100,7 +100,7 @@ export const refreshTokenGetChildren = query({
     return await ctx.db
       .query("RefreshToken")
       .withIndex("session_id_parent_refresh_token_id", (q) =>
-        q.eq("sessionId", sessionId as any).eq("parentRefreshTokenId", parentRefreshTokenId as any),
+        q.eq("sessionId", sessionId).eq("parentRefreshTokenId", parentRefreshTokenId),
       )
       .collect();
   },
@@ -123,7 +123,7 @@ export const refreshTokenListBySession = query({
   handler: async (ctx, { sessionId }) => {
     return await ctx.db
       .query("RefreshToken")
-      .withIndex("session_id", (q) => q.eq("sessionId", sessionId as any))
+      .withIndex("session_id", (q) => q.eq("sessionId", sessionId))
       .collect();
   },
 });
@@ -146,7 +146,7 @@ export const refreshTokenDeleteAll = mutation({
   handler: async (ctx, { sessionId }) => {
     const tokens = await ctx.db
       .query("RefreshToken")
-      .withIndex("session_id", (q) => q.eq("sessionId", sessionId as any))
+      .withIndex("session_id", (q) => q.eq("sessionId", sessionId))
       .collect();
     await Promise.all(tokens.map((token) => ctx.db.delete("RefreshToken", token._id)));
     return null;

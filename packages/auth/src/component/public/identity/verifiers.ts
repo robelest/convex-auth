@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 
+import type { Id } from "../../_generated/dataModel";
 import type { QueryCtx } from "../../_generated/server";
 import { mutation, query } from "../../functions";
 import { vAuthVerifierDoc } from "../../model";
@@ -7,7 +8,7 @@ import { vAuthVerifierDoc } from "../../model";
 const DEFAULT_VERIFIER_TTL_MS = 1000 * 60 * 15;
 
 async function getUnexpiredVerifier(ctx: QueryCtx, verifierId: string) {
-  const verifier = await ctx.db.get("AuthVerifier", verifierId as any);
+  const verifier = await ctx.db.get("AuthVerifier", verifierId as Id<"AuthVerifier">);
   if (verifier?.expirationTime !== undefined && verifier.expirationTime < Date.now()) {
     return null;
   }
@@ -36,7 +37,7 @@ export const verifierCreate = mutation({
   returns: v.id("AuthVerifier"),
   handler: async (ctx, { sessionId, signature, expirationTime }) => {
     return await ctx.db.insert("AuthVerifier", {
-      sessionId: sessionId as any,
+      sessionId: sessionId,
       signature,
       expirationTime: expirationTime ?? Date.now() + DEFAULT_VERIFIER_TTL_MS,
     });

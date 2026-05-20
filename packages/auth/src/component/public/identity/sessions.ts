@@ -20,7 +20,7 @@ export const sessionCreate = mutation({
   returns: v.id("Session"),
   handler: async (ctx, { userId, expirationTime }) => {
     return await ctx.db.insert("Session", {
-      userId: userId as any,
+      userId: userId,
       expirationTime,
     });
   },
@@ -57,7 +57,7 @@ export const sessionIssue = mutation({
       }
 
       sessionId = await ctx.db.insert("Session", {
-        userId: args.userId as any,
+        userId: args.userId,
         expirationTime: args.sessionExpirationTime,
       });
     }
@@ -66,7 +66,7 @@ export const sessionIssue = mutation({
       args.refreshTokenExpirationTime === undefined
         ? undefined
         : await ctx.db.insert("RefreshToken", {
-            sessionId: sessionId as any,
+            sessionId: sessionId,
             expirationTime: args.refreshTokenExpirationTime,
           });
 
@@ -137,7 +137,7 @@ export const sessionList = query({
   handler: async (ctx, { userId }) => {
     return await ctx.db
       .query("Session")
-      .withIndex("user_id", (q) => q.eq("userId", userId as any))
+      .withIndex("user_id", (q) => q.eq("userId", userId))
       .collect();
   },
 });

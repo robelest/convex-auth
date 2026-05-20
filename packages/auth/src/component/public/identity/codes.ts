@@ -24,7 +24,7 @@ export const verificationCodeGet = query({
     if (args.accountId === undefined) return null;
     return await ctx.db
       .query("VerificationCode")
-      .withIndex("account_id", (q) => q.eq("accountId", args.accountId! as any))
+      .withIndex("account_id", (q) => q.eq("accountId", args.accountId!))
       .unique();
   },
 });
@@ -61,7 +61,7 @@ export const verificationCodeCreate = mutation({
   },
   returns: v.id("VerificationCode"),
   handler: async (ctx, args) => {
-    return await ctx.db.insert("VerificationCode", args as any);
+    return await ctx.db.insert("VerificationCode", args);
   },
 });
 

@@ -21,7 +21,7 @@ export const accountList = query({
   handler: async (ctx, { userId }) => {
     return await ctx.db
       .query("Account")
-      .withIndex("user_id_provider", (q) => q.eq("userId", userId as any))
+      .withIndex("user_id_provider", (q) => q.eq("userId", userId))
       .collect();
   },
 });
@@ -78,7 +78,7 @@ export const accountInsert = mutation({
   },
   returns: v.id("Account"),
   handler: async (ctx, args) => {
-    return await ctx.db.insert("Account", args as any);
+    return await ctx.db.insert("Account", args);
   },
 });
 

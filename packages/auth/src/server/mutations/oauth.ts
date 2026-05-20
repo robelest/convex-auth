@@ -149,7 +149,8 @@ export async function userOAuthImpl(
   let verifier;
   try {
     verifier = await db.verifiers.getBySignature(signature);
-  } catch {
+  } catch (err) {
+    console.error("[auth] OAuth verifier lookup failed", { err });
     throw new ConvexError({
       code: "OAUTH_INVALID_STATE",
       message: "Invalid OAuth state. Please try signing in again.",

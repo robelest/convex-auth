@@ -28,7 +28,7 @@ export function isRetriableProxyRefreshError(error: unknown): boolean {
     return false;
   }
   const statusCode = Number(statusMatch[1]);
-  return statusCode >= 500 && statusCode < 600;
+  return statusCode === 429 || (statusCode >= 500 && statusCode < 600);
 }
 
 /** @internal */

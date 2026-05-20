@@ -140,8 +140,14 @@ async function resolveUserIdByLinking(
   const phoneUserId = phoneLookup?._id ?? null;
 
   if (emailUserId !== null && phoneUserId !== null) {
-    log(LOG_LEVELS.DEBUG, `Found both email and phone verified users, not linking: email: ${emailUserId}, phone: ${phoneUserId}`);
-    return existingUserIdOverride;
+    if (emailUserId === phoneUserId) {
+      log(LOG_LEVELS.DEBUG, `Email and phone resolve to same user, linking: ${emailUserId}`);
+      return emailUserId;
+    }
+    throw new ConvexError({
+      code: "AMBIGUOUS_USER_LINK",
+      message: "Verified email and phone resolve to different users; cannot safely link.",
+    });
   }
   if (emailUserId !== null) {
     log(LOG_LEVELS.DEBUG, `Found existing email verified user, linking: ${emailUserId}`);

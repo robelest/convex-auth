@@ -60,11 +60,14 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
   return {
     poll: async (opts: { code: DeviceCodeResult }): Promise<void> => {
       const { code } = opts;
-      const intervalMs = code.interval * 1000;
-      const expiresAt = Date.now() + code.expiresIn * 1000;
+      const MAX_POLL_DURATION_MS = 30 * 60 * 1000;
+      const SLOW_DOWN_INCREMENT_MS = 5 * 1000;
+      let currentIntervalMs = code.interval * 1000;
+      const startedAt = Date.now();
+      const expiresAt = Math.min(startedAt + code.expiresIn * 1000, startedAt + MAX_POLL_DURATION_MS);
 
       while (Date.now() < expiresAt) {
-        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        await new Promise((resolve) => setTimeout(resolve, currentIntervalMs));
 
         const params: Record<string, unknown> = {
           flow: "poll",
@@ -81,7 +84,7 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
               continue;
             }
             if (errorCode === "DEVICE_SLOW_DOWN") {
-              await new Promise((resolve) => setTimeout(resolve, intervalMs));
+              currentIntervalMs += SLOW_DOWN_INCREMENT_MS;
               continue;
             }
           }

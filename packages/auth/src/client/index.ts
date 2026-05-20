@@ -122,19 +122,24 @@ function resolveUrl(convex: ConvexTransport, explicit?: string): string {
   throw new Error("Could not determine Convex deployment URL. Pass `url` explicitly.");
 }
 
-function stableStringify(value: unknown): string {
+const STABLE_STRINGIFY_MAX_DEPTH = 32;
+
+function stableStringify(value: unknown, depth = 0): string {
+  if (depth > STABLE_STRINGIFY_MAX_DEPTH) {
+    throw new Error("stableStringify: input exceeds maximum nesting depth");
+  }
   if (value === undefined) {
     return "null";
   }
   if (Array.isArray(value)) {
-    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+    return `[${value.map((item) => stableStringify(item, depth + 1)).join(",")}]`;
   }
   if (value !== null && typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>)
       .filter(([, entryValue]) => entryValue !== undefined)
       .sort(([left], [right]) => left.localeCompare(right));
     return `{${entries
-      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`)
+      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue, depth + 1)}`)
       .join(",")}}`;
   }
   return JSON.stringify(value);

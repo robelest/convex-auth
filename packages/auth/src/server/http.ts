@@ -212,7 +212,8 @@ async function getHttpKeyContext(
         scopes: verified.scopes,
       },
     };
-  } catch {
+  } catch (err) {
+    console.error("[auth] HTTP key verification failed", { err });
     return null;
   }
 }

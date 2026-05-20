@@ -196,7 +196,8 @@ async function verifyAndConsumeChallenge<T extends { challenge: Uint8Array }>(
   let doc;
   try {
     doc = await queryVerifierById(ctx, verifierValue);
-  } catch {
+  } catch (err) {
+    console.error("[auth] passkey error:", err);
     throw convexError("PASSKEY_INVALID_CHALLENGE", "Invalid or expired passkey challenge.");
   }
   if (!doc || doc.signature !== challengeHash) {
@@ -204,7 +205,8 @@ async function verifyAndConsumeChallenge<T extends { challenge: Uint8Array }>(
   }
   try {
     await mutateVerifierDelete(ctx, verifierValue);
-  } catch {
+  } catch (err) {
+    console.error("[auth] passkey error:", err);
     throw convexError("PASSKEY_INVALID_CHALLENGE", "Invalid or expired passkey challenge.");
   }
   return clientData;
@@ -261,7 +263,8 @@ async function requireAuthenticatedUserId(ctx: EnrichedActionCtx): Promise<strin
       );
     }
     return userId;
-  } catch {
+  } catch (err) {
+    console.error("[auth] passkey error:", err);
     throw convexError(
       "PASSKEY_AUTH_REQUIRED",
       "Sign in first, then add a passkey to your account.",
@@ -410,7 +413,8 @@ export async function handlePasskeyFx(
         passkeyId: passkeyId as GenericId<"Passkey">,
         credentialId,
       });
-    } catch {
+    } catch (err) {
+      console.error("[auth] passkey error:", err);
       throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
     }
 
@@ -446,7 +450,8 @@ export async function handlePasskeyFx(
     let passkey;
     try {
       passkey = await queryPasskeyByCredentialId(ctx, credentialId);
-    } catch {
+    } catch (err) {
+      console.error("[auth] passkey error:", err);
       throw convexError("PASSKEY_UNKNOWN_CREDENTIAL", "Unknown passkey credential.");
     }
     if (passkey === null) {
@@ -514,14 +519,16 @@ export async function handlePasskeyFx(
       let verifier: string;
       try {
         verifier = await callVerifier(ctx, challengeHash);
-      } catch {
+      } catch (err) {
+        console.error("[auth] passkey error:", err);
         throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
       }
 
       let user;
       try {
         user = await queryUserById(ctx, userId);
-      } catch {
+      } catch (err) {
+        console.error("[auth] passkey error:", err);
         throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
       }
       const userName = params.userName ?? user?.email ?? "user";
@@ -530,7 +537,8 @@ export async function handlePasskeyFx(
       let existing;
       try {
         existing = await queryPasskeysByUserId(ctx, userId);
-      } catch {
+      } catch (err) {
+        console.error("[auth] passkey error:", err);
         throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
       }
       const excludeCredentials = existing.map((pk) => ({
@@ -582,7 +590,8 @@ export async function handlePasskeyFx(
       let verifier: string;
       try {
         verifier = await callVerifier(ctx, challengeHash);
-      } catch {
+      } catch (err) {
+        console.error("[auth] passkey error:", err);
         throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
       }
 
@@ -595,14 +604,16 @@ export async function handlePasskeyFx(
         let user;
         try {
           user = await queryUserByVerifiedEmail(ctx, email);
-        } catch {
+        } catch (err) {
+          console.error("[auth] passkey error:", err);
           throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
         }
         if (user) {
           let passkeys;
           try {
             passkeys = await queryPasskeysByUserId(ctx, user._id);
-          } catch {
+          } catch (err) {
+            console.error("[auth] passkey error:", err);
             throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
           }
           if (passkeys.length > 0) {
