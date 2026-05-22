@@ -10,8 +10,8 @@
     ],
     "catalog": {
       "@robelest/fx": "^0.0.1-preview.4",
-      "convex": "^1.34.0",
-      "convex-test": "^0.0.41",
+      "convex": "^1.39.0",
+      "convex-test": "^0.0.48",
       "tsdown": "0.20.0-beta.3",
       "typescript": "^6.0.2",
       "vite": "npm:@voidzero-dev/vite-plus-core@^0.1.13",
@@ -29,7 +29,6 @@
     "convex:env:list:prod": "APP_ENV=production vp exec varlock run -- vp exec convex env list --prod",
     "dev:convex": "vp exec varlock run -- vp exec convex dev",
     "dev:convex:once": "vp exec varlock run -- vp exec convex dev --once",
-    "postinstall": "node scripts/patch-fluent-convex.mjs",
     "build:auth": "vp exec varlock run -- vp run '@robelest/samlify#build' && vp exec varlock run -- vp exec convex codegen --component-dir ./packages/auth/src/component && vp exec varlock run -- vp run '@robelest/convex-auth#build'",
     "build:docs": "vp run --filter docs build",
     "build:demo": "vp run --filter @robelest/samlify build && vp run --filter @robelest/convex-auth build && vp run --filter svelte build",
@@ -57,9 +56,8 @@
     "@convex-dev/resend": "latest",
     "@robelest/convex-auth": "workspace:*",
     "arctic": "latest",
-    "convex": "latest",
+    "convex": "catalog:",
     "convex-helpers": "latest",
-    "fluent-convex": "latest",
     "zod": "latest"
   },
   "devDependencies": {

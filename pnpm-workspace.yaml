@@ -6,8 +6,8 @@ packages:
 
 catalog:
   "@robelest/fx": ^0.0.1-preview.4
-  convex: ^1.34.0
-  convex-test: ^0.0.41
+  convex: ^1.39.0
+  convex-test: ^0.0.48
   tsdown: 0.20.0-beta.3
   typescript: ^6.0.2
   vite: npm:@voidzero-dev/vite-plus-core@^0.1.13
