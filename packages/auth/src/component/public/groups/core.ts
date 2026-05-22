@@ -1,8 +1,9 @@
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
 import type { Doc, Id } from "../../_generated/dataModel";
-import { mutation, query } from "../../functions";
-import { vGroupDoc, vPaginated, vTag } from "../../model";
+import { internalMutation, internalQuery } from "../../functions";
+import { vGroupConnectionPolicy, vGroupDoc, vPaginated, vTag } from "../../model";
 
 type TagPair = { key: string; value: string };
 
@@ -44,7 +45,7 @@ function normalizeTags(tags: TagPair[]): TagPair[] {
  * @returns The `Id<"Group">` of the newly created group document.
  *
  */
-export const groupCreate = mutation({
+export const groupCreate = internalMutation({
   args: {
     name: v.string(),
     slug: v.optional(v.string()),
@@ -93,7 +94,7 @@ export const groupCreate = mutation({
  * return: `{ id }` → `Doc<"Group"> | null`, or `{ ids }` → ordered
  * `(Doc<"Group"> | null)[]` (deduped).
  */
-export const groupGet = query({
+export const groupGet = internalQuery({
   args: {
     id: v.optional(v.id("Group")),
     ids: v.optional(v.array(v.id("Group"))),
@@ -131,7 +132,7 @@ export const groupGet = query({
  *   are ordered from the immediate parent upward (or starting at
  *   `groupId` when `includeSelf` is set).
  */
-export const groupAncestors = query({
+export const groupAncestors = internalQuery({
   args: {
     groupId: v.id("Group"),
     maxDepth: v.optional(v.number()),
@@ -179,10 +180,12 @@ export const groupAncestors = query({
 /**
  * List groups with optional filtering, sorting, and pagination.
  *
- * Returns `{ items, nextCursor }`. Empty `where` returns **all** groups.
- * The query engine selects the best database index based on the combination
- * of filter fields provided. Tag filters (`tagsAll`, `tagsAny`) are resolved
- * via the `GroupTag` companion table and intersected/unioned with index results.
+ * Returns a Convex-native `PaginationResult<GroupDoc>` so consumers can pass
+ * the query directly to `usePaginatedQuery`. Empty `where` returns **all**
+ * groups. The query engine selects the best database index based on the
+ * combination of filter fields provided. Tag filters (`tagsAll`, `tagsAny`)
+ * are resolved via the `GroupTag` companion table and intersected/unioned
+ * with index results.
  *
  * @param args.where - Optional filter criteria for narrowing results.
  * @param args.where.slug - Match groups with this exact slug.
@@ -192,14 +195,14 @@ export const groupAncestors = query({
  * @param args.where.isRoot - When `true`, return only root-level groups; when `false`, only child groups.
  * @param args.where.tagsAll - An array of `{ key, value }` pairs; only groups that have **all** of these tags are returned.
  * @param args.where.tagsAny - An array of `{ key, value }` pairs; groups that have **at least one** of these tags are returned.
- * @param args.limit - Maximum number of items per page (clamped to 1..100, defaults to 50).
- * @param args.cursor - An opaque cursor string from a previous response's `nextCursor` to fetch the next page, or `null` to start from the beginning.
+ * @param args.paginationOpts - Convex `paginationOptsValidator` shape
+ *   (`{ numItems, cursor }`).
  * @param args.orderBy - The field to sort by: `"_creationTime"`, `"name"`, `"slug"`, or `"type"`.
  * @param args.order - Sort direction: `"asc"` or `"desc"` (defaults to `"desc"`).
- * @returns An object `{ items, nextCursor }` where `items` is an array of group documents and `nextCursor` is `null` when there are no more pages.
+ * @returns A Convex `PaginationResult<GroupDoc>` — `{ page, isDone, continueCursor }`.
  *
  */
-export const groupList = query({
+export const groupList = internalQuery({
   args: {
     where: v.optional(
       v.object({
@@ -212,8 +215,7 @@ export const groupList = query({
         tagsAny: v.optional(v.array(vTag)),
       }),
     ),
-    limit: v.optional(v.number()),
-    cursor: v.optional(v.union(v.string(), v.null())),
+    paginationOpts: paginationOptsValidator,
     orderBy: v.optional(
       v.union(v.literal("_creationTime"), v.literal("name"), v.literal("slug"), v.literal("type")),
     ),
@@ -222,7 +224,6 @@ export const groupList = query({
   returns: vPaginated(vGroupDoc),
   handler: async (ctx, args) => {
     const where = args.where ?? {};
-    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
     const order = args.order ?? "desc";
 
     // ---- Resolve tag filters into a Set<Id<"Group">> ----
@@ -314,16 +315,13 @@ export const groupList = query({
       q = q.filter((f) => f.eq(f.field("slug"), where.slug!));
     }
 
-    q = q.order(order);
-
-    const result = await q.paginate({ numItems: limit, cursor: args.cursor ?? null });
-    const items =
-      tagFilteredIds === null
-        ? result.page
-        : result.page.filter((doc) => tagFilteredIds!.has(doc._id as string));
+    const result = await q.order(order).paginate(args.paginationOpts);
+    if (tagFilteredIds === null) {
+      return result;
+    }
     return {
-      items,
-      nextCursor: result.isDone ? null : result.continueCursor,
+      ...result,
+      page: result.page.filter((doc) => tagFilteredIds!.has(doc._id as string)),
     };
   },
 });
@@ -343,8 +341,21 @@ export const groupList = query({
  * @returns `null` on success.
  *
  */
-export const groupUpdate = mutation({
-  args: { groupId: v.id("Group"), data: v.any() },
+export const groupUpdate = internalMutation({
+  args: {
+    groupId: v.id("Group"),
+    data: v.object({
+      name: v.optional(v.string()),
+      slug: v.optional(v.string()),
+      type: v.optional(v.string()),
+      parentGroupId: v.optional(v.id("Group")),
+      rootGroupId: v.optional(v.id("Group")),
+      isRoot: v.optional(v.boolean()),
+      tags: v.optional(v.array(vTag)),
+      policy: v.optional(vGroupConnectionPolicy),
+      extend: v.optional(v.any()),
+    }),
+  },
   returns: v.null(),
   handler: async (ctx, { groupId, data }) => {
     // If parentGroupId is changing, recompute rootGroupId + isRoot for this group and descendants
@@ -424,7 +435,7 @@ export const groupUpdate = mutation({
  * @returns `null` on success.
  *
  */
-export const groupDelete = mutation({
+export const groupDelete = internalMutation({
   args: { groupId: v.id("Group") },
   returns: v.null(),
   handler: async (ctx, { groupId }) => {

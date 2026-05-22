@@ -1,7 +1,8 @@
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
 import type { Id } from "../../_generated/dataModel";
-import { mutation, query } from "../../functions";
+import { internalMutation, internalQuery } from "../../functions";
 import {
   vGroupInviteDoc,
   vInviteRedeemResult,
@@ -35,7 +36,7 @@ import {
  * @returns The `Id<"GroupInvite">` of the newly created invite document.
  *
  */
-export const inviteCreate = mutation({
+export const inviteCreate = internalMutation({
   args: {
     groupId: v.optional(v.id("Group")),
     invitedByUserId: v.optional(v.id("User")),
@@ -114,7 +115,7 @@ export const inviteCreate = mutation({
  * return: `{ id }` (point lookup) or `{ tokenHash }` (token index).
  *
  */
-export const inviteGet = query({
+export const inviteGet = internalQuery({
   args: {
     id: v.optional(v.id("GroupInvite")),
     tokenHash: v.optional(v.string()),
@@ -151,14 +152,14 @@ export const inviteGet = query({
  * @param args.where.invitedByUserId - Match invites created by this user.
  * @param args.where.roleId - Match invites that include this role identifier in their `roleIds` array.
  * @param args.where.acceptedByUserId - Match invites accepted by this specific user.
- * @param args.limit - Maximum number of items per page (clamped to 1..100, defaults to 50).
- * @param args.cursor - An opaque cursor string from a previous response's `nextCursor` to fetch the next page, or `null` to start from the beginning.
+ * @param args.paginationOpts - Convex `paginationOptsValidator` shape
+ *   (`{ numItems, cursor }`).
  * @param args.orderBy - The field to sort by: `"_creationTime"`, `"status"`, `"email"`, `"expiresTime"`, or `"acceptedTime"`.
  * @param args.order - Sort direction: `"asc"` or `"desc"` (defaults to `"desc"`).
- * @returns An object `{ items, nextCursor }` where `items` is an array of invite documents and `nextCursor` is `null` when there are no more pages.
+ * @returns A Convex `PaginationResult<GroupInviteDoc>` — `{ page, isDone, continueCursor }`.
  *
  */
-export const inviteList = query({
+export const inviteList = internalQuery({
   args: {
     where: v.optional(
       v.object({
@@ -171,8 +172,7 @@ export const inviteList = query({
         acceptedByUserId: v.optional(v.id("User")),
       }),
     ),
-    limit: v.optional(v.number()),
-    cursor: v.optional(v.union(v.string(), v.null())),
+    paginationOpts: paginationOptsValidator,
     orderBy: v.optional(
       v.union(
         v.literal("_creationTime"),
@@ -187,7 +187,6 @@ export const inviteList = query({
   returns: vPaginated(vGroupInviteDoc),
   handler: async (ctx, args) => {
     const where = args.where ?? {};
-    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
     const order = args.order ?? "desc";
 
     // Pick best index
@@ -244,16 +243,13 @@ export const inviteList = query({
       q = q.filter((f) => f.eq(f.field("tokenHash"), where.tokenHash!));
     }
 
-    q = q.order(order);
-
-    const result = await q.paginate({ numItems: limit, cursor: args.cursor ?? null });
-    const items =
-      where.roleId === undefined
-        ? result.page
-        : result.page.filter((doc) => (doc.roleIds ?? []).includes(where.roleId!));
+    const result = await q.order(order).paginate(args.paginationOpts);
+    if (where.roleId === undefined) {
+      return result;
+    }
     return {
-      items,
-      nextCursor: result.isDone ? null : result.continueCursor,
+      ...result,
+      page: result.page.filter((doc) => (doc.roleIds ?? []).includes(where.roleId!)),
     };
   },
 });
@@ -278,7 +274,7 @@ export const inviteList = query({
  * @throws `ConvexError` with code `INVITE_EXPIRED` if the invite's `expiresTime` has passed.
  *
  */
-export const inviteAccept = mutation({
+export const inviteAccept = internalMutation({
   args: {
     inviteId: v.id("GroupInvite"),
     acceptedByUserId: v.optional(v.id("User")),
@@ -347,7 +343,7 @@ export const inviteAccept = mutation({
  * @throws `ConvexError` with code `INVITE_EMAIL_MISMATCH` if the accepting user's email does not match the invite's email.
  *
  */
-export const inviteRedeem = mutation({
+export const inviteRedeem = internalMutation({
   args: {
     tokenHash: v.string(),
     acceptedByUserId: v.id("User"),
@@ -467,7 +463,7 @@ export const inviteRedeem = mutation({
  * @throws `ConvexError` with code `INVITE_NOT_PENDING` if the invite has already been accepted, revoked, or expired.
  *
  */
-export const inviteRevoke = mutation({
+export const inviteRevoke = internalMutation({
   args: { inviteId: v.id("GroupInvite") },
   returns: v.null(),
   handler: async (ctx, { inviteId }) => {

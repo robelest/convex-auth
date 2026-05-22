@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { mutation, query } from "../../functions";
+import { internalMutation, internalQuery } from "../../functions";
 import { vPasskeyDoc } from "../../model";
 
 /**
@@ -33,7 +33,7 @@ import { vPasskeyDoc } from "../../model";
  * @returns The `_id` of the newly created `Passkey` document.
  *
  */
-export const passkeyInsert = mutation({
+export const passkeyInsert = internalMutation({
   args: {
     userId: v.id("User"),
     credentialId: v.string(),
@@ -67,7 +67,7 @@ export const passkeyInsert = mutation({
  * @returns The matching `Passkey` document, or `null` if none matches.
  *
  */
-export const passkeyGet = query({
+export const passkeyGet = internalQuery({
   args: {
     id: v.optional(v.id("Passkey")),
     credentialId: v.optional(v.string()),
@@ -98,7 +98,7 @@ export const passkeyGet = query({
  *   user has no registered passkeys.
  *
  */
-export const passkeyList = query({
+export const passkeyList = internalQuery({
   args: { userId: v.id("User") },
   returns: v.array(vPasskeyDoc),
   handler: async (ctx, { userId }) => {
@@ -123,8 +123,17 @@ export const passkeyList = query({
  * @returns `null` on success.
  *
  */
-export const passkeyUpdate = mutation({
-  args: { passkeyId: v.id("Passkey"), data: v.any() },
+export const passkeyUpdate = internalMutation({
+  args: {
+    passkeyId: v.id("Passkey"),
+    data: v.object({
+      counter: v.optional(v.number()),
+      transports: v.optional(v.array(v.string())),
+      name: v.optional(v.string()),
+      lastUsedAt: v.optional(v.number()),
+      backedUp: v.optional(v.boolean()),
+    }),
+  },
   returns: v.null(),
   handler: async (ctx, { passkeyId, data }) => {
     await ctx.db.patch("Passkey", passkeyId, data);
@@ -143,7 +152,7 @@ export const passkeyUpdate = mutation({
  * @returns `null` on success.
  *
  */
-export const passkeyDelete = mutation({
+export const passkeyDelete = internalMutation({
   args: { passkeyId: v.id("Passkey") },
   returns: v.null(),
   handler: async (ctx, { passkeyId }) => {

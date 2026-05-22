@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { mutation, query } from "../../functions";
+import { internalMutation, internalQuery } from "../../functions";
 import { vDeviceCodeDoc, vDeviceStatus } from "../../model";
 
 /**
@@ -22,7 +22,7 @@ import { vDeviceCodeDoc, vDeviceStatus } from "../../model";
  * @returns The `_id` of the newly created `DeviceCode` document.
  *
  */
-export const deviceInsert = mutation({
+export const deviceInsert = internalMutation({
   args: {
     deviceCodeHash: v.string(),
     userCode: v.string(),
@@ -55,7 +55,7 @@ export const deviceInsert = mutation({
  * @returns The matching `DeviceCode` document, or `null` if none matches.
  *
  */
-export const deviceGet = query({
+export const deviceGet = internalQuery({
   args: {
     id: v.optional(v.id("DeviceCode")),
     deviceCodeHash: v.optional(v.string()),
@@ -99,7 +99,7 @@ export const deviceGet = query({
  * @returns `null` on success.
  *
  */
-export const deviceAuthorize = mutation({
+export const deviceAuthorize = internalMutation({
   args: {
     deviceId: v.id("DeviceCode"),
     userId: v.id("User"),
@@ -128,8 +128,16 @@ export const deviceAuthorize = mutation({
  * @returns `null` on success.
  *
  */
-export const deviceUpdate = mutation({
-  args: { deviceId: v.id("DeviceCode"), data: v.any() },
+export const deviceUpdate = internalMutation({
+  args: {
+    deviceId: v.id("DeviceCode"),
+    data: v.object({
+      status: v.optional(vDeviceStatus),
+      userId: v.optional(v.id("User")),
+      sessionId: v.optional(v.id("Session")),
+      lastPolledAt: v.optional(v.number()),
+    }),
+  },
   returns: v.null(),
   handler: async (ctx, { deviceId, data }) => {
     await ctx.db.patch("DeviceCode", deviceId, data);
@@ -148,7 +156,7 @@ export const deviceUpdate = mutation({
  * @returns `null` on success.
  *
  */
-export const deviceDelete = mutation({
+export const deviceDelete = internalMutation({
   args: { deviceId: v.id("DeviceCode") },
   returns: v.null(),
   handler: async (ctx, { deviceId }) => {

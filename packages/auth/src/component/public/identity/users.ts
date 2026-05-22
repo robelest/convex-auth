@@ -1,6 +1,7 @@
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
-import { mutation, query } from "../../functions";
+import { internalMutation, internalQuery } from "../../functions";
 import { vPaginated, vUserDoc, vUserEmailDoc, vUserEmailSource } from "../../model";
 
 const vUserInsertData = v.object({
@@ -21,24 +22,21 @@ const vUserInsertData = v.object({
  *
  * Supports filtering by `email`, `phone`, `isAnonymous`, and `name`. When an
  * `email` or `phone` filter is provided, the corresponding database index is
- * used for efficient lookup; other filters are applied in-memory. Results are
- * returned as a paginated response `{ items, nextCursor }` -- pass `nextCursor`
- * back as `cursor` to fetch the next page, or receive `null` when all results
- * have been exhausted.
+ * used for efficient lookup; other filters are applied in-memory. Returns a
+ * Convex-native `PaginationResult<UserDoc>` so consumers can pass the query
+ * directly to `usePaginatedQuery`.
  *
  * @param args.where - Optional filter object. Fields: `email` (exact match),
  *   `phone` (exact match), `isAnonymous` (boolean), `name` (exact match).
- * @param args.limit - Maximum number of users to return per page (1--100, default 50).
- * @param args.cursor - An opaque cursor string from a previous response's `nextCursor`
- *   to continue pagination, or `null` / omitted to start from the beginning.
+ * @param args.paginationOpts - Convex `paginationOptsValidator` shape
+ *   (`{ numItems, cursor }`).
  * @param args.orderBy - The field to sort results by. One of `"_creationTime"`,
  *   `"name"`, `"email"`, or `"phone"`. Defaults to `"_creationTime"`.
  * @param args.order - Sort direction: `"asc"` or `"desc"` (default `"desc"`).
- * @returns An object with `items` (array of user documents) and `nextCursor`
- *   (`string | null`) for fetching subsequent pages.
+ * @returns A Convex `PaginationResult<UserDoc>` — `{ page, isDone, continueCursor }`.
  *
  */
-export const userList = query({
+export const userList = internalQuery({
   args: {
     where: v.optional(
       v.object({
@@ -48,8 +46,7 @@ export const userList = query({
         name: v.optional(v.string()),
       }),
     ),
-    limit: v.optional(v.number()),
-    cursor: v.optional(v.union(v.string(), v.null())),
+    paginationOpts: paginationOptsValidator,
     orderBy: v.optional(
       v.union(
         v.literal("_creationTime"),
@@ -63,10 +60,8 @@ export const userList = query({
   returns: vPaginated(vUserDoc),
   handler: async (ctx, args) => {
     const where = args.where ?? {};
-    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
     const order = args.order ?? "desc";
 
-    // Pick index based on where fields
     let q;
     if (where.email !== undefined) {
       q = ctx.db.query("User").withIndex("email", (idx) => idx.eq("email", where.email!));
@@ -76,25 +71,17 @@ export const userList = query({
       q = ctx.db.query("User");
     }
 
-    // Apply remaining filters
     if (where.isAnonymous !== undefined) {
       q = q.filter((f) => f.eq(f.field("isAnonymous"), where.isAnonymous!));
     }
     if (where.name !== undefined) {
       q = q.filter((f) => f.eq(f.field("name"), where.name!));
     }
-    // email/phone filters when not used as index
     if (where.email !== undefined && where.phone !== undefined) {
       q = q.filter((f) => f.eq(f.field("phone"), where.phone!));
     }
 
-    q = q.order(order);
-
-    const result = await q.paginate({ numItems: limit, cursor: args.cursor ?? null });
-    return {
-      items: result.page,
-      nextCursor: result.isDone ? null : result.continueCursor,
-    };
+    return await q.order(order).paginate(args.paginationOpts);
   },
 });
 
@@ -111,7 +98,7 @@ export const userList = query({
  * @returns The document ID of the newly created user.
  *
  */
-export const userInsert = mutation({
+export const userInsert = internalMutation({
   args: { data: vUserInsertData },
   returns: v.id("User"),
   handler: async (ctx, { data }) => {
@@ -135,7 +122,7 @@ export const userInsert = mutation({
  * @returns The document ID of the created or updated user.
  *
  */
-export const userUpsert = mutation({
+export const userUpsert = internalMutation({
   args: { userId: v.optional(v.id("User")), data: vUserInsertData },
   returns: v.id("User"),
   handler: async (ctx, { userId, data }) => {
@@ -160,8 +147,21 @@ export const userUpsert = mutation({
  * @returns `null` on success.
  *
  */
-export const userPatch = mutation({
-  args: { userId: v.id("User"), data: v.any() },
+const vUserPatchData = v.object({
+  name: v.optional(v.string()),
+  image: v.optional(v.string()),
+  email: v.optional(v.string()),
+  emailVerificationTime: v.optional(v.number()),
+  phone: v.optional(v.string()),
+  phoneVerificationTime: v.optional(v.number()),
+  isAnonymous: v.optional(v.boolean()),
+  lastActiveGroup: v.optional(v.id("Group")),
+  hasTotp: v.optional(v.boolean()),
+  extend: v.optional(v.any()),
+});
+
+export const userPatch = internalMutation({
+  args: { userId: v.id("User"), data: vUserPatchData },
   returns: v.null(),
   handler: async (ctx, { userId, data }) => {
     await ctx.db.patch("User", userId, data);
@@ -180,7 +180,7 @@ export const userPatch = mutation({
  * @returns `null` on success (including when the user was already absent).
  *
  */
-export const userDelete = mutation({
+export const userDelete = internalMutation({
   args: {
     userId: v.id("User"),
     /**
@@ -334,7 +334,7 @@ export const userDelete = mutation({
  * @returns The user's `UserEmail` documents (may be empty).
  *
  */
-export const userEmailListByUser = query({
+export const userEmailListByUser = internalQuery({
   args: { userId: v.id("User") },
   returns: v.array(vUserEmailDoc),
   handler: async (ctx, { userId }) => {
@@ -358,7 +358,7 @@ export const userEmailListByUser = query({
  * @returns The owning user document, or `null` when zero or 2+ match.
  *
  */
-export const userEmailOwner = query({
+export const userEmailOwner = internalQuery({
   args: { email: v.string(), connectionId: v.optional(v.id("GroupConnection")) },
   returns: v.union(vUserDoc, v.null()),
   handler: async (ctx, { email, connectionId }) => {
@@ -403,7 +403,7 @@ export const userEmailOwner = query({
  * @returns The `UserEmail` document ID.
  *
  */
-export const userEmailUpsert = mutation({
+export const userEmailUpsert = internalMutation({
   args: {
     userId: v.id("User"),
     email: v.string(),
@@ -482,7 +482,7 @@ export const userEmailUpsert = mutation({
  * @throws `INVALID_PARAMETERS` if the email is not owned or not verified.
  *
  */
-export const userEmailSetPrimary = mutation({
+export const userEmailSetPrimary = internalMutation({
   args: { userId: v.id("User"), email: v.string() },
   returns: v.null(),
   handler: async (ctx, { userId, email }) => {
@@ -529,7 +529,7 @@ export const userEmailSetPrimary = mutation({
  *   email, or connection-managed.
  *
  */
-export const userEmailRemove = mutation({
+export const userEmailRemove = internalMutation({
   args: { userId: v.id("User"), email: v.string() },
   returns: v.null(),
   handler: async (ctx, { userId, email }) => {

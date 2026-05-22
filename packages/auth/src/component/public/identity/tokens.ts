@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { mutation, query } from "../../functions";
+import { internalMutation, internalQuery } from "../../functions";
 import { vRefreshTokenDoc } from "../../model";
 
 /**
@@ -18,7 +18,7 @@ import { vRefreshTokenDoc } from "../../model";
  * @returns The document ID of the newly created refresh token.
  *
  */
-export const refreshTokenCreate = mutation({
+export const refreshTokenCreate = internalMutation({
   args: {
     sessionId: v.id("Session"),
     expirationTime: v.number(),
@@ -35,7 +35,7 @@ export const refreshTokenCreate = mutation({
  * unioned return: `{ id }` (point lookup) or `{ activeForSession }`
  * (newest unused token for a session).
  */
-export const refreshTokenGet = query({
+export const refreshTokenGet = internalQuery({
   args: {
     id: v.optional(v.id("RefreshToken")),
     activeForSession: v.optional(v.id("Session")),
@@ -68,8 +68,16 @@ export const refreshTokenGet = query({
  * @returns `null` on success.
  *
  */
-export const refreshTokenPatch = mutation({
-  args: { refreshTokenId: v.id("RefreshToken"), data: v.any() },
+export const refreshTokenPatch = internalMutation({
+  args: {
+    refreshTokenId: v.id("RefreshToken"),
+    data: v.object({
+      sessionId: v.optional(v.id("Session")),
+      expirationTime: v.optional(v.number()),
+      firstUsedTime: v.optional(v.number()),
+      parentRefreshTokenId: v.optional(v.id("RefreshToken")),
+    }),
+  },
   returns: v.null(),
   handler: async (ctx, { refreshTokenId, data }) => {
     await ctx.db.patch("RefreshToken", refreshTokenId, data);
@@ -90,7 +98,7 @@ export const refreshTokenPatch = mutation({
  * @returns An array of refresh token documents that were derived from the specified parent token.
  *
  */
-export const refreshTokenGetChildren = query({
+export const refreshTokenGetChildren = internalQuery({
   args: {
     sessionId: v.id("Session"),
     parentRefreshTokenId: v.id("RefreshToken"),
@@ -117,7 +125,7 @@ export const refreshTokenGetChildren = query({
  * @returns An array of all refresh token documents for the specified session.
  *
  */
-export const refreshTokenListBySession = query({
+export const refreshTokenListBySession = internalQuery({
   args: { sessionId: v.id("Session") },
   returns: v.array(vRefreshTokenDoc),
   handler: async (ctx, { sessionId }) => {
@@ -140,7 +148,7 @@ export const refreshTokenListBySession = query({
  * @returns `null` on success.
  *
  */
-export const refreshTokenDeleteAll = mutation({
+export const refreshTokenDeleteAll = internalMutation({
   args: { sessionId: v.id("Session") },
   returns: v.null(),
   handler: async (ctx, { sessionId }) => {
@@ -162,7 +170,7 @@ const refreshSessionExchangeResult = v.union(
   v.null(),
 );
 
-export const refreshTokenExchange = mutation({
+export const refreshTokenExchange = internalMutation({
   args: {
     refreshTokenId: v.id("RefreshToken"),
     sessionId: v.id("Session"),

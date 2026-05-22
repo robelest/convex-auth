@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 
-import { mutation, query } from "../../functions";
+import { internalMutation, internalQuery } from "../../functions";
 import { vAccountDoc } from "../../model";
 
 /**
@@ -15,7 +15,7 @@ import { vAccountDoc } from "../../model";
  *   includes fields such as `provider`, `providerAccountId`, `secret`, and `extend`.
  *
  */
-export const accountList = query({
+export const accountList = internalQuery({
   args: { userId: v.id("User") },
   returns: v.array(vAccountDoc),
   handler: async (ctx, { userId }) => {
@@ -31,7 +31,7 @@ export const accountList = query({
  * return: `{ id }` (point lookup) or `{ provider, providerAccountId }`
  * (unique provider index).
  */
-export const accountGet = query({
+export const accountGet = internalQuery({
   args: {
     id: v.optional(v.id("Account")),
     provider: v.optional(v.string()),
@@ -68,7 +68,7 @@ export const accountGet = query({
  * @returns The document ID of the newly created account.
  *
  */
-export const accountInsert = mutation({
+export const accountInsert = internalMutation({
   args: {
     userId: v.id("User"),
     provider: v.string(),
@@ -94,8 +94,19 @@ export const accountInsert = mutation({
  * @returns `null` on success.
  *
  */
-export const accountPatch = mutation({
-  args: { accountId: v.id("Account"), data: v.any() },
+export const accountPatch = internalMutation({
+  args: {
+    accountId: v.id("Account"),
+    data: v.object({
+      userId: v.optional(v.id("User")),
+      provider: v.optional(v.string()),
+      providerAccountId: v.optional(v.string()),
+      secret: v.optional(v.string()),
+      emailVerified: v.optional(v.string()),
+      phoneVerified: v.optional(v.string()),
+      extend: v.optional(v.any()),
+    }),
+  },
   returns: v.null(),
   handler: async (ctx, { accountId, data }) => {
     await ctx.db.patch("Account", accountId, data);
@@ -115,7 +126,7 @@ export const accountPatch = mutation({
  * @returns `null` on success.
  *
  */
-export const accountDelete = mutation({
+export const accountDelete = internalMutation({
   args: {
     accountId: v.id("Account"),
     /**

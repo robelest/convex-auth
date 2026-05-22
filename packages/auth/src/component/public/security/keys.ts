@@ -1,6 +1,7 @@
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
-import { mutation, query } from "../../functions";
+import { internalMutation, internalQuery } from "../../functions";
 import {
   vApiKeyDoc,
   vApiKeyRateLimit,
@@ -38,7 +39,7 @@ import {
  * @returns The `_id` of the newly created `ApiKey` document.
  *
  */
-export const keyInsert = mutation({
+export const keyInsert = internalMutation({
   args: {
     userId: v.id("User"),
     prefix: v.string(),
@@ -69,7 +70,7 @@ export const keyInsert = mutation({
  * return: `{ id }` (point lookup) or `{ hashedKey }` (Bearer-verify
  * index).
  */
-export const keyGet = query({
+export const keyGet = internalQuery({
   args: {
     id: v.optional(v.id("ApiKey")),
     hashedKey: v.optional(v.string()),
@@ -90,11 +91,8 @@ export const keyGet = query({
 /**
  * List API keys with optional filtering, sorting, and cursor-based pagination.
  *
- * Returns a paginated result `{ items, nextCursor }` from the `ApiKey`
- * table. Supports filtering by `userId`, `revoked` status, `name`, and
- * `prefix`. The page size is clamped between 1 and 100 (default 50).
- * Pass the returned `nextCursor` as `cursor` in a subsequent call to
- * fetch the next page.
+ * Returns a Convex-native `PaginationResult<KeyDoc>` so consumers can pass
+ * the query directly to `usePaginatedQuery`.
  *
  * @param where - Optional filter object. All specified fields are
  *   combined with AND logic:
@@ -102,19 +100,16 @@ export const keyGet = query({
  *   - `revoked` -- `true` for revoked keys, `false` for active keys.
  *   - `name` -- exact match on the key's human-readable name.
  *   - `prefix` -- exact match on the key prefix string.
- * @param limit - Maximum number of items to return per page (1--100,
- *   default `50`).
- * @param cursor - Opaque cursor string (an `ApiKey` document `_id`)
- *   returned from a previous call. Pass `null` or omit for the first page.
+ * @param paginationOpts - Convex `paginationOptsValidator` shape
+ *   (`{ numItems, cursor }`).
  * @param orderBy - Field to sort by. One of `"_creationTime"`, `"name"`,
  *   `"lastUsedAt"`, `"expiresAt"`, or `"revoked"`. Defaults to
  *   `"_creationTime"`.
  * @param order - Sort direction, `"asc"` or `"desc"` (default `"desc"`).
- * @returns An object with `items` (array of `ApiKey` documents) and
- *   `nextCursor` (string ID of the last item, or `null` if no more pages).
+ * @returns A Convex `PaginationResult<KeyDoc>` — `{ page, isDone, continueCursor }`.
  *
  */
-export const keyList = query({
+export const keyList = internalQuery({
   args: {
     where: v.optional(
       v.object({
@@ -124,8 +119,7 @@ export const keyList = query({
         prefix: v.optional(v.string()),
       }),
     ),
-    limit: v.optional(v.number()),
-    cursor: v.optional(v.union(v.string(), v.null())),
+    paginationOpts: paginationOptsValidator,
     orderBy: v.optional(
       v.union(
         v.literal("_creationTime"),
@@ -140,7 +134,6 @@ export const keyList = query({
   returns: vPaginated(vApiKeyDoc),
   handler: async (ctx, args) => {
     const where = args.where ?? {};
-    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
     const order = args.order ?? "desc";
 
     let q;
@@ -160,13 +153,7 @@ export const keyList = query({
       q = q.filter((f) => f.eq(f.field("prefix"), where.prefix!));
     }
 
-    q = q.order(order);
-
-    const result = await q.paginate({ numItems: limit, cursor: args.cursor ?? null });
-    return {
-      items: result.page,
-      nextCursor: result.isDone ? null : result.continueCursor,
-    };
+    return await q.order(order).paginate(args.paginationOpts);
   },
 });
 
@@ -194,7 +181,7 @@ export const keyList = query({
  * @returns `null` on success.
  *
  */
-export const keyPatch = mutation({
+export const keyPatch = internalMutation({
   args: {
     keyId: v.id("ApiKey"),
     data: v.object({
@@ -233,7 +220,7 @@ export const keyPatch = mutation({
  * @returns `null` on success.
  *
  */
-export const keyDelete = mutation({
+export const keyDelete = internalMutation({
   args: { keyId: v.id("ApiKey") },
   returns: v.null(),
   handler: async (ctx, { keyId }) => {

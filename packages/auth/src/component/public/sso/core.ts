@@ -1,6 +1,7 @@
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 
-import { mutation, query } from "../../functions";
+import { internalMutation, internalQuery } from "../../functions";
 import {
   vGroupConnectionDoc,
   vGroupConnectionDomainDoc,
@@ -25,7 +26,7 @@ import {
  * @returns The ID of the newly created `Group Connection` document.
  *
  */
-export const groupConnectionCreate = mutation({
+export const groupConnectionCreate = internalMutation({
   args: {
     groupId: v.id("Group"),
     slug: v.optional(v.string()),
@@ -61,7 +62,7 @@ export const groupConnectionCreate = mutation({
  *   `domain`: `{ connection, domain }` or `null`.
  *
  */
-export const groupConnectionGet = query({
+export const groupConnectionGet = internalQuery({
   args: {
     connectionId: v.optional(v.id("GroupConnection")),
     domain: v.optional(v.string()),
@@ -103,14 +104,14 @@ export const groupConnectionGet = query({
  * (or the specified field) and paginated using an opaque cursor.
  *
  * @param args.where - Optional filter criteria: `groupId`, `slug`, and/or `status`.
- * @param args.limit - Maximum number of items per page (clamped between 1 and 100, defaults to 50).
- * @param args.cursor - An opaque cursor string returned from a previous call to fetch the next page, or `null` / omitted for the first page.
+ * @param args.paginationOpts - Convex `paginationOptsValidator` shape
+ *   (`{ numItems, cursor }`).
  * @param args.orderBy - The field to sort results by: `"_creationTime"`, `"name"`, `"slug"`, or `"status"`.
  * @param args.order - Sort direction: `"asc"` or `"desc"` (defaults to `"desc"`).
- * @returns A paginated result containing `items` (array of group connection documents) and `nextCursor` (`string | null`).
+ * @returns A Convex `PaginationResult<GroupConnectionDoc>` — `{ page, isDone, continueCursor }`.
  *
  */
-export const groupConnectionList = query({
+export const groupConnectionList = internalQuery({
   args: {
     where: v.optional(
       v.object({
@@ -119,8 +120,7 @@ export const groupConnectionList = query({
         status: v.optional(vGroupConnectionStatus),
       }),
     ),
-    limit: v.optional(v.number()),
-    cursor: v.optional(v.union(v.string(), v.null())),
+    paginationOpts: paginationOptsValidator,
     orderBy: v.optional(
       v.union(
         v.literal("_creationTime"),
@@ -134,8 +134,9 @@ export const groupConnectionList = query({
   returns: vPaginated(vGroupConnectionDoc),
   handler: async (ctx, args) => {
     const where = args.where ?? {};
-    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
     const order = args.order ?? "desc";
+    const numItems = args.paginationOpts.numItems;
+    const cursor = args.paginationOpts.cursor;
 
     let q;
     if (where.groupId !== undefined && where.status !== undefined) {
@@ -164,20 +165,7 @@ export const groupConnectionList = query({
       q = ctx.db.query("GroupConnection");
     }
 
-    q = q.order(order);
-    const all = await q.collect();
-    let startIdx = 0;
-    if (args.cursor) {
-      const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
-      if (cursorIdx !== -1) {
-        startIdx = cursorIdx + 1;
-      }
-    }
-    const page = all.slice(startIdx, startIdx + limit + 1);
-    const hasMore = page.length > limit;
-    const items = hasMore ? page.slice(0, limit) : page;
-    const nextCursor = hasMore ? items[items.length - 1]._id : null;
-    return { items, nextCursor };
+    return await q.order(order).paginate(args.paginationOpts);
   },
 });
 
@@ -192,8 +180,17 @@ export const groupConnectionList = query({
  * @returns `null` on success.
  *
  */
-export const groupConnectionUpdate = mutation({
-  args: { connectionId: v.id("GroupConnection"), data: v.any() },
+export const groupConnectionUpdate = internalMutation({
+  args: {
+    connectionId: v.id("GroupConnection"),
+    data: v.object({
+      slug: v.optional(v.string()),
+      name: v.optional(v.string()),
+      status: v.optional(vGroupConnectionStatus),
+      config: v.optional(v.any()),
+      extend: v.optional(v.any()),
+    }),
+  },
   returns: v.null(),
   handler: async (ctx, { connectionId, data }) => {
     await ctx.db.patch(connectionId, data);
@@ -213,7 +210,7 @@ export const groupConnectionUpdate = mutation({
  * @returns `null` on success.
  *
  */
-export const groupConnectionDelete = mutation({
+export const groupConnectionDelete = internalMutation({
   args: { connectionId: v.id("GroupConnection") },
   returns: v.null(),
   handler: async (ctx, { connectionId }) => {

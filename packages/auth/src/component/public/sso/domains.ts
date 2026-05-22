@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 
-import { mutation, query } from "../../functions";
+import { internalMutation, internalQuery } from "../../functions";
 import { vGroupConnectionDomainDoc, vGroupConnectionDomainVerificationDoc } from "../../model";
 
 /**
@@ -19,7 +19,7 @@ import { vGroupConnectionDomainDoc, vGroupConnectionDomainVerificationDoc } from
  * @returns The ID of the created or updated `GroupConnectionDomain` document.
  *
  */
-export const groupConnectionDomainAdd = mutation({
+export const groupConnectionDomainAdd = internalMutation({
   args: {
     connectionId: v.id("GroupConnection"),
     groupId: v.id("Group"),
@@ -81,7 +81,7 @@ export const groupConnectionDomainAdd = mutation({
  * @returns An array of connection domain documents.
  *
  */
-export const groupConnectionDomainList = query({
+export const groupConnectionDomainList = internalQuery({
   args: {
     connectionId: v.id("GroupConnection"),
     /**
@@ -112,7 +112,7 @@ export const groupConnectionDomainList = query({
  * @returns `null` on success.
  *
  */
-export const groupConnectionDomainDelete = mutation({
+export const groupConnectionDomainDelete = internalMutation({
   args: { domainId: v.id("GroupConnectionDomain") },
   returns: v.null(),
   handler: async (ctx, { domainId }) => {
@@ -138,7 +138,7 @@ export const groupConnectionDomainDelete = mutation({
  * @returns The domain verification document, or `null` if none exists.
  *
  */
-export const groupConnectionDomainVerificationGet = query({
+export const groupConnectionDomainVerificationGet = internalQuery({
   args: { domainId: v.id("GroupConnectionDomain") },
   returns: v.union(vGroupConnectionDomainVerificationDoc, v.null()),
   handler: async (ctx, { domainId }) => {
@@ -169,7 +169,7 @@ export const groupConnectionDomainVerificationGet = query({
  * @returns The ID of the created or updated `GroupConnectionDomainVerification` document.
  *
  */
-export const groupConnectionDomainVerificationUpsert = mutation({
+export const groupConnectionDomainVerificationUpsert = internalMutation({
   args: {
     connectionId: v.id("GroupConnection"),
     groupId: v.id("Group"),
@@ -210,7 +210,7 @@ export const groupConnectionDomainVerificationUpsert = mutation({
  * @returns `null` on success.
  *
  */
-export const groupConnectionDomainVerificationDelete = mutation({
+export const groupConnectionDomainVerificationDelete = internalMutation({
   args: { domainId: v.id("GroupConnectionDomain") },
   returns: v.null(),
   handler: async (ctx, { domainId }) => {
@@ -237,7 +237,7 @@ export const groupConnectionDomainVerificationDelete = mutation({
  * @returns The updated connection domain document with the `verifiedAt` field set.
  *
  */
-export const groupConnectionDomainVerify = mutation({
+export const groupConnectionDomainVerify = internalMutation({
   args: {
     domainId: v.id("GroupConnectionDomain"),
     verifiedAt: v.number(),

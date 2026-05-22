@@ -2,7 +2,7 @@ import { v } from "convex/values";
 
 import type { Id } from "../../_generated/dataModel";
 import type { QueryCtx } from "../../_generated/server";
-import { mutation, query } from "../../functions";
+import { internalMutation, internalQuery } from "../../functions";
 import { vAuthVerifierDoc } from "../../model";
 
 const DEFAULT_VERIFIER_TTL_MS = 1000 * 60 * 15;
@@ -28,7 +28,7 @@ async function getUnexpiredVerifier(ctx: QueryCtx, verifierId: string) {
  * @returns The document ID of the newly created verifier.
  *
  */
-export const verifierCreate = mutation({
+export const verifierCreate = internalMutation({
   args: {
     sessionId: v.optional(v.id("Session")),
     signature: v.optional(v.string()),
@@ -49,7 +49,7 @@ export const verifierCreate = mutation({
  * return: `{ id }` (point lookup) or `{ signature }` (unique index).
  * Expiry enforced for both.
  */
-export const verifierGet = query({
+export const verifierGet = internalQuery({
   args: {
     id: v.optional(v.id("AuthVerifier")),
     signature: v.optional(v.string()),
@@ -84,8 +84,15 @@ export const verifierGet = query({
  * @returns `null` on success.
  *
  */
-export const verifierPatch = mutation({
-  args: { verifierId: v.id("AuthVerifier"), data: v.any() },
+export const verifierPatch = internalMutation({
+  args: {
+    verifierId: v.id("AuthVerifier"),
+    data: v.object({
+      sessionId: v.optional(v.id("Session")),
+      signature: v.optional(v.string()),
+      expirationTime: v.optional(v.number()),
+    }),
+  },
   returns: v.null(),
   handler: async (ctx, { verifierId, data }) => {
     await ctx.db.patch("AuthVerifier", verifierId, data);
@@ -104,7 +111,7 @@ export const verifierPatch = mutation({
  * @returns `null` on success.
  *
  */
-export const verifierDelete = mutation({
+export const verifierDelete = internalMutation({
   args: { verifierId: v.id("AuthVerifier") },
   returns: v.null(),
   handler: async (ctx, { verifierId }) => {

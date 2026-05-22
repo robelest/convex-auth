@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { mutation, query } from "../../functions";
+import { internalMutation, internalQuery } from "../../functions";
 import { vVerificationCodeDoc } from "../../model";
 
 /**
@@ -8,7 +8,7 @@ import { vVerificationCodeDoc } from "../../model";
  * args, unioned return: `{ accountId }` (unique per account) or
  * `{ code }` (code index).
  */
-export const verificationCodeGet = query({
+export const verificationCodeGet = internalQuery({
   args: {
     accountId: v.optional(v.id("Account")),
     code: v.optional(v.string()),
@@ -49,7 +49,7 @@ export const verificationCodeGet = query({
  * @returns The document ID of the newly created verification code.
  *
  */
-export const verificationCodeCreate = mutation({
+export const verificationCodeCreate = internalMutation({
   args: {
     accountId: v.id("Account"),
     provider: v.string(),
@@ -76,7 +76,7 @@ export const verificationCodeCreate = mutation({
  * @returns `null` on success.
  *
  */
-export const verificationCodeDelete = mutation({
+export const verificationCodeDelete = internalMutation({
   args: { verificationCodeId: v.id("VerificationCode") },
   returns: v.null(),
   handler: async (ctx, { verificationCodeId }) => {

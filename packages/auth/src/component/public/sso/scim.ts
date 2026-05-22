@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { mutation, query } from "../../functions";
+import { internalMutation, internalQuery } from "../../functions";
 import {
   vGroupConnectionScimConfigDoc,
   vGroupConnectionScimIdentityDoc,
@@ -25,7 +25,7 @@ import {
  * @returns The ID of the created or updated `GroupConnectionScimConfig` document.
  *
  */
-export const groupConnectionScimConfigUpsert = mutation({
+export const groupConnectionScimConfigUpsert = internalMutation({
   args: {
     connectionId: v.id("GroupConnection"),
     groupId: v.id("Group"),
@@ -63,7 +63,7 @@ export const groupConnectionScimConfigUpsert = mutation({
  * @returns The matching SCIM configuration document, or `null`.
  *
  */
-export const groupConnectionScimConfigGet = query({
+export const groupConnectionScimConfigGet = internalQuery({
   args: {
     connectionId: v.optional(v.id("GroupConnection")),
     tokenHash: v.optional(v.string()),
@@ -111,7 +111,7 @@ export const groupConnectionScimConfigGet = query({
  *   an aligned `(Doc | null)[]`.
  *
  */
-export const groupConnectionScimIdentityGet = query({
+export const groupConnectionScimIdentityGet = internalQuery({
   args: {
     connectionId: v.optional(v.id("GroupConnection")),
     resourceType: v.optional(vScimResourceType),
@@ -193,7 +193,7 @@ export const groupConnectionScimIdentityGet = query({
  * @returns An array of SCIM identity documents.
  *
  */
-export const groupConnectionScimIdentityListByGroupConnection = query({
+export const groupConnectionScimIdentityListByGroupConnection = internalQuery({
   args: { connectionId: v.id("GroupConnection") },
   returns: v.array(vGroupConnectionScimIdentityDoc),
   handler: async (ctx, { connectionId }) => {
@@ -224,7 +224,7 @@ export const groupConnectionScimIdentityListByGroupConnection = query({
  * @returns The ID of the created or updated `GroupConnectionScimIdentity` document.
  *
  */
-export const groupConnectionScimIdentityUpsert = mutation({
+export const groupConnectionScimIdentityUpsert = internalMutation({
   args: {
     connectionId: v.id("GroupConnection"),
     groupId: v.id("Group"),
@@ -265,7 +265,7 @@ export const groupConnectionScimIdentityUpsert = mutation({
  * @returns `null` on success.
  *
  */
-export const groupConnectionScimIdentityDelete = mutation({
+export const groupConnectionScimIdentityDelete = internalMutation({
   args: { identityId: v.id("GroupConnectionScimIdentity") },
   returns: v.null(),
   handler: async (ctx, { identityId }) => {

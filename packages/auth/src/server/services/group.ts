@@ -1,3 +1,6 @@
+import { hmac } from "@oslojs/crypto/hmac";
+import { SHA256 } from "@oslojs/crypto/sha2";
+import { encodeHexLowerCase } from "@oslojs/encoding";
 import { ConvexError } from "convex/values";
 
 import type { ComponentCtx, ComponentReadCtx } from "../component/context";
@@ -282,13 +285,30 @@ export function createGroupService(deps: {
       if (endpoint.status !== "active" || !endpoint.subscriptions.includes(data.eventType)) {
         continue;
       }
+      const signedAt = Date.now();
+      let secret: string;
+      try {
+        secret = await decryptSecret(endpoint.secretCiphertext);
+      } catch (err) {
+        console.error("[auth] webhook endpoint has unreadable secret — skipping", {
+          endpointId: endpoint._id,
+          err: err instanceof Error ? err.message : err,
+        });
+        continue;
+      }
+      const body = JSON.stringify({ eventType: data.eventType, payload: data.payload });
+      const signature = encodeHexLowerCase(
+        hmac(SHA256, new TextEncoder().encode(secret), new TextEncoder().encode(`${signedAt}.${body}`)),
+      );
       await ctx.runMutation(config.component.sso.webhook.delivery.create, {
         connectionId: data.connectionId,
         endpointId: endpoint._id,
         auditEventId: data.auditEventId,
         eventType: data.eventType,
         payload: data.payload,
-        nextAttemptAt: Date.now(),
+        nextAttemptAt: signedAt,
+        signature,
+        signedAt,
       });
     }
   };

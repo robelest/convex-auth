@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 
-import { mutation, query } from "../../functions";
+import { internalMutation, internalQuery } from "../../functions";
 import { vAuditActorType, vAuditStatus, vGroupAuditEventDoc } from "../../model";
 
 /**
@@ -25,7 +25,7 @@ import { vAuditActorType, vAuditStatus, vGroupAuditEventDoc } from "../../model"
  * @returns The ID of the newly created `GroupAuditEvent` document.
  *
  */
-export const groupAuditEventCreate = mutation({
+export const groupAuditEventCreate = internalMutation({
   args: {
     connectionId: v.optional(v.id("GroupConnection")),
     groupId: v.id("Group"),
@@ -42,9 +42,30 @@ export const groupAuditEventCreate = mutation({
   },
   returns: v.id("GroupAuditEvent"),
   handler: async (ctx, args) => {
-    return await ctx.db.insert("GroupAuditEvent", args);
+    if (args.ip !== undefined && args.requestId !== undefined) {
+      return await ctx.db.insert("GroupAuditEvent", args);
+    }
+    const meta = await safeGetRequestMetadata(ctx);
+    return await ctx.db.insert("GroupAuditEvent", {
+      ...args,
+      ip: args.ip ?? meta?.ip ?? undefined,
+      requestId: args.requestId ?? meta?.requestId,
+    });
   },
 });
+
+async function safeGetRequestMetadata(
+  ctx: { meta?: { getRequestMetadata?: () => Promise<{ ip: string | null; requestId: string }> } },
+): Promise<{ ip: string | null; requestId: string } | null> {
+  if (typeof ctx.meta?.getRequestMetadata !== "function") {
+    return null;
+  }
+  try {
+    return await ctx.meta.getRequestMetadata();
+  } catch {
+    return null;
+  }
+}
 
 /**
  * List audit events, optionally filtered by group connection or group.
@@ -61,7 +82,7 @@ export const groupAuditEventCreate = mutation({
  * @returns An array of audit event documents, most recent first.
  *
  */
-export const groupAuditEventList = query({
+export const groupAuditEventList = internalQuery({
   args: {
     connectionId: v.optional(v.id("GroupConnection")),
     groupId: v.optional(v.id("Group")),

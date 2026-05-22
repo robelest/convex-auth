@@ -1,7 +1,8 @@
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
 import type { Id } from "../../_generated/dataModel";
-import { mutation, query } from "../../functions";
+import { internalMutation, internalQuery } from "../../functions";
 import { vGroupMemberDoc, vPaginated } from "../../model";
 
 /**
@@ -24,7 +25,7 @@ import { vGroupMemberDoc, vPaginated } from "../../model";
  * @throws `ConvexError` with code `DUPLICATE_MEMBERSHIP` if the user is already a member of this group.
  *
  */
-export const memberAdd = mutation({
+export const memberAdd = internalMutation({
   args: {
     groupId: v.id("Group"),
     userId: v.id("User"),
@@ -59,7 +60,7 @@ export const memberAdd = mutation({
  *   each group, returning `(Doc | null)[]` aligned to `groupIds` order
  *   (duplicates de-duplicated internally).
  */
-export const memberGet = query({
+export const memberGet = internalQuery({
   args: {
     id: v.optional(v.id("GroupMember")),
     groupId: v.optional(v.id("Group")),
@@ -105,25 +106,26 @@ export const memberGet = query({
 /**
  * List members with optional filtering, sorting, and pagination.
  *
- * Returns `{ items, nextCursor }`. Supports filtering by `groupId`,
- * `userId`, `roleId`, and `status`. The query engine automatically selects
- * the best compound index based on the combination of filter fields
- * provided. The `roleId` filter is applied in-memory after the index scan
- * because role IDs are stored as an array.
+ * Returns a Convex-native `PaginationResult<GroupMemberDoc>` so consumers can
+ * pass the query directly to `usePaginatedQuery`. Supports filtering by
+ * `groupId`, `userId`, `roleId`, and `status`. The query engine automatically
+ * selects the best compound index based on the combination of filter fields
+ * provided. The `roleId` filter forces in-memory pagination because role IDs
+ * are stored as an array.
  *
  * @param args.where - Optional filter criteria for narrowing results.
  * @param args.where.groupId - Match members belonging to this group.
  * @param args.where.userId - Match members for this specific user.
  * @param args.where.roleId - Match members whose `roleIds` array includes this role identifier.
  * @param args.where.status - Match members with this exact status string (e.g. `"active"`).
- * @param args.limit - Maximum number of items per page (clamped to 1..100, defaults to 50).
- * @param args.cursor - An opaque cursor string from a previous response's `nextCursor` to fetch the next page, or `null` to start from the beginning.
+ * @param args.paginationOpts - Convex `paginationOptsValidator` shape
+ *   (`{ numItems, cursor }`).
  * @param args.orderBy - The field to sort by: `"_creationTime"` or `"status"`.
  * @param args.order - Sort direction: `"asc"` or `"desc"` (defaults to `"desc"`).
- * @returns An object `{ items, nextCursor }` where `items` is an array of member documents and `nextCursor` is `null` when there are no more pages.
+ * @returns A Convex `PaginationResult<GroupMemberDoc>` — `{ page, isDone, continueCursor }`.
  *
  */
-export const memberList = query({
+export const memberList = internalQuery({
   args: {
     where: v.optional(
       v.object({
@@ -133,16 +135,16 @@ export const memberList = query({
         status: v.optional(v.string()),
       }),
     ),
-    limit: v.optional(v.number()),
-    cursor: v.optional(v.union(v.string(), v.null())),
+    paginationOpts: paginationOptsValidator,
     orderBy: v.optional(v.union(v.literal("_creationTime"), v.literal("status"))),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
   returns: vPaginated(vGroupMemberDoc),
   handler: async (ctx, args) => {
     const where = args.where ?? {};
-    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
     const order = args.order ?? "desc";
+    const numItems = args.paginationOpts.numItems;
+    const cursor = args.paginationOpts.cursor;
 
     let q;
     if (where.groupId !== undefined && where.userId !== undefined) {
@@ -178,24 +180,28 @@ export const memberList = query({
       }
     }
 
-    q = q.order(order);
-
-    let all = await q.collect();
-    if (where.roleId !== undefined) {
-      all = all.filter((doc) => (doc.roleIds ?? []).includes(where.roleId!));
+    if (where.roleId === undefined) {
+      return await q.order(order).paginate(args.paginationOpts);
     }
+
+    let all = await q.order(order).collect();
+    all = all.filter((doc) => (doc.roleIds ?? []).includes(where.roleId!));
+
     let startIdx = 0;
-    if (args.cursor) {
-      const cursorIdx = all.findIndex((doc) => doc._id === args.cursor);
+    if (cursor) {
+      const cursorIdx = all.findIndex((doc) => doc._id === cursor);
       if (cursorIdx !== -1) {
         startIdx = cursorIdx + 1;
       }
     }
-    const page = all.slice(startIdx, startIdx + limit + 1);
-    const hasMore = page.length > limit;
-    const items = hasMore ? page.slice(0, limit) : page;
-    const nextCursor = hasMore ? items[items.length - 1]._id : null;
-    return { items, nextCursor };
+    const slice = all.slice(startIdx, startIdx + numItems + 1);
+    const hasMore = slice.length > numItems;
+    const page = hasMore ? slice.slice(0, numItems) : slice;
+    return {
+      page,
+      isDone: !hasMore,
+      continueCursor: hasMore ? (page[page.length - 1]._id as string) : "",
+    };
   },
 });
 /**
@@ -227,7 +233,7 @@ export const memberList = query({
  *   - `traversedGroupIds` — (only when `ancestry` is `true`) array of group IDs visited.
  *
  */
-export const memberResolve = query({
+export const memberResolve = internalQuery({
   args: {
     userId: v.id("User"),
     groupId: v.id("Group"),
@@ -301,7 +307,7 @@ export const memberResolve = query({
  * @returns `null` on success.
  *
  */
-export const memberRemove = mutation({
+export const memberRemove = internalMutation({
   args: { memberId: v.id("GroupMember") },
   returns: v.null(),
   handler: async (ctx, { memberId }) => {
@@ -322,8 +328,18 @@ export const memberRemove = mutation({
  * @returns `null` on success.
  *
  */
-export const memberUpdate = mutation({
-  args: { memberId: v.id("GroupMember"), data: v.any() },
+export const memberUpdate = internalMutation({
+  args: {
+    memberId: v.id("GroupMember"),
+    data: v.object({
+      groupId: v.optional(v.id("Group")),
+      userId: v.optional(v.id("User")),
+      role: v.optional(v.string()),
+      roleIds: v.optional(v.array(v.string())),
+      status: v.optional(v.string()),
+      extend: v.optional(v.any()),
+    }),
+  },
   returns: v.null(),
   handler: async (ctx, { memberId, data }) => {
     await ctx.db.patch("GroupMember", memberId, data);
