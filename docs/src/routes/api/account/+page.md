@@ -19,6 +19,7 @@ passkey credentials, and TOTP enrollments.
 | Method   | Signature                          | Returns             | Description                                                                                                     |
 | -------- | ---------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `create` | `(ctx, { userId, provider, ... })` | `{ account, user }` | Links a new authentication provider to a user and returns the created account plus resolved user.               |
+| `link`   | `(ctx, { provider, profile })`     | `{ accountId, userId, alreadyLinked }` | Attaches a provider account to the **currently authenticated user**. Idempotent on duplicate links to the same user. Also folds in the "upgrade anonymous" flow: when the current user is anonymous, flips `isAnonymous: false` and merges profile fields. |
 | `update` | `(ctx, accountId, data)`           | `{ accountId }`     | Updates an existing account record.                                                                             |
 | `delete` | `(ctx, accountId)`                 | `{ accountId }`     | Deletes an account link. Throws `ConvexError` with code `ACCOUNT_NOT_FOUND` or `INVALID_PARAMETERS` on failure. |
 
@@ -52,6 +53,37 @@ await auth.account.deleteTotp(ctx, totpId);
 ```
 
 ## Examples
+
+### Link a new provider to the current user
+
+```ts
+// User signed in with password and wants to attach Google.
+await auth.account.link(ctx, {
+  provider: "google",
+  profile: { id: googleSub, email, name, image },
+});
+```
+
+`profile` must include at least one of `id`, `email`, or `phone` to derive
+the provider account id. If the `(provider, providerAccountId)` is already
+linked to a different user, throws `ConvexError` with code
+`ACCOUNT_ALREADY_LINKED` — catch it and prompt the user to sign in to the
+other account if you want to merge.
+
+### Upgrade an anonymous account
+
+`auth.account.link` detects an anonymous current user and finishes the
+upgrade in the same call:
+
+```ts
+// User had an anonymous session; now linking real credentials.
+await auth.account.link(ctx, {
+  provider: "password",
+  profile: { id: email, email, name },
+});
+// userId is unchanged. user.isAnonymous is now false.
+// user.name / email are populated from the profile.
+```
 
 ### Delete an account
 

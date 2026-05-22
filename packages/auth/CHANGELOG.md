@@ -1,5 +1,172 @@
 # Changelog
 
+## 0.0.4-preview.40
+
+### New — upstream feature parity (in our conventions)
+
+- **`auth.user.id(ctx)` / `auth.session.id(ctx)`** — ownership-nested
+  shortcuts for the current session's user / session id. Returns `null`
+  when unauthenticated. Pairs with `auth.user.viewer(ctx)` (full doc) and
+  the existing facade. Internal helper `getAuthSessionId` from
+  `server/sessions.ts` is unchanged.
+- **`auth.account.link(ctx, { provider, profile })`** — attach an additional
+  provider account to the current authenticated user. Idempotent against
+  same `(provider, providerAccountId)` on the same user. Throws
+  `ACCOUNT_ALREADY_LINKED` if the provider account belongs to a different
+  user. When the current user is anonymous (`isAnonymous: true`), also
+  flips `isAnonymous: false` and merges `name`/`image`/`email` from the
+  profile — folds the upstream "upgrade anonymous account" verb into one
+  primitive. Fires `after({ kind: "userUpdated" })`.
+- **Per-provider `updateProfileOnLogin?: boolean` on OAuth providers**
+  (`google`, `github`, `apple`, `microsoft`, `custom`). Defaults to `true`
+  to match Auth.js / Clerk / SSO conventions: on a returning OAuth
+  sign-in, `User.name` / `image` / `email` are refreshed from the new
+  profile. Set to `false` per-provider when the app owns the canonical
+  user profile. **Behavior change** — apps that previously hand-edited
+  user fields will see them overwritten on next OAuth sign-in; opt out
+  with `google({ updateProfileOnLogin: false, ... })`.
+- **`@robelest/convex-auth/react`** subpath — ships `ConvexAuthProvider`
+  + `useAuth()` + `useConvexAuthClient()`. One composite hook returning
+  `{ phase, isLoading, isAuthenticated, token, signIn, signOut }`.
+  `react` is **not** a declared peer dep — consumers who use this
+  subpath bring their own React (any React app already has it).
+
+### Verified already covered (no change)
+- `auth.session.invalidate(ctx, { userId, except? })` already exists in
+  `server/core.ts:491` — sign-out-everywhere works without a new verb.
+- After-callbacks via `after: (ctx, event)` (`server/types.ts`).
+- JWT bring-your-own-issuer via `acceptedIssuers` in `server/prefetch.ts`.
+- Per-provider OAuth `redirectUri` + `accountLinking`.
+
+### Not adopted
+- `server-only` marker package — Convex's runtime doesn't set the
+  `react-server` export condition that makes the package a no-op, so
+  importing it would throw at load time inside Convex functions. Skip.
+
+## 0.0.4-preview.39
+
+### Breaking
+
+- **Drop the `RateLimit` table.** Sign-in throttling now uses
+  `@convex-dev/rate-limiter` (mounted as a subcomponent). Custom token-bucket
+  math in `server/limits.ts` and the `RateLimit` schema row + `vRateLimitDoc`
+  / `vRateLimitResult` validators are gone. Existing throttle state is lost
+  (resets every identifier to "no failures recorded") — safe for this preview
+  release. Public wrappers `isSignInRateLimited`/`recordFailedSignIn`/
+  `resetSignInRateLimit` keep their signatures.
+- **`AuthComponentApi.rateLimit` → `AuthComponentApi.limits`.** The component
+  namespace for rate-limit operations is now `auth.limits.signInCheck` /
+  `signInRecord` / `signInReset` instead of the old `auth.rateLimit.{get, create,
+  update, delete}` table CRUD. Internal — most consumers won't see this.
+- **All component `query`/`mutation` are now `internalQuery`/`internalMutation`.**
+  107 functions across `component/public/*` flipped visibility. Defense in
+  depth: the auth component's internals aren't client-callable through any
+  parent app's API. Server-side `ctx.runQuery`/`runMutation` calls are
+  unaffected.
+
+### New
+
+- **`@convex-dev/workpool` powers webhook delivery, with HMAC-signed payloads.**
+  Mounted as `webhookWorkpool` inside the auth component.
+  `groupWebhookDeliveryCreate` now enqueues a new `groupWebhookDeliveryDispatch`
+  `internalAction` that performs the HTTP POST and patches delivery status.
+  Workpool drives retry/backoff (5 attempts, 1s initial, 2× base).
+
+  Endpoint signing secrets are now stored encrypted at rest
+  (`GroupWebhookEndpoint.secretCiphertext`, AES-GCM via
+  `AUTH_SECRET_ENCRYPTION_KEY`) — the prior `secretHash` field was never used
+  and is replaced. At emit time, `emitGroupWebhookDeliveries` decrypts the
+  secret and HMAC-SHA256-signs `${signedAt}.${body}` where `body` is the
+  exact JSON the dispatch action sends. Signature + timestamp are stored on
+  the delivery row.
+
+  Wire format (subscribers verify by reconstructing the pre-image and HMAC):
+  - `Content-Type: application/json`
+  - `X-Auth-Event-Type: <eventType>`
+  - `X-Auth-Delivery-Id: <deliveryId>`
+  - `X-Auth-Timestamp: <epochMs>`
+  - `X-Auth-Signature: sha256=<hex>`
+  - Body: `{ "eventType": "...", "payload": {...} }`
+
+- **Daily cleanup cron** inside the component (`component/crons.ts`) drives
+  `pruneExpired` against Session / RefreshToken / VerificationCode /
+  AuthVerifier / GroupInvite / DeviceCode at 03:00 UTC. Per-table batch size
+  capped at 200 (default) / 1000 (max).
+
+### Internal
+
+- **Typed patch validators on all `*Patch` mutations.** Replaced
+  `data: v.any()` on 12 mutations (userPatch, accountPatch, refreshTokenPatch,
+  verifierPatch, passkeyUpdate, totpUpdate, deviceUpdate, groupUpdate,
+  memberUpdate, groupConnectionUpdate, groupWebhookEndpointUpdate,
+  groupWebhookDeliveryPatch) with `data: v.object({ ...fields, all
+  v.optional })`. Catches typo'd / unknown patch fields at the
+  validation boundary instead of silently writing them.
+
+- `convex-test` catalog bumped to `^0.0.53` to match what `@convex-dev/rate-limiter`
+  and `@convex-dev/workpool` pull in.
+
+- `@robelest/convex-auth/test` `register()` now also registers the
+  `auth/rateLimiter` and `auth/webhookWorkpool` subcomponents — required
+  for `convex-test` setups that exercise sign-in flows or webhook delivery.
+
+## 0.0.4-preview.38
+
+### Breaking
+
+- **Bump minimum `convex` to `^1.39.0`.** Aligns with Convex's new
+  `ComponentDefinition<any, any>` shape (typed `env` slot) and the
+  `ValidatorTypeToReturnType` re-export from `convex/server`.
+- **Drop the `fluent-convex` wrapper from the component.** The internal
+  `query`/`mutation`/`action` builders in `packages/auth/src/component/functions.ts`
+  now re-export Convex's native factories directly. `fluent-convex` is no
+  longer a runtime dependency, and the `postinstall` patch script
+  (`scripts/patch-fluent-convex.mjs`) has been removed. `fluent-convex` is
+  still available as an external integration if you want it in your own
+  app code — see the docs page.
+- **Replace `auth.context(ctx, { optional: true })` with `auth.context.optional(ctx)`.**
+  Mirrored across the three facade entry points:
+  - `auth.context(ctx, { optional: true })` → `auth.context.optional(ctx)`
+  - `auth.ctx({ optional: true })` → `auth.ctx.optional()`
+  - `auth.request.context(ctx, req, { optional: true })` → `auth.request.context.optional(ctx, req)`
+
+  The `optional` key is removed from `AuthContextConfig` and
+  `HttpAuthContextConfig`; `require`, `active`, `resolve`, and `authResolve`
+  are unchanged. Splitting the optional path eliminates the 2-overload
+  union that produced opaque inference errors at call sites.
+
+- **Pagination shape now matches Convex's native `PaginationResult<T>`.**
+  All `*List` queries (user, group, member, invite, key, sso connection)
+  return `{ page, isDone, continueCursor }` instead of the custom
+  `{ items, nextCursor: string | null }`. Args switch from
+  `{ limit, cursor }` to `{ paginationOpts }` (using
+  `paginationOptsValidator` from `convex/server`). Consumers can now pass
+  these queries directly to `usePaginatedQuery` from `convex/react`
+  without any client-side adaptation. The server-side wrappers
+  (`auth.user.list(ctx, { limit, cursor, … })`) keep the flat options shape
+  but return the native pagination result.
+
+  Migration:
+  - `result.items` → `result.page`
+  - `result.nextCursor === null` → `result.isDone`
+  - `result.nextCursor` (non-null cursor) → `result.continueCursor`
+  - Raw `ctx.runQuery(component.user.list, { limit, cursor })` →
+    `ctx.runQuery(component.user.list, { paginationOpts: { numItems, cursor } })`
+
+### Internal
+
+- Consolidate `auth.v.*` validator field maps to a single source of truth.
+  `userFields`, `groupFields`, `memberFields`, `inviteFields`, `emailFields`
+  in `component/model.ts` are now generic field-map builders parameterized
+  on the ID-validator function. The strict component-internal variants
+  (`vUserDoc`, etc.) use `v.id`; the permissive cross-boundary variants in
+  `server/validators.ts` use `vIdString`. Both sides stay in lockstep
+  automatically — adding a field happens in one place.
+- `groupAuditEventCreate` auto-populates `ip` and `requestId` from
+  `ctx.meta.getRequestMetadata()` (Convex 1.38+) when callers don't pass
+  them explicitly. Falls through silently in contexts where `ctx.meta`
+  isn't available (e.g. some test harnesses).
+
 ## Unreleased
 
 - Stabilize the group/connection namespace model around `auth.group.sso.*` for

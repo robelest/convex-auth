@@ -19,7 +19,7 @@ teams, workspaces, etc.). Groups can be nested to form a hierarchy.
 | ----------- | ---------------------------------------------- | -------------------- | --------------------------------------------------------------------------- |
 | `create`    | `(ctx, { name, parentId?, tags?, metadata? })` | `{ groupId }`        | Creates a new group. Optionally nest under a parent group.                  |
 | `get`       | `(ctx, groupId)`                               | `Doc<"groups">`      | Fetches a group document by ID.                                             |
-| `list`      | `(ctx, { parentId?, limit?, cursor? })`        | Paginated group list | Lists groups, optionally filtered by parent.                                |
+| `list`      | `(ctx, { parentId?, limit?, cursor? })`        | `PaginationResult<Doc<"Group">>` — `{ page, isDone, continueCursor }` | Lists groups, optionally filtered by parent. Convex-native shape. |
 | `update`    | `(ctx, groupId, { name?, tags?, metadata? })`  | `{ groupId }`        | Updates a group's name, tags, or metadata.                                  |
 | `delete`    | `(ctx, groupId)`                               | `{ groupId }`        | Deletes a group and all its nested children, members, and invites.          |
 | `ancestors` | `(ctx, groupId)`                               | `Doc<"groups">[]`    | Returns the chain of ancestor groups from the immediate parent to the root. |

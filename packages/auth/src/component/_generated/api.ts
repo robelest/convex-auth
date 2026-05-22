@@ -9,6 +9,7 @@
  */
 
 import type * as account from "../account.js";
+import type * as crons from "../crons.js";
 import type * as factor_device from "../factor/device.js";
 import type * as factor_passkey from "../factor/passkey.js";
 import type * as factor_totp from "../factor/totp.js";
@@ -18,6 +19,8 @@ import type * as group_invite from "../group/invite.js";
 import type * as group_member from "../group/member.js";
 import type * as http from "../http.js";
 import type * as index from "../index.js";
+import type * as limits from "../limits.js";
+import type * as maintenance from "../maintenance.js";
 import type * as migrations from "../migrations.js";
 import type * as model from "../model.js";
 import type * as modules from "../modules.js";
@@ -33,15 +36,15 @@ import type * as public_identity_sessions from "../public/identity/sessions.js";
 import type * as public_identity_tokens from "../public/identity/tokens.js";
 import type * as public_identity_users from "../public/identity/users.js";
 import type * as public_identity_verifiers from "../public/identity/verifiers.js";
+import type * as public_maintenance_cleanup from "../public/maintenance/cleanup.js";
 import type * as public_security_keys from "../public/security/keys.js";
-import type * as public_security_limits from "../public/security/limits.js";
+import type * as public_security_rateLimit from "../public/security/rateLimit.js";
 import type * as public_sso_audit from "../public/sso/audit.js";
 import type * as public_sso_core from "../public/sso/core.js";
 import type * as public_sso_domains from "../public/sso/domains.js";
 import type * as public_sso_scim from "../public/sso/scim.js";
 import type * as public_sso_secrets from "../public/sso/secrets.js";
 import type * as public_sso_webhooks from "../public/sso/webhooks.js";
-import type * as rateLimit from "../rateLimit.js";
 import type * as session from "../session.js";
 import type * as sso_audit from "../sso/audit.js";
 import type * as sso_connection from "../sso/connection.js";
@@ -68,6 +71,7 @@ import { anyApi, componentsGeneric } from "convex/server";
 
 const fullApi: ApiFromModules<{
   account: typeof account;
+  crons: typeof crons;
   "factor/device": typeof factor_device;
   "factor/passkey": typeof factor_passkey;
   "factor/totp": typeof factor_totp;
@@ -77,6 +81,8 @@ const fullApi: ApiFromModules<{
   "group/member": typeof group_member;
   http: typeof http;
   index: typeof index;
+  limits: typeof limits;
+  maintenance: typeof maintenance;
   migrations: typeof migrations;
   model: typeof model;
   modules: typeof modules;
@@ -92,15 +98,15 @@ const fullApi: ApiFromModules<{
   "public/identity/tokens": typeof public_identity_tokens;
   "public/identity/users": typeof public_identity_users;
   "public/identity/verifiers": typeof public_identity_verifiers;
+  "public/maintenance/cleanup": typeof public_maintenance_cleanup;
   "public/security/keys": typeof public_security_keys;
-  "public/security/limits": typeof public_security_limits;
+  "public/security/rateLimit": typeof public_security_rateLimit;
   "public/sso/audit": typeof public_sso_audit;
   "public/sso/core": typeof public_sso_core;
   "public/sso/domains": typeof public_sso_domains;
   "public/sso/scim": typeof public_sso_scim;
   "public/sso/secrets": typeof public_sso_secrets;
   "public/sso/webhooks": typeof public_sso_webhooks;
-  rateLimit: typeof rateLimit;
   session: typeof session;
   "sso/audit": typeof sso_audit;
   "sso/connection": typeof sso_connection;
@@ -147,4 +153,6 @@ export const internal: FilterApi<
 
 export const components = componentsGeneric() as unknown as {
   migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
+  webhookWorkpool: import("@convex-dev/workpool/_generated/component.js").ComponentApi<"webhookWorkpool">;
 };

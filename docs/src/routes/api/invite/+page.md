@@ -19,7 +19,7 @@ lifecycle: `pending` -> `accepted` or `revoked`.
 | -------- | ------------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------- |
 | `create` | `(ctx, { groupId, email, roleIds?, expiresAt? })` | `{ inviteId, token }`            | Creates a pending invite. Throws `ConvexError` with code `INVALID_ROLE_IDS` on failure. |
 | `get`    | `(ctx, inviteId)`                                 | `Doc<"invites">`                 | Fetches an invite document by ID.                                                       |
-| `list`   | `(ctx, { groupId?, status?, limit?, cursor? })`   | Paginated invite list            | Lists invites, optionally filtered by group and/or status.                              |
+| `list`   | `(ctx, { groupId?, status?, limit?, cursor? })`   | `PaginationResult<Doc<"GroupInvite">>` — `{ page, isDone, continueCursor }` | Lists invites, optionally filtered by group and/or status. Convex-native shape; pass through to `usePaginatedQuery`. |
 | `accept` | `(ctx, inviteId)`                                 | `{ inviteId, acceptedByUserId }` | Accepts a pending invite and records acceptance metadata.                               |
 | `revoke` | `(ctx, inviteId)`                                 | `{ inviteId }`                   | Revokes a pending invite so it can no longer be accepted.                               |
 

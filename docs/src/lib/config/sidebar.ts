@@ -23,6 +23,7 @@ export const sidebar: SidebarGroup[] = [
       { title: "Authorization Patterns", slug: "/guides/authorization" },
       { title: "Multi-Access", slug: "/guides/multi-access" },
       { title: "Context Enrichment", slug: "/integration/context" },
+      { title: "React Hooks", slug: "/client/react" },
       { title: "Fluent Convex", slug: "/integration/fluent-convex" },
       { title: "Device Flow (RFC 8628)", slug: "/guides/device-flow" },
       { title: "Native Apps", slug: "/guides/native-apps" },

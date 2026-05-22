@@ -3,6 +3,7 @@ import { auth } from "@convex/auth";
 import schema from "@convex/schema";
 import { createAuthGroupSso, scim, sso } from "@robelest/convex-auth/server";
 import { sha256 } from "@robelest/convex-auth/server/random";
+import { encryptSecret } from "@robelest/convex-auth/server/secret";
 import { getPublicOidcConfig, upsertProtocolConfig } from "@robelest/convex-auth/server/sso/config";
 import { createGroupConnectionOidcProvider } from "@robelest/convex-auth/server/sso/oidc";
 import { resolveProvisionedRoleIds } from "@robelest/convex-auth/server/sso/policy";
@@ -352,13 +353,16 @@ test("group connection component stores scim config, audit events, and webhook d
     });
   });
   await t.run(async (ctx) => {
+    const signedAt = Date.now();
     await ctx.runMutation(components.auth.sso.webhook.delivery.create, {
       connectionId,
       endpointId,
       eventType: "group.sso.scim.configured",
       auditEventId,
       payload: { ok: true },
-      nextAttemptAt: Date.now(),
+      nextAttemptAt: signedAt,
+      signature: "deadbeef",
+      signedAt,
     });
   });
 
@@ -1406,13 +1410,16 @@ test("group connection scim.configure stores hashed token and enqueues subscribe
       protocol: "oidc",
     });
   });
+  const ciphertextA = await encryptSecret("secret-a");
+  const ciphertextB = await encryptSecret("secret-b");
+  const ciphertextC = await encryptSecret("secret-c");
   await t.run(async (ctx) => {
     await ctx.runMutation(components.auth.sso.webhook.endpoint.create, {
       connectionId,
       groupId,
       url: "https://hooks.example.com/a",
       status: "active",
-      secretHash: "hash-a",
+      secretCiphertext: ciphertextA,
       subscriptions: ["group.sso.scim.configured"],
     } as any);
     await ctx.runMutation(components.auth.sso.webhook.endpoint.create, {
@@ -1420,7 +1427,7 @@ test("group connection scim.configure stores hashed token and enqueues subscribe
       groupId,
       url: "https://hooks.example.com/b",
       status: "disabled",
-      secretHash: "hash-b",
+      secretCiphertext: ciphertextB,
       subscriptions: ["group.sso.scim.configured"],
     } as any);
     await ctx.runMutation(components.auth.sso.webhook.endpoint.create, {
@@ -1428,7 +1435,7 @@ test("group connection scim.configure stores hashed token and enqueues subscribe
       groupId,
       url: "https://hooks.example.com/c",
       status: "active",
-      secretHash: "hash-c",
+      secretCiphertext: ciphertextC,
       subscriptions: ["group.sso.other"],
     } as any);
   });

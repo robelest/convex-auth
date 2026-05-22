@@ -27,6 +27,7 @@ const publicDeclarationEntries = {
   "client/index": "src/client/index.ts",
   "browser/index": "src/browser/index.ts",
   "expo/index": "src/expo/index.ts",
+  "react/index": "src/react/index.tsx",
   "core/index": "src/core/index.ts",
   "authorization/index": "src/authorization/index.ts",
   otel: "src/otel.ts",
@@ -56,6 +57,7 @@ export default defineConfig([
       "client/index": "src/client/index.ts",
       "browser/index": "src/browser/index.ts",
       "expo/index": "src/expo/index.ts",
+      "react/index": "src/react/index.tsx",
     },
     format: "esm",
     outDir: "dist",
@@ -63,7 +65,7 @@ export default defineConfig([
     clean: false,
     unbundle: true,
     platform: "browser",
-    external: clientExternals,
+    external: [...clientExternals, "react", "react/jsx-runtime", "react/jsx-dev-runtime"],
     outExtensions: jsExtensions,
   },
   {
@@ -114,7 +116,7 @@ export default defineConfig([
     clean: false,
     unbundle: true,
     platform: "node",
-    external: [/^convex/],
+    external: [/^convex/, "react", "react/jsx-runtime", "react/jsx-dev-runtime"],
     outExtensions: jsExtensions,
   },
   {

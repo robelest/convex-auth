@@ -54,11 +54,32 @@ createAuth(components.auth, {
 GitHub includes a built-in profile fetch. Google, Apple, and Microsoft rely on
 their ID token claims by default.
 
+### Profile sync on re-auth
+
+OAuth providers default to `updateProfileOnLogin: true` — on a returning
+sign-in for the same `(provider, providerAccountId)`, the user's `name`,
+`image`, and `email` are refreshed from the new provider profile. This
+matches Auth.js / Clerk conventions.
+
+Opt out per-provider if your app owns the canonical user profile:
+
+```ts
+google({
+  clientId: process.env.AUTH_GOOGLE_ID!,
+  clientSecret: process.env.AUTH_GOOGLE_SECRET!,
+  updateProfileOnLogin: false, // keep user fields user-edited
+});
+```
+
+The flag is available on `google`, `github`, `apple`, `microsoft`, and
+`custom`. SSO connections have their own equivalent under
+`policy.provisioning.user.updateProfileOnLogin`.
+
 ### Google
 
 - Import: `@robelest/convex-auth/providers`
 - Factory:
-  `google({ clientId, clientSecret, redirectUri?, scopes?, accountLinking? })`
+  `google({ clientId, clientSecret, redirectUri?, scopes?, accountLinking?, updateProfileOnLogin? })`
 - Default scopes: `openid profile email`
 - Required env: `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`
 
@@ -81,7 +102,7 @@ Use `redirectUri` only when you need to override the default callback route.
 
 - Import: `@robelest/convex-auth/providers`
 - Factory:
-  `github({ clientId, clientSecret, redirectUri?, scopes?, accountLinking? })`
+  `github({ clientId, clientSecret, redirectUri?, scopes?, accountLinking?, updateProfileOnLogin? })`
 - Default scopes: `user:email`
 - Required env: `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`
 
@@ -104,7 +125,7 @@ The GitHub wrapper performs the profile and email fetch for you.
 
 - Import: `@robelest/convex-auth/providers`
 - Factory:
-  `apple({ clientId, teamId, keyId, privateKey, redirectUri?, scopes?, accountLinking? })`
+  `apple({ clientId, teamId, keyId, privateKey, redirectUri?, scopes?, accountLinking?, updateProfileOnLogin? })`
 - Default scopes: `name email`
 - Required env: `AUTH_APPLE_ID`, `AUTH_APPLE_TEAM_ID`, `AUTH_APPLE_KEY_ID`,
   `AUTH_APPLE_PRIVATE_KEY`
@@ -131,7 +152,7 @@ persist any extra profile fields you care about on first sign-in.
 
 - Import: `@robelest/convex-auth/providers`
 - Factory:
-  `microsoft({ tenant, clientId, clientSecret?, redirectUri?, scopes?, accountLinking? })`
+  `microsoft({ tenant, clientId, clientSecret?, redirectUri?, scopes?, accountLinking?, updateProfileOnLogin? })`
 - Default scopes: `openid profile email`
 - Required env: `AUTH_MICROSOFT_TENANT_ID`, `AUTH_MICROSOFT_ID`
 - Optional env: `AUTH_MICROSOFT_SECRET`

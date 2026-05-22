@@ -23,8 +23,8 @@ The `ctx.auth` examples on this page assume you created auth-aware builders such
 as `authQuery`, `authMutation`, or `authAction` with `auth.ctx()` in
 `convex/functions.ts`.
 
-`get`, `list`, and `viewer` are fully typed (`Doc<"User">`,
-`{ items: Doc<"User">[]; nextCursor }`), and the `extend` field is typed when
+`get`, `list`, and `viewer` are fully typed (`Doc<"User">`, Convex-native
+`PaginationResult<Doc<"User">>`), and the `extend` field is typed when
 configured. Pair them with `auth.v.*` as your function `returns:` — see
 [Typed Returns](/reference/typed-returns).
 
@@ -33,7 +33,8 @@ configured. Pair them with `auth.v.*` as your function `returns:` — see
 | Method           | Signature                            | Returns               | Description                                                                                                                                                              |
 | ---------------- | ------------------------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `get`            | `(ctx, userId)`                      | `Doc<"User"> \| null` | Fetches a user document by ID.                                                                                                                                           |
-| `list`           | `(ctx, { where?, limit?, cursor? })` | Paginated user list   | Lists users with optional filtering and pagination.                                                                                                                      |
+| `id`             | `(ctx)`                              | `Id<"User"> \| null`  | Current session user's id, or `null` when unauthenticated. Faster than `viewer` when you only need the id (no DB read).                                                  |
+| `list`           | `(ctx, { where?, limit?, cursor? })` | `PaginationResult<Doc<"User">>` — `{ page, isDone, continueCursor }` | Lists users with optional filtering and pagination. Convex-native shape; pass directly to `usePaginatedQuery`. |
 | `update`         | `(ctx, userId, data)`                | `{ userId }`          | Updates fields on a user document.                                                                                                                                       |
 | `viewer`         | `(ctx)`                              | `Doc<"User"> \| null` | Returns the current session user's full document, or `null` when unauthenticated.                                                                                        |
 | `delete`         | `(ctx, userId, { cascade? })`        | `{ userId }`          | Deletes a user. With `cascade: true`, also deletes all linked sessions, accounts, memberships, keys, and owned emails. Throws `ConvexError` with code `INVALID_PARAMETERS` on failure. |
@@ -64,6 +65,9 @@ single denormalized primary pointer.
 ```ts
 // `auth.ctx()` already validated the session.
 const userId = ctx.auth.userId;
+
+// Or, outside an `auth.ctx()` wrapper, in any handler with `ctx.auth`:
+const userId = await auth.user.id(ctx); // Id<"User"> | null
 ```
 
 ### Get the current user document
@@ -100,7 +104,7 @@ const activeGroupId = active?.groupId ?? null;
 ### Advanced: raw HTTP mixed auth
 
 ```ts
-const authContext = await auth.request.context(ctx, request, { optional: true });
+const authContext = await auth.request.context.optional(ctx, request);
 if (authContext.userId === null) {
   return new Response("Unauthorized", { status: 401 });
 }

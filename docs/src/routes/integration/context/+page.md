@@ -116,8 +116,18 @@ need `ctx.auth` and helper APIs. App-specific HTTP routes still import
 ## Optional auth (public routes)
 
 ```ts
-export const publicQuery = customQuery(rawQuery, auth.ctx({ optional: true }));
+export const publicQuery = customQuery(rawQuery, auth.ctx.optional());
 // ctx.auth.userId is null and ctx.auth.grants is [] when unauthenticated
+```
+
+Use `auth.context.optional(ctx)` for the same null-shaped resolution outside
+of a `customQuery` setup:
+
+```ts
+const c = await auth.context.optional(ctx);
+if (c.userId === null) {
+  // unauthenticated path
+}
 ```
 
 ## Add app-specific fields

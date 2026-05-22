@@ -4,5 +4,11 @@
     "outDir": "./dist",
     "rootDir": "./src"
   },
-  "include": ["src/client/**/*", "src/browser/**/*", "src/expo/**/*", "src/server/errors.ts"]
+  "include": [
+    "src/client/**/*",
+    "src/browser/**/*",
+    "src/expo/**/*",
+    "src/react/**/*",
+    "src/server/errors.ts"
+  ]
 }

@@ -53,6 +53,33 @@ The component owns its own isolated tables:
 | `Totp`             | TOTP enrollments                             |
 | `Group Connection` | SSO connections (OIDC/SAML/SCIM config)      |
 
+The auth component also installs three Convex subcomponents internally:
+
+| Subcomponent                  | Role                                                                 |
+| ----------------------------- | -------------------------------------------------------------------- |
+| `@convex-dev/migrations`      | Versioned data migrations against the component's own tables         |
+| `@convex-dev/rate-limiter`    | Sign-in throttle (token-bucket; backs `auth.signIn` rate limiting)   |
+| `@convex-dev/workpool`        | Webhook delivery worker — drives retries with exponential backoff    |
+
+These are mounted by `component.use(...)` inside `convex.config.ts`; the
+parent app doesn't install or configure them.
+
+## Function visibility
+
+Every function exposed by the auth component is registered as
+`internalQuery` / `internalMutation` / `internalAction`. Clients of the
+parent app cannot reach component functions directly — all access goes
+through `ctx.runQuery` / `ctx.runMutation` from server-side wrappers (the
+`auth.*` helpers documented under API Reference).
+
+## Scheduled cleanup
+
+The component owns its own `crons.ts` and runs a daily `pruneExpired`
+job (03:00 UTC) that prunes expired rows from `Session`, `RefreshToken`,
+`VerificationCode`, `AuthVerifier`, `GroupInvite`, and `DeviceCode`.
+Batched at 200 docs per run by default; rerun the cron tomorrow to drain
+any backlog.
+
 ## Auth flow
 
 1. **Client** calls `signIn(provider, params)`
@@ -151,6 +178,7 @@ import from `auth/core.ts` never load provider, OAuth, or crypto code.
 | `@robelest/convex-auth/server`      | Everything (providers, OAuth, crypto, HTTP) | `convex/auth.ts` — signIn/signOut exports       |
 | `@robelest/convex-auth/core`        | Context resolution only (~2KB)              | `convex/functions.ts` — query/mutation wrappers |
 | `@robelest/convex-auth/browser`     | Browser client defaults                     | Web apps and SSR client hydration               |
+| `@robelest/convex-auth/react`       | React `useAuth()` + `ConvexAuthProvider`    | React apps wrapping the browser client          |
 | `@robelest/convex-auth/expo`        | Expo SecureStore, AuthSession, passkeys     | Expo / React Native apps                        |
 | `@robelest/convex-auth/providers/*` | Individual provider                         | Only in `convex/auth.ts`                        |
 

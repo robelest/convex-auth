@@ -24,10 +24,9 @@ function createCredentialsMutationHarness(args: {
     userGetById: Symbol("userGetById"),
     userPatch: Symbol("userPatch"),
     sessionIssue: Symbol("sessionIssue"),
-    rateLimitGet: Symbol("rateLimitGet"),
-    rateLimitDelete: Symbol("rateLimitDelete"),
-    rateLimitCreate: Symbol("rateLimitCreate"),
-    rateLimitPatch: Symbol("rateLimitPatch"),
+    signInCheck: Symbol("signInCheck"),
+    signInRecord: Symbol("signInRecord"),
+    signInReset: Symbol("signInReset"),
     totpGetVerifiedByUserId: Symbol("totpGetVerifiedByUserId"),
   } as const;
 
@@ -55,8 +54,8 @@ function createCredentialsMutationHarness(args: {
     if (ref === refs.userGetById) {
       return user;
     }
-    if (ref === refs.rateLimitGet) {
-      return args.rateLimit ?? null;
+    if (ref === refs.signInCheck) {
+      return { ok: args.rateLimit ? args.rateLimit.attemptsLeft >= 1 : true };
     }
     if (ref === refs.totpGetVerifiedByUserId) {
       return args.totpDoc ?? null;
@@ -70,7 +69,7 @@ function createCredentialsMutationHarness(args: {
       user = { ...user, ...patch.data };
       return null;
     }
-    if (ref === refs.rateLimitDelete) {
+    if (ref === refs.signInReset) {
       return null;
     }
     if (ref === refs.sessionIssue) {
@@ -80,8 +79,8 @@ function createCredentialsMutationHarness(args: {
         refreshTokenId: "refresh1",
       };
     }
-    if (ref === refs.rateLimitCreate || ref === refs.rateLimitPatch) {
-      return null;
+    if (ref === refs.signInRecord) {
+      return { ok: true };
     }
     throw new Error(`Unexpected mutation ref: ${String(ref)}`);
   });
@@ -99,11 +98,10 @@ function createCredentialsMutationHarness(args: {
       },
       account: { get: refs.accountGet },
       session: { issue: refs.sessionIssue },
-      rateLimit: {
-        get: refs.rateLimitGet,
-        delete: refs.rateLimitDelete,
-        create: refs.rateLimitCreate,
-        update: refs.rateLimitPatch,
+      limits: {
+        signInCheck: refs.signInCheck,
+        signInRecord: refs.signInRecord,
+        signInReset: refs.signInReset,
       },
       factor: {
         totp: { get: refs.totpGetVerifiedByUserId },
@@ -151,8 +149,8 @@ test("credentialsSignIn skips session issuance when email verification is requir
     account: { _id: "account1", emailVerified: undefined },
     user: { _id: "user1", email: "user@example.com" },
   });
-  expect(harness.runMutation).toHaveBeenCalledWith(harness.refs.rateLimitDelete, {
-    rateLimitId: "rate-limit1",
+  expect(harness.runMutation).toHaveBeenCalledWith(harness.refs.signInReset, {
+    identifier: "account1",
   });
   expect(harness.runMutation).not.toHaveBeenCalledWith(
     harness.refs.sessionIssue,

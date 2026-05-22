@@ -268,8 +268,8 @@ test("key.list returns only keys for the given userId", async () => {
     return await auth.key.list(ctx, { where: { userId: userId1 } });
   });
 
-  expect(result.items).toHaveLength(2);
-  expect(result.items.every((k: any) => k.userId === userId1)).toBe(true);
+  expect(result.page).toHaveLength(2);
+  expect(result.page.every((k: any) => k.userId === userId1)).toBe(true);
 });
 
 test("key.list with revoked: false excludes revoked keys", async () => {
@@ -293,8 +293,8 @@ test("key.list with revoked: false excludes revoked keys", async () => {
     return await auth.key.list(ctx, { where: { userId, revoked: false } });
   });
 
-  expect(result.items).toHaveLength(1);
-  expect(result.items[0].name).toBe("Active Key");
+  expect(result.page).toHaveLength(1);
+  expect(result.page[0].name).toBe("Active Key");
 });
 
 // ---------------------------------------------------------------------------
@@ -533,7 +533,7 @@ test("auth.context optional returns null-shaped auth when unauthenticated", asyn
   const t = convexTest(schema);
 
   const resolved = await t.run(async (ctx) => {
-    const c = await auth.context(ctx, { optional: true });
+    const c = await auth.context.optional(ctx);
     return {
       userId: c.userId,
       user: c.user,
@@ -590,7 +590,7 @@ test("auth.request.context optional returns null-shaped auth with no session and
 
   const resolved = await t.run(async (ctx) => {
     const request = new Request("https://example.com/api/data");
-    const c = await auth.request.context(ctx, request, { optional: true });
+    const c = await auth.request.context.optional(ctx, request);
     return {
       userId: c.userId,
       user: c.user,
@@ -622,7 +622,7 @@ test("auth.request.context optional returns null-shaped auth with invalid Bearer
     const request = new Request("https://example.com/api/data", {
       headers: { Authorization: "Bearer sk_not_a_real_key" },
     });
-    const c = await auth.request.context(ctx, request, { optional: true });
+    const c = await auth.request.context.optional(ctx, request);
     return {
       userId: c.userId,
       user: c.user,
@@ -660,7 +660,7 @@ test("auth.request.context optional returns null-shaped auth with revoked key", 
     const request = new Request("https://example.com/api/data", {
       headers: { Authorization: `Bearer ${secret}` },
     });
-    const c = await auth.request.context(ctx, request, { optional: true });
+    const c = await auth.request.context.optional(ctx, request);
     return {
       userId: c.userId,
       user: c.user,

@@ -16,7 +16,7 @@ description: Required and optional environment variables for convex-auth.
 | ---------------------------- | ------------------------------------------- |
 | `JWT_PRIVATE_KEY`            | Signs session JWTs                          |
 | `JWKS`                       | JSON Web Key Set for verification           |
-| `AUTH_SECRET_ENCRYPTION_KEY` | Encrypts stored group SSO secrets           |
+| `AUTH_SECRET_ENCRYPTION_KEY` | Encrypts stored OIDC client secrets and group webhook signing secrets at rest |
 | `SITE_URL`                   | Frontend URL for OAuth/magic link redirects |
 
 These are set automatically by the CLI setup wizard.

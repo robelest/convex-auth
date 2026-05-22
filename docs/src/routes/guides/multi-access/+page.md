@@ -45,9 +45,7 @@ http.route({
   path: "/api/data",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    const authContext = await auth.request.context(ctx, request, {
-      optional: true,
-    });
+    const authContext = await auth.request.context.optional(ctx, request);
     if (authContext.userId === null) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,

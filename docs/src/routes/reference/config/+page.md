@@ -78,7 +78,7 @@ const auth = createAuth(components.auth, {
 | `session.totalDurationMs`             | `number`               | 30 days  | Maximum session lifetime                |
 | `session.inactiveDurationMs`          | `number`               | varies   | Inactive session timeout                |
 | `jwt.durationMs`                      | `number`               | 60s      | JWT token lifetime                      |
-| `signIn.maxFailedAttemptsPerHour`     | `number`               | 10       | Rate limit for failed sign-in attempts  |
+| `signIn.maxFailedAttemptsPerHour`     | `number`               | 10       | Failed sign-in throttle (backed by `@convex-dev/rate-limiter` token bucket; resets on successful sign-in) |
 | `callbacks.before`                    | `function`             | —        | Intercept `redirect` / `link`. Return `undefined` for default. |
 | `callbacks.after`                     | `function`             | —        | Notification for lifecycle events: `userCreated`, `signedIn`, `passwordChanged`, `passkeyAdded`, `totpEnrolled`, `emailVerified`, `phoneVerified`, `accountLinked`, `signedOut`, `sessionsInvalidated`, `userUpdated`. |
 | `authorization.roles`                 | `Record<string, Role>` | `{}`     | App-defined role definitions and grants |
@@ -115,6 +115,23 @@ authorization model.
   `client()` on the frontend to get conditional passkey/totp/device helpers
 - `Doc`, `Viewer`, `Group`, `Membership` — exported document types
   (extend-aware), importable from `@robelest/convex-auth/server`
+
+## Per-provider OAuth options
+
+OAuth provider factories (`google`, `github`, `apple`, `microsoft`,
+`custom`) accept these common options in addition to provider-specific
+fields:
+
+| Option                  | Type                                  | Default | Description |
+| ----------------------- | ------------------------------------- | ------- | ----------- |
+| `redirectUri`           | `string`                              | derived | Callback URL override. Defaults to `${CONVEX_SITE_URL}/auth/callback/<provider>`. |
+| `scopes`                | `string[]`                            | provider-default | OAuth scopes requested at the authorize step. |
+| `accountLinking`        | `"verifiedEmail" \| "none"`           | `"verifiedEmail"` | On first sign-in, link to an existing user if the verified email matches. |
+| `updateProfileOnLogin`  | `boolean`                             | `true`  | On a returning sign-in, refresh `User.name`/`image`/`email` from the new profile. Set `false` if your app owns the canonical profile. Behavior matches Auth.js / Clerk. |
+
+For SSO connections, the equivalent of `updateProfileOnLogin` lives on the
+group connection policy under
+`policy.provisioning.user.updateProfileOnLogin`.
 
 ## API layers
 

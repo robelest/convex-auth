@@ -19,13 +19,21 @@ backed builders such as `authQuery`, `authMutation`, or `authAction`.
 
 | Method       | Signature                    | Returns                  | Description                                                                                         |
 | ------------ | ---------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------- |
+| `id`         | `(ctx)`                      | `Id<"Session"> \| null`  | Current session id, or `null` when unauthenticated. Pairs with `auth.user.id(ctx)`.                 |
 | `invalidate` | `(ctx, { userId, except? })` | `{ userId, except }`     | Invalidates all sessions for a user. Pass `except` as an array of session IDs to keep those active. |
 | `get`        | `(ctx, sessionId)`           | `Doc<"Session"> \| null` | Fetches a session document by ID.                                                                   |
 | `list`       | `(ctx, { userId })`          | `Doc<"Session">[]`       | Lists all sessions for a user.                                                                      |
 
 ## Examples
 
-### Read the current session ID from native identity
+### Read the current session ID
+
+```ts
+// Preferred — resolves the session id without parsing identity claims.
+const sessionId = await auth.session.id(ctx); // Id<"Session"> | null
+```
+
+The legacy way still works:
 
 ```ts
 const identity = await ctx.auth.getUserIdentity();

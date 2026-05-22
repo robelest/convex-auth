@@ -16,10 +16,11 @@ from hand-rolling DTO validators and casting query results, `createAuth`
 exposes ready-made validators on `auth.v`, and the package exports the
 matching document types.
 
-The facade reads are fully typed end to end: `auth.user.list` returns
-`{ items: Doc<"User">[]; nextCursor: string | null }` and
-`auth.user.get` / `auth.user.viewer` return `Doc<"User"> | null` — no
-casts required.
+The facade reads are fully typed end to end: `auth.user.list` returns a
+Convex-native `PaginationResult<Doc<"User">>` (`{ page, isDone, continueCursor }`)
+and `auth.user.get` / `auth.user.viewer` return `Doc<"User"> | null` — no
+casts required. The pagination shape matches what `usePaginatedQuery` from
+`convex/react` expects, so list queries can be passed directly to the hook.
 
 ## `auth.v.*`
 
@@ -30,7 +31,7 @@ casts required.
 | `auth.v.member` | Single `GroupMember` (extend-aware)    |
 | `auth.v.invite` | Single `GroupInvite` document          |
 | `auth.v.viewer` | `User \| null` — current-user query    |
-| `auth.v.list(item)` | `{ items: item[]; nextCursor: string \| null }` |
+| `auth.v.list(item)` | `PaginationResult<item>` — `{ page, isDone, continueCursor }` (matches `convex/server`) |
 
 ```ts
 // convex/functions.ts
@@ -77,7 +78,7 @@ export const groups = authQuery({
   handler: async (ctx) => {
     const me = await ctx.auth.user.viewer(ctx);
     if (me === null) return null;
-    const { items: memberships } = await ctx.auth.member.list(ctx, {
+    const { page: memberships } = await ctx.auth.member.list(ctx, {
       where: { userId: me._id },
     });
     const groups = await ctx.auth.group.get(

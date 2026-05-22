@@ -107,11 +107,13 @@ test("components.auth.user.list pages through with opaque cursor", async () => {
   let cursor: string | null = null;
   for (let i = 0; i < 10; i += 1) {
     const page = (await t.run((ctx) =>
-      ctx.runQuery(components.auth.user.list, { limit: 2, cursor }),
-    )) as { items: unknown[]; nextCursor: string | null };
-    collected.push(...page.items);
-    if (page.nextCursor === null) break;
-    cursor = page.nextCursor;
+      ctx.runQuery(components.auth.user.list, {
+        paginationOpts: { numItems: 2, cursor },
+      }),
+    )) as { page: unknown[]; isDone: boolean; continueCursor: string };
+    collected.push(...page.page);
+    if (page.isDone) break;
+    cursor = page.continueCursor;
   }
   expect(collected.length).toBeGreaterThanOrEqual(5);
 });

@@ -250,8 +250,8 @@ This is why authorization should be keyed on `userId`, not provider account IDs.
 Use `auth.ctx()` when a handler should always receive `ctx.auth.userId` and
 `ctx.auth.user`. Use `auth.member.inspect(...)` when you need a boolean-style
 access check. Use `auth.member.require(...)` when the handler should throw on
-failure. Use `auth.ctx({ optional: true })` when the same handler should work
-for both guests and signed-in users.
+failure. Use `auth.ctx.optional()` when the same handler should work for
+both guests and signed-in users.
 
 ## Recommended pattern
 

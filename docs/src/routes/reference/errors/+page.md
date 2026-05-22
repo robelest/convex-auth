@@ -49,6 +49,7 @@ try {
 | `NOT_A_MEMBER`            | User is not a member of the group |
 | `MISSING_GRANTS`          | User is missing required grants   |
 | `ACCOUNT_NOT_FOUND`       | Account does not exist            |
+| `ACCOUNT_ALREADY_LINKED`  | `auth.account.link` would link to a different user than the current one |
 | `USER_NOT_FOUND`          | User does not exist               |
 | `INVALID_PARAMETERS`      | Bad input arguments               |
 | `INTERNAL_ERROR`          | Unexpected server error           |
