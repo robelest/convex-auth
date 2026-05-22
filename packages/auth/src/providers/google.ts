@@ -32,6 +32,8 @@ export interface GoogleConfig {
   scopes?: string[];
   /** Account-linking strategy for existing users with matching email addresses. */
   accountLinking?: "verifiedEmail" | "none";
+  /** On returning sign-in, refresh `User.name`/`image`/`email` from the new profile. Defaults to `true`. */
+  updateProfileOnLogin?: boolean;
 }
 
 /**
@@ -67,5 +69,6 @@ export function google(config: GoogleConfig) {
     provider: createArcticOAuthClient(createProvider, { pkce: "required" }),
     scopes,
     accountLinking: config.accountLinking,
+    updateProfileOnLogin: config.updateProfileOnLogin,
   });
 }

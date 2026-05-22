@@ -38,6 +38,8 @@ export interface AppleConfig {
   scopes?: string[];
   /** Account-linking strategy for existing users with matching email addresses. */
   accountLinking?: "verifiedEmail" | "none";
+  /** On returning sign-in, refresh `User.name`/`image`/`email` from the new profile. Defaults to `true`. */
+  updateProfileOnLogin?: boolean;
 }
 
 /**
@@ -78,5 +80,6 @@ export function apple(config: AppleConfig) {
     provider: createArcticOAuthClient(createProvider, { pkce: "never" }),
     scopes,
     accountLinking: config.accountLinking,
+    updateProfileOnLogin: config.updateProfileOnLogin,
   });
 }

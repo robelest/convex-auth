@@ -72,6 +72,8 @@ export interface CustomOAuthConfig {
   scopes?: string[];
   /** Account-linking strategy for existing users with matching email addresses. */
   accountLinking?: "verifiedEmail" | "none";
+  /** On returning sign-in, refresh `User.name`/`image`/`email` from the new profile. Defaults to `true`. */
+  updateProfileOnLogin?: boolean;
   /** Whether the provider requires nonce generation and validation. */
   nonce?: boolean;
   /** Authorization endpoint configuration. */
@@ -225,5 +227,6 @@ export function custom(config: CustomOAuthConfig) {
     nonce: config.nonce,
     validateTokens: config.validateTokens,
     accountLinking: config.accountLinking,
+    updateProfileOnLogin: config.updateProfileOnLogin,
   });
 }

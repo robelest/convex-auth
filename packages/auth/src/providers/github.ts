@@ -45,6 +45,8 @@ export interface GitHubConfig {
   scopes?: string[];
   /** Account-linking strategy for existing users with matching email addresses. */
   accountLinking?: "verifiedEmail" | "none";
+  /** On returning sign-in, refresh `User.name`/`image`/`email` from the new profile. Defaults to `true`. */
+  updateProfileOnLogin?: boolean;
 }
 
 /**
@@ -80,6 +82,7 @@ export function github(config: GitHubConfig) {
     provider: createArcticOAuthClient(createProvider, { pkce: "never" }),
     scopes,
     accountLinking: config.accountLinking,
+    updateProfileOnLogin: config.updateProfileOnLogin,
     profile: async (tokens) => {
       if (!tokens.accessToken) {
         throw new Error("GitHub OAuth response is missing access_token.");

@@ -100,7 +100,7 @@ export const listApiKeys = authUserQuery({
       order: "desc",
       limit: 20,
     });
-    return result.items.map((key: any) => ({
+    return result.page.map((key: any) => ({
       keyId: key._id,
       prefix: key.prefix,
       name: key.name,

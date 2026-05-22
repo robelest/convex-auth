@@ -36,6 +36,8 @@ export interface MicrosoftConfig {
   scopes?: string[];
   /** Account-linking strategy for existing users with matching email addresses. */
   accountLinking?: "verifiedEmail" | "none";
+  /** On returning sign-in, refresh `User.name`/`image`/`email` from the new profile. Defaults to `true`. */
+  updateProfileOnLogin?: boolean;
 }
 
 /**
@@ -76,6 +78,7 @@ export function microsoft(config: MicrosoftConfig) {
     scopes,
     nonce: true,
     accountLinking: config.accountLinking,
+    updateProfileOnLogin: config.updateProfileOnLogin,
     validateTokens: async (tokens, ctx) => {
       if (!ctx.nonce) {
         throw new Error("Microsoft OAuth requires a nonce.");

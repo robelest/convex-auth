@@ -4,6 +4,8 @@ import { ConvexError, GenericId } from "convex/values";
 import type { ComponentCtx, ComponentReadCtx } from "./component/context";
 import { configDefaults } from "./config";
 import { getSessionUserId } from "./context";
+import { authDb } from "./db";
+import { getAuthSessionId } from "./sessions";
 import { cached, ctxCacheHas, invalidateCtxCache } from "./cache/context";
 import { buildScopeChecker, checkKeyRateLimit, generateApiKey, hashApiKey } from "./keys";
 import type { AuthProfile, SignInParams } from "./payloads";
@@ -62,8 +64,14 @@ type KeyDocLike = {
   rateLimit?: KeyDoc["rateLimit"];
   metadata?: KeyDoc["metadata"];
 };
-/** Cursor-paginated page shape returned by the `*List` component queries. */
-type Paginated<T> = { items: T[]; nextCursor: string | null };
+/** Convex-native `PaginationResult<T>` shape returned by the `*List` component queries. */
+type Paginated<T> = {
+  page: T[];
+  isDone: boolean;
+  continueCursor: string;
+  splitCursor?: string | null;
+  pageStatus?: "SplitRecommended" | "SplitRequired" | null;
+};
 /** Options accepted by `member.list`. */
 type MemberListOpts = {
   where?: { groupId?: string; userId?: string; roleId?: string; status?: string };
@@ -231,6 +239,21 @@ export function createCoreDomains(deps: CoreDeps) {
      */
     get: userGet,
     /**
+     * The current session's user id, or `null` when unauthenticated.
+     *
+     * Pairs with {@link viewer} which fetches the full document; use `id`
+     * when you only need the id (no DB read for the user row).
+     *
+     * @example
+     * ```ts
+     * const userId = await auth.user.id(ctx);
+     * if (userId === null) return null;
+     * ```
+     */
+    id: async (ctx: ComponentAuthReadCtx) => {
+      return (await getSessionUserId(ctx)) as GenericId<"User"> | null;
+    },
+    /**
      * List users with optional filtering, pagination, and ordering.
      *
      * Supports filtering by `email`, `phone`, `name`, and `isAnonymous`.
@@ -263,10 +286,15 @@ export function createCoreDomains(deps: CoreDeps) {
         order?: "asc" | "desc";
       } = {},
     ) => {
-      return (await ctx.runQuery(
-        config.component.user.list,
-        opts,
-      )) as Paginated<Doc<"User">>;
+      return (await ctx.runQuery(config.component.user.list, {
+        where: opts.where,
+        paginationOpts: {
+          numItems: Math.min(Math.max(opts.limit ?? 50, 1), 100),
+          cursor: opts.cursor ?? null,
+        },
+        orderBy: opts.orderBy,
+        order: opts.order,
+      })) as Paginated<Doc<"User">>;
     },
     /**
      * Convenience method: resolve the current session user and fetch their
@@ -515,6 +543,21 @@ export function createCoreDomains(deps: CoreDeps) {
       )) as Doc<"Session"> | null;
     },
     /**
+     * The current session's id, or `null` when unauthenticated.
+     *
+     * Pairs with `auth.user.id(ctx)`; resolves the session id from the
+     * incoming JWT without a DB read.
+     *
+     * @example
+     * ```ts
+     * const sessionId = await auth.session.id(ctx);
+     * if (sessionId === null) return null;
+     * ```
+     */
+    id: async (ctx: ComponentAuthReadCtx) => {
+      return (await getAuthSessionId(ctx)) as GenericId<"Session"> | null;
+    },
+    /**
      * List all sessions belonging to a user.
      *
      * Returns every session document associated with the given `userId`,
@@ -668,6 +711,103 @@ export function createCoreDomains(deps: CoreDeps) {
         requireOtherAccount: true,
       });
       return { accountId };
+    },
+    /**
+     * Attach a new provider account to the current authenticated user.
+     *
+     * Idempotent: linking the same `(provider, providerAccountId)` to the
+     * same user is a no-op. Linking a `(provider, providerAccountId)` that
+     * already belongs to a different user throws `ACCOUNT_ALREADY_LINKED`.
+     *
+     * When the current user is anonymous (`isAnonymous: true`), this also
+     * flips `isAnonymous: false` and merges the supplied profile fields
+     * (`name`, `image`, `email`) into the user document — folding in the
+     * "upgrade anonymous to permanent account" flow under one verb.
+     *
+     * Fires `after({ kind: "userUpdated" })` on success.
+     *
+     * @param ctx - Convex mutation context with `auth`.
+     * @param args.provider - Provider id (e.g. `"google"`, `"github"`).
+     * @param args.profile - Provider profile. Must include `id` (provider
+     *   account id) or `email`/`phone`. Optional `name`, `image`, `email`
+     *   are merged into the user when upgrading from anonymous.
+     * @returns `{ accountId, userId, alreadyLinked }`.
+     * @throws `NOT_SIGNED_IN` if no current user.
+     * @throws `ACCOUNT_ALREADY_LINKED` if the provider account belongs to
+     *   a different user.
+     *
+     * @example Link Google after the user signed in with password
+     * ```ts
+     * await auth.account.link(ctx, {
+     *   provider: "google",
+     *   profile: { id: googleSub, email, name, image },
+     * });
+     * ```
+     */
+    link: async (
+      ctx: ComponentCtx & { auth: Auth },
+      args: {
+        provider: string;
+        profile: { id?: string; email?: string; phone?: string; name?: string; image?: string };
+      },
+    ): Promise<{ accountId: string; userId: string; alreadyLinked: boolean }> => {
+      const userId = await getSessionUserId(ctx);
+      if (userId === null) {
+        throw new ConvexError({
+          code: "NOT_SIGNED_IN",
+          message: "Must be authenticated to link an account.",
+        });
+      }
+      const providerAccountId =
+        args.profile.id ?? args.profile.email ?? args.profile.phone ?? null;
+      if (providerAccountId === null) {
+        throw new ConvexError({
+          code: "INVALID_PARAMETERS",
+          message:
+            "args.profile must include `id`, `email`, or `phone` for account linking.",
+        });
+      }
+      const db = authDb(ctx, config);
+      const existing = await db.accounts.get(args.provider, providerAccountId);
+      if (existing !== null) {
+        if ((existing as { userId: string }).userId === userId) {
+          return {
+            accountId: (existing as { _id: string })._id,
+            userId,
+            alreadyLinked: true,
+          };
+        }
+        throw new ConvexError({
+          code: "ACCOUNT_ALREADY_LINKED",
+          message: "Provider account is already linked to a different user.",
+          provider: args.provider,
+        });
+      }
+      const accountId = await db.accounts.create({
+        userId,
+        provider: args.provider,
+        providerAccountId,
+      });
+      const user = (await db.users.getById(userId)) as { isAnonymous?: boolean } | null;
+      if (user?.isAnonymous === true) {
+        const patchData: Record<string, unknown> = { isAnonymous: false };
+        if (typeof args.profile.name === "string") patchData.name = args.profile.name;
+        if (typeof args.profile.email === "string") patchData.email = args.profile.email;
+        if (typeof args.profile.image === "string") patchData.image = args.profile.image;
+        await db.users.patch(userId, patchData);
+      }
+      const after = config.callbacks?.after;
+      if (after !== undefined) {
+        await after(ctx as never, {
+          kind: "userUpdated",
+          userId: userId as GenericId<"User">,
+          existingUserId: userId as GenericId<"User">,
+          type: "credentials",
+          provider: { id: args.provider, type: "credentials" } as never,
+          profile: args.profile as never,
+        });
+      }
+      return { accountId, userId, alreadyLinked: false };
     },
     /**
      * List all passkey credentials registered for a user.
@@ -913,11 +1053,11 @@ export function createCoreDomains(deps: CoreDeps) {
       !Array.isArray(input) &&
       "slug" in input
     ) {
-      const { items } = await group.list(ctx, {
+      const { page } = await group.list(ctx, {
         where: { slug: (input as { slug: string }).slug },
         limit: 1,
       });
-      return items[0] ?? null;
+      return page[0] ?? null;
     }
     if (opts?.tree === true && typeof input === "string") {
       const current = await groupGet(ctx, input);
@@ -944,7 +1084,7 @@ export function createCoreDomains(deps: CoreDeps) {
       return {
         current,
         parent,
-        children: childrenPage.items,
+        children: childrenPage.page,
         ancestors,
       };
     }
@@ -1077,8 +1217,10 @@ export function createCoreDomains(deps: CoreDeps) {
     ) => {
       return (await ctx.runQuery(config.component.group.list, {
         where: opts?.where,
-        limit: opts?.limit,
-        cursor: opts?.cursor,
+        paginationOpts: {
+          numItems: Math.min(Math.max(opts?.limit ?? 50, 1), 100),
+          cursor: opts?.cursor ?? null,
+        },
         orderBy: opts?.orderBy,
         order: opts?.order,
       })) as Paginated<Doc<"Group">>;
@@ -1394,8 +1536,10 @@ export function createCoreDomains(deps: CoreDeps) {
     ): Promise<Paginated<MemberItem<NonNullable<O>>>> => {
       const page = (await ctx.runQuery(config.component.group.member.list, {
         where: opts?.where,
-        limit: opts?.limit,
-        cursor: opts?.cursor,
+        paginationOpts: {
+          numItems: Math.min(Math.max(opts?.limit ?? 50, 1), 100),
+          cursor: opts?.cursor ?? null,
+        },
         orderBy: opts?.orderBy,
         order: opts?.order,
       })) as Paginated<Doc<"GroupMember">>;
@@ -1403,10 +1547,10 @@ export function createCoreDomains(deps: CoreDeps) {
         return page as Paginated<MemberItem<NonNullable<O>>>;
       }
       const groupDocs = opts?.withGroup
-        ? await group.get(ctx, page.items.map((m) => m.groupId))
+        ? await group.get(ctx, page.page.map((m) => m.groupId))
         : null;
-      const items = await Promise.all(
-        page.items.map(async (m, i) => {
+      const enrichedItems = await Promise.all(
+        page.page.map(async (m, i) => {
           let enriched: Record<string, unknown> = { ...m };
           if (groupDocs !== null) {
             enriched.group = groupDocs[i] ?? null;
@@ -1423,8 +1567,8 @@ export function createCoreDomains(deps: CoreDeps) {
         }),
       );
       return {
-        items: items as Array<MemberItem<NonNullable<O>>>,
-        nextCursor: page.nextCursor,
+        ...page,
+        page: enrichedItems as Array<MemberItem<NonNullable<O>>>,
       };
     },
     /**
@@ -1612,14 +1756,14 @@ export function createCoreDomains(deps: CoreDeps) {
     } | null> => {
       const userId = opts?.userId ?? (await getSessionUserId(ctx));
       if (userId === null || userId === undefined) return null;
-      const [userDoc, { items: memberships }] = await Promise.all([
+      const [userDoc, { page: memberships }] = await Promise.all([
         user.get(ctx, userId),
         member.list(ctx, { where: { userId }, limit: 100 }),
       ]);
       if (memberships.length === 0) return null;
       const stored = readLastActiveGroup(userDoc);
       const chosen =
-        memberships.find((m) => m.groupId === stored) ?? memberships[0];
+        memberships.find((m: Doc<"GroupMember">) => m.groupId === stored) ?? memberships[0];
       const groupDoc = await group.get(ctx, chosen.groupId);
       return { groupId: chosen.groupId, group: groupDoc, membership: chosen };
     },
@@ -1643,11 +1787,11 @@ export function createCoreDomains(deps: CoreDeps) {
           message: "Authentication required.",
         });
       }
-      const { items } = await member.list(ctx, {
+      const { page } = await member.list(ctx, {
         where: { userId, groupId },
         limit: 1,
       });
-      if (items.length === 0) {
+      if (page.length === 0) {
         throw new ConvexError({
           code: "NOT_A_MEMBER",
           message: "User is not a member of this group.",
@@ -1868,8 +2012,10 @@ export function createCoreDomains(deps: CoreDeps) {
     ) => {
       return (await ctx.runQuery(config.component.group.invite.list, {
         where: opts?.where,
-        limit: opts?.limit,
-        cursor: opts?.cursor,
+        paginationOpts: {
+          numItems: Math.min(Math.max(opts?.limit ?? 50, 1), 100),
+          cursor: opts?.cursor ?? null,
+        },
         orderBy: opts?.orderBy,
         order: opts?.order,
       })) as Paginated<Doc<"GroupInvite">>;
@@ -2076,8 +2222,10 @@ export function createCoreDomains(deps: CoreDeps) {
     ) => {
       return (await ctx.runQuery(config.component.user.key.list, {
         where: opts?.where,
-        limit: opts?.limit,
-        cursor: opts?.cursor,
+        paginationOpts: {
+          numItems: Math.min(Math.max(opts?.limit ?? 50, 1), 100),
+          cursor: opts?.cursor ?? null,
+        },
         orderBy: opts?.orderBy,
         order: opts?.order,
       })) as Paginated<Doc<"ApiKey">>;

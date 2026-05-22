@@ -40,12 +40,21 @@ function mergeExtend(existing: unknown, incoming: Record<string, unknown> | unde
 function effectiveUserUpdateMode(
   source: UserProvisioningSource,
   policy: UserProvisioningPolicy | undefined,
+  providerUpdateProfileOnLogin?: boolean,
 ) {
   const authority = policy?.authority ?? "app";
   let mode =
     source === "login"
       ? (policy?.updateProfileOnLogin ?? "missing")
       : (policy?.updateProfileFromScim ?? "always");
+
+  // OAuth providers without SSO policy: respect per-provider
+  // `updateProfileOnLogin` flag. Defaults to `true` → "always" on returning
+  // sign-in to match Auth.js / Clerk / upstream conventions; explicit
+  // `false` → "never".
+  if (source === "login" && policy === undefined && providerUpdateProfileOnLogin !== undefined) {
+    mode = providerUpdateProfileOnLogin === false ? "never" : "always";
+  }
 
   if (authority === "app") {
     return mode === "never" ? "never" : "missing";
@@ -258,9 +267,10 @@ async function updateExistingUser(
   userData: Record<string, unknown>,
   source: UserProvisioningSource,
   provisioningUser: UserProvisioningPolicy | undefined,
+  providerUpdateProfileOnLogin?: boolean,
 ) {
   const currentUser = (await db.users.getById(userId)) as Record<string, unknown> | null;
-  const mode = effectiveUserUpdateMode(source, provisioningUser);
+  const mode = effectiveUserUpdateMode(source, provisioningUser, providerUpdateProfileOnLogin);
   const patchData = buildUserPatchData({
     currentUser: currentUser ?? {},
     nextUser: userData,
@@ -361,7 +371,20 @@ async function defaultCreateOrUpdateUser(
   const existingOrLinkedUserId = userId;
 
   if (userId !== null) {
-    await updateExistingUser(db, userId, userData, source, provisioningUser);
+    // OAuth providers: default `updateProfileOnLogin: true` to match upstream
+    // conventions. Non-OAuth flows fall through to the existing "missing" mode.
+    const providerUpdateProfileOnLogin =
+      args.provider.type === "oauth"
+        ? (args.provider.updateProfileOnLogin ?? true)
+        : undefined;
+    await updateExistingUser(
+      db,
+      userId,
+      userData,
+      source,
+      provisioningUser,
+      providerUpdateProfileOnLogin,
+    );
   } else {
     if (source === "login" && provisioningUser?.createOnSignIn === false) {
       throw new ConvexError({

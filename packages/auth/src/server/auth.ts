@@ -19,6 +19,8 @@ import type {
   AuthLike,
   InferAuth,
   OptionalAuthContext,
+  OptionalAuthContextFactory,
+  OptionalAuthContextResolver,
   UserDoc,
 } from "./facade";
 import { Auth as AuthFactory } from "./runtime";
@@ -187,26 +189,19 @@ export type AuthApiBase<
   request: ReturnType<typeof AuthFactory>["auth"]["request"];
   /**
    * Resolve the current request's auth context. Framework-agnostic — use
-   * this in fluent-convex middleware, custom wrappers, or anywhere you
-   * need the current `{ userId, user, groupId, role, grants }` object.
+   * this in custom wrappers, middleware, or anywhere you need the current
+   * `{ userId, user, groupId, role, grants }` object.
    *
    * This is the authorization-enrichment path. For native identity claims
    * already present on the JWT, prefer `ctx.auth.getUserIdentity()`.
    *
    * Throws a structured `ConvexError` when unauthenticated by default.
-   * Pass `{ optional: true }` to get a null-shaped auth object instead.
+   * Use `auth.context.optional(ctx)` to get a null-shaped auth object instead.
    *
    * @param ctx - Convex query, mutation, or action context.
-   * @param config - Optional auth resolution config. Supports `optional` and
-   *   `resolve`.
+   * @param config - Optional auth resolution config. Supports `require`,
+   *   `active`, and `resolve`.
    * @returns The current auth context.
-   *
-   * @example fluent-convex middleware
-   * ```ts
-   * const withAuth = convex.createMiddleware(async (ctx, next) => {
-   *   return next({ ...ctx, auth: await auth.context(ctx) });
-   * });
-   * ```
    *
    * @example Direct usage in a handler
    * ```ts
@@ -216,13 +211,23 @@ export type AuthApiBase<
    *
    * @example Optional usage
    * ```ts
-   * const authContext = await auth.context(ctx, { optional: true });
+   * const authContext = await auth.context.optional(ctx);
    * if (authContext.userId === null) {
    *   return null;
    * }
    * ```
+   *
+   * @example With resolve
+   * ```ts
+   * const authContext = await auth.context(ctx, {
+   *   resolve: async (_ctx, user, state) => ({
+   *     email: user.email,
+   *     canWrite: state.grants.includes("posts.write"),
+   *   }),
+   * });
+   * ```
    */
-  context: AuthContextResolver;
+  context: AuthContextResolver & { optional: OptionalAuthContextResolver };
   /**
    * Context enrichment for convex-helpers `customQuery` / `customMutation` /
    * `customAction`.
@@ -261,7 +266,7 @@ export type AuthApiBase<
    * });
    * ```
    */
-  ctx: AuthContextFactory;
+  ctx: AuthContextFactory & { optional: OptionalAuthContextFactory };
 };
 
 type InternalSsoApi = ReturnType<typeof AuthFactory>["auth"]["sso"];

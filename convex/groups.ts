@@ -113,7 +113,7 @@ export const emailExists = query({
       where: { email: args.email.trim().toLowerCase() },
       limit: 1,
     });
-    return result.items.length > 0;
+    return result.page.length > 0;
   },
 });
 
@@ -143,11 +143,11 @@ export const list = authQuery({
       orderBy: "_creationTime",
       order: "asc",
     });
-    const groupIds: readonly string[] = memberships.items.map(
+    const groupIds: readonly string[] = memberships.page.map(
       (m) => m.groupId,
     );
     const groupDocs = await auth.group.get(ctx, groupIds);
-    return memberships.items.flatMap(
+    return memberships.page.flatMap(
       (m, i) => {
         const group = groupDocs[i];
         if (!group) return [];
@@ -191,10 +191,10 @@ export const get = authQuery({
       limit: 20,
     });
 
-    const rootGroupIds = roots.items.map((g) => g._id);
+    const rootGroupIds = roots.page.map((g) => g._id);
     const resolutions = await auth.member.inspect(ctx, { userId, groupIds: rootGroupIds });
 
-    const groups: GroupSummary[] = roots.items.flatMap(
+    const groups: GroupSummary[] = roots.page.flatMap(
       (g, i) => {
         const r = resolutions[i];
         if (!r || r.membership === null) return [];
@@ -230,7 +230,7 @@ export const get = authQuery({
       }),
     ]);
 
-    const memberUserIds: readonly string[] = members.items.map((m) => m.userId);
+    const memberUserIds: readonly string[] = members.page.map((m) => m.userId);
     const memberUsers = await auth.user.get(ctx, memberUserIds);
 
     return {
@@ -252,7 +252,7 @@ export const get = authQuery({
           issueCount: p.issueCounter,
           openIssueCount: p.openIssueCount ?? 0,
         })),
-        members: members.items.map((m, i) => {
+        members: members.page.map((m, i) => {
           const u = memberUsers[i];
           return {
             memberId: m._id,
@@ -285,7 +285,7 @@ export const listInvites = authQuery({
       order: "desc",
       limit: 20,
     });
-    return result.items.map((inv) => ({
+    return result.page.map((inv) => ({
       inviteId: inv._id,
       email: inv.email ?? null,
       roleIds: inv.roleIds ?? [],
@@ -339,7 +339,7 @@ export const updateMemberRole = authMutation({
     }
     if (matched !== validRoleIds[0]) {
       const members = await auth.member.list(ctx, { where: { groupId: args.groupId }, limit: 50 });
-      const adminCount = members.items.filter(
+      const adminCount = members.page.filter(
         (m) =>
           m.roleIds?.includes(validRoleIds[0]) && m._id !== args.memberId,
       ).length;
