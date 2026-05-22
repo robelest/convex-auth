@@ -233,7 +233,7 @@ type MountedGroupTarget = {
 
 function requireSignedInUser(auth: Pick<AuthApi, "context">) {
   return async (ctx: { auth: import("convex/server").Auth }): Promise<string | null> => {
-    return (await auth.context(ctx, { optional: true })).userId;
+    return (await auth.context.optional(ctx)).userId;
   };
 }
 
@@ -844,7 +844,7 @@ export function sso<
                 args.connectionId,
               );
               return endpoints.map((endpoint: Record<string, unknown>) => {
-                const { secretHash: _secretHash, ...rest } = endpoint;
+                const { secretCiphertext: _secretCiphertext, ...rest } = endpoint;
                 return rest;
               });
             },

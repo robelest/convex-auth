@@ -1,4 +1,4 @@
-import { v, Validator } from "convex/values";
+import { type GenericId, v, type Validator, type VId } from "convex/values";
 
 export const TABLES = {
   User: "User",
@@ -10,7 +10,6 @@ export const TABLES = {
   RefreshToken: "RefreshToken",
   Passkey: "Passkey",
   TotpFactor: "TotpFactor",
-  RateLimit: "RateLimit",
   Group: "Group",
   GroupTag: "GroupTag",
   GroupMember: "GroupMember",
@@ -30,10 +29,20 @@ export const TABLES = {
 
 export const vTag = v.object({ key: v.string(), value: v.string() });
 
+/**
+ * Convex-native pagination return shape — matches `PaginationResult<T>` from
+ * `convex/server`. Consumers can pass these queries directly to
+ * `usePaginatedQuery` without any client-side adaptation.
+ */
 export const vPaginated = <V extends Validator<any, any, any>>(item: V) =>
   v.object({
-    items: v.array(item),
-    nextCursor: v.union(v.string(), v.null()),
+    page: v.array(item),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+    splitCursor: v.optional(v.union(v.string(), v.null())),
+    pageStatus: v.optional(
+      v.union(v.literal("SplitRecommended"), v.literal("SplitRequired"), v.null()),
+    ),
   });
 
 export const vInviteStatus = v.union(
@@ -190,8 +199,31 @@ function vDocMeta<T extends (typeof TABLES)[keyof typeof TABLES]>(tableName: T) 
   };
 }
 
-export const vUserDoc = v.object({
-  ...vDocMeta(TABLES.User),
+/**
+ * The shape of `v.id` — and any drop-in replacement that needs to type-claim
+ * `Id<T>` while choosing a different runtime validator (e.g. `v.string()` for
+ * cross-component boundaries where the consumer's data model lacks the
+ * component's table tags).
+ */
+export type IdValidatorFn = <T extends string>(table: T) => VId<GenericId<T>, "required">;
+
+/**
+ * Field maps for the five documents that cross the component boundary.
+ *
+ * Each builder takes the ID validator function as its only parameter and
+ * is called twice in the codebase: once with `v.id` here (strict —
+ * component-internal `vUserDoc` etc.), and once with `vIdString` over in
+ * `server/validators.ts` (permissive — the `auth.v.*` consumer-facing
+ * validators that need to accept component-issued IDs after they cross the
+ * component boundary).
+ *
+ * Each builder is generic over the ID-validator function so each call site
+ * preserves its concrete return type. Without `<F extends IdValidatorFn>`
+ * TypeScript collapses `Infer<…>._id` to a single shared inference.
+ */
+export const userFields = <F extends IdValidatorFn>(vId: F) => ({
+  _id: vId(TABLES.User),
+  _creationTime: v.number(),
   name: v.optional(v.string()),
   image: v.optional(v.string()),
   email: v.optional(v.string()),
@@ -199,11 +231,66 @@ export const vUserDoc = v.object({
   phone: v.optional(v.string()),
   phoneVerificationTime: v.optional(v.number()),
   isAnonymous: v.optional(v.boolean()),
-  lastActiveGroup: v.optional(v.id(TABLES.Group)),
-  // Deprecated tolerated field — see schema.ts. Strip via `dropHasTotp`.
+  lastActiveGroup: v.optional(vId(TABLES.Group)),
   hasTotp: v.optional(v.boolean()),
   extend: v.optional(v.any()),
 });
+
+export const emailFields = <F extends IdValidatorFn>(vId: F) => ({
+  _id: vId(TABLES.UserEmail),
+  _creationTime: v.number(),
+  userId: vId(TABLES.User),
+  email: v.string(),
+  verificationTime: v.optional(v.number()),
+  isPrimary: v.boolean(),
+  source: vUserEmailSource,
+  accountId: v.optional(vId(TABLES.Account)),
+  provider: v.optional(v.string()),
+  connectionId: v.optional(vId(TABLES.GroupConnection)),
+});
+
+export const groupFields = <F extends IdValidatorFn>(vId: F) => ({
+  _id: vId(TABLES.Group),
+  _creationTime: v.number(),
+  name: v.string(),
+  slug: v.optional(v.string()),
+  type: v.optional(v.string()),
+  parentGroupId: v.optional(vId(TABLES.Group)),
+  rootGroupId: v.optional(vId(TABLES.Group)),
+  isRoot: v.optional(v.boolean()),
+  tags: v.optional(v.array(vTag)),
+  policy: v.optional(vGroupConnectionPolicy),
+  extend: v.optional(v.any()),
+});
+
+export const memberFields = <F extends IdValidatorFn>(vId: F) => ({
+  _id: vId(TABLES.GroupMember),
+  _creationTime: v.number(),
+  groupId: vId(TABLES.Group),
+  userId: vId(TABLES.User),
+  role: v.optional(v.string()),
+  roleIds: v.optional(v.array(v.string())),
+  status: v.optional(v.string()),
+  extend: v.optional(v.any()),
+});
+
+export const inviteFields = <F extends IdValidatorFn>(vId: F) => ({
+  _id: vId(TABLES.GroupInvite),
+  _creationTime: v.number(),
+  groupId: v.optional(vId(TABLES.Group)),
+  invitedByUserId: v.optional(vId(TABLES.User)),
+  email: v.optional(v.string()),
+  tokenHash: v.string(),
+  role: v.optional(v.string()),
+  roleIds: v.optional(v.array(v.string())),
+  status: vInviteStatus,
+  expiresTime: v.optional(v.number()),
+  acceptedByUserId: v.optional(vId(TABLES.User)),
+  acceptedTime: v.optional(v.number()),
+  extend: v.optional(v.any()),
+});
+
+export const vUserDoc = v.object(userFields(v.id));
 
 export const vUserEmailSource = v.union(
   v.literal("password"),
@@ -219,17 +306,7 @@ export const vProfileEmail = v.object({
   verified: v.optional(v.boolean()),
 });
 
-export const vUserEmailDoc = v.object({
-  ...vDocMeta(TABLES.UserEmail),
-  userId: v.id(TABLES.User),
-  email: v.string(),
-  verificationTime: v.optional(v.number()),
-  isPrimary: v.boolean(),
-  source: vUserEmailSource,
-  accountId: v.optional(v.id(TABLES.Account)),
-  provider: v.optional(v.string()),
-  connectionId: v.optional(v.id(TABLES.GroupConnection)),
-});
+export const vUserEmailDoc = v.object(emailFields(v.id));
 
 export const vSessionDoc = v.object({
   ...vDocMeta(TABLES.Session),
@@ -301,50 +378,11 @@ export const vTotpFactorDoc = v.object({
   lastUsedAt: v.optional(v.number()),
 });
 
-export const vRateLimitDoc = v.object({
-  ...vDocMeta(TABLES.RateLimit),
-  identifier: v.string(),
-  last_attempt_time: v.number(),
-  attempts_left: v.number(),
-});
+export const vGroupDoc = v.object(groupFields(v.id));
 
-export const vGroupDoc = v.object({
-  ...vDocMeta(TABLES.Group),
-  name: v.string(),
-  slug: v.optional(v.string()),
-  type: v.optional(v.string()),
-  parentGroupId: v.optional(v.id(TABLES.Group)),
-  rootGroupId: v.optional(v.id(TABLES.Group)),
-  isRoot: v.optional(v.boolean()),
-  tags: v.optional(v.array(vTag)),
-  policy: v.optional(vGroupConnectionPolicy),
-  extend: v.optional(v.any()),
-});
+export const vGroupMemberDoc = v.object(memberFields(v.id));
 
-export const vGroupMemberDoc = v.object({
-  ...vDocMeta(TABLES.GroupMember),
-  groupId: v.id(TABLES.Group),
-  userId: v.id(TABLES.User),
-  role: v.optional(v.string()),
-  roleIds: v.optional(v.array(v.string())),
-  status: v.optional(v.string()),
-  extend: v.optional(v.any()),
-});
-
-export const vGroupInviteDoc = v.object({
-  ...vDocMeta(TABLES.GroupInvite),
-  groupId: v.optional(v.id(TABLES.Group)),
-  invitedByUserId: v.optional(v.id(TABLES.User)),
-  email: v.optional(v.string()),
-  tokenHash: v.string(),
-  role: v.optional(v.string()),
-  roleIds: v.optional(v.array(v.string())),
-  status: vInviteStatus,
-  expiresTime: v.optional(v.number()),
-  acceptedByUserId: v.optional(v.id(TABLES.User)),
-  acceptedTime: v.optional(v.number()),
-  extend: v.optional(v.any()),
-});
+export const vGroupInviteDoc = v.object(inviteFields(v.id));
 
 export const vApiKeyDoc = v.object({
   ...vDocMeta(TABLES.ApiKey),
@@ -462,7 +500,7 @@ export const vGroupWebhookEndpointDoc = v.object({
   groupId: v.id(TABLES.Group),
   url: v.string(),
   status: vWebhookEndpointStatus,
-  secretHash: v.string(),
+  secretCiphertext: v.string(),
   subscriptions: v.array(v.string()),
   createdByUserId: v.optional(v.id(TABLES.User)),
   lastSuccessAt: v.optional(v.number()),
@@ -484,15 +522,8 @@ export const vGroupWebhookDeliveryDoc = v.object({
   lastResponseStatus: v.optional(v.number()),
   lastError: v.optional(v.string()),
   payload: v.any(),
-});
-
-export const vRateLimitResult = v.object({
-  ...vDocMeta(TABLES.RateLimit),
-  identifier: v.string(),
-  last_attempt_time: v.number(),
-  attempts_left: v.number(),
-  attemptsLeft: v.number(),
-  lastAttemptTime: v.number(),
+  signature: v.string(),
+  signedAt: v.number(),
 });
 
 export const vInviteRedeemResult = v.object({

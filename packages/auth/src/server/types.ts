@@ -1260,6 +1260,17 @@ export interface OAuthMaterializedConfig {
    * @readonly
    */
   readonly accountLinking?: "verifiedEmail" | "none" | "sameConnection";
+  /**
+   * On a returning OAuth sign-in (matching `(provider, providerAccountId)`),
+   * refresh the user's `name` / `image` / `email` from the incoming profile.
+   * Defaults to `true` to match Auth.js / Clerk conventions and SSO's
+   * `policy.provisioning.user.updateProfileOnLogin` philosophy.
+   *
+   * Set to `false` when consumer apps own the canonical user profile and
+   * don't want OAuth re-auth to overwrite hand-edited fields.
+   * @readonly
+   */
+  readonly updateProfileOnLogin?: boolean;
 }
 
 /**
@@ -1408,7 +1419,7 @@ export type ListOptions<TWhere extends Record<string, unknown>, TOrderBy extends
   where?: TWhere;
   /** Maximum number of items to return. Defaults to 50, max 100. */
   limit?: number;
-  /** Opaque cursor from a previous `ListResult.nextCursor`. */
+  /** Opaque cursor from a previous `PaginationResult.continueCursor`. */
   cursor?: string | null;
   /** Field to sort by. Defaults to `"_creationTime"`. */
   orderBy?: TOrderBy;
@@ -1620,11 +1631,10 @@ type AuthComponentApi = {
       delete: FunctionReference<"mutation", "internal">;
     };
   };
-  rateLimit: {
-    get: FunctionReference<"query", "internal">;
-    create: FunctionReference<"mutation", "internal">;
-    update: FunctionReference<"mutation", "internal">;
-    delete: FunctionReference<"mutation", "internal">;
+  limits: {
+    signInCheck: FunctionReference<"query", "internal">;
+    signInRecord: FunctionReference<"mutation", "internal">;
+    signInReset: FunctionReference<"mutation", "internal">;
   };
   group: {
     get: FunctionReference<"query", "internal">;

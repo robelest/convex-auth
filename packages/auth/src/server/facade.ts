@@ -98,8 +98,8 @@ export type AuthContext = {
 };
 
 /**
- * Nullable auth context returned by `auth.context(ctx, { optional: true })`
- * and injected by `auth.ctx({ optional: true })`.
+ * Nullable auth context returned by `auth.context.optional(ctx)` and injected
+ * by `auth.ctx.optional()`.
  *
  * Use this when callers may be unauthenticated but you still want a stable
  * auth-shaped object.
@@ -110,7 +110,7 @@ export type AuthContext = {
  *
  * @example
  * ```ts
- * const authContext = await auth.context(ctx, { optional: true });
+ * const authContext = await auth.context.optional(ctx);
  * if (authContext.userId === null) {
  *   return null;
  * }
@@ -155,16 +155,19 @@ type PublicAuthContextConfig<TResolve extends Record<string, unknown>, TCtx> = A
   TCtx & AuthResolverCtx
 >;
 
-type AuthContextResolver = {
-  <TCtx, TResolve extends Record<string, unknown> = Record<string, never>>(
-    ctx: TCtx,
-    config: PublicAuthContextConfig<TResolve, TCtx> & { optional: true },
-  ): Promise<ResolvedOptionalAuthContext<TResolve>>;
+interface AuthContextResolver {
   <TCtx, TResolve extends Record<string, unknown> = Record<string, never>>(
     ctx: TCtx,
     config?: PublicAuthContextConfig<TResolve, TCtx>,
   ): Promise<ResolvedAuthContext<TResolve>>;
-};
+}
+
+interface OptionalAuthContextResolver {
+  <TCtx, TResolve extends Record<string, unknown> = Record<string, never>>(
+    ctx: TCtx,
+    config?: PublicAuthContextConfig<TResolve, TCtx>,
+  ): Promise<ResolvedOptionalAuthContext<TResolve>>;
+}
 
 type AuthContextCustomization<TAuth> = {
   args: {};
@@ -180,14 +183,17 @@ type AuthContextCustomization<TAuth> = {
   }>;
 };
 
-type AuthContextFactory = {
-  <TResolve extends Record<string, unknown> = Record<string, never>>(
-    config: AuthContextConfig<TResolve> & { optional: true },
-  ): AuthContextCustomization<OptionalAuthContextState & TResolve>;
+interface AuthContextFactory {
   <TResolve extends Record<string, unknown> = Record<string, never>>(
     config?: AuthContextConfig<TResolve>,
   ): AuthContextCustomization<RequiredAuthContextState & TResolve>;
-};
+}
+
+interface OptionalAuthContextFactory {
+  <TResolve extends Record<string, unknown> = Record<string, never>>(
+    config?: AuthContextConfig<TResolve>,
+  ): AuthContextCustomization<OptionalAuthContextState & TResolve>;
+}
 
 /**
  * Minimal auth helper surface required by the context resolvers.
@@ -236,11 +242,6 @@ export type AuthContextConfig<
   TResolve extends Record<string, unknown> = Record<string, never>,
   TCtx extends AuthIdentityCtx = AuthIdentityCtx,
 > = {
-  /**
-   * Allow unauthenticated callers and return a null-shaped auth object instead
-   * of throwing `NOT_SIGNED_IN`.
-   */
-  optional?: boolean;
   /**
    * Enforce grant(s) inline — equivalent to calling `ctx.auth.require(...)`
    * at the top of every handler built with this customization. Throws
@@ -292,14 +293,16 @@ export type InferAuth<
 > = Awaited<ReturnType<T["input"]>>["ctx"]["auth"];
 
 type AuthContextFacade = {
-  context: AuthContextResolver;
-  ctx: AuthContextFactory;
+  context: AuthContextResolver & { optional: OptionalAuthContextResolver };
+  ctx: AuthContextFactory & { optional: OptionalAuthContextFactory };
 };
 
 export type {
   AuthContextFacade,
   AuthContextResolver,
   AuthContextFactory,
+  OptionalAuthContextResolver,
+  OptionalAuthContextFactory,
 };
 
 // ============================================================================
@@ -374,16 +377,17 @@ function enforceAuthRequirements(
 }
 
 /**
- * This low-level helper underpins `auth.context(...)`.
+ * This low-level helper underpins `auth.context(...)` and
+ * `auth.context.optional(...)`.
  */
 async function createPublicAuthContext<
   TCtx extends AuthIdentityCtx & AuthQueryCtx,
   TResolve extends Record<string, unknown> = Record<string, never>,
->(auth: AuthLike, ctx: TCtx, config?: AuthContextConfig<TResolve, TCtx>) {
+>(auth: AuthLike, ctx: TCtx, config: AuthContextConfig<TResolve, TCtx> | undefined, optional: boolean) {
   const resolved = await resolveConfiguredAuthContext(auth, ctx, config);
 
   if (resolved === null) {
-    if (config?.optional !== true) {
+    if (!optional) {
       throw createNotSignedInError();
     }
     return createUnauthenticatedAuthContext();
@@ -402,14 +406,14 @@ async function createPublicAuthContext<
 /**
  * Create a convex-helpers customization that injects `ctx.auth`.
  *
- * This low-level helper underpins `auth.ctx(...)`.
+ * This low-level helper underpins `auth.ctx(...)` and `auth.ctx.optional(...)`.
  */
 function createAuthContextCustomization<
   TResolve extends Record<string, unknown> = Record<string, never>,
   TCtx extends AuthIdentityCtx & {
     runQuery: (...args: never[]) => Promise<unknown>;
   } = AuthIdentityCtx & { runQuery: (...args: never[]) => Promise<unknown> },
->(auth: AuthLike, config?: AuthContextConfig<TResolve, TCtx>) {
+>(auth: AuthLike, config: AuthContextConfig<TResolve, TCtx> | undefined, optional: boolean) {
   return {
     args: {},
     input: async (ctx: TCtx, _args: Record<string, never>, _extra?: unknown) => {
@@ -418,7 +422,7 @@ function createAuthContextCustomization<
       const resolved = await resolveConfiguredAuthContext(auth, ctx, config);
 
       if (resolved === null) {
-        if (config?.optional !== true) {
+        if (!optional) {
           throw createNotSignedInError();
         }
         return {
@@ -457,12 +461,24 @@ function createAuthContextCustomization<
  * @internal
  */
 export function createAuthContextFacade(auth: AuthLike): AuthContextFacade {
+  const context = ((ctx: AuthResolverCtx, config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>) => {
+    assertAuthResolverContext(ctx);
+    return createPublicAuthContext(auth, ctx, config, false);
+  }) as unknown as AuthContextFacade["context"];
+
+  context.optional = ((ctx: AuthResolverCtx, config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>) => {
+    assertAuthResolverContext(ctx);
+    return createPublicAuthContext(auth, ctx, config, true);
+  }) as unknown as OptionalAuthContextResolver;
+
+  const ctxFactory = ((config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>) =>
+    createAuthContextCustomization(auth, config, false)) as unknown as AuthContextFacade["ctx"];
+
+  ctxFactory.optional = ((config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>) =>
+    createAuthContextCustomization(auth, config, true)) as unknown as OptionalAuthContextFactory;
+
   return {
-    context: ((ctx, config) => {
-      assertAuthResolverContext(ctx);
-      return createPublicAuthContext(auth, ctx, config);
-    }) as AuthContextResolver,
-    ctx: ((config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>) =>
-      createAuthContextCustomization(auth, config)) as AuthContextFactory,
+    context,
+    ctx: ctxFactory,
   };
 }

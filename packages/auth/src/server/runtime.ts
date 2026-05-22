@@ -699,8 +699,8 @@ export function Auth(config_: ConvexAuthConfig) {
      * Checks session auth first, then falls back to `Authorization: Bearer sk_*`
      * API keys. This is the low-level helper for endpoints that intentionally
      * accept either browser sessions or API keys.
-     * Pass `{ optional: true }` to get a null-shaped auth object instead of a
-     * `NOT_SIGNED_IN` error.
+     * Use `auth.request.context.optional(ctx, request)` to get a null-shaped
+     * auth object instead of a `NOT_SIGNED_IN` error.
      *
      * ```ts
      * http.route({

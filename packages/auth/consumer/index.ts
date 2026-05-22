@@ -38,11 +38,10 @@ const authCtx = authLike.ctx({
   }),
 });
 
-const optionalContextPromise = authLike.context({} as any, { optional: true });
-const optionalHttpContextPromise = authLike.request.context(
+const optionalContextPromise = authLike.context.optional({} as any);
+const optionalHttpContextPromise = authLike.request.context.optional(
   {} as any,
   new Request("https://example.com"),
-  { optional: true },
 );
 
 type _InferredAuth = InferAuth<typeof authCtx>;

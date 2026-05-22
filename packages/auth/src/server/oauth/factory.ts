@@ -43,6 +43,7 @@ export interface OAuthProviderConfig {
   readonly nonce?: boolean;
   readonly validateTokens?: (tokens: OAuthTokens, ctx: { nonce?: string }) => Promise<void>;
   readonly accountLinking?: "verifiedEmail" | "none";
+  readonly updateProfileOnLogin?: boolean;
 }
 
 function normalizeTokens(tokens: OAuth2Tokens): OAuthTokens {
@@ -156,5 +157,6 @@ export function createOAuthProvider(config: OAuthProviderConfig): OAuthMateriali
     nonce: config.nonce,
     validateTokens: config.validateTokens,
     accountLinking: config.accountLinking,
+    updateProfileOnLogin: config.updateProfileOnLogin,
   };
 }

@@ -88,7 +88,7 @@ type WebhookEndpointRecord = {
   groupId: string;
   url: string;
   status: string;
-  secretHash: string;
+  secretCiphertext: string;
   subscriptions: string[];
   createdByUserId?: string;
   lastSuccessAt?: number;
@@ -577,7 +577,7 @@ export const createWebhookEndpoint = (
     connectionId: string;
     groupId: string;
     url: string;
-    secretHash: string;
+    secretCiphertext: string;
     subscriptions: string[];
     createdByUserId?: string;
   },

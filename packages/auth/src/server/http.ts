@@ -93,7 +93,7 @@ export type HttpAuthContext =
 
 /**
  * Nullable HTTP auth context returned by
- * `auth.request.context(ctx, request, { optional: true })`.
+ * `auth.request.context.optional(ctx, request)`.
  *
  * This preserves a stable auth-shaped object for raw `httpAction` handlers
  * that allow anonymous callers.
@@ -130,11 +130,6 @@ export type HttpAuthContextConfig<
   TResolve extends Record<string, unknown> = Record<string, never>,
   TCtx extends HttpContextCtx = HttpContextCtx,
 > = {
-  /**
-   * Allow unauthenticated callers and return a null-shaped auth object instead
-   * of throwing `NOT_SIGNED_IN`.
-   */
-  optional?: boolean;
   /**
    * Attach additional derived fields to the resolved HTTP auth context.
    *
@@ -237,18 +232,9 @@ async function resolveHttpAuthContext(
 }
 
 /**
- * @internal
- * Create the implementation behind `auth.request.context(...)`.
+ * Resolver for `auth.request.context(ctx, request, config?)`.
  */
-export function createHttpContext(auth: HttpContextAuthLike): {
-  <
-    TResolve extends Record<string, unknown> = Record<string, never>,
-    TCtx extends HttpContextCtx = HttpContextCtx,
-  >(
-    ctx: TCtx,
-    request: Request,
-    config: HttpAuthContextConfig<TResolve, TCtx> & { optional: true },
-  ): Promise<OptionalHttpAuthContext & TResolve>;
+export interface HttpContextResolver {
   <
     TResolve extends Record<string, unknown> = Record<string, never>,
     TCtx extends HttpContextCtx = HttpContextCtx,
@@ -257,53 +243,75 @@ export function createHttpContext(auth: HttpContextAuthLike): {
     request: Request,
     config?: HttpAuthContextConfig<TResolve, TCtx>,
   ): Promise<HttpAuthContext & TResolve>;
-} {
-  return (async (
+}
+
+/**
+ * Nullable variant for `auth.request.context.optional(ctx, request, config?)`.
+ */
+export interface OptionalHttpContextResolver {
+  <
+    TResolve extends Record<string, unknown> = Record<string, never>,
+    TCtx extends HttpContextCtx = HttpContextCtx,
+  >(
+    ctx: TCtx,
+    request: Request,
+    config?: HttpAuthContextConfig<TResolve, TCtx>,
+  ): Promise<OptionalHttpAuthContext & TResolve>;
+}
+
+async function resolveHttpContext(
+  auth: HttpContextAuthLike,
+  ctx: HttpContextCtx,
+  request: Request,
+  config: HttpAuthContextConfig<Record<string, unknown>> | undefined,
+  optional: boolean,
+) {
+  const fallback = () => resolveHttpAuthContext(auth, ctx, request);
+  const authOverride = config?.authResolve ? await config.authResolve(ctx, fallback) : undefined;
+  const resolved = authOverride === undefined ? await fallback() : authOverride;
+
+  if (resolved === null) {
+    if (!optional) {
+      throw createNotSignedInError();
+    }
+    return {
+      ...createUnauthenticatedAuthContext(),
+      source: null,
+      key: null,
+    };
+  }
+
+  const extra = config?.resolve ? await config.resolve(ctx, resolved.user, resolved) : {};
+
+  return {
+    ...resolved,
+    ...extra,
+  };
+}
+
+/**
+ * @internal
+ * Create the implementation behind `auth.request.context(...)` and
+ * `auth.request.context.optional(...)`.
+ */
+export function createHttpContext(
+  auth: HttpContextAuthLike,
+): HttpContextResolver & { optional: OptionalHttpContextResolver } {
+  const required = ((
     ctx: HttpContextCtx,
     request: Request,
     config?: HttpAuthContextConfig<Record<string, unknown>>,
-  ) => {
-    const fallback = () => resolveHttpAuthContext(auth, ctx, request);
-    const authOverride = config?.authResolve ? await config.authResolve(ctx, fallback) : undefined;
-    const resolved = authOverride === undefined ? await fallback() : authOverride;
-
-    if (resolved === null) {
-      if (config?.optional !== true) {
-        throw createNotSignedInError();
-      }
-      return {
-        ...createUnauthenticatedAuthContext(),
-        source: null,
-        key: null,
-      };
-    }
-
-    const extra = config?.resolve ? await config.resolve(ctx, resolved.user, resolved) : {};
-
-    return {
-      ...resolved,
-      ...extra,
-    };
-  }) as {
-    <
-      TResolve extends Record<string, unknown> = Record<string, never>,
-      TCtx extends HttpContextCtx = HttpContextCtx,
-    >(
-      ctx: TCtx,
-      request: Request,
-      config: HttpAuthContextConfig<TResolve, TCtx> & {
-        optional: true;
-      },
-    ): Promise<OptionalHttpAuthContext & TResolve>;
-    <
-      TResolve extends Record<string, unknown> = Record<string, never>,
-      TCtx extends HttpContextCtx = HttpContextCtx,
-    >(
-      ctx: TCtx,
-      request: Request,
-      config?: HttpAuthContextConfig<TResolve, TCtx>,
-    ): Promise<HttpAuthContext & TResolve>;
+  ) => resolveHttpContext(auth, ctx, request, config, false)) as HttpContextResolver & {
+    optional: OptionalHttpContextResolver;
   };
+
+  required.optional = ((
+    ctx: HttpContextCtx,
+    request: Request,
+    config?: HttpAuthContextConfig<Record<string, unknown>>,
+  ) => resolveHttpContext(auth, ctx, request, config, true)) as OptionalHttpContextResolver;
+
+  return required;
 }
 
 export function createHttpAction(

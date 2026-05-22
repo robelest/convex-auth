@@ -8,7 +8,7 @@
 
 import { v } from "convex/values";
 
-import { query } from "./functions";
+import { internalQuery } from "./functions";
 import { vUserDoc } from "./model";
 
 export {
@@ -36,7 +36,7 @@ export {
  * await ctx.runQuery(component.user.get, { verifiedEmail: "a@b.com" });
  * ```
  */
-export const get = query({
+export const get = internalQuery({
   args: {
     id: v.optional(v.id("User")),
     ids: v.optional(v.array(v.id("User"))),

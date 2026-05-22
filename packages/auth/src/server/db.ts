@@ -65,11 +65,10 @@ type AuthComponentApiLike = {
       delete: FunctionReference<"mutation", "internal">;
     };
   };
-  rateLimit: {
-    get: FunctionReference<"query", "internal">;
-    create: FunctionReference<"mutation", "internal">;
-    update: FunctionReference<"mutation", "internal">;
-    delete: FunctionReference<"mutation", "internal">;
+  limits: {
+    signInCheck: FunctionReference<"query", "internal">;
+    signInRecord: FunctionReference<"mutation", "internal">;
+    signInReset: FunctionReference<"mutation", "internal">;
   };
 };
 
@@ -229,15 +228,6 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         ctx.runMutation(component.token.refresh.delete, { sessionId }),
       getActive: (sessionId: string) =>
         ctx.runQuery(component.token.refresh.get, { activeForSession: sessionId }),
-    },
-    rateLimits: {
-      get: (identifier: string) => ctx.runQuery(component.rateLimit.get, { identifier }),
-      create: (args: { identifier: string; attemptsLeft: number; lastAttemptTime: number }) =>
-        ctx.runMutation(component.rateLimit.create, args),
-      patch: (rateLimitId: string, data: Record<string, unknown>) =>
-        ctx.runMutation(component.rateLimit.update, { rateLimitId, data }),
-      delete: (rateLimitId: string) =>
-        ctx.runMutation(component.rateLimit.delete, { rateLimitId }),
     },
   };
 }

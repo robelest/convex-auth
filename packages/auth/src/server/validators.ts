@@ -12,18 +12,23 @@
  * @module
  */
 
-import { GenericId, Infer, v, VId, Validator } from "convex/values";
+import { type GenericId, type Infer, v, type VId, type Validator } from "convex/values";
 
 import {
-  vGroupConnectionPolicy,
-  vInviteStatus,
+  emailFields,
+  groupFields,
+  type IdValidatorFn,
+  inviteFields,
+  memberFields,
+  userFields,
   vPaginated,
-  vTag,
-  vUserEmailSource,
 } from "../component/model";
 
-/** `Id<T>` at the type level, `v.string()` at runtime — for cross-component fields. */
-const vIdString = <T extends string>(_table: T) =>
+/**
+ * `Id<T>` at the type level, `v.string()` at runtime — for cross-component
+ * fields where the consumer's data model lacks the component's table tag.
+ */
+const vIdString: IdValidatorFn = <T extends string>(_table: T) =>
   v.string() as unknown as VId<GenericId<T>, "required">;
 
 /**
@@ -60,74 +65,11 @@ const docWithExtend = <
     extend: v.optional(extend),
   });
 
-const userFieldsX = {
-  _id: vIdString("User"),
-  _creationTime: v.number(),
-  name: v.optional(v.string()),
-  image: v.optional(v.string()),
-  email: v.optional(v.string()),
-  emailVerificationTime: v.optional(v.number()),
-  phone: v.optional(v.string()),
-  phoneVerificationTime: v.optional(v.number()),
-  isAnonymous: v.optional(v.boolean()),
-  lastActiveGroup: v.optional(vIdString("Group")),
-  hasTotp: v.optional(v.boolean()),
-  extend: v.optional(v.any()),
-};
-
-const groupFieldsX = {
-  _id: vIdString("Group"),
-  _creationTime: v.number(),
-  name: v.string(),
-  slug: v.optional(v.string()),
-  type: v.optional(v.string()),
-  parentGroupId: v.optional(vIdString("Group")),
-  rootGroupId: v.optional(vIdString("Group")),
-  isRoot: v.optional(v.boolean()),
-  tags: v.optional(v.array(vTag)),
-  policy: v.optional(vGroupConnectionPolicy),
-  extend: v.optional(v.any()),
-};
-
-const memberFieldsX = {
-  _id: vIdString("GroupMember"),
-  _creationTime: v.number(),
-  groupId: vIdString("Group"),
-  userId: vIdString("User"),
-  role: v.optional(v.string()),
-  roleIds: v.optional(v.array(v.string())),
-  status: v.optional(v.string()),
-  extend: v.optional(v.any()),
-};
-
-const inviteDocX = v.object({
-  _id: vIdString("GroupInvite"),
-  _creationTime: v.number(),
-  groupId: v.optional(vIdString("Group")),
-  invitedByUserId: v.optional(vIdString("User")),
-  email: v.optional(v.string()),
-  tokenHash: v.string(),
-  role: v.optional(v.string()),
-  roleIds: v.optional(v.array(v.string())),
-  status: vInviteStatus,
-  expiresTime: v.optional(v.number()),
-  acceptedByUserId: v.optional(vIdString("User")),
-  acceptedTime: v.optional(v.number()),
-  extend: v.optional(v.any()),
-});
-
-const emailDocX = v.object({
-  _id: vIdString("UserEmail"),
-  _creationTime: v.number(),
-  userId: vIdString("User"),
-  email: v.string(),
-  verificationTime: v.optional(v.number()),
-  isPrimary: v.boolean(),
-  source: vUserEmailSource,
-  accountId: v.optional(vIdString("Account")),
-  provider: v.optional(v.string()),
-  connectionId: v.optional(vIdString("GroupConnection")),
-});
+const userFieldsX = userFields(vIdString);
+const groupFieldsX = groupFields(vIdString);
+const memberFieldsX = memberFields(vIdString);
+const inviteDocX = v.object(inviteFields(vIdString));
+const emailDocX = v.object(emailFields(vIdString));
 
 /**
  * Build the `auth.v.*` validator namespace from the consumer's `extend`
