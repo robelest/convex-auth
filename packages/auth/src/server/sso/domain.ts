@@ -205,7 +205,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
 
   const webhook = createGroupWebhookDomain({
     config,
-    sha256,
+    encryptSecret,
     loadConnectionOrThrow,
     recordGroupAuditEvent,
     emitGroupWebhookDeliveries,

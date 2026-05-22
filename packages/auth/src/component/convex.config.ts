@@ -1,10 +1,12 @@
 import { defineComponent } from "convex/server";
 import migrations from "@convex-dev/migrations/convex.config";
+import rateLimiter from "@convex-dev/rate-limiter/convex.config";
+import workpool from "@convex-dev/workpool/convex.config";
 
 const component = defineComponent("auth");
 
-// Mounted so the auth component can run migrations over its own tables
-// (e.g. `dropHasTotp`). Consumers trigger these via `npx convex run`.
 component.use(migrations);
+component.use(rateLimiter);
+component.use(workpool, { name: "webhookWorkpool" });
 
 export default component;

@@ -1,26 +1,23 @@
-import { authDb } from "./db";
-import type { ConvexAuthConfig, Doc, MutationCtx } from "./types";
+import type { ConvexAuthConfig, MutationCtx } from "./types";
 
 const DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR = 10;
 
+function maxAttempts(config: ConvexAuthConfig) {
+  return config.signIn?.maxFailedAttemptsPerHour ?? DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR;
+}
+
 /**
- * Resolved rate-limit state for a sign-in identifier, along with the raw
- * document so callers can patch/delete by id without a second lookup.
+ * Opaque token returned by {@link getSignInRateLimitState}. Kept for
+ * back-compat with callers that thread state through; the underlying
+ * `@convex-dev/rate-limiter` component manages its own storage.
  *
  * @internal
  */
-export type SignInRateLimitState = {
-  limit: Doc<"RateLimit"> & { attemptsLeft: number; lastAttemptTime: number };
-  attemptsLeft: number;
-};
+export type SignInRateLimitState = { identifier: string; ok: boolean };
 
 /**
- * Fetch and compute the live rate-limit state for a sign-in identifier.
- *
- * Returns `null` when no rate-limit document exists yet (the identifier
- * has never seen a failed attempt). The returned `limit` document carries
- * the `_id` needed for any subsequent `patch`/`delete` — letting the
- * caller reuse the same fetch instead of refetching inside each mutator.
+ * Fetch the live rate-limit state for a sign-in identifier without
+ * consuming a token.
  *
  * @internal
  */
@@ -28,12 +25,17 @@ export async function getSignInRateLimitState(
   ctx: MutationCtx,
   identifier: string,
   config: ConvexAuthConfig,
-): Promise<SignInRateLimitState | null> {
-  return await getRateLimitState(ctx, identifier, config);
+): Promise<SignInRateLimitState> {
+  const result = await ctx.runQuery(config.component.limits.signInCheck, {
+    identifier,
+    maxAttemptsPerHour: maxAttempts(config),
+  });
+  return { identifier, ok: result.ok };
 }
 
 /**
  * Check whether the given identifier is currently rate-limited.
+ *
  * @internal
  */
 export async function isSignInRateLimited(
@@ -41,24 +43,24 @@ export async function isSignInRateLimited(
   identifier: string,
   config: ConvexAuthConfig,
 ): Promise<boolean> {
-  const state = await getRateLimitState(ctx, identifier, config);
-  return isStateRateLimited(state);
+  const { ok } = await ctx.runQuery(config.component.limits.signInCheck, {
+    identifier,
+    maxAttemptsPerHour: maxAttempts(config),
+  });
+  return !ok;
 }
 
 /**
- * Test a previously-loaded rate-limit state without re-reading the doc.
+ * Test a previously-loaded rate-limit state without re-reading.
+ *
  * @internal
  */
 export function isStateRateLimited(state: SignInRateLimitState | null): boolean {
-  return state !== null && state.attemptsLeft < 1;
+  return state !== null && !state.ok;
 }
 
 /**
  * Record a failed sign-in attempt for the given identifier.
- *
- * Accepts an optional pre-loaded `state` so callers that already fetched
- * the rate-limit doc (typically via {@link getSignInRateLimitState}) can
- * avoid a second component round-trip.
  *
  * @internal
  */
@@ -66,66 +68,24 @@ export async function recordFailedSignIn(
   ctx: MutationCtx,
   identifier: string,
   config: ConvexAuthConfig,
-  state?: SignInRateLimitState | null,
+  _state?: SignInRateLimitState | null,
 ): Promise<void> {
-  const resolved = state !== undefined ? state : await getRateLimitState(ctx, identifier, config);
-  if (resolved !== null) {
-    await authDb(ctx, config).rateLimits.patch(resolved.limit._id, {
-      attemptsLeft: resolved.attemptsLeft - 1,
-      lastAttemptTime: Date.now(),
-    });
-  } else {
-    await authDb(ctx, config).rateLimits.create({
-      identifier,
-      attemptsLeft:
-        (config.signIn?.maxFailedAttemptsPerHour ?? DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR) - 1,
-      lastAttemptTime: Date.now(),
-    });
-  }
+  await ctx.runMutation(config.component.limits.signInRecord, {
+    identifier,
+    maxAttemptsPerHour: maxAttempts(config),
+  });
 }
 
 /**
  * Reset the rate limit for the given identifier.
- *
- * Accepts an optional pre-loaded `state` so callers with a cached state
- * (e.g. from an earlier {@link isSignInRateLimited} / {@link getSignInRateLimitState}
- * call) can skip the redundant read. Previously, the verify flow was loading
- * the same rate-limit doc twice per successful sign-in.
  *
  * @internal
  */
 export async function resetSignInRateLimit(
   ctx: MutationCtx,
   identifier: string,
-  config: ConvexAuthConfig,
-  state?: SignInRateLimitState | null,
+  _config: ConvexAuthConfig,
+  _state?: SignInRateLimitState | null,
 ): Promise<void> {
-  const resolved = state !== undefined ? state : await getRateLimitState(ctx, identifier, config);
-  if (resolved !== null) {
-    await authDb(ctx, config).rateLimits.delete(resolved.limit._id);
-  }
-}
-
-async function getRateLimitState(
-  ctx: MutationCtx,
-  identifier: string,
-  config: ConvexAuthConfig,
-): Promise<SignInRateLimitState | null> {
-  const limit = await authDb(ctx, config).rateLimits.get(identifier);
-  const typedLimit = limit as
-    | (Doc<"RateLimit"> & { attemptsLeft: number; lastAttemptTime: number })
-    | null;
-  if (typedLimit === null) {
-    return null;
-  }
-  const now = Date.now();
-  const maxAttemptsPerHour =
-    config.signIn?.maxFailedAttemptsPerHour ?? DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR;
-  const elapsed = now - typedLimit.lastAttemptTime;
-  const HOUR_MS = 60 * 60 * 1000;
-  const attemptsLeft = Math.min(
-    maxAttemptsPerHour,
-    typedLimit.attemptsLeft + (elapsed * maxAttemptsPerHour) / HOUR_MS,
-  );
-  return { limit: typedLimit, attemptsLeft };
+  await ctx.runMutation(_config.component.limits.signInReset, { identifier });
 }

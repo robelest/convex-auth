@@ -239,15 +239,6 @@ export default defineSchema({
     .index("user_code_status", ["userCode", "status"]),
 
   /**
-   * Rate limit tracking for OTP and password sign-in attempts.
-   */
-  RateLimit: defineTable({
-    identifier: v.string(),
-    last_attempt_time: v.number(),
-    attempts_left: v.number(),
-  }).index("by_identifier", ["identifier"]),
-
-  /**
    * Hierarchical groups. A group with no `parentGroupId` is a root group.
    * Groups can nest arbitrarily deep via `parentGroupId` for modeling
    * organizations, teams, departments, or any tree structure.
@@ -472,7 +463,13 @@ export default defineSchema({
     groupId: v.id("Group"),
     url: v.string(),
     status: vWebhookEndpointStatus,
-    secretHash: v.string(),
+    /**
+     * Endpoint signing secret encrypted with `AUTH_SECRET_ENCRYPTION_KEY`.
+     * Decrypted at emit time to HMAC-SHA256 each outbound payload; the
+     * dispatch action forwards the precomputed signature in
+     * `X-Auth-Signature`.
+     */
+    secretCiphertext: v.string(),
     subscriptions: v.array(v.string()),
     createdByUserId: v.optional(v.id("User")),
     lastSuccessAt: v.optional(v.number()),
@@ -499,6 +496,10 @@ export default defineSchema({
     lastResponseStatus: v.optional(v.number()),
     lastError: v.optional(v.string()),
     payload: v.any(),
+    /** HMAC-SHA256 hex of `${signedAt}.${body}` using the endpoint secret. */
+    signature: v.string(),
+    /** Epoch ms used in the signature pre-image. */
+    signedAt: v.number(),
   })
     .index("group_connection_id", ["connectionId"])
     .index("status_next_attempt_at", ["status", "nextAttemptAt"])

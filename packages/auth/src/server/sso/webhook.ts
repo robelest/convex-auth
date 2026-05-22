@@ -14,7 +14,7 @@ import type { ConvexAuthMaterializedConfig } from "../types";
 
 type WebhookDeps = {
   config: ConvexAuthMaterializedConfig;
-  sha256: (input: string) => Promise<string>;
+  encryptSecret: (value: string) => Promise<string>;
   loadConnectionOrThrow: (
     ctx: ComponentReadCtx,
     connectionId: string,
@@ -57,7 +57,7 @@ const convexError = (data: { code: string; message: string }) => new ConvexError
 export function createGroupWebhookDomain(deps: WebhookDeps) {
   const {
     config,
-    sha256,
+    encryptSecret,
     loadConnectionOrThrow,
     recordGroupAuditEvent,
     emitGroupWebhookDeliveries,
@@ -85,12 +85,12 @@ export function createGroupWebhookDomain(deps: WebhookDeps) {
             message: "Connection not found.",
           });
         }
-        const secretHash = await sha256(data.secret);
+        const secretCiphertext = await encryptSecret(data.secret);
         const endpointId = await createWebhookEndpoint(ctx, config.component.sso, {
           connectionId: connection._id,
           groupId: connection.groupId,
           url: data.url,
-          secretHash,
+          secretCiphertext,
           subscriptions: data.subscriptions,
           createdByUserId: data.createdByUserId,
         });

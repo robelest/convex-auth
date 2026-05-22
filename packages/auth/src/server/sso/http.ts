@@ -62,7 +62,7 @@ type AuthRuntime = {
     list(
       ctx: GenericActionCtx<GenericDataModel>,
       opts: { where?: Record<string, unknown>; limit?: number },
-    ): Promise<{ items: Array<Record<string, unknown>> }>;
+    ): Promise<{ page: Array<Record<string, unknown>>; isDone: boolean; continueCursor: string }>;
     create(
       ctx: GenericActionCtx<GenericDataModel>,
       args: { name: string; parentGroupId: string; type: string },
@@ -79,7 +79,9 @@ type AuthRuntime = {
       ctx: GenericActionCtx<GenericDataModel>,
       opts: { where?: Record<string, unknown>; limit?: number },
     ): Promise<{
-      items: Array<{ _id: string; userId: string; status?: string }>;
+      page: Array<{ _id: string; userId: string; status?: string }>;
+      isDone: boolean;
+      continueCursor: string;
     }>;
     create(
       ctx: GenericActionCtx<GenericDataModel>,
@@ -845,7 +847,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
         );
         const users = (
           await Promise.all(
-            members.items.map(async (member) => {
+            members.page.map(async (member) => {
               const user = await auth.user.get(state.ctx, member.userId);
               const typedUser = user as UserRecord | null;
               return user
@@ -1288,7 +1290,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
             ]),
         );
         const groups: GroupListItem[] = await Promise.all(
-          groupsList.items.map(async (group) => {
+          groupsList.page.map(async (group) => {
             const typedGroup = group as GroupRecord;
             const members = await auth.member.list(state.ctx, {
               where: { groupId: typedGroup._id, status: "active" },
@@ -1297,7 +1299,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
             return {
               group: typedGroup,
               identity: identityByGroupId.get(typedGroup._id),
-              memberIds: members.items.map((member) => member.userId),
+              memberIds: members.page.map((member) => member.userId),
             };
           }),
         );
@@ -1321,7 +1323,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
               },
               limit: 100,
             })
-          ).items.map((member) => ({ value: member.userId }));
+          ).page.map((member) => ({ value: member.userId }));
           const location = `${state.url.origin}${state.url.pathname.replace(/\/[^/]+$/, "")}/${resource.group._id}`;
           return scimJson(
             serializeScimGroup({
@@ -1393,7 +1395,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
                   where: { groupId, status: "active" },
                   limit: 100,
                 })
-              ).items.map((member) => ({ value: member.userId })),
+              ).page.map((member) => ({ value: member.userId })),
             }),
             200,
             { Location: location },
@@ -1414,7 +1416,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
             where: { groupId, status: "active" },
             limit: 100,
           })
-        ).items as Array<{ _id: string; userId: string }>;
+        ).page as Array<{ _id: string; userId: string }>;
         const currentByUserId = new Map(currentMembers.map((member) => [member.userId, member]));
         const nextUserIds = new Set(
           (Array.isArray(body.members) ? body.members : []).map((member) => String(member.value)),
@@ -1457,7 +1459,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
                 where: { groupId, status: "active" },
                 limit: 100,
               })
-            ).items.map((member) => ({ value: member.userId })),
+            ).page.map((member) => ({ value: member.userId })),
           }),
           created ? 201 : 200,
           { Location: location },
@@ -1525,7 +1527,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
                 where: { groupId, status: "active" },
                 limit: 100,
               })
-            ).items as Array<{ _id: string; userId: string }>;
+            ).page as Array<{ _id: string; userId: string }>;
             const currentUserIds = new Set<string>(currentMembers.map((member) => member.userId));
             const nextUserIds = new Set<string>(
               (Array.isArray(operation.value) ? operation.value : []).map((member: unknown) =>
@@ -1585,7 +1587,7 @@ export function addGroupHttpRuntime(deps: GroupHttpRuntimeDeps) {
             where: { groupId, status: "active" },
             limit: 100,
           })
-        ).items as Array<{ userId: string }>;
+        ).page as Array<{ userId: string }>;
         return scimJson(
           serializeScimGroup({
             id: groupId,

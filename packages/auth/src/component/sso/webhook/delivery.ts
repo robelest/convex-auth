@@ -9,6 +9,8 @@
  */
 
 export {
+  groupWebhookDeliveryDispatch as dispatch,
+  groupWebhookDeliveryGet as get,
   groupWebhookDeliveryList as list,
   groupWebhookDeliveryCreate as create,
   groupWebhookDeliveryPatch as update,

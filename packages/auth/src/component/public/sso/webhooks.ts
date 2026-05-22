@@ -1,11 +1,21 @@
+import { Workpool } from "@convex-dev/workpool";
 import { v } from "convex/values";
 
-import { mutation, query } from "../../functions";
+import { components, internal } from "../../_generated/api";
+import type { Id } from "../../_generated/dataModel";
+import { internalAction, internalMutation, internalQuery } from "../../functions";
 import {
   vGroupWebhookDeliveryDoc,
   vGroupWebhookEndpointDoc,
+  vWebhookDeliveryStatus,
   vWebhookEndpointStatus,
 } from "../../model";
+
+const workpool = new Workpool(components.webhookWorkpool, {
+  maxParallelism: 5,
+  defaultRetryBehavior: { maxAttempts: 5, initialBackoffMs: 1_000, base: 2 },
+  retryActionsByDefault: true,
+});
 
 /**
  * Register a new webhook endpoint for an group.sso.
@@ -19,20 +29,20 @@ import {
  * @param args.groupId - The ID of the root group that owns the group.sso.
  * @param args.url - The HTTPS URL where webhook payloads will be delivered.
  * @param args.status - An optional lifecycle status (`"active"`, `"paused"`, or `"disabled"`). Defaults to `"active"`.
- * @param args.secretHash - A hash of the signing secret used to verify delivery payloads.
+ * @param args.secretCiphertext - The endpoint signing secret encrypted with `AUTH_SECRET_ENCRYPTION_KEY`. Decrypted at emit time to HMAC-sign each outbound payload.
  * @param args.subscriptions - An array of event type strings this endpoint subscribes to (e.g. `["user.login", "scim.provision"]`).
  * @param args.createdByUserId - An optional ID of the user who created this endpoint.
  * @param args.extend - An optional arbitrary extension object for custom endpoint metadata.
  * @returns The ID of the newly created `GroupWebhookEndpoint` document.
  *
  */
-export const groupWebhookEndpointCreate = mutation({
+export const groupWebhookEndpointCreate = internalMutation({
   args: {
     connectionId: v.id("GroupConnection"),
     groupId: v.id("Group"),
     url: v.string(),
     status: v.optional(vWebhookEndpointStatus),
-    secretHash: v.string(),
+    secretCiphertext: v.string(),
     subscriptions: v.array(v.string()),
     createdByUserId: v.optional(v.id("User")),
     extend: v.optional(v.any()),
@@ -57,7 +67,7 @@ export const groupWebhookEndpointCreate = mutation({
  * @returns An array of webhook endpoint documents.
  *
  */
-export const groupWebhookEndpointList = query({
+export const groupWebhookEndpointList = internalQuery({
   args: { connectionId: v.id("GroupConnection") },
   returns: v.array(vGroupWebhookEndpointDoc),
   handler: async (ctx, { connectionId }) => {
@@ -78,7 +88,7 @@ export const groupWebhookEndpointList = query({
  * @returns The webhook endpoint document, or `null` if not found.
  *
  */
-export const groupWebhookEndpointGet = query({
+export const groupWebhookEndpointGet = internalQuery({
   args: { endpointId: v.id("GroupWebhookEndpoint") },
   returns: v.union(vGroupWebhookEndpointDoc, v.null()),
   handler: async (ctx, { endpointId }) => {
@@ -99,8 +109,20 @@ export const groupWebhookEndpointGet = query({
  * @returns `null` on success.
  *
  */
-export const groupWebhookEndpointUpdate = mutation({
-  args: { endpointId: v.id("GroupWebhookEndpoint"), data: v.any() },
+export const groupWebhookEndpointUpdate = internalMutation({
+  args: {
+    endpointId: v.id("GroupWebhookEndpoint"),
+    data: v.object({
+      url: v.optional(v.string()),
+      status: v.optional(vWebhookEndpointStatus),
+      secretCiphertext: v.optional(v.string()),
+      subscriptions: v.optional(v.array(v.string())),
+      lastSuccessAt: v.optional(v.number()),
+      lastFailureAt: v.optional(v.number()),
+      failureCount: v.optional(v.number()),
+      extend: v.optional(v.any()),
+    }),
+  },
   returns: v.null(),
   handler: async (ctx, { endpointId, data }) => {
     await ctx.db.patch(endpointId, data);
@@ -109,22 +131,22 @@ export const groupWebhookEndpointUpdate = mutation({
 });
 
 /**
- * Create a webhook delivery for a specific endpoint.
+ * Create a webhook delivery for a specific endpoint and enqueue dispatch.
  *
- * Inserts a new `GroupWebhookDelivery` document with an initial status
- * of `"pending"` and an attempt count of `0`. The delivery will be picked up
- * by the delivery worker once `nextAttemptAt` is reached.
+ * Inserts a new `GroupWebhookDelivery` row with status `"pending"` and
+ * `attemptCount: 0`, then enqueues {@link groupWebhookDeliveryDispatch} into
+ * the workpool. The workpool drives retry/backoff based on the configured
+ * default behavior; `nextAttemptAt` is preserved as observable status only.
  *
  * @param args.connectionId - The ID of the group connection the delivery belongs to.
  * @param args.endpointId - The ID of the webhook endpoint this delivery targets.
  * @param args.auditEventId - An optional ID of the audit event that triggered this delivery.
  * @param args.eventType - The event type string describing the payload (e.g. `"user.created"`).
  * @param args.payload - The arbitrary JSON payload to deliver to the endpoint.
- * @param args.nextAttemptAt - Epoch timestamp (ms) when the delivery should first be attempted.
+ * @param args.nextAttemptAt - Epoch timestamp (ms) for the first attempt. Pass `Date.now()` for immediate.
  * @returns The ID of the newly created `GroupWebhookDelivery` document.
- *
  */
-export const groupWebhookDeliveryCreate = mutation({
+export const groupWebhookDeliveryCreate = internalMutation({
   args: {
     connectionId: v.id("GroupConnection"),
     endpointId: v.id("GroupWebhookEndpoint"),
@@ -132,14 +154,143 @@ export const groupWebhookDeliveryCreate = mutation({
     eventType: v.string(),
     payload: v.any(),
     nextAttemptAt: v.number(),
+    signature: v.string(),
+    signedAt: v.number(),
   },
   returns: v.id("GroupWebhookDelivery"),
   handler: async (ctx, args) => {
-    return await ctx.db.insert("GroupWebhookDelivery", {
+    const deliveryId = await ctx.db.insert("GroupWebhookDelivery", {
       ...args,
       status: "pending",
       attemptCount: 0,
     });
+    await workpool.enqueueAction(
+      ctx,
+      internal.public.sso.webhooks.groupWebhookDeliveryDispatch,
+      { deliveryId },
+      { runAt: args.nextAttemptAt },
+    );
+    return deliveryId;
+  },
+});
+
+/**
+ * Read a single delivery row by id. Used by the workpool dispatch action.
+ */
+export const groupWebhookDeliveryGet = internalQuery({
+  args: { deliveryId: v.id("GroupWebhookDelivery") },
+  returns: v.union(vGroupWebhookDeliveryDoc, v.null()),
+  handler: async (ctx, { deliveryId }) => {
+    return await ctx.db.get(deliveryId);
+  },
+});
+
+/**
+ * Action that performs the actual HTTP POST for a queued webhook delivery.
+ *
+ * Looks up the delivery + endpoint, POSTs the signed payload, and patches the
+ * delivery status. Throws on non-2xx so the workpool retries with backoff;
+ * after `maxAttempts` the workpool marks the work failed and the delivery
+ * row stays at `"failed"`.
+ *
+ * Signature: `X-Auth-Signature: sha256=<hex>` where
+ * `hex = HMAC-SHA256(secret, "${signedAt}.${body}")` and `body` is the JSON
+ * blob this action sends. Subscribers verify by reconstructing the
+ * pre-image with the `X-Auth-Timestamp` header and the raw body. The
+ * signature is computed at emit time in the parent app's context (where
+ * `decryptSecret` is available) and stored on the delivery row.
+ */
+export const groupWebhookDeliveryDispatch = internalAction({
+  args: { deliveryId: v.id("GroupWebhookDelivery") },
+  returns: v.null(),
+  handler: async (ctx, { deliveryId }) => {
+    const delivery = (await ctx.runQuery(
+      internal.public.sso.webhooks.groupWebhookDeliveryGet,
+      { deliveryId },
+    )) as {
+      _id: string;
+      endpointId: string;
+      eventType: string;
+      payload: unknown;
+      attemptCount: number;
+      signature: string;
+      signedAt: number;
+    } | null;
+    if (!delivery) return null;
+
+    const endpoint = (await ctx.runQuery(
+      internal.public.sso.webhooks.groupWebhookEndpointGet,
+      { endpointId: delivery.endpointId as Id<"GroupWebhookEndpoint"> },
+    )) as { url: string; status: string } | null;
+    if (!endpoint || endpoint.status !== "active") {
+      await ctx.runMutation(internal.public.sso.webhooks.groupWebhookDeliveryPatch, {
+        deliveryId,
+        data: {
+          status: "failed",
+          lastError: "endpoint missing or disabled",
+          lastAttemptAt: Date.now(),
+          attemptCount: delivery.attemptCount + 1,
+        },
+      });
+      return null;
+    }
+
+    const startedAt = Date.now();
+    const body = JSON.stringify({
+      eventType: delivery.eventType,
+      payload: delivery.payload,
+    });
+    let response: Response;
+    try {
+      response = await fetch(endpoint.url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Auth-Event-Type": delivery.eventType,
+          "X-Auth-Delivery-Id": delivery._id,
+          "X-Auth-Timestamp": String(delivery.signedAt),
+          "X-Auth-Signature": `sha256=${delivery.signature}`,
+        },
+        body,
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (err) {
+      await ctx.runMutation(internal.public.sso.webhooks.groupWebhookDeliveryPatch, {
+        deliveryId,
+        data: {
+          status: "processing",
+          lastError: err instanceof Error ? err.message : String(err),
+          lastAttemptAt: startedAt,
+          attemptCount: delivery.attemptCount + 1,
+        },
+      });
+      throw err;
+    }
+
+    if (!response.ok) {
+      await ctx.runMutation(internal.public.sso.webhooks.groupWebhookDeliveryPatch, {
+        deliveryId,
+        data: {
+          status: "processing",
+          lastResponseStatus: response.status,
+          lastError: `HTTP ${response.status}`,
+          lastAttemptAt: startedAt,
+          attemptCount: delivery.attemptCount + 1,
+        },
+      });
+      throw new Error(`Webhook delivery failed: HTTP ${response.status}`);
+    }
+
+    await ctx.runMutation(internal.public.sso.webhooks.groupWebhookDeliveryPatch, {
+      deliveryId,
+      data: {
+        status: "delivered",
+        lastResponseStatus: response.status,
+        lastAttemptAt: startedAt,
+        attemptCount: delivery.attemptCount + 1,
+      },
+    });
+    return null;
   },
 });
 
@@ -160,7 +311,7 @@ export const groupWebhookDeliveryCreate = mutation({
  * @returns An array of webhook delivery documents.
  *
  */
-export const groupWebhookDeliveryList = query({
+export const groupWebhookDeliveryList = internalQuery({
   args: {
     connectionId: v.optional(v.id("GroupConnection")),
     now: v.optional(v.number()),
@@ -199,8 +350,18 @@ export const groupWebhookDeliveryList = query({
  * @returns `null` on success.
  *
  */
-export const groupWebhookDeliveryPatch = mutation({
-  args: { deliveryId: v.id("GroupWebhookDelivery"), data: v.any() },
+export const groupWebhookDeliveryPatch = internalMutation({
+  args: {
+    deliveryId: v.id("GroupWebhookDelivery"),
+    data: v.object({
+      status: v.optional(vWebhookDeliveryStatus),
+      attemptCount: v.optional(v.number()),
+      nextAttemptAt: v.optional(v.number()),
+      lastAttemptAt: v.optional(v.number()),
+      lastResponseStatus: v.optional(v.number()),
+      lastError: v.optional(v.string()),
+    }),
+  },
   returns: v.null(),
   handler: async (ctx, { deliveryId, data }) => {
     await ctx.db.patch(deliveryId, data);
