@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { internalMutation, internalQuery } from "../../functions";
+import { mutation, query } from "../../functions";
 import { vTotpFactorDoc } from "../../model";
 
 /**
@@ -25,7 +25,7 @@ import { vTotpFactorDoc } from "../../model";
  * @returns The `_id` of the newly created `TotpFactor` document.
  *
  */
-export const totpInsert = internalMutation({
+export const totpInsert = mutation({
   args: {
     userId: v.id("User"),
     secret: v.bytes(),
@@ -57,7 +57,7 @@ export const totpInsert = internalMutation({
  * @returns The matching `TotpFactor` document, or `null` if none matches.
  *
  */
-export const totpGet = internalQuery({
+export const totpGet = query({
   args: {
     id: v.optional(v.id("TotpFactor")),
     verifiedForUserId: v.optional(v.id("User")),
@@ -91,7 +91,7 @@ export const totpGet = internalQuery({
  *   the user has no TOTP enrollments.
  *
  */
-export const totpList = internalQuery({
+export const totpList = query({
   args: { userId: v.id("User") },
   returns: v.array(vTotpFactorDoc),
   handler: async (ctx, { userId }) => {
@@ -115,7 +115,7 @@ export const totpList = internalQuery({
  * @returns `null` on success.
  *
  */
-export const totpUpdate = internalMutation({
+export const totpUpdate = mutation({
   args: {
     totpId: v.id("TotpFactor"),
     data: v.object({
@@ -143,7 +143,7 @@ export const totpUpdate = internalMutation({
  * @returns `null` on success.
  *
  */
-export const totpDelete = internalMutation({
+export const totpDelete = mutation({
   args: { totpId: v.id("TotpFactor") },
   returns: v.null(),
   handler: async (ctx, { totpId }) => {

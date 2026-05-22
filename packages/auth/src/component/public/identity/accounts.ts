@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 
-import { internalMutation, internalQuery } from "../../functions";
+import { mutation, query } from "../../functions";
 import { vAccountDoc } from "../../model";
 
 /**
@@ -15,7 +15,7 @@ import { vAccountDoc } from "../../model";
  *   includes fields such as `provider`, `providerAccountId`, `secret`, and `extend`.
  *
  */
-export const accountList = internalQuery({
+export const accountList = query({
   args: { userId: v.id("User") },
   returns: v.array(vAccountDoc),
   handler: async (ctx, { userId }) => {
@@ -31,7 +31,7 @@ export const accountList = internalQuery({
  * return: `{ id }` (point lookup) or `{ provider, providerAccountId }`
  * (unique provider index).
  */
-export const accountGet = internalQuery({
+export const accountGet = query({
   args: {
     id: v.optional(v.id("Account")),
     provider: v.optional(v.string()),
@@ -68,7 +68,7 @@ export const accountGet = internalQuery({
  * @returns The document ID of the newly created account.
  *
  */
-export const accountInsert = internalMutation({
+export const accountInsert = mutation({
   args: {
     userId: v.id("User"),
     provider: v.string(),
@@ -94,7 +94,7 @@ export const accountInsert = internalMutation({
  * @returns `null` on success.
  *
  */
-export const accountPatch = internalMutation({
+export const accountPatch = mutation({
   args: {
     accountId: v.id("Account"),
     data: v.object({
@@ -126,7 +126,7 @@ export const accountPatch = internalMutation({
  * @returns `null` on success.
  *
  */
-export const accountDelete = internalMutation({
+export const accountDelete = mutation({
   args: {
     accountId: v.id("Account"),
     /**

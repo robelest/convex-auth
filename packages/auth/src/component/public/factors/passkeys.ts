@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { internalMutation, internalQuery } from "../../functions";
+import { mutation, query } from "../../functions";
 import { vPasskeyDoc } from "../../model";
 
 /**
@@ -33,7 +33,7 @@ import { vPasskeyDoc } from "../../model";
  * @returns The `_id` of the newly created `Passkey` document.
  *
  */
-export const passkeyInsert = internalMutation({
+export const passkeyInsert = mutation({
   args: {
     userId: v.id("User"),
     credentialId: v.string(),
@@ -67,7 +67,7 @@ export const passkeyInsert = internalMutation({
  * @returns The matching `Passkey` document, or `null` if none matches.
  *
  */
-export const passkeyGet = internalQuery({
+export const passkeyGet = query({
   args: {
     id: v.optional(v.id("Passkey")),
     credentialId: v.optional(v.string()),
@@ -98,7 +98,7 @@ export const passkeyGet = internalQuery({
  *   user has no registered passkeys.
  *
  */
-export const passkeyList = internalQuery({
+export const passkeyList = query({
   args: { userId: v.id("User") },
   returns: v.array(vPasskeyDoc),
   handler: async (ctx, { userId }) => {
@@ -123,7 +123,7 @@ export const passkeyList = internalQuery({
  * @returns `null` on success.
  *
  */
-export const passkeyUpdate = internalMutation({
+export const passkeyUpdate = mutation({
   args: {
     passkeyId: v.id("Passkey"),
     data: v.object({
@@ -152,7 +152,7 @@ export const passkeyUpdate = internalMutation({
  * @returns `null` on success.
  *
  */
-export const passkeyDelete = internalMutation({
+export const passkeyDelete = mutation({
   args: { passkeyId: v.id("Passkey") },
   returns: v.null(),
   handler: async (ctx, { passkeyId }) => {

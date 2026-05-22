@@ -1,7 +1,7 @@
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
-import { internalMutation, internalQuery } from "../../functions";
+import { mutation, query } from "../../functions";
 import { vPaginated, vUserDoc, vUserEmailDoc, vUserEmailSource } from "../../model";
 
 const vUserInsertData = v.object({
@@ -36,7 +36,7 @@ const vUserInsertData = v.object({
  * @returns A Convex `PaginationResult<UserDoc>` — `{ page, isDone, continueCursor }`.
  *
  */
-export const userList = internalQuery({
+export const userList = query({
   args: {
     where: v.optional(
       v.object({
@@ -98,7 +98,7 @@ export const userList = internalQuery({
  * @returns The document ID of the newly created user.
  *
  */
-export const userInsert = internalMutation({
+export const userInsert = mutation({
   args: { data: vUserInsertData },
   returns: v.id("User"),
   handler: async (ctx, { data }) => {
@@ -122,7 +122,7 @@ export const userInsert = internalMutation({
  * @returns The document ID of the created or updated user.
  *
  */
-export const userUpsert = internalMutation({
+export const userUpsert = mutation({
   args: { userId: v.optional(v.id("User")), data: vUserInsertData },
   returns: v.id("User"),
   handler: async (ctx, { userId, data }) => {
@@ -160,7 +160,7 @@ const vUserPatchData = v.object({
   extend: v.optional(v.any()),
 });
 
-export const userPatch = internalMutation({
+export const userPatch = mutation({
   args: { userId: v.id("User"), data: vUserPatchData },
   returns: v.null(),
   handler: async (ctx, { userId, data }) => {
@@ -180,7 +180,7 @@ export const userPatch = internalMutation({
  * @returns `null` on success (including when the user was already absent).
  *
  */
-export const userDelete = internalMutation({
+export const userDelete = mutation({
   args: {
     userId: v.id("User"),
     /**
@@ -334,7 +334,7 @@ export const userDelete = internalMutation({
  * @returns The user's `UserEmail` documents (may be empty).
  *
  */
-export const userEmailListByUser = internalQuery({
+export const userEmailListByUser = query({
   args: { userId: v.id("User") },
   returns: v.array(vUserEmailDoc),
   handler: async (ctx, { userId }) => {
@@ -358,7 +358,7 @@ export const userEmailListByUser = internalQuery({
  * @returns The owning user document, or `null` when zero or 2+ match.
  *
  */
-export const userEmailOwner = internalQuery({
+export const userEmailOwner = query({
   args: { email: v.string(), connectionId: v.optional(v.id("GroupConnection")) },
   returns: v.union(vUserDoc, v.null()),
   handler: async (ctx, { email, connectionId }) => {
@@ -403,7 +403,7 @@ export const userEmailOwner = internalQuery({
  * @returns The `UserEmail` document ID.
  *
  */
-export const userEmailUpsert = internalMutation({
+export const userEmailUpsert = mutation({
   args: {
     userId: v.id("User"),
     email: v.string(),
@@ -482,7 +482,7 @@ export const userEmailUpsert = internalMutation({
  * @throws `INVALID_PARAMETERS` if the email is not owned or not verified.
  *
  */
-export const userEmailSetPrimary = internalMutation({
+export const userEmailSetPrimary = mutation({
   args: { userId: v.id("User"), email: v.string() },
   returns: v.null(),
   handler: async (ctx, { userId, email }) => {
@@ -529,7 +529,7 @@ export const userEmailSetPrimary = internalMutation({
  *   email, or connection-managed.
  *
  */
-export const userEmailRemove = internalMutation({
+export const userEmailRemove = mutation({
   args: { userId: v.id("User"), email: v.string() },
   returns: v.null(),
   handler: async (ctx, { userId, email }) => {

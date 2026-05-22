@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { internalMutation, internalQuery } from "../../functions";
+import { mutation, query } from "../../functions";
 import { vDeviceCodeDoc, vDeviceStatus } from "../../model";
 
 /**
@@ -22,7 +22,7 @@ import { vDeviceCodeDoc, vDeviceStatus } from "../../model";
  * @returns The `_id` of the newly created `DeviceCode` document.
  *
  */
-export const deviceInsert = internalMutation({
+export const deviceInsert = mutation({
   args: {
     deviceCodeHash: v.string(),
     userCode: v.string(),
@@ -55,7 +55,7 @@ export const deviceInsert = internalMutation({
  * @returns The matching `DeviceCode` document, or `null` if none matches.
  *
  */
-export const deviceGet = internalQuery({
+export const deviceGet = query({
   args: {
     id: v.optional(v.id("DeviceCode")),
     deviceCodeHash: v.optional(v.string()),
@@ -99,7 +99,7 @@ export const deviceGet = internalQuery({
  * @returns `null` on success.
  *
  */
-export const deviceAuthorize = internalMutation({
+export const deviceAuthorize = mutation({
   args: {
     deviceId: v.id("DeviceCode"),
     userId: v.id("User"),
@@ -128,7 +128,7 @@ export const deviceAuthorize = internalMutation({
  * @returns `null` on success.
  *
  */
-export const deviceUpdate = internalMutation({
+export const deviceUpdate = mutation({
   args: {
     deviceId: v.id("DeviceCode"),
     data: v.object({
@@ -156,7 +156,7 @@ export const deviceUpdate = internalMutation({
  * @returns `null` on success.
  *
  */
-export const deviceDelete = internalMutation({
+export const deviceDelete = mutation({
   args: { deviceId: v.id("DeviceCode") },
   returns: v.null(),
   handler: async (ctx, { deviceId }) => {

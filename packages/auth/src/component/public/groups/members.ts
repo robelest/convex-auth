@@ -2,7 +2,7 @@ import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
 import type { Id } from "../../_generated/dataModel";
-import { internalMutation, internalQuery } from "../../functions";
+import { mutation, query } from "../../functions";
 import { vGroupMemberDoc, vPaginated } from "../../model";
 
 /**
@@ -25,7 +25,7 @@ import { vGroupMemberDoc, vPaginated } from "../../model";
  * @throws `ConvexError` with code `DUPLICATE_MEMBERSHIP` if the user is already a member of this group.
  *
  */
-export const memberAdd = internalMutation({
+export const memberAdd = mutation({
   args: {
     groupId: v.id("Group"),
     userId: v.id("User"),
@@ -60,7 +60,7 @@ export const memberAdd = internalMutation({
  *   each group, returning `(Doc | null)[]` aligned to `groupIds` order
  *   (duplicates de-duplicated internally).
  */
-export const memberGet = internalQuery({
+export const memberGet = query({
   args: {
     id: v.optional(v.id("GroupMember")),
     groupId: v.optional(v.id("Group")),
@@ -125,7 +125,7 @@ export const memberGet = internalQuery({
  * @returns A Convex `PaginationResult<GroupMemberDoc>` — `{ page, isDone, continueCursor }`.
  *
  */
-export const memberList = internalQuery({
+export const memberList = query({
   args: {
     where: v.optional(
       v.object({
@@ -233,7 +233,7 @@ export const memberList = internalQuery({
  *   - `traversedGroupIds` — (only when `ancestry` is `true`) array of group IDs visited.
  *
  */
-export const memberResolve = internalQuery({
+export const memberResolve = query({
   args: {
     userId: v.id("User"),
     groupId: v.id("Group"),
@@ -307,7 +307,7 @@ export const memberResolve = internalQuery({
  * @returns `null` on success.
  *
  */
-export const memberRemove = internalMutation({
+export const memberRemove = mutation({
   args: { memberId: v.id("GroupMember") },
   returns: v.null(),
   handler: async (ctx, { memberId }) => {
@@ -328,7 +328,7 @@ export const memberRemove = internalMutation({
  * @returns `null` on success.
  *
  */
-export const memberUpdate = internalMutation({
+export const memberUpdate = mutation({
   args: {
     memberId: v.id("GroupMember"),
     data: v.object({

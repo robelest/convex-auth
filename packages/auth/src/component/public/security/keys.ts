@@ -1,7 +1,7 @@
 import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
-import { internalMutation, internalQuery } from "../../functions";
+import { mutation, query } from "../../functions";
 import {
   vApiKeyDoc,
   vApiKeyRateLimit,
@@ -39,7 +39,7 @@ import {
  * @returns The `_id` of the newly created `ApiKey` document.
  *
  */
-export const keyInsert = internalMutation({
+export const keyInsert = mutation({
   args: {
     userId: v.id("User"),
     prefix: v.string(),
@@ -70,7 +70,7 @@ export const keyInsert = internalMutation({
  * return: `{ id }` (point lookup) or `{ hashedKey }` (Bearer-verify
  * index).
  */
-export const keyGet = internalQuery({
+export const keyGet = query({
   args: {
     id: v.optional(v.id("ApiKey")),
     hashedKey: v.optional(v.string()),
@@ -109,7 +109,7 @@ export const keyGet = internalQuery({
  * @returns A Convex `PaginationResult<KeyDoc>` — `{ page, isDone, continueCursor }`.
  *
  */
-export const keyList = internalQuery({
+export const keyList = query({
   args: {
     where: v.optional(
       v.object({
@@ -181,7 +181,7 @@ export const keyList = internalQuery({
  * @returns `null` on success.
  *
  */
-export const keyPatch = internalMutation({
+export const keyPatch = mutation({
   args: {
     keyId: v.id("ApiKey"),
     data: v.object({
@@ -220,7 +220,7 @@ export const keyPatch = internalMutation({
  * @returns `null` on success.
  *
  */
-export const keyDelete = internalMutation({
+export const keyDelete = mutation({
   args: { keyId: v.id("ApiKey") },
   returns: v.null(),
   handler: async (ctx, { keyId }) => {

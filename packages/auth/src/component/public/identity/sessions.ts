@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { internalMutation, internalQuery } from "../../functions";
+import { mutation, query } from "../../functions";
 import { vSessionDoc } from "../../model";
 
 /**
@@ -15,7 +15,7 @@ import { vSessionDoc } from "../../model";
  * @returns The document ID of the newly created session.
  *
  */
-export const sessionCreate = internalMutation({
+export const sessionCreate = mutation({
   args: { userId: v.id("User"), expirationTime: v.number() },
   returns: v.id("Session"),
   handler: async (ctx, { userId, expirationTime }) => {
@@ -26,7 +26,7 @@ export const sessionCreate = internalMutation({
   },
 });
 
-export const sessionIssue = internalMutation({
+export const sessionIssue = mutation({
   args: {
     userId: v.id("User"),
     sessionId: v.optional(v.id("Session")),
@@ -90,7 +90,7 @@ export const sessionIssue = internalMutation({
  * @returns The session document if it exists, or `null` otherwise.
  *
  */
-export const sessionGetById = internalQuery({
+export const sessionGetById = query({
   args: { sessionId: v.id("Session") },
   returns: v.union(vSessionDoc, v.null()),
   handler: async (ctx, { sessionId }) => {
@@ -110,7 +110,7 @@ export const sessionGetById = internalQuery({
  * @returns `null` on success (including when the session was already absent).
  *
  */
-export const sessionDelete = internalMutation({
+export const sessionDelete = mutation({
   args: { sessionId: v.id("Session") },
   returns: v.null(),
   handler: async (ctx, { sessionId }) => {
@@ -131,7 +131,7 @@ export const sessionDelete = internalMutation({
  * @returns An array of session documents for the specified user.
  *
  */
-export const sessionList = internalQuery({
+export const sessionList = query({
   args: { userId: v.id("User") },
   returns: v.array(vSessionDoc),
   handler: async (ctx, { userId }) => {

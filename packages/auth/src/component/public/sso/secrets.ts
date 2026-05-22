@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 
-import { internalMutation, internalQuery } from "../../functions";
+import { mutation, query } from "../../functions";
 import { vGroupConnectionSecretDoc, vGroupConnectionSecretKind } from "../../model";
 
 /**
@@ -19,7 +19,7 @@ import { vGroupConnectionSecretDoc, vGroupConnectionSecretKind } from "../../mod
  * @returns The ID of the created or updated `GroupConnectionSecret` document.
  *
  */
-export const groupConnectionSecretUpsert = internalMutation({
+export const groupConnectionSecretUpsert = mutation({
   args: {
     connectionId: v.id("GroupConnection"),
     groupId: v.id("Group"),
@@ -59,7 +59,7 @@ export const groupConnectionSecretUpsert = internalMutation({
  * @returns The connection secret document, or `null` if not found.
  *
  */
-export const groupConnectionSecretGet = internalQuery({
+export const groupConnectionSecretGet = query({
   args: {
     connectionId: v.id("GroupConnection"),
     kind: vGroupConnectionSecretKind,
@@ -86,7 +86,7 @@ export const groupConnectionSecretGet = internalQuery({
  * @returns `null` on success.
  *
  */
-export const groupConnectionSecretDelete = internalMutation({
+export const groupConnectionSecretDelete = mutation({
   args: {
     connectionId: v.id("GroupConnection"),
     kind: vGroupConnectionSecretKind,

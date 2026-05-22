@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 
 import type { Id } from "../../_generated/dataModel";
-import { internalMutation } from "../../_generated/server";
+import { mutation } from "../../_generated/server";
 
 const DEFAULT_BATCH_SIZE = 200;
 const MAX_BATCH_SIZE = 1000;
@@ -33,7 +33,7 @@ const MAX_BATCH_SIZE = 1000;
  *
  * Returns a per-table count of deleted documents.
  */
-export const pruneExpired = internalMutation({
+export const pruneExpired = mutation({
   args: {
     /** Max docs to scan per table per run. Defaults to 200, capped at 1000. */
     batchSize: v.optional(v.number()),

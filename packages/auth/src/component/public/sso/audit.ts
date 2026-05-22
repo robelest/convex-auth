@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 
-import { internalMutation, internalQuery } from "../../functions";
+import { mutation, query } from "../../functions";
 import { vAuditActorType, vAuditStatus, vGroupAuditEventDoc } from "../../model";
 
 /**
@@ -25,7 +25,7 @@ import { vAuditActorType, vAuditStatus, vGroupAuditEventDoc } from "../../model"
  * @returns The ID of the newly created `GroupAuditEvent` document.
  *
  */
-export const groupAuditEventCreate = internalMutation({
+export const groupAuditEventCreate = mutation({
   args: {
     connectionId: v.optional(v.id("GroupConnection")),
     groupId: v.id("Group"),
@@ -82,7 +82,7 @@ async function safeGetRequestMetadata(
  * @returns An array of audit event documents, most recent first.
  *
  */
-export const groupAuditEventList = internalQuery({
+export const groupAuditEventList = query({
   args: {
     connectionId: v.optional(v.id("GroupConnection")),
     groupId: v.optional(v.id("Group")),

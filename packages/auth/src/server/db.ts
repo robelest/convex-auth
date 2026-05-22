@@ -2,8 +2,9 @@ import {
   GenericActionCtx,
   GenericDataModel,
   GenericMutationCtx,
-  FunctionReference,
 } from "convex/server";
+
+import type { AuthComponentApi } from "./componentApi";
 
 type MutationCtxLike = Pick<GenericMutationCtx<GenericDataModel>, "runQuery" | "runMutation">;
 type ActionCtxLike = Pick<
@@ -13,64 +14,7 @@ type ActionCtxLike = Pick<
 
 type CtxLike = MutationCtxLike | ActionCtxLike;
 
-type AuthComponentApiLike = {
-  user: {
-    get: FunctionReference<"query", "internal">;
-    list: FunctionReference<"query", "internal">;
-    create: FunctionReference<"mutation", "internal">;
-    upsert: FunctionReference<"mutation", "internal">;
-    update: FunctionReference<"mutation", "internal">;
-    delete: FunctionReference<"mutation", "internal">;
-    email: {
-      list: FunctionReference<"query", "internal">;
-      owner: FunctionReference<"query", "internal">;
-      upsert: FunctionReference<"mutation", "internal">;
-      setPrimary: FunctionReference<"mutation", "internal">;
-      delete: FunctionReference<"mutation", "internal">;
-    };
-  };
-  account: {
-    get: FunctionReference<"query", "internal">;
-    list: FunctionReference<"query", "internal">;
-    create: FunctionReference<"mutation", "internal">;
-    update: FunctionReference<"mutation", "internal">;
-    delete: FunctionReference<"mutation", "internal">;
-  };
-  session: {
-    get: FunctionReference<"query", "internal">;
-    list: FunctionReference<"query", "internal">;
-    create: FunctionReference<"mutation", "internal">;
-    issue?: FunctionReference<"mutation", "internal">;
-    delete: FunctionReference<"mutation", "internal">;
-  };
-  token: {
-    refresh: {
-      get: FunctionReference<"query", "internal">;
-      list: FunctionReference<"query", "internal">;
-      listChildren: FunctionReference<"query", "internal">;
-      create: FunctionReference<"mutation", "internal">;
-      update: FunctionReference<"mutation", "internal">;
-      delete: FunctionReference<"mutation", "internal">;
-      exchange?: FunctionReference<"mutation", "internal">;
-    };
-    verification: {
-      get: FunctionReference<"query", "internal">;
-      create: FunctionReference<"mutation", "internal">;
-      delete: FunctionReference<"mutation", "internal">;
-    };
-    pkce: {
-      get: FunctionReference<"query", "internal">;
-      create: FunctionReference<"mutation", "internal">;
-      update: FunctionReference<"mutation", "internal">;
-      delete: FunctionReference<"mutation", "internal">;
-    };
-  };
-  limits: {
-    signInCheck: FunctionReference<"query", "internal">;
-    signInRecord: FunctionReference<"mutation", "internal">;
-    signInReset: FunctionReference<"mutation", "internal">;
-  };
-};
+type AuthComponentApiLike = AuthComponentApi;
 
 /** @internal */
 export type AuthDbConfig = { component: AuthComponentApiLike };

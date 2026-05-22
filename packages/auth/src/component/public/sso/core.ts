@@ -1,7 +1,7 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 
-import { internalMutation, internalQuery } from "../../functions";
+import { mutation, query } from "../../functions";
 import {
   vGroupConnectionDoc,
   vGroupConnectionDomainDoc,
@@ -26,7 +26,7 @@ import {
  * @returns The ID of the newly created `Group Connection` document.
  *
  */
-export const groupConnectionCreate = internalMutation({
+export const groupConnectionCreate = mutation({
   args: {
     groupId: v.id("Group"),
     slug: v.optional(v.string()),
@@ -62,7 +62,7 @@ export const groupConnectionCreate = internalMutation({
  *   `domain`: `{ connection, domain }` or `null`.
  *
  */
-export const groupConnectionGet = internalQuery({
+export const groupConnectionGet = query({
   args: {
     connectionId: v.optional(v.id("GroupConnection")),
     domain: v.optional(v.string()),
@@ -111,7 +111,7 @@ export const groupConnectionGet = internalQuery({
  * @returns A Convex `PaginationResult<GroupConnectionDoc>` — `{ page, isDone, continueCursor }`.
  *
  */
-export const groupConnectionList = internalQuery({
+export const groupConnectionList = query({
   args: {
     where: v.optional(
       v.object({
@@ -180,7 +180,7 @@ export const groupConnectionList = internalQuery({
  * @returns `null` on success.
  *
  */
-export const groupConnectionUpdate = internalMutation({
+export const groupConnectionUpdate = mutation({
   args: {
     connectionId: v.id("GroupConnection"),
     data: v.object({
@@ -210,7 +210,7 @@ export const groupConnectionUpdate = internalMutation({
  * @returns `null` on success.
  *
  */
-export const groupConnectionDelete = internalMutation({
+export const groupConnectionDelete = mutation({
   args: { connectionId: v.id("GroupConnection") },
   returns: v.null(),
   handler: async (ctx, { connectionId }) => {

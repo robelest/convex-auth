@@ -2,7 +2,7 @@ import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
 import type { Doc, Id } from "../../_generated/dataModel";
-import { internalMutation, internalQuery } from "../../functions";
+import { mutation, query } from "../../functions";
 import { vGroupConnectionPolicy, vGroupDoc, vPaginated, vTag } from "../../model";
 
 type TagPair = { key: string; value: string };
@@ -45,7 +45,7 @@ function normalizeTags(tags: TagPair[]): TagPair[] {
  * @returns The `Id<"Group">` of the newly created group document.
  *
  */
-export const groupCreate = internalMutation({
+export const groupCreate = mutation({
   args: {
     name: v.string(),
     slug: v.optional(v.string()),
@@ -94,7 +94,7 @@ export const groupCreate = internalMutation({
  * return: `{ id }` → `Doc<"Group"> | null`, or `{ ids }` → ordered
  * `(Doc<"Group"> | null)[]` (deduped).
  */
-export const groupGet = internalQuery({
+export const groupGet = query({
   args: {
     id: v.optional(v.id("Group")),
     ids: v.optional(v.array(v.id("Group"))),
@@ -132,7 +132,7 @@ export const groupGet = internalQuery({
  *   are ordered from the immediate parent upward (or starting at
  *   `groupId` when `includeSelf` is set).
  */
-export const groupAncestors = internalQuery({
+export const groupAncestors = query({
   args: {
     groupId: v.id("Group"),
     maxDepth: v.optional(v.number()),
@@ -202,7 +202,7 @@ export const groupAncestors = internalQuery({
  * @returns A Convex `PaginationResult<GroupDoc>` — `{ page, isDone, continueCursor }`.
  *
  */
-export const groupList = internalQuery({
+export const groupList = query({
   args: {
     where: v.optional(
       v.object({
@@ -341,7 +341,7 @@ export const groupList = internalQuery({
  * @returns `null` on success.
  *
  */
-export const groupUpdate = internalMutation({
+export const groupUpdate = mutation({
   args: {
     groupId: v.id("Group"),
     data: v.object({
@@ -435,7 +435,7 @@ export const groupUpdate = internalMutation({
  * @returns `null` on success.
  *
  */
-export const groupDelete = internalMutation({
+export const groupDelete = mutation({
   args: { groupId: v.id("Group") },
   returns: v.null(),
   handler: async (ctx, { groupId }) => {

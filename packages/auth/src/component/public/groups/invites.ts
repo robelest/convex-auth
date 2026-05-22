@@ -2,7 +2,7 @@ import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
 import type { Id } from "../../_generated/dataModel";
-import { internalMutation, internalQuery } from "../../functions";
+import { mutation, query } from "../../functions";
 import {
   vGroupInviteDoc,
   vInviteRedeemResult,
@@ -36,7 +36,7 @@ import {
  * @returns The `Id<"GroupInvite">` of the newly created invite document.
  *
  */
-export const inviteCreate = internalMutation({
+export const inviteCreate = mutation({
   args: {
     groupId: v.optional(v.id("Group")),
     invitedByUserId: v.optional(v.id("User")),
@@ -115,7 +115,7 @@ export const inviteCreate = internalMutation({
  * return: `{ id }` (point lookup) or `{ tokenHash }` (token index).
  *
  */
-export const inviteGet = internalQuery({
+export const inviteGet = query({
   args: {
     id: v.optional(v.id("GroupInvite")),
     tokenHash: v.optional(v.string()),
@@ -159,7 +159,7 @@ export const inviteGet = internalQuery({
  * @returns A Convex `PaginationResult<GroupInviteDoc>` — `{ page, isDone, continueCursor }`.
  *
  */
-export const inviteList = internalQuery({
+export const inviteList = query({
   args: {
     where: v.optional(
       v.object({
@@ -274,7 +274,7 @@ export const inviteList = internalQuery({
  * @throws `ConvexError` with code `INVITE_EXPIRED` if the invite's `expiresTime` has passed.
  *
  */
-export const inviteAccept = internalMutation({
+export const inviteAccept = mutation({
   args: {
     inviteId: v.id("GroupInvite"),
     acceptedByUserId: v.optional(v.id("User")),
@@ -343,7 +343,7 @@ export const inviteAccept = internalMutation({
  * @throws `ConvexError` with code `INVITE_EMAIL_MISMATCH` if the accepting user's email does not match the invite's email.
  *
  */
-export const inviteRedeem = internalMutation({
+export const inviteRedeem = mutation({
   args: {
     tokenHash: v.string(),
     acceptedByUserId: v.id("User"),
@@ -463,7 +463,7 @@ export const inviteRedeem = internalMutation({
  * @throws `ConvexError` with code `INVITE_NOT_PENDING` if the invite has already been accepted, revoked, or expired.
  *
  */
-export const inviteRevoke = internalMutation({
+export const inviteRevoke = mutation({
   args: { inviteId: v.id("GroupInvite") },
   returns: v.null(),
   handler: async (ctx, { inviteId }) => {

@@ -17,7 +17,7 @@ import { HOUR, RateLimiter } from "@convex-dev/rate-limiter";
 import { v } from "convex/values";
 
 import { components } from "../../_generated/api";
-import { internalMutation, internalQuery } from "../../functions";
+import { mutation, query } from "../../functions";
 
 function makeLimiter(rate: number) {
   return new RateLimiter(components.rateLimiter, {
@@ -35,7 +35,7 @@ const returns = v.object({
   retryAfter: v.optional(v.number()),
 });
 
-export const signInCheck = internalQuery({
+export const signInCheck = query({
   args,
   returns,
   handler: async (ctx, { identifier, maxAttemptsPerHour }) => {
@@ -46,7 +46,7 @@ export const signInCheck = internalQuery({
   },
 });
 
-export const signInRecord = internalMutation({
+export const signInRecord = mutation({
   args,
   returns,
   handler: async (ctx, { identifier, maxAttemptsPerHour }) => {
@@ -57,7 +57,7 @@ export const signInRecord = internalMutation({
   },
 });
 
-export const signInReset = internalMutation({
+export const signInReset = mutation({
   args: { identifier: v.string() },
   returns: v.null(),
   handler: async (ctx, { identifier }) => {

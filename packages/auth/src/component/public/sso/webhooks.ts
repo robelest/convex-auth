@@ -1,9 +1,9 @@
 import { Workpool } from "@convex-dev/workpool";
 import { v } from "convex/values";
 
-import { components, internal } from "../../_generated/api";
+import { api, components, internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
-import { internalAction, internalMutation, internalQuery } from "../../functions";
+import { internalAction, mutation, query } from "../../functions";
 import {
   vGroupWebhookDeliveryDoc,
   vGroupWebhookEndpointDoc,
@@ -36,7 +36,7 @@ const workpool = new Workpool(components.webhookWorkpool, {
  * @returns The ID of the newly created `GroupWebhookEndpoint` document.
  *
  */
-export const groupWebhookEndpointCreate = internalMutation({
+export const groupWebhookEndpointCreate = mutation({
   args: {
     connectionId: v.id("GroupConnection"),
     groupId: v.id("Group"),
@@ -67,7 +67,7 @@ export const groupWebhookEndpointCreate = internalMutation({
  * @returns An array of webhook endpoint documents.
  *
  */
-export const groupWebhookEndpointList = internalQuery({
+export const groupWebhookEndpointList = query({
   args: { connectionId: v.id("GroupConnection") },
   returns: v.array(vGroupWebhookEndpointDoc),
   handler: async (ctx, { connectionId }) => {
@@ -88,7 +88,7 @@ export const groupWebhookEndpointList = internalQuery({
  * @returns The webhook endpoint document, or `null` if not found.
  *
  */
-export const groupWebhookEndpointGet = internalQuery({
+export const groupWebhookEndpointGet = query({
   args: { endpointId: v.id("GroupWebhookEndpoint") },
   returns: v.union(vGroupWebhookEndpointDoc, v.null()),
   handler: async (ctx, { endpointId }) => {
@@ -109,7 +109,7 @@ export const groupWebhookEndpointGet = internalQuery({
  * @returns `null` on success.
  *
  */
-export const groupWebhookEndpointUpdate = internalMutation({
+export const groupWebhookEndpointUpdate = mutation({
   args: {
     endpointId: v.id("GroupWebhookEndpoint"),
     data: v.object({
@@ -146,7 +146,7 @@ export const groupWebhookEndpointUpdate = internalMutation({
  * @param args.nextAttemptAt - Epoch timestamp (ms) for the first attempt. Pass `Date.now()` for immediate.
  * @returns The ID of the newly created `GroupWebhookDelivery` document.
  */
-export const groupWebhookDeliveryCreate = internalMutation({
+export const groupWebhookDeliveryCreate = mutation({
   args: {
     connectionId: v.id("GroupConnection"),
     endpointId: v.id("GroupWebhookEndpoint"),
@@ -177,7 +177,7 @@ export const groupWebhookDeliveryCreate = internalMutation({
 /**
  * Read a single delivery row by id. Used by the workpool dispatch action.
  */
-export const groupWebhookDeliveryGet = internalQuery({
+export const groupWebhookDeliveryGet = query({
   args: { deliveryId: v.id("GroupWebhookDelivery") },
   returns: v.union(vGroupWebhookDeliveryDoc, v.null()),
   handler: async (ctx, { deliveryId }) => {
@@ -205,7 +205,7 @@ export const groupWebhookDeliveryDispatch = internalAction({
   returns: v.null(),
   handler: async (ctx, { deliveryId }) => {
     const delivery = (await ctx.runQuery(
-      internal.public.sso.webhooks.groupWebhookDeliveryGet,
+      api.public.sso.webhooks.groupWebhookDeliveryGet,
       { deliveryId },
     )) as {
       _id: string;
@@ -219,11 +219,11 @@ export const groupWebhookDeliveryDispatch = internalAction({
     if (!delivery) return null;
 
     const endpoint = (await ctx.runQuery(
-      internal.public.sso.webhooks.groupWebhookEndpointGet,
+      api.public.sso.webhooks.groupWebhookEndpointGet,
       { endpointId: delivery.endpointId as Id<"GroupWebhookEndpoint"> },
     )) as { url: string; status: string } | null;
     if (!endpoint || endpoint.status !== "active") {
-      await ctx.runMutation(internal.public.sso.webhooks.groupWebhookDeliveryPatch, {
+      await ctx.runMutation(api.public.sso.webhooks.groupWebhookDeliveryPatch, {
         deliveryId,
         data: {
           status: "failed",
@@ -255,7 +255,7 @@ export const groupWebhookDeliveryDispatch = internalAction({
         signal: AbortSignal.timeout(15_000),
       });
     } catch (err) {
-      await ctx.runMutation(internal.public.sso.webhooks.groupWebhookDeliveryPatch, {
+      await ctx.runMutation(api.public.sso.webhooks.groupWebhookDeliveryPatch, {
         deliveryId,
         data: {
           status: "processing",
@@ -268,7 +268,7 @@ export const groupWebhookDeliveryDispatch = internalAction({
     }
 
     if (!response.ok) {
-      await ctx.runMutation(internal.public.sso.webhooks.groupWebhookDeliveryPatch, {
+      await ctx.runMutation(api.public.sso.webhooks.groupWebhookDeliveryPatch, {
         deliveryId,
         data: {
           status: "processing",
@@ -281,7 +281,7 @@ export const groupWebhookDeliveryDispatch = internalAction({
       throw new Error(`Webhook delivery failed: HTTP ${response.status}`);
     }
 
-    await ctx.runMutation(internal.public.sso.webhooks.groupWebhookDeliveryPatch, {
+    await ctx.runMutation(api.public.sso.webhooks.groupWebhookDeliveryPatch, {
       deliveryId,
       data: {
         status: "delivered",
@@ -311,7 +311,7 @@ export const groupWebhookDeliveryDispatch = internalAction({
  * @returns An array of webhook delivery documents.
  *
  */
-export const groupWebhookDeliveryList = internalQuery({
+export const groupWebhookDeliveryList = query({
   args: {
     connectionId: v.optional(v.id("GroupConnection")),
     now: v.optional(v.number()),
@@ -350,7 +350,7 @@ export const groupWebhookDeliveryList = internalQuery({
  * @returns `null` on success.
  *
  */
-export const groupWebhookDeliveryPatch = internalMutation({
+export const groupWebhookDeliveryPatch = mutation({
   args: {
     deliveryId: v.id("GroupWebhookDelivery"),
     data: v.object({
