@@ -702,6 +702,12 @@ export type ClientOptions<Api extends AuthApiRefs<boolean, boolean, boolean> = A
   tokenSeed?: string | null;
   /** SSR-safe URL source for reading query parameters. */
   location?: URL | (() => URL | null);
+  /**
+   * Milliseconds to wait for the Convex client to confirm a new token
+   * before a sign-in handshake rejects with `AUTH_HANDSHAKE_TIMEOUT`.
+   * Defaults to `5000`.
+   */
+  handshakeTimeoutMs?: number;
 };
 
 export type OAuthCompletionResult =

@@ -79,7 +79,7 @@ const INVITE_EMAIL_KEY = "__convexAuthPendingInviteEmail";
 
 const RETRY_BASE_MS = 500;
 const RETRY_MAX_RETRIES = 2;
-const AUTH_HANDSHAKE_TIMEOUT_MS = 5000;
+const DEFAULT_AUTH_HANDSHAKE_TIMEOUT_MS = 5000;
 
 async function retryWithJitteredBackoff<T>(
   fn: () => Promise<T>,
@@ -356,6 +356,11 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
       : null;
   const hasServerToken = serverToken !== null;
 
+  const handshakeTimeoutMs =
+    typeof options.handshakeTimeoutMs === "number" && options.handshakeTimeoutMs > 0
+      ? options.handshakeTimeoutMs
+      : DEFAULT_AUTH_HANDSHAKE_TIMEOUT_MS;
+
   let token: string | null = serverToken;
   let isLoading = !hasServerToken;
   let authConfirmed = hasServerToken;
@@ -434,10 +439,10 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
         deferred.reject(
           createHandshakeError("AUTH_HANDSHAKE_TIMEOUT", {
             ...context,
-            timeoutMs: AUTH_HANDSHAKE_TIMEOUT_MS,
+            timeoutMs: handshakeTimeoutMs,
           }),
         );
-      }, AUTH_HANDSHAKE_TIMEOUT_MS),
+      }, handshakeTimeoutMs),
     };
     handshakeWaiters.add(waiter);
     try {
@@ -750,7 +755,9 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
         ? (() => {
             const formParams: Record<string, Value> = {};
             for (const [key, value] of formDataEntries(args)) {
-              formParams[key] = typeof value === "string" ? value : value.name;
+              if (typeof value === "string") {
+                formParams[key] = value;
+              }
             }
             return formParams;
           })()

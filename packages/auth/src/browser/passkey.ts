@@ -141,9 +141,20 @@ export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
         },
       };
 
-      const credential = (await navigator.credentials.create(
-        createOptions,
-      )) as PublicKeyCredential | null;
+      const createAbort = new AbortController();
+      createOptions.signal = createAbort.signal;
+      const createAbortTimer = setTimeout(
+        () => createAbort.abort(new DOMException("Passkey registration timed out", "TimeoutError")),
+        options.timeout ?? 120_000,
+      );
+      let credential: PublicKeyCredential | null;
+      try {
+        credential = (await navigator.credentials.create(
+          createOptions,
+        )) as PublicKeyCredential | null;
+      } finally {
+        clearTimeout(createAbortTimer);
+      }
       if (!credential) {
         throw new Error("Passkey registration was cancelled");
       }
@@ -227,9 +238,22 @@ export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
           : {}),
       };
 
-      const credential = (await navigator.credentials.get(
-        getOptions,
-      )) as PublicKeyCredential | null;
+      const getAbort = new AbortController();
+      getOptions.signal = getAbort.signal;
+      const getAbortTimer = opts?.autofill
+        ? undefined
+        : setTimeout(
+            () => getAbort.abort(new DOMException("Passkey authentication timed out", "TimeoutError")),
+            options.timeout ?? 120_000,
+          );
+      let credential: PublicKeyCredential | null;
+      try {
+        credential = (await navigator.credentials.get(
+          getOptions,
+        )) as PublicKeyCredential | null;
+      } finally {
+        if (getAbortTimer !== undefined) clearTimeout(getAbortTimer);
+      }
       if (!credential) {
         throw new Error("Passkey authentication was cancelled");
       }
