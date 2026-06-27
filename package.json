@@ -17,7 +17,7 @@
     "test": "vp exec node ./tests/run.ts",
     "typecheck": "vp run '@robelest/convex-auth#typecheck' && vp exec tsc --project tests/tsconfig.vitest.json --noEmit",
     "typecheck:tests": "vp exec tsc --project tests/tsconfig.vitest.json --noEmit",
-    "lint": "vp lint",
+    "lint": "vp lint convex tests packages/auth/src --type-aware --tsconfig tests/tsconfig.vitest.json && vp lint packages/auth/consumer --type-aware --tsconfig packages/auth/tsconfig.consumer.json && vp lint docs --type-aware --tsconfig docs/tsconfig.json && vp lint demos/expo --type-aware --tsconfig demos/expo/tsconfig.json && vp lint demos/svelte --type-aware --tsconfig demos/svelte/tsconfig.json && vp lint scripts vite.config.ts --type-aware --tsconfig tests/tsconfig.vitest.json",
     "lint:fix": "vp lint --fix",
     "fmt": "vp fmt .",
     "fmt:check": "vp fmt --check .",
