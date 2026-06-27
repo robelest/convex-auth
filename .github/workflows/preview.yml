@@ -50,9 +50,7 @@ jobs:
         run: vp test --run --project convex --project node
 
       - name: Build auth
-        run: |
-          vp exec convex codegen --component-dir ./packages/auth/src/component
-          vp run '@robelest/convex-auth#build'
+        run: vp run build:auth
 
       - name: Publish preview package
         run: >

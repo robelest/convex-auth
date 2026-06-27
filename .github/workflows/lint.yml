@@ -52,7 +52,10 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Build package prerequisites
-        run: vp run '@robelest/convex-auth#build'
+        run: vp run build:auth
+
+      - name: Prepare docs type config
+        run: vp run check:docs
 
       - name: Run lint
         run: vp run lint
