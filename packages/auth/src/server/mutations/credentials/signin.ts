@@ -10,6 +10,7 @@ import type { GenericDataModel } from "convex/server";
 import { Infer, v } from "convex/values";
 
 import * as Provider from "../../crypto";
+import type { Hashed } from "../../../shared/brand";
 import { authDb } from "../../db";
 import {
   getSignInRateLimitState,
@@ -18,13 +19,14 @@ import {
   resetSignInRateLimit,
 } from "../../limits";
 import { LOG_LEVELS, log, maybeRedact } from "../../log";
-import { issueSession } from "../../sessions";
-import type { SessionIssuance } from "../../sessions";
-import { Doc, GenericActionCtxWithAuthConfig, MutationCtx } from "../../types";
+import { issueSession } from "../../session/lifecycle";
+import type { SessionIssuance } from "../../session/lifecycle";
+import { GenericActionCtxWithAuthConfig, MutationCtx } from "../../types";
 import { withSpan } from "../../utils/span";
 import { AUTH_STORE_REF } from "../store/refs";
 
-export const credentialsSignInArgs = v.object({
+/** Argument validator for the combined credentials-verify + session-issue mutation. */
+export const vCredentialsSignInArgs = v.object({
   provider: v.string(),
   account: v.object({ id: v.string(), secret: v.string() }),
   generateTokens: v.boolean(),
@@ -56,14 +58,23 @@ type CredentialsSignInResult =
     }
   | {
       kind: "totpRequired";
-      issuance: SessionIssuance; // issued with generateTokens=false
+      issuance: SessionIssuance;
       account: { _id: string; emailVerified?: string };
       user: { _id: string; email?: string };
     };
 
+/**
+ * Verify credentials and issue a session in a single mutation.
+ *
+ * Enforces sign-in rate limiting, optional verified-email and TOTP gates, and
+ * returns a discriminated result (`invalidAccount`, `tooManyAttempts`,
+ * `invalidSecret`, `emailVerificationRequired`, `totpRequired`, or `signedIn`).
+ *
+ * @internal
+ */
 export async function credentialsSignInImpl(
   ctx: MutationCtx,
-  args: Infer<typeof credentialsSignInArgs>,
+  args: Infer<typeof vCredentialsSignInArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
 ): Promise<CredentialsSignInResult> {
@@ -76,7 +87,7 @@ export async function credentialsSignInImpl(
 
 async function credentialsSignInInner(
   ctx: MutationCtx,
-  args: Infer<typeof credentialsSignInArgs>,
+  args: Infer<typeof vCredentialsSignInArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
 ): Promise<CredentialsSignInResult> {
@@ -91,15 +102,16 @@ async function credentialsSignInInner(
     enforceTotp,
   });
 
-  const existingAccount = (await db.accounts.get(providerId, account.id)) as Doc<"Account"> | null;
+  const existingAccount = await db.accounts.get({
+    provider: providerId,
+    providerAccountId: account.id,
+  });
   if (existingAccount === null) {
     return { kind: "invalidAccount" };
   }
 
-  // User fetch and rate-limit state read in parallel; neither depends on
-  // the other.
   const [user, rateLimitState] = await Promise.all([
-    db.users.getById(existingAccount.userId) as Promise<Doc<"User"> | null>,
+    db.users.get({ id: existingAccount.userId }),
     getSignInRateLimitState(ctx, existingAccount._id, config),
   ]);
 
@@ -116,7 +128,11 @@ async function credentialsSignInInner(
   }
 
   const verified = await withSpan("convex-auth.credentials.verify", { providerId }, () =>
-    Provider.verify(getProviderOrThrow(providerId), account.secret, existingAccount.secret ?? ""),
+    Provider.verify(
+      getProviderOrThrow(providerId),
+      account.secret,
+      (existingAccount.secret ?? "") as Hashed<"Password">,
+    ),
   );
   if (!verified) {
     await recordFailedSignIn(ctx, existingAccount._id, config, rateLimitState);
@@ -186,7 +202,7 @@ async function credentialsSignInInner(
 /** @internal */
 export const callCredentialsSignIn = async <DataModel extends GenericDataModel>(
   ctx: GenericActionCtxWithAuthConfig<DataModel>,
-  args: Infer<typeof credentialsSignInArgs>,
+  args: Infer<typeof vCredentialsSignInArgs>,
 ): Promise<CredentialsSignInResult> => {
   return (await ctx.runMutation(AUTH_STORE_REF, {
     args: {

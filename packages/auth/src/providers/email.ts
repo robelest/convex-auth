@@ -30,7 +30,7 @@ export interface EmailProviderConfig {
  * Create an email magic link or OTP provider.
  *
  * @param config - Sender identity and delivery hooks for verification emails.
- * @returns A configured email provider for `createAuth`.
+ * @returns A configured email provider for `defineAuth`.
  * @throws {Error} When `from` is empty.
  *
  * @example

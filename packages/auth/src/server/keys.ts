@@ -8,12 +8,9 @@
  * @module
  */
 
+import type { ApiKeySecret, Hashed } from "../shared/brand";
 import { sha256, generateRandomString } from "./random";
 import type { KeyScope, ScopeChecker } from "./types";
-
-// ============================================================================
-// Constants
-// ============================================================================
 
 const DEFAULT_KEY_PREFIX = "sk_";
 const KEY_RANDOM_LENGTH = 32;
@@ -24,10 +21,6 @@ const KEY_RANDOM_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxy
  * Includes the prefix string (e.g. "sk_") plus a few random chars.
  */
 const VISIBLE_PREFIX_EXTRA_CHARS = 4;
-
-// ============================================================================
-// Key generation
-// ============================================================================
 
 /**
  * Generate a new API key.
@@ -41,15 +34,15 @@ const VISIBLE_PREFIX_EXTRA_CHARS = 4;
 /** @internal */
 export async function generateApiKey(prefix: string = DEFAULT_KEY_PREFIX): Promise<{
   /** The full raw key — show to user once, never store. */
-  raw: string;
+  raw: ApiKeySecret;
   /** SHA-256 hex hash of the raw key — store this. */
-  hashedKey: string;
+  hashedKey: Hashed<"ApiKeySecret">;
   /** Truncated prefix for display (e.g. "sk_aBc1..."). */
   displayPrefix: string;
 }> {
   const randomPart = generateRandomString(KEY_RANDOM_LENGTH, KEY_RANDOM_ALPHABET);
-  const raw = `${prefix}${randomPart}`;
-  const hashedKey = await sha256(raw);
+  const raw = `${prefix}${randomPart}` as ApiKeySecret;
+  const hashedKey = (await sha256(raw)) as Hashed<"ApiKeySecret">;
   const displayPrefix = `${raw.substring(0, prefix.length + VISIBLE_PREFIX_EXTRA_CHARS)}...`;
 
   return { raw, hashedKey, displayPrefix };
@@ -61,13 +54,9 @@ export async function generateApiKey(prefix: string = DEFAULT_KEY_PREFIX): Promi
  * Used during Bearer token verification to find the stored key record.
  */
 /** @internal */
-export async function hashApiKey(rawKey: string): Promise<string> {
-  return sha256(rawKey);
+export async function hashApiKey(rawKey: string): Promise<Hashed<"ApiKeySecret">> {
+  return (await sha256(rawKey)) as Hashed<"ApiKeySecret">;
 }
-
-// ============================================================================
-// Scope checker
-// ============================================================================
 
 /**
  * Build a `ScopeChecker` from an array of `KeyScope` entries.
@@ -79,7 +68,7 @@ export async function hashApiKey(rawKey: string): Promise<string> {
  * A wildcard resource `"*"` grants the action on all resources.
  */
 /** @internal */
-export function buildScopeChecker(scopes: KeyScope[]): ScopeChecker {
+export function createScopeChecker(scopes: KeyScope[]): ScopeChecker {
   return {
     scopes,
     can(resource: string, action: string): boolean {
@@ -91,10 +80,6 @@ export function buildScopeChecker(scopes: KeyScope[]): ScopeChecker {
     },
   };
 }
-
-// ============================================================================
-// Per-key rate limiting (token-bucket)
-// ============================================================================
 
 /**
  * Check whether a key is rate-limited based on its stored state.
@@ -115,7 +100,6 @@ export function checkKeyRateLimit(
   const now = Date.now();
 
   if (!state) {
-    // First request — create initial state with one token consumed.
     return {
       limited: false,
       newState: {

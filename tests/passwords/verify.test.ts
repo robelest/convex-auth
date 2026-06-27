@@ -35,9 +35,6 @@ test("reset flow sends an OTP, lets the user choose a new password, and rotates 
   const t = convexTest(schema);
   const email = "reset-flow@example.com";
 
-  // Sign up first. With verify enabled, this kicks off email verification —
-  // signUp returns `kind: "started"` and an OTP is sent — but the account is
-  // created so the reset flow can find it.
   const signUpCapture = stubResendCapture();
   const signUpResult = await t.action(api.auth.signIn, {
     provider: "password",
@@ -47,7 +44,6 @@ test("reset flow sends an OTP, lets the user choose a new password, and rotates 
   expect(signUpResult.kind).toBe("started");
   expect(signUpCapture.code()).not.toEqual("");
 
-  // Request a reset code.
   const resetCapture = stubResendCapture();
   const resetStart = await t.action(api.auth.signIn, {
     provider: "password",
@@ -60,8 +56,6 @@ test("reset flow sends an OTP, lets the user choose a new password, and rotates 
   expect(resetCapture.code()).not.toEqual("");
   expect(resetCapture.code()).not.toEqual(signUpCapture.code());
 
-  // Complete the reset by calling `verify` with the captured code and a new
-  // password. The user should be signed in immediately.
   const NEW_PASSWORD = "freshpassword123";
   const tokens = expectSignInSession(
     await t.action(api.auth.signIn, {
@@ -76,7 +70,6 @@ test("reset flow sends an OTP, lets the user choose a new password, and rotates 
   );
   expect(tokens).not.toBeNull();
 
-  // The new password works.
   const reSignIn = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
@@ -85,7 +78,6 @@ test("reset flow sends an OTP, lets the user choose a new password, and rotates 
   );
   expect(reSignIn).not.toBeNull();
 
-  // The old password no longer works.
   await expect(async () => {
     await t.action(api.auth.signIn, {
       provider: "password",
@@ -98,7 +90,6 @@ test("verify without newPassword completes post-signup email confirmation", asyn
   const t = convexTest(schema);
   const email = "verify-flow@example.com";
 
-  // Sign up — capture the verification email.
   const capture = stubResendCapture();
   const signUpResult = await t.action(api.auth.signIn, {
     provider: "password",
@@ -108,8 +99,6 @@ test("verify without newPassword completes post-signup email confirmation", asyn
   expect(signUpResult.kind).toBe("started");
   expect(capture.code()).not.toEqual("");
 
-  // Complete email verification (no `newPassword` — this is the post-signup
-  // path). The user should be signed in.
   const tokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
@@ -122,7 +111,6 @@ test("verify without newPassword completes post-signup email confirmation", asyn
   expect(claims.email).toBe(email);
   expect(claims.email_verified).toBe(true);
 
-  // The user can now sign in normally without going through verification.
   const reSignIn = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
@@ -130,4 +118,32 @@ test("verify without newPassword completes post-signup email confirmation", asyn
     }),
   );
   expect(reSignIn).not.toBeNull();
+});
+
+test("reset flow does not reveal whether an email is registered", async () => {
+  const t = convexTest(schema);
+
+  const capture = stubResendCapture();
+  const result = await t.action(api.auth.signIn, {
+    provider: "password",
+    params: { email: "no-such-reset-user@example.com", flow: "reset" },
+  });
+  capture.restore();
+
+  expect(result.kind).toBe("started");
+  expect(capture.code()).toEqual("");
+});
+
+test("verify resend flow does not reveal whether an email is registered", async () => {
+  const t = convexTest(schema);
+
+  const capture = stubResendCapture();
+  const result = await t.action(api.auth.signIn, {
+    provider: "password",
+    params: { email: "no-such-verify-user@example.com", flow: "verify" },
+  });
+  capture.restore();
+
+  expect(result.kind).toBe("started");
+  expect(capture.code()).toEqual("");
 });

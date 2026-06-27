@@ -1,10 +1,12 @@
 <script lang="ts">
   import type { ConvexClient } from "convex/browser";
   import { useQuery } from "convex-svelte";
+  import { toast } from "svelte-sonner";
+  import { errorText } from "$lib/errors";
   import { api } from "$convex/_generated/api.js";
-  import Copy from "phosphor-svelte/lib/Copy";
-  import Check from "phosphor-svelte/lib/Check";
-  import Warning from "phosphor-svelte/lib/Warning";
+  import Copy from "svelte-radix/Copy.svelte";
+  import Check from "svelte-radix/Check.svelte";
+  import ExclamationTriangle from "svelte-radix/ExclamationTriangle.svelte";
   import ScimSection from "./ScimSection.svelte";
 
   let { client, connectionId, groupId, siteUrl } = $props<{
@@ -55,8 +57,6 @@
 
   let isSaving = $state(false);
   let isDeleting = $state(false);
-  let errorMessage = $state<string | null>(null);
-  let successMessage = $state<string | null>(null);
   let newDomain = $state("");
   let verificationChallenge = $state<{ domain: string; recordName: string; token: string } | null>(null);
   let validationResult = $state<ValidationResult | null>(null);
@@ -74,9 +74,9 @@
   let samlFirstNameAttrDraft = $state<string | undefined>(undefined);
   let samlLastNameAttrDraft = $state<string | undefined>(undefined);
 
-  const connectionQuery = useQuery(api.auth.group.getConnection, () => ({ connectionId }));
+  const connectionQuery = useQuery(api.auth.group.getConnection, () => ({ id: connectionId }));
   const domainsQuery = useQuery(api.auth.group.listDomains, () => ({ connectionId }));
-  const statusQuery = useQuery(api.auth.group.getConnectionStatus, () => ({ connectionId }));
+  const statusQuery = useQuery(api.auth.group.getConnectionStatus, () => ({ id: connectionId }));
   const oidcConfigQuery = useQuery(
     api.auth.group.getOidc,
     () =>
@@ -138,8 +138,9 @@
   ];
 
   function setMessage(kind: "success" | "error", message: string | null) {
-    if (kind === "success") { successMessage = message; errorMessage = null; }
-    else { errorMessage = message; successMessage = null; }
+    if (!message) return;
+    if (kind === "success") { toast.success(message); }
+    else { toast.error(message); }
   }
 
   function resetConfigDrafts() {
@@ -261,9 +262,8 @@
         protocol === "oidc"
           ? await client.query(api.auth.group.validateOidc, { connectionId })
           : await client.query(api.auth.group.validateSaml, { connectionId });
-      setMessage("success", null);
     } catch (error) {
-      setMessage("error", error instanceof Error ? error.message : "Validation failed.");
+      setMessage("error", errorText(error, "Validation failed."));
     }
   }
 
@@ -271,7 +271,7 @@
     isSaving = true;
     try {
       if (protocol === "oidc") {
-        await client.mutation(api.auth.group.configureOidc, {
+        await client.mutation(api.auth.group.setOidc, {
           connectionId,
           discovery: {
             discoveryUrl: oidcDiscoveryUrl.trim() || undefined,
@@ -282,7 +282,7 @@
           },
         });
       } else {
-        await client.action(api.auth.group.configureSaml, {
+        await client.action(api.auth.group.setSaml, {
           connectionId,
           metadata: {
             url: samlMetadataUrl.trim() || undefined,
@@ -306,7 +306,7 @@
       resetConfigDrafts();
       await handleValidate();
     } catch (error) {
-      setMessage("error", error instanceof Error ? error.message : "Save failed.");
+      setMessage("error", errorText(error, "Save failed."));
     } finally {
       isSaving = false;
     }
@@ -315,10 +315,10 @@
   async function handleDelete() {
     isDeleting = true;
     try {
-      await client.mutation(api.auth.group.deleteConnection, { connectionId });
-      window.location.href = `/${groupId}/sso`;
+      await client.mutation(api.auth.group.deleteConnection, { id: connectionId });
+      window.location.href = `/${groupId}/connection`;
     } catch (error) {
-      setMessage("error", error instanceof Error ? error.message : "Delete failed.");
+      setMessage("error", errorText(error, "Delete failed."));
       isDeleting = false;
     }
   }
@@ -336,7 +336,7 @@
       newDomain = "";
       setMessage("success", "Domain added.");
     } catch (error) {
-      setMessage("error", error instanceof Error ? error.message : "Failed to add domain.");
+      setMessage("error", errorText(error, "Failed to add domain."));
     }
   }
 
@@ -345,7 +345,7 @@
       const result = await client.mutation(api.auth.group.requestDomainVerification, { connectionId, domain });
       verificationChallenge = { domain, recordName: result.challenge.recordName, token: result.challenge.recordValue };
     } catch (error) {
-      setMessage("error", error instanceof Error ? error.message : "Verification failed.");
+      setMessage("error", errorText(error, "Verification failed."));
     }
   }
 
@@ -355,7 +355,7 @@
       verificationChallenge = null;
       setMessage("success", `Verified ${domain}.`);
     } catch (error) {
-      setMessage("error", error instanceof Error ? error.message : "Verification failed.");
+      setMessage("error", errorText(error, "Verification failed."));
     }
   }
 </script>
@@ -367,45 +367,28 @@
     <!-- Header -->
     <div class="flex items-start justify-between gap-4 flex-wrap mb-8">
       <div class="flex flex-col gap-2">
-        <div class="flex items-center gap-2 font-label text-[0.75rem] text-gray-400">
-          <a class="text-accent-500 hover:text-accent-600 no-underline font-semibold" href="/{groupId}/sso">SSO Connections</a>
+        <div class="flex items-center gap-2 font-label text-[0.75rem] text-content-tertiary">
+          <a class="text-brand-red hover:text-brand-red no-underline font-semibold" href="/{groupId}/connection">Connections</a>
           <span>/</span>
-          <span class="text-gray-600">{connectionName}</span>
+          <span class="text-content-primary">{connectionName}</span>
         </div>
         <div class="flex items-center gap-3 flex-wrap">
           <h1 class="heading text-2xl m-0">{connectionName}</h1>
           <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] px-2.5 py-1 border border-indigo-500/20 text-indigo-600 bg-indigo-50">{protocol}</span>
-          <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] px-2.5 py-1 border {isActive ? 'text-green-800 bg-green-50 border-green-300' : 'text-gray-500 bg-gray-100 border-gray-300'}">{connection.status ?? 'draft'}</span>
+          <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] px-2.5 py-1 border {isActive ? 'text-green-800 bg-green-50 border-green-300' : 'text-content-secondary bg-background-tertiary border-border-transparent'}">{connection.status ?? 'draft'}</span>
         </div>
       </div>
       <div class="flex items-center gap-3">
         <button class="button button--secondary button--compact" type="button" onclick={handleValidate}>Validate</button>
-        <button class="font-label text-[0.75rem] font-semibold text-red-700 hover:text-red-900 bg-transparent border-0 cursor-pointer p-0" type="button" disabled={isDeleting} onclick={handleDelete}>{isDeleting ? 'Deleting…' : 'Delete connection'}</button>
+        <button class="font-label text-[0.75rem] font-semibold text-content-error hover:text-content-primary bg-transparent border-0 cursor-pointer p-0" type="button" disabled={isDeleting} onclick={handleDelete}>{isDeleting ? 'Deleting…' : 'Delete connection'}</button>
       </div>
     </div>
 
-    <!-- Messages -->
-    {#if errorMessage}
-      <div class="error-banner mb-4">{errorMessage}</div>
-    {/if}
-    {#if successMessage}
-      <div class="mb-4 px-3 py-2 border border-green-300 bg-green-50 font-label text-[0.75rem] text-green-800">{successMessage}</div>
-    {/if}
-
     <!-- Tab bar -->
-    <div class="flex items-center gap-0 border-b border-gray-300 mb-6 overflow-x-auto">
+    <div class="segmented self-start mb-6">
       {#each tabs as tab (tab.id)}
-        <button
-          class="relative px-5 py-3 font-label text-[0.8125rem] font-semibold border-0 bg-transparent cursor-pointer transition-colors whitespace-nowrap
-            {activeTab === tab.id ? 'text-accent-600' : 'text-gray-500 hover:text-gray-700'}"
-          type="button"
-          onclick={() => { activeTab = tab.id; }}
-        >
+        <button type="button" data-active={activeTab === tab.id} onclick={() => { activeTab = tab.id; }}>
           {tab.label}
-          {#if activeTab === tab.id}
-            <div class="absolute bottom-0 left-0 right-0 h-[2px] bg-accent-500"></div>
-            <div class="absolute bottom-0 left-0 w-[6px] h-[6px] bg-accent-500"></div>
-          {/if}
         </button>
       {/each}
     </div>
@@ -414,10 +397,10 @@
     {#if activeTab === "config"}
       <div class="flex flex-col gap-6">
         <!-- SP URLs callout -->
-        <div class="relative border border-gray-300 bg-gray-100 p-5">
-          <p class="m-0 mb-4 font-label text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-gray-500">
+        <div class="relative border border-border-transparent bg-background-tertiary p-5">
+          <p class="m-0 mb-4 font-label text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-content-secondary">
             Service Provider Values
-            <span class="ml-2 font-normal normal-case tracking-normal text-gray-400">— copy these into your Identity Provider</span>
+            <span class="ml-2 font-normal normal-case tracking-normal text-content-tertiary">— copy these into your Identity Provider</span>
           </p>
           <div class="flex flex-col gap-3">
             {#if protocol === 'saml' && samlSetup}
@@ -427,13 +410,13 @@
                 ['SLO URL', samlSetup.sloUrl],
               ] as [label, value] (label)}
                 <div class="flex items-center gap-3 min-w-0 max-md:flex-col max-md:items-start max-md:gap-1">
-                  <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-gray-400 w-20 shrink-0">{label}</span>
-                  <code class="flex-1 font-mono text-[0.72rem] text-gray-800 break-all min-w-0">{value}</code>
+                  <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-content-tertiary w-20 shrink-0">{label}</span>
+                  <code class="flex-1 font-mono text-[0.72rem] text-content-primary break-all min-w-0">{value}</code>
                   <button class="button button--secondary button--compact shrink-0" type="button" onclick={() => copyValue(value, label)}>
                     {#if copiedField === label}
-                      <Check size={14} class="text-green-600" />
+                      <Check size="14" class="text-green-600" />
                     {:else}
-                      <Copy size={14} />
+                      <Copy size="14" />
                     {/if}
                   </button>
                 </div>
@@ -441,108 +424,108 @@
             {:else if protocol === 'oidc' && siteUrl}
               {@const redirectUri = `${siteUrl.replace(/\/$/, "")}/api/auth/connections/${connectionId}/oidc/callback`}
               <div class="flex items-center gap-3 min-w-0 max-md:flex-col max-md:items-start max-md:gap-1">
-                <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-gray-400 w-24 shrink-0">Redirect URI</span>
-                <code class="flex-1 font-mono text-[0.72rem] text-gray-800 break-all min-w-0">{redirectUri}</code>
+                <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-content-tertiary w-24 shrink-0">Redirect URI</span>
+                <code class="flex-1 font-mono text-[0.72rem] text-content-primary break-all min-w-0">{redirectUri}</code>
                 <button class="button button--secondary button--compact shrink-0" type="button" onclick={() => copyValue(redirectUri, 'redirect')}>
                   {#if copiedField === 'redirect'}
-                    <Check size={14} class="text-green-600" />
+                    <Check size="14" class="text-green-600" />
                   {:else}
-                    <Copy size={14} />
+                    <Copy size="14" />
                   {/if}
                 </button>
               </div>
             {/if}
           </div>
           <!-- Geometric accent -->
-          <div class="absolute top-2 right-2 w-4 h-4 border border-gray-300/50"></div>
-          <div class="absolute top-4 right-4 w-4 h-4 border border-gray-300/30"></div>
+          <div class="absolute top-2 right-2 w-4 h-4 border border-border-transparent/50"></div>
+          <div class="absolute top-4 right-4 w-4 h-4 border border-border-transparent/30"></div>
         </div>
 
         <!-- IdP Configuration form -->
-        <div class="border border-gray-300 bg-white p-6 flex flex-col gap-5">
-          <p class="m-0 font-label text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-gray-500">Identity Provider Configuration</p>
+        <div class="border border-border-transparent bg-background-secondary p-6 flex flex-col gap-5">
+          <p class="m-0 font-label text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-content-secondary">Identity Provider Configuration</p>
 
           {#if protocol === 'oidc'}
             <label class="flex flex-col gap-1.5">
-              <span class="font-label text-xs font-semibold text-gray-700">Discovery URL</span>
+              <span class="font-label text-xs font-semibold text-content-primary">Discovery URL</span>
               <input value={oidcDiscoveryUrl} oninput={(e) => { oidcDiscoveryUrlDraft = e.currentTarget.value; }} class="input" type="url" placeholder="https://idp.example.com/.well-known/openid-configuration" />
             </label>
             <div class="grid gap-5 md:grid-cols-2">
               <label class="flex flex-col gap-1.5">
-                <span class="font-label text-xs font-semibold text-gray-700">Client ID</span>
+                <span class="font-label text-xs font-semibold text-content-primary">Client ID</span>
                 <input value={oidcClientId} oninput={(e) => { oidcClientIdDraft = e.currentTarget.value; }} class="input" type="text" placeholder="Client ID" />
               </label>
               <label class="flex flex-col gap-1.5">
-                <span class="font-label text-xs font-semibold text-gray-700">Client Secret</span>
+                <span class="font-label text-xs font-semibold text-content-primary">Client Secret</span>
                 <input bind:value={oidcClientSecretDraft} class="input" type="password" placeholder="Leave blank to keep current" />
               </label>
             </div>
           {:else}
             <div class="grid gap-5 md:grid-cols-2">
               <label class="flex flex-col gap-1.5 md:col-span-2">
-                <span class="font-label text-xs font-semibold text-gray-700">Metadata URL</span>
+                <span class="font-label text-xs font-semibold text-content-primary">Metadata URL</span>
                 <input value={samlMetadataUrl} oninput={(e) => { samlMetadataUrlDraft = e.currentTarget.value; }} class="input" type="url" placeholder="https://idp.example.com/.../metadata" />
               </label>
               <label class="flex flex-col gap-1.5 md:col-span-2">
-                <span class="font-label text-xs font-semibold text-gray-700">Metadata XML</span>
+                <span class="font-label text-xs font-semibold text-content-primary">Metadata XML</span>
                 <textarea value={samlMetadataXml} oninput={(e) => { samlMetadataXmlDraft = e.currentTarget.value; }} class="input resize-y min-h-28 font-mono text-[0.72rem] py-2" rows="5"></textarea>
               </label>
             </div>
 
-            <div class="border-t border-gray-200 pt-5">
-              <p class="m-0 mb-4 font-label text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-gray-500">Attribute Mapping</p>
+            <div class="border-t border-border-transparent pt-5">
+              <p class="m-0 mb-4 font-label text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-content-secondary">Attribute Mapping</p>
               <div class="grid gap-4 md:grid-cols-2">
                 <label class="flex flex-col gap-1.5">
-                  <span class="font-label text-xs font-semibold text-gray-700">Subject</span>
+                  <span class="font-label text-xs font-semibold text-content-primary">Subject</span>
                   <input value={samlSubjectAttr} oninput={(e) => { samlSubjectAttrDraft = e.currentTarget.value; }} class="input" type="text" placeholder="NameID fallback" />
                 </label>
                 <label class="flex flex-col gap-1.5">
-                  <span class="font-label text-xs font-semibold text-gray-700">Email</span>
+                  <span class="font-label text-xs font-semibold text-content-primary">Email</span>
                   <input value={samlEmailAttr} oninput={(e) => { samlEmailAttrDraft = e.currentTarget.value; }} class="input" type="text" placeholder="email or claim URI" />
                 </label>
                 <label class="flex flex-col gap-1.5">
-                  <span class="font-label text-xs font-semibold text-gray-700">Display Name</span>
+                  <span class="font-label text-xs font-semibold text-content-primary">Display Name</span>
                   <input value={samlNameAttr} oninput={(e) => { samlNameAttrDraft = e.currentTarget.value; }} class="input" type="text" placeholder="displayName" />
                 </label>
                 <label class="flex flex-col gap-1.5">
-                  <span class="font-label text-xs font-semibold text-gray-700">First Name</span>
+                  <span class="font-label text-xs font-semibold text-content-primary">First Name</span>
                   <input value={samlFirstNameAttr} oninput={(e) => { samlFirstNameAttrDraft = e.currentTarget.value; }} class="input" type="text" placeholder="givenName" />
                 </label>
                 <label class="flex flex-col gap-1.5 md:col-span-2">
-                  <span class="font-label text-xs font-semibold text-gray-700">Last Name</span>
+                  <span class="font-label text-xs font-semibold text-content-primary">Last Name</span>
                   <input value={samlLastNameAttr} oninput={(e) => { samlLastNameAttrDraft = e.currentTarget.value; }} class="input" type="text" placeholder="surname" />
                 </label>
               </div>
             </div>
 
             <label class="flex items-center gap-2.5 pt-1">
-              <input checked={samlSignAuthnRequests} onchange={(e) => { samlSignAuthnRequestsDraft = e.currentTarget.checked; }} type="checkbox" class="w-4 h-4 accent-accent-500" />
-              <span class="font-label text-[0.8125rem] text-gray-700">Sign AuthnRequests</span>
+              <input checked={samlSignAuthnRequests} onchange={(e) => { samlSignAuthnRequestsDraft = e.currentTarget.checked; }} type="checkbox" class="w-4 h-4 accent-brand-red" />
+              <span class="font-label text-[0.8125rem] text-content-primary">Sign AuthnRequests</span>
             </label>
           {/if}
 
-          <div class="flex items-center gap-3 pt-2 border-t border-gray-200">
+          <div class="flex items-center gap-3 pt-2 border-t border-border-transparent">
             <button class="button button--accent" type="button" disabled={isSaving} onclick={handleSave}>{isSaving ? 'Saving…' : 'Save configuration'}</button>
           </div>
         </div>
 
         <!-- Validation results -->
         {#if validationResult}
-          <div class="border border-gray-300 bg-white p-5 flex flex-col gap-0">
-            <p class="m-0 mb-3 font-label text-[0.6875rem] font-semibold uppercase tracking-[0.12em] {validationResult.ok ? 'text-green-700' : 'text-accent-600'}">
+          <div class="border border-border-transparent bg-background-secondary p-5 flex flex-col gap-0">
+            <p class="m-0 mb-3 font-label text-[0.6875rem] font-semibold uppercase tracking-[0.12em] {validationResult.ok ? 'text-green-700' : 'text-brand-red'}">
               Validation {validationResult.ok ? 'Passed' : 'Issues Found'}
             </p>
             {#each validationResult.checks as check (check.name)}
-              <div class="flex items-start justify-between gap-4 py-3 border-t border-gray-200">
+              <div class="flex items-start justify-between gap-4 py-3 border-t border-border-transparent">
                 <div class="flex items-start gap-3 min-w-0">
                   {#if check.ok}
-                    <Check size={16} weight="bold" class="text-green-600 mt-0.5 shrink-0" />
+                    <Check size="16" class="text-green-600 mt-0.5 shrink-0" />
                   {:else}
-                    <Warning size={16} weight="bold" class="text-accent-500 mt-0.5 shrink-0" />
+                    <ExclamationTriangle size="16" class="text-brand-red mt-0.5 shrink-0" />
                   {/if}
                   <div class="min-w-0">
-                    <p class="m-0 font-label text-[0.8125rem] font-semibold text-gray-900">{check.name}</p>
-                    {#if check.message}<p class="m-0 mt-1 font-label text-[0.75rem] text-gray-500">{check.message}</p>{/if}
+                    <p class="m-0 font-label text-[0.8125rem] font-semibold text-content-primary">{check.name}</p>
+                    {#if check.message}<p class="m-0 mt-1 font-label text-[0.75rem] text-content-secondary">{check.message}</p>{/if}
                   </div>
                 </div>
               </div>
@@ -555,7 +538,7 @@
       <div class="flex flex-col gap-4">
         <!-- Domain summary -->
         <div class="flex items-center gap-4 mb-2">
-          <p class="m-0 font-label text-[0.8125rem] text-gray-500">
+          <p class="m-0 font-label text-[0.8125rem] text-content-secondary">
             {domains.length} domain{domains.length !== 1 ? 's' : ''} configured
             {#if domains.length > 0}
               — {domains.filter((d) => Boolean(d.verifiedAt)).length} verified
@@ -565,11 +548,11 @@
 
         <!-- Domain list -->
         {#if domains.length > 0}
-          <div class="border border-gray-300 bg-white">
+          <div class="border border-border-transparent bg-background-secondary">
             {#each domains as domain, i (domain.domain)}
-              <div class="flex items-center justify-between gap-4 px-5 py-4 {i > 0 ? 'border-t border-gray-200' : ''}">
+              <div class="flex items-center justify-between gap-4 px-5 py-4 {i > 0 ? 'border-t border-border-transparent' : ''}">
                 <div class="flex items-center gap-3 flex-wrap min-w-0">
-                  <span class="font-label text-[0.9375rem] font-semibold text-gray-900">{domain.domain}</span>
+                  <span class="font-label text-[0.9375rem] font-semibold text-content-primary">{domain.domain}</span>
                   {#if domain.isPrimary}
                     <span class="font-label text-[0.5625rem] font-semibold uppercase tracking-[0.12em] px-2 py-0.5 border border-slate-400/30 text-slate-600 bg-slate-400/10">Primary</span>
                   {/if}
@@ -599,12 +582,12 @@
               ] as [label, value] (label)}
                 <div class="flex items-center gap-3 min-w-0 max-md:flex-col max-md:items-start max-md:gap-1">
                   <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-indigo-500 w-20 shrink-0">{label}</span>
-                  <code class="flex-1 font-mono text-[0.72rem] text-gray-800 break-all min-w-0 bg-white/60 px-2 py-1 border border-indigo-500/10">{value}</code>
+                  <code class="flex-1 font-mono text-[0.72rem] text-content-primary break-all min-w-0 bg-background-primary/60 px-2 py-1 border border-indigo-500/10">{value}</code>
                   <button class="button button--secondary button--compact shrink-0" type="button" onclick={() => copyValue(value, label)}>
                     {#if copiedField === label}
-                      <Check size={14} class="text-green-600" />
+                      <Check size="14" class="text-green-600" />
                     {:else}
-                      <Copy size={14} />
+                      <Copy size="14" />
                     {/if}
                   </button>
                 </div>

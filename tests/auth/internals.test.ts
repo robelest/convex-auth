@@ -1,11 +1,11 @@
 import { base64urlDecode, createBrowserRuntime } from "@robelest/convex-auth/browser/runtime";
 import { localMutex } from "@robelest/convex-auth/client/runtime/mutex";
-import { parseRefreshToken } from "@robelest/convex-auth/server/refresh";
+import { parseRefreshToken } from "@robelest/convex-auth/server/token/refresh";
 import { createArcticOAuthClient } from "@robelest/convex-auth/server/oauth/factory";
 import {
   createSamlPostBindingResponse,
   parseSamlIdpMetadata,
-} from "@robelest/convex-auth/server/sso/saml";
+} from "@robelest/convex-auth/server/connection/saml";
 import { expect, test } from "vite-plus/test";
 
 test("refresh token parser rejects extra separators", () => {
@@ -39,13 +39,13 @@ test("browser proxy fetch fails clearly outside browser runtime", async () => {
 
 test("SAML POST binding response escapes HTML attributes", async () => {
   const response = createSamlPostBindingResponse({
-    endpoint: 'https://idp.example/sso?x="y"',
+    endpoint: 'https://idp.example/connection?x="y"',
     parameter: "SAMLRequest",
     value: '<xml value="bad">',
     relayState: 'relay"state',
   });
   const html = await response.text();
-  expect(html).toContain('action="https://idp.example/sso?x=&quot;y&quot;"');
+  expect(html).toContain('action="https://idp.example/connection?x=&quot;y&quot;"');
   expect(html).toContain('value="&lt;xml value=&quot;bad&quot;&gt;"');
   expect(html).toContain('value="relay&quot;state"');
 });

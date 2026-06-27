@@ -1,12 +1,12 @@
 /**
  * Public Convex `returns:` validators for the auth read surface.
  *
- * These back the `auth.v` namespace on the {@link createAuth} result.
+ * These back the `auth.v` namespace on the {@link defineAuth} result.
  * Consumers set them as their function `returns:` so client-side
  * `useQuery` inference flows end-to-end with zero hand-rolled validators
  * or DTO mappers. The `extend` field on User/Group/GroupMember is
  * replaced with the validator the consumer supplied via
- * `createAuth({ extend: { ... } })`, so `viewer.extend.<field>` is fully
+ * `defineAuth({ extend: { ... } })`, so `viewer.extend.<field>` is fully
  * typed instead of `any`.
  *
  * @module
@@ -34,7 +34,7 @@ const vIdString: IdValidatorFn = <T extends string>(_table: T) =>
 /**
  * Validators a consumer may supply for the `extend` field of each table.
  *
- * Passed as `createAuth({ extend })`. Every entry is optional; a missing
+ * Passed as `defineAuth({ extend })`. Every entry is optional; a missing
  * entry falls back to `v.any()`, preserving the untyped default.
  */
 export type AuthExtendValidators = {
@@ -46,12 +46,8 @@ export type AuthExtendValidators = {
   GroupMember?: Validator<any, any, any>;
 };
 
-type ExtendFor<
-  TExtend extends AuthExtendValidators,
-  K extends keyof AuthExtendValidators,
-> = TExtend[K] extends Validator<any, any, any>
-  ? TExtend[K]
-  : ReturnType<typeof v.any>;
+type ExtendFor<TExtend extends AuthExtendValidators, K extends keyof AuthExtendValidators> =
+  TExtend[K] extends Validator<any, any, any> ? TExtend[K] : ReturnType<typeof v.any>;
 
 const docWithExtend = <
   Fields extends Record<string, Validator<any, any, any>>,
@@ -77,20 +73,20 @@ const emailDocX = v.object(emailFields(vIdString));
  * supplied validator so the inferred type carries the real shape.
  *
  * @typeParam TExtend - The consumer's per-table `extend` validators.
- * @param extend - The `extend` map from `createAuth` config. Defaults to
+ * @param extend - The `extend` map from `defineAuth` config. Defaults to
  *   an empty object (all `extend` fields stay `v.any()`).
  * @returns The `auth.v` namespace: `user`, `group`, `member`, `invite`,
  *   `viewer`, `viewerWithGroups`, and the `list` page-wrapper helper.
  *
  * @example
  * ```ts
- * const av = buildAuthValidators({
+ * const av = createAuthValidators({
  *   User: v.object({ stripeCustomerId: v.optional(v.string()) }),
  * });
  * // Infer<typeof av.viewer> -> User document with typed `extend`
  * ```
  */
-export function buildAuthValidators<TExtend extends AuthExtendValidators>(
+export function createAuthValidators<TExtend extends AuthExtendValidators>(
   extend: TExtend = {} as TExtend,
 ) {
   const user = docWithExtend<typeof userFieldsX, ExtendFor<TExtend, "User">>(
@@ -122,7 +118,7 @@ export function buildAuthValidators<TExtend extends AuthExtendValidators>(
     email,
     /** `User | null` — for a `viewer`/current-user query. */
     viewer,
-    /** Wrap any item validator in the `{ items, nextCursor }` page shape. */
+    /** Wrap any item validator in Convex's native pagination result shape. */
     list: vPaginated,
   };
 }
@@ -133,7 +129,7 @@ export function buildAuthValidators<TExtend extends AuthExtendValidators>(
  * @typeParam TExtend - The consumer's per-table `extend` validators.
  */
 export type AuthValidators<TExtend extends AuthExtendValidators = {}> = ReturnType<
-  typeof buildAuthValidators<TExtend>
+  typeof createAuthValidators<TExtend>
 >;
 
 /**

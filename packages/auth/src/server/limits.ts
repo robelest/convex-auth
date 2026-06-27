@@ -1,8 +1,40 @@
-import type { ConvexAuthConfig, MutationCtx } from "./types";
+import type { FunctionReference, FunctionReturnType, OptionalRestArgs } from "convex/server";
+
+import type { ConvexAuthConfig } from "./types";
 
 const DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR = 10;
 
-function maxAttempts(config: ConvexAuthConfig) {
+/**
+ * Minimal context the rate-limit helpers depend on. The component API is
+ * threaded in via the explicit `config` argument, so only `runQuery` /
+ * `runMutation` are required. Typed with the narrowest call shape the helpers
+ * actually use so both mutation handlers (credentials sign-in) and action
+ * handlers (the TOTP ceremony) satisfy it, despite their differing
+ * `runQuery`/`runMutation` option overloads.
+ *
+ * @internal
+ */
+export type SignInLimitCtx = {
+  runQuery: <Query extends FunctionReference<"query", "public" | "internal">>(
+    query: Query,
+    ...args: OptionalRestArgs<Query>
+  ) => Promise<FunctionReturnType<Query>>;
+  runMutation: <Mutation extends FunctionReference<"mutation", "public" | "internal">>(
+    mutation: Mutation,
+    ...args: OptionalRestArgs<Mutation>
+  ) => Promise<FunctionReturnType<Mutation>>;
+};
+
+/**
+ * Minimal config shape the rate-limit helpers depend on. Both
+ * {@link ConvexAuthConfig} and `ConvexAuthMaterializedConfig` satisfy it, so
+ * the helpers work from mutation and action handlers alike.
+ *
+ * @internal
+ */
+export type SignInLimitConfig = Pick<ConvexAuthConfig, "component" | "signIn">;
+
+function maxAttempts(config: SignInLimitConfig) {
   return config.signIn?.maxFailedAttemptsPerHour ?? DEFAULT_MAX_SIGN_IN_ATTEMPTS_PER_HOUR;
 }
 
@@ -22,9 +54,9 @@ export type SignInRateLimitState = { identifier: string; ok: boolean };
  * @internal
  */
 export async function getSignInRateLimitState(
-  ctx: MutationCtx,
+  ctx: SignInLimitCtx,
   identifier: string,
-  config: ConvexAuthConfig,
+  config: SignInLimitConfig,
 ): Promise<SignInRateLimitState> {
   const result = await ctx.runQuery(config.component.limits.signInCheck, {
     identifier,
@@ -39,9 +71,9 @@ export async function getSignInRateLimitState(
  * @internal
  */
 export async function isSignInRateLimited(
-  ctx: MutationCtx,
+  ctx: SignInLimitCtx,
   identifier: string,
-  config: ConvexAuthConfig,
+  config: SignInLimitConfig,
 ): Promise<boolean> {
   const { ok } = await ctx.runQuery(config.component.limits.signInCheck, {
     identifier,
@@ -65,9 +97,9 @@ export function isStateRateLimited(state: SignInRateLimitState | null): boolean 
  * @internal
  */
 export async function recordFailedSignIn(
-  ctx: MutationCtx,
+  ctx: SignInLimitCtx,
   identifier: string,
-  config: ConvexAuthConfig,
+  config: SignInLimitConfig,
   _state?: SignInRateLimitState | null,
 ): Promise<void> {
   await ctx.runMutation(config.component.limits.signInRecord, {
@@ -82,9 +114,9 @@ export async function recordFailedSignIn(
  * @internal
  */
 export async function resetSignInRateLimit(
-  ctx: MutationCtx,
+  ctx: SignInLimitCtx,
   identifier: string,
-  _config: ConvexAuthConfig,
+  _config: SignInLimitConfig,
   _state?: SignInRateLimitState | null,
 ): Promise<void> {
   await ctx.runMutation(_config.component.limits.signInReset, { identifier });

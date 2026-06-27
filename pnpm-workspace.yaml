@@ -5,8 +5,7 @@ packages:
   - docs
 
 catalog:
-  "@robelest/fx": ^0.0.1-preview.4
-  convex: ^1.39.0
+  convex: ^1.41.0
   convex-test: ^0.0.48
   tsdown: 0.20.0-beta.3
   typescript: ^6.0.2
@@ -23,3 +22,8 @@ peerDependencyRules:
   allowedVersions:
     vite: "*"
     vitest: "*"
+
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - workerd

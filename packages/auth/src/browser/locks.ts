@@ -13,9 +13,11 @@ export const BrowserLocksLive: BrowserLocksService = {
     try {
       return await lockManager.request(key, callback);
     } catch (err) {
-      console.warn("[auth] navigator.locks.request failed; falling back to localMutex", { key, err });
+      console.warn("[auth] navigator.locks.request failed; falling back to localMutex", {
+        key,
+        err,
+      });
       return await localMutex(key, callback);
     }
   },
 };
-

@@ -20,7 +20,6 @@ test("sign in with email", async () => {
       if (typeof input === "string" && input === RESEND_API_URL) {
         capturedInit = init;
 
-        // Find the code after ${process.env.SITE_URL}?code=
         code = init.body.match(/\?code=([^\s\\]+)/)?.[1];
         return new Response(JSON.stringify({ id: MOCK_EMAIL_ID }), {
           status: 200,
@@ -81,7 +80,6 @@ test("redirectTo with email", async () => {
   expect(capturedInit.headers.Authorization).toBe(`Bearer ${process.env.RESEND_API_KEY}`);
   expect(capturedInit.body).toBeTypeOf("string");
 
-  // Custom URL via redirectTo
   const siteUrl = process.env.SITE_URL ?? "http://localhost:5173";
   const escapedSiteUrl = siteUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const code = capturedInit.body.match(

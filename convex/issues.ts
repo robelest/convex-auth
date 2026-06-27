@@ -3,7 +3,7 @@ import type { Doc } from "./_generated/dataModel";
 
 import { internalMutation, internalQuery } from "./_generated/server";
 import { auth } from "./auth/core";
-import { authMutation, authQuery, requireUserId } from "./functions";
+import { authMutation, authQuery } from "./functions";
 import {
   issuePriority as issuePriorityValidator,
   issueStatus as issueStatusValidator,
@@ -11,7 +11,11 @@ import {
 
 type UserLookup = { name?: string; email?: string } | null;
 
-function toIssueView(project: Doc<"projects">, issue: Doc<"issues">, userMap: Map<string, UserLookup>) {
+function toIssueView(
+  project: Doc<"projects">,
+  issue: Doc<"issues">,
+  userMap: Map<string, UserLookup>,
+) {
   const assignee = issue.assigneeUserId ? userMap.get(issue.assigneeUserId) : null;
   const creator = userMap.get(issue.createdByUserId);
   return {
@@ -19,7 +23,6 @@ function toIssueView(project: Doc<"projects">, issue: Doc<"issues">, userMap: Ma
     identifier: `${project.identifier}-${issue.number}`,
     number: issue.number,
     title: issue.title,
-    description: issue.description,
     status: issue.status,
     priority: issue.priority,
     labels: issue.labels ?? [],
@@ -37,7 +40,6 @@ const issueViewValidator = v.object({
   identifier: v.string(),
   number: v.number(),
   title: v.string(),
-  description: v.string(),
   status: v.string(),
   priority: v.string(),
   labels: v.array(v.string()),
@@ -73,9 +75,9 @@ export const forProject = authQuery({
     if (!projectId) return { project: null, issues: [] };
     const project = await ctx.db.get(projectId);
     if (!project) return { project: null, issues: [] };
-    const userId = await requireUserId(ctx);
+    const userId = ctx.auth.userId;
 
-    await auth.member.require(ctx, {
+    await auth.member.assert(ctx, {
       userId,
       groupId: project.groupId,
       grants: ["projects.read"],
@@ -86,10 +88,12 @@ export const forProject = authQuery({
       .withIndex("by_projectId", (q) => q.eq("projectId", project._id))
       .take(200);
 
-    const allUserIds = Array.from(new Set(
-      issues.flatMap((i) => [i.createdByUserId, i.assigneeUserId].filter(Boolean) as string[]),
-    ));
-    const userDocs = await auth.user.get(ctx, allUserIds);
+    const allUserIds = Array.from(
+      new Set(
+        issues.flatMap((i) => [i.createdByUserId, i.assigneeUserId].filter(Boolean) as string[]),
+      ),
+    );
+    const userDocs = await auth.user.get(ctx, { ids: allUserIds });
     const userMap = new Map<string, UserLookup>(allUserIds.map((id, i) => [id, userDocs[i]]));
 
     return {
@@ -120,13 +124,13 @@ export const detail = authQuery({
 
     const issue = await ctx.db.get(issueId);
     if (!issue) return null;
-    const userId = await requireUserId(ctx);
+    const userId = ctx.auth.userId;
 
     const ids = [issue.createdByUserId, issue.assigneeUserId].filter(Boolean) as string[];
     const [project, userDocs] = await Promise.all([
       ctx.db.get(issue.projectId),
-      auth.user.get(ctx, ids),
-      auth.member.require(ctx, {
+      auth.user.get(ctx, { ids }),
+      auth.member.assert(ctx, {
         userId,
         groupId: issue.groupId,
         grants: ["projects.read"],
@@ -143,7 +147,6 @@ export const create = authMutation({
   args: {
     projectId: v.string(),
     title: v.string(),
-    description: v.optional(v.string()),
     priority: v.optional(issuePriorityValidator),
     labels: v.optional(v.array(v.string())),
   },
@@ -157,9 +160,9 @@ export const create = authMutation({
     if (!project) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Project not found." });
     }
-    const userId = await requireUserId(ctx);
+    const userId = ctx.auth.userId;
 
-    await auth.member.require(ctx, {
+    await auth.member.assert(ctx, {
       userId,
       groupId: project.groupId,
       grants: ["issues.create"],
@@ -177,7 +180,6 @@ export const create = authMutation({
       scopeGroupId: project.groupId,
       number: nextNumber,
       title: args.title.trim(),
-      description: args.description?.trim() ?? "",
       status: "backlog",
       priority: args.priority ?? "none",
       createdByUserId: userId,
@@ -193,7 +195,6 @@ export const update = authMutation({
   args: {
     issueId: v.string(),
     title: v.optional(v.string()),
-    description: v.optional(v.string()),
     status: v.optional(issueStatusValidator),
     priority: v.optional(issuePriorityValidator),
     assigneeUserId: v.optional(v.union(v.string(), v.null())),
@@ -201,7 +202,7 @@ export const update = authMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
+    const userId = ctx.auth.userId;
     const issueId = ctx.db.normalizeId("issues", args.issueId);
     if (!issueId) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Issue not found." });
@@ -213,34 +214,37 @@ export const update = authMutation({
 
     const needsEdit =
       args.title !== undefined ||
-      args.description !== undefined ||
       args.priority !== undefined ||
       args.labels !== undefined;
     const needsMove = args.status !== undefined;
     const needsAssign = args.assigneeUserId !== undefined;
 
     if (needsEdit) {
-      await auth.member.require(ctx, { userId, groupId: issue.groupId, grants: ["issues.edit"] });
+      await auth.member.assert(ctx, { userId, groupId: issue.groupId, grants: ["issues.edit"] });
       try {
-        await auth.member.require(ctx, { userId, groupId: issue.groupId, grants: ["issues.assign"] });
+        await auth.member.assert(ctx, {
+          userId,
+          groupId: issue.groupId,
+          grants: ["issues.assign"],
+        });
       } catch {
-        const isOwnerOrAssignee = issue.createdByUserId === userId || issue.assigneeUserId === userId;
+        const isOwnerOrAssignee =
+          issue.createdByUserId === userId || issue.assigneeUserId === userId;
         if (!isOwnerOrAssignee) {
           throw new ConvexError({ code: "FORBIDDEN", message: "Access denied." });
         }
       }
     }
     if (needsMove) {
-      await auth.member.require(ctx, { userId, groupId: issue.groupId, grants: ["issues.move"] });
+      await auth.member.assert(ctx, { userId, groupId: issue.groupId, grants: ["issues.move"] });
     }
     if (needsAssign) {
       const grant = args.assigneeUserId !== userId ? "issues.assign" : "issues.move";
-      await auth.member.require(ctx, { userId, groupId: issue.groupId, grants: [grant] });
+      await auth.member.assert(ctx, { userId, groupId: issue.groupId, grants: [grant] });
     }
 
     const patch: Record<string, unknown> = {};
     if (args.title !== undefined) patch.title = args.title.trim();
-    if (args.description !== undefined) patch.description = args.description.trim();
     if (args.status !== undefined) patch.status = args.status;
     if (args.priority !== undefined) patch.priority = args.priority;
     if (args.assigneeUserId !== undefined) {
@@ -275,9 +279,9 @@ export const remove = authMutation({
 
     const issue = await ctx.db.get(issueId);
     if (!issue) return null;
-    const userId = await requireUserId(ctx);
+    const userId = ctx.auth.userId;
 
-    await auth.member.require(ctx, {
+    await auth.member.assert(ctx, {
       userId,
       groupId: issue.groupId,
       grants: ["issues.delete"],
@@ -347,7 +351,6 @@ export const listIssuesForApi = internalQuery({
       issueId: v.id("issues"),
       number: v.number(),
       title: v.string(),
-      description: v.string(),
       status: issueStatusValidator,
       priority: issuePriorityValidator,
       labels: v.array(v.string()),
@@ -365,7 +368,6 @@ export const listIssuesForApi = internalQuery({
       issueId: issue._id,
       number: issue.number,
       title: issue.title,
-      description: issue.description,
       status: issue.status,
       priority: issue.priority,
       labels: issue.labels ?? [],
@@ -378,7 +380,6 @@ export const createIssueForApi = internalMutation({
     projectId: v.string(),
     userId: v.string(),
     title: v.string(),
-    description: v.optional(v.string()),
   },
   returns: v.object({ issueId: v.id("issues"), number: v.number() }),
   handler: async (ctx, args) => {
@@ -401,7 +402,6 @@ export const createIssueForApi = internalMutation({
       scopeGroupId: project.groupId,
       number,
       title: args.title.trim(),
-      description: args.description?.trim() ?? "",
       status: "backlog",
       priority: "medium",
       createdByUserId: args.userId,

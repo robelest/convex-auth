@@ -2,12 +2,12 @@
  * Configuration and helpers for using Convex Auth on your Convex
  * backend.
  *
- * Use `createAuth(components.auth, config)` to configure authentication.
+ * Use `defineAuth(components.auth, config)` to configure authentication.
  *
  * @module
  */
 
-export { createAuth } from "../server/auth";
+export { defineAuth } from "../server/auth";
 export type {
   AuthApi,
   AuthContext,

@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { getContext, onMount } from 'svelte';
-	import { useConvexClient } from 'convex-svelte';
+	import { getConvexClient } from 'convex-svelte';
+	import { toast } from 'svelte-sonner';
 	import { api } from '$convex/_generated/api.js';
-	import ArrowLeft from 'phosphor-svelte/lib/ArrowLeft';
+	import ArrowLeft from 'svelte-radix/ArrowLeft.svelte';
 
 	type SignInResult = {
 		kind: 'signedIn' | 'redirect' | 'started' | 'totpRequired' | 'deviceCode';
@@ -23,9 +24,8 @@
 	}>();
 
 	const auth = getContext<AuthContext>('auth');
-	const convexClient = useConvexClient();
+	const convexClient = getConvexClient();
 
-	let errorMessage: string | null = $state(null);
 	let isSubmitting: boolean = $state(false);
 	let password: string = $state('');
 	let resetCode: string = $state('');
@@ -57,6 +57,11 @@
 	function isNoMatchingSsoError(error: unknown) {
 		const message = getErrorMessage(error);
 		return message.includes('No group connection matched the provided input.');
+	}
+
+	function isCredentialsError(error: unknown) {
+		const message = getErrorMessage(error);
+		return message.includes('Invalid credentials') || message.includes('credentials');
 	}
 
 	function classifyPasswordError(error: unknown): string {
@@ -94,7 +99,6 @@
 	async function handleEmailContinue() {
 		if (!email.includes('@')) return;
 		isSubmitting = true;
-		errorMessage = null;
 
 		let shouldFallbackToPassword = false;
 
@@ -110,7 +114,7 @@
 					protocol: ssoInfo.protocol,
 					signInPath: ssoInfo.signInPath,
 				});
-				const result = await auth.signIn('sso', { connectionId: ssoInfo.connectionId });
+				const result = await auth.signIn('connection', { connectionId: ssoInfo.connectionId });
 				console.log('[group-sso] signin:result', result);
 				if (result.kind === 'redirect' && result.redirect) {
 					window.location.href = result.redirect.toString();
@@ -122,7 +126,7 @@
 		} catch (error) {
 			console.error('[group-sso] flow:failed', error);
 			if (!isNoMatchingSsoError(error)) {
-				errorMessage = getErrorMessage(error);
+				toast.error(getErrorMessage(error));
 				isSubmitting = false;
 				return;
 			}
@@ -142,7 +146,6 @@
 
 	async function handlePasswordSubmit() {
 		isSubmitting = true;
-		errorMessage = null;
 
 		try {
 			const result = await auth.signIn('password', { flow: mode, email, password });
@@ -151,12 +154,16 @@
 			} else if (result.kind === 'redirect' && result.redirect) {
 				window.location.href = result.redirect.toString();
 			} else if (result.kind === 'started') {
-				// Email verification was sent — show the code-entry step.
 				verifyCode = '';
 				step = 'verifyEmail';
 			}
 		} catch (e) {
-			errorMessage = classifyPasswordError(e);
+			if (mode === 'signUp' && isCredentialsError(e)) {
+				mode = 'signIn';
+				toast.error('An account with this email already exists. Enter your password to sign in.');
+			} else {
+				toast.error(classifyPasswordError(e));
+			}
 		} finally {
 			isSubmitting = false;
 		}
@@ -165,7 +172,6 @@
 	async function handleResetRequest() {
 		if (!email.includes('@')) return;
 		isSubmitting = true;
-		errorMessage = null;
 
 		try {
 			await auth.signIn('password', { flow: 'reset', email });
@@ -173,7 +179,7 @@
 			resetNewPassword = '';
 			step = 'resetVerify';
 		} catch (e) {
-			errorMessage = getErrorMessage(e);
+			toast.error(getErrorMessage(e));
 		} finally {
 			isSubmitting = false;
 		}
@@ -181,7 +187,6 @@
 
 	async function handleResetVerify() {
 		isSubmitting = true;
-		errorMessage = null;
 
 		try {
 			const result = await auth.signIn('password', {
@@ -196,7 +201,7 @@
 				window.location.href = result.redirect.toString();
 			}
 		} catch (e) {
-			errorMessage = classifyPasswordError(e);
+			toast.error(classifyPasswordError(e));
 		} finally {
 			isSubmitting = false;
 		}
@@ -204,7 +209,6 @@
 
 	async function handleVerifyEmail() {
 		isSubmitting = true;
-		errorMessage = null;
 
 		try {
 			const result = await auth.signIn('password', {
@@ -218,7 +222,7 @@
 				window.location.href = result.redirect.toString();
 			}
 		} catch (e) {
-			errorMessage = classifyPasswordError(e);
+			toast.error(classifyPasswordError(e));
 		} finally {
 			isSubmitting = false;
 		}
@@ -226,7 +230,6 @@
 
 	async function handleGoogleSignIn() {
 		isSubmitting = true;
-		errorMessage = null;
 
 		try {
 			const result = await auth.signIn('google');
@@ -236,7 +239,7 @@
 				window.location.reload();
 			}
 		} catch (e) {
-			errorMessage = getErrorMessage(e);
+			toast.error(getErrorMessage(e));
 		} finally {
 			isSubmitting = false;
 		}
@@ -245,7 +248,6 @@
 	async function handlePasskeySignIn() {
 		if (!auth.passkey) return;
 		isSubmitting = true;
-		errorMessage = null;
 
 		try {
 			const result = await auth.passkey.signIn();
@@ -255,7 +257,7 @@
 				window.location.reload();
 			}
 		} catch (e) {
-			errorMessage = getErrorMessage(e);
+			toast.error(getErrorMessage(e));
 		} finally {
 			isSubmitting = false;
 		}
@@ -264,26 +266,23 @@
 	function goBackToEmail() {
 		step = 'email';
 		password = '';
-		errorMessage = null;
 	}
 
 	function goToResetRequest() {
 		step = 'resetRequest';
-		errorMessage = null;
 		password = '';
 	}
 
 	function goBackToPassword() {
 		step = 'password';
-		errorMessage = null;
 		resetCode = '';
 		resetNewPassword = '';
 	}
 </script>
 
-<div class="flex w-full max-w-80 flex-col gap-3 border border-gray-300 bg-white p-5 max-md:max-w-full max-md:p-4 max-md:border-x-0">
+<div class="panel flex w-full max-w-80 flex-col gap-3 rounded-xl border-t-[3px] border-t-brand-red p-5 shadow-[0_24px_80px_rgb(0_0_0_/_0.34)] max-md:max-w-full max-md:rounded-none max-md:border-x-0 max-md:p-4">
 	{#if isInvite}
-		<p class="font-label text-[0.6875rem] text-accent-500 m-0">You've been invited to an organization</p>
+		<p class="font-label text-[0.6875rem] text-content-accent m-0">You've been invited to an organization</p>
 	{/if}
 	<h2 class="heading text-xl m-0">
 		{#if step === 'checking'}
@@ -328,12 +327,12 @@
 		<form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); handlePasswordSubmit(); }}>
 			{#if !isInvite}
 				<button
-					class="flex items-center gap-1 font-label text-[0.75rem] text-gray-500 text-left bg-transparent border-0 p-0 cursor-pointer hover:text-accent-600"
+					class="flex items-center gap-1 font-label text-[0.75rem] text-content-secondary text-left bg-transparent border-0 p-0 cursor-pointer hover:text-content-primary"
 					type="button"
 					onclick={goBackToEmail}
-				><ArrowLeft size={14} />{email}</button>
+				><ArrowLeft size="14" />{email}</button>
 			{:else}
-				<span class="font-label text-[0.75rem] text-gray-500">{email}</span>
+				<span class="font-label text-[0.75rem] text-content-secondary">{email}</span>
 			{/if}
 			<input
 				bind:value={password}
@@ -351,7 +350,7 @@
 			</button>
 			{#if mode === 'signIn'}
 				<button
-					class="bg-transparent border-0 p-0 font-label text-[0.75rem] text-accent-500 hover:text-accent-600 cursor-pointer self-end"
+					class="bg-transparent border-0 p-0 font-label text-[0.75rem] text-content-accent hover:text-content-primary cursor-pointer self-end"
 					type="button"
 					onclick={goToResetRequest}
 				>Forgot password?</button>
@@ -361,11 +360,11 @@
 	{:else if step === 'resetRequest'}
 		<form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); handleResetRequest(); }}>
 			<button
-				class="flex items-center gap-1 font-label text-[0.75rem] text-gray-500 text-left bg-transparent border-0 p-0 cursor-pointer hover:text-accent-600"
+				class="flex items-center gap-1 font-label text-[0.75rem] text-content-secondary text-left bg-transparent border-0 p-0 cursor-pointer hover:text-content-primary"
 				type="button"
 				onclick={goBackToPassword}
-			><ArrowLeft size={14} />Back</button>
-			<p class="font-label text-[0.75rem] text-gray-500 m-0">
+			><ArrowLeft size="14" />Back</button>
+			<p class="font-label text-[0.75rem] text-content-secondary m-0">
 				Enter the email for your account and we'll send you a code.
 			</p>
 			<input
@@ -387,11 +386,11 @@
 	{:else if step === 'resetVerify'}
 		<form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); handleResetVerify(); }}>
 			<button
-				class="flex items-center gap-1 font-label text-[0.75rem] text-gray-500 text-left bg-transparent border-0 p-0 cursor-pointer hover:text-accent-600"
+				class="flex items-center gap-1 font-label text-[0.75rem] text-content-secondary text-left bg-transparent border-0 p-0 cursor-pointer hover:text-content-primary"
 				type="button"
 				onclick={goToResetRequest}
-			><ArrowLeft size={14} />{email}</button>
-			<p class="font-label text-[0.75rem] text-gray-500 m-0">
+			><ArrowLeft size="14" />{email}</button>
+			<p class="font-label text-[0.75rem] text-content-secondary m-0">
 				Check your email for a code, then choose a new password.
 			</p>
 			<input
@@ -420,8 +419,8 @@
 
 	{:else if step === 'verifyEmail'}
 		<form class="flex flex-col gap-2" onsubmit={(e) => { e.preventDefault(); handleVerifyEmail(); }}>
-			<span class="font-label text-[0.75rem] text-gray-500">{email}</span>
-			<p class="font-label text-[0.75rem] text-gray-500 m-0">
+			<span class="font-label text-[0.75rem] text-content-secondary">{email}</span>
+			<p class="font-label text-[0.75rem] text-content-secondary m-0">
 				Check your email for a verification code.
 			</p>
 			<input
@@ -451,18 +450,14 @@
 	{/if}
 
 	{#if !isInvite && (step === 'email' || step === 'password')}
-		<p class="font-label text-[0.75rem] text-gray-500 text-center m-0 mt-1">
+		<p class="font-label text-[0.75rem] text-content-secondary text-center m-0 mt-1">
 			{#if mode === 'signIn'}
 				Don't have an account?
-				<button class="bg-transparent border-0 p-0 font-label text-[0.75rem] font-semibold text-accent-500 hover:text-accent-600 cursor-pointer" onclick={() => { mode = 'signUp'; }}>Sign up</button>
+				<button class="bg-transparent border-0 p-0 font-label text-[0.75rem] font-semibold text-content-accent hover:text-content-primary cursor-pointer" onclick={() => { mode = 'signUp'; }}>Sign up</button>
 			{:else}
 				Already have an account?
-				<button class="bg-transparent border-0 p-0 font-label text-[0.75rem] font-semibold text-accent-500 hover:text-accent-600 cursor-pointer" onclick={() => { mode = 'signIn'; }}>Sign in</button>
+				<button class="bg-transparent border-0 p-0 font-label text-[0.75rem] font-semibold text-content-accent hover:text-content-primary cursor-pointer" onclick={() => { mode = 'signIn'; }}>Sign in</button>
 			{/if}
 		</p>
-	{/if}
-
-	{#if errorMessage}
-		<p class="error-banner">{errorMessage}</p>
 	{/if}
 </div>

@@ -9,7 +9,7 @@
 
 import "./identity/convex";
 
-export { createAuth } from "./auth";
+export { defineAuth } from "./auth";
 export type {
   AuthApi,
   AuthApiBase,
@@ -24,12 +24,19 @@ export type {
   OptionalAuthContext,
   UserDoc,
 } from "./auth";
-export { buildAuthValidators } from "./validators";
+export { createAuthValidators } from "./validators";
+export { authEnv } from "./env";
+export type { AuthEnv } from "./env";
+export type { AuthComponentApi } from "./component/api";
+export { authEvents } from "./events";
 export type {
-  Group,
-  Membership,
-  Viewer,
-} from "./validators";
+  AuthEvent,
+  AuthEventHandlerMap,
+  AuthEventKind,
+  AuthEventTarget,
+  AuthEventWhere,
+} from "./events";
+export type { Group, Membership, Viewer } from "./validators";
 export type { Doc, GenericDoc, AuthDataModel } from "./types";
 export {
   vGroupDoc,
@@ -40,22 +47,21 @@ export {
   vUserEmailDoc,
 } from "../component/model";
 export type { HttpAuthContext, HttpAuthContextConfig, OptionalHttpAuthContext } from "./http";
-export type {
-  GroupSsoAccessInput,
-  GroupSsoAccessHandler,
-  GroupSsoAccessPermissions,
-  GroupSsoPermission,
-  GroupSsoResolvedAccessHandler,
-  CreateAuthGroupSsoOptions,
-} from "./mounts";
-export { createAuthGroupSso, scim, sso } from "./mounts";
+export {
+  corsHeaders,
+  corsPreflightHandler,
+  registerCorsPreflight,
+  withCors,
+  withCorsResponse,
+} from "./cors";
+export type { McpToolDef } from "./mcp";
 export type {
   AuthCookie,
   AuthCookieConfig,
   AuthCookies,
-  RefreshResult,
+  PreloadResult,
   ServerOptions,
-} from "./prefetch";
+} from "./preload";
 export {
   authCookieNames,
   parseAuthCookies,
@@ -63,16 +69,7 @@ export {
   server,
   shouldProxyAuthAction,
   structuredAuthCookies,
-} from "./prefetch";
+} from "./preload";
 export { wellKnown } from "./wellknown";
 export type { WellKnownEndpoint, WellKnownOptions, WellKnownResponse } from "./wellknown";
-export type {
-  AfterCtx,
-  AuthCallbackContext,
-  AuthCallbackProfile,
-  AuthCallbacks,
-  AuthEvent,
-  BeforeCtx,
-  BeforeEvent,
-  BeforeResult,
-} from "./types";
+export type { Grant, PermissionsConfig, RoleId } from "./types";

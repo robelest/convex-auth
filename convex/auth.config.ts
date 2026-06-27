@@ -1,7 +1,9 @@
+import { env } from "./_generated/server";
+
 export default {
   providers: [
     {
-      domain: `${process.env.CONVEX_SITE_URL}/auth`,
+      domain: `${env.CONVEX_SITE_URL}/auth`,
       applicationID: "convex",
     },
   ],

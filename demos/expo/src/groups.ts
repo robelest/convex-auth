@@ -18,10 +18,7 @@ export interface GroupProject {
 export function useGroupData() {
   const dashboard = useQuery(api.groups.get, {});
   const group = React.useMemo(
-    () =>
-      dashboard
-        ? { selectedGroup: dashboard.selectedGroup ?? null }
-        : undefined,
+    () => (dashboard ? { selectedGroup: dashboard.selectedGroup ?? null } : undefined),
     [dashboard],
   );
   const groupId = group?.selectedGroup?.groupId;

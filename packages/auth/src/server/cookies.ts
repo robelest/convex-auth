@@ -1,7 +1,15 @@
 import { readConfigSync, envOptionalString } from "./env";
 import { isLocalHost } from "./url";
 
-/** @internal */
+/**
+ * Cookie flags shared by all OAuth flow cookies.
+ *
+ * `httpOnly` keeps values out of JS, `secure` + `sameSite: "none"` +
+ * `partitioned` allow the cookie to ride cross-site redirect chains (the OAuth
+ * provider domain) while staying isolated per top-level site (CHIPS).
+ *
+ * @internal
+ */
 export const SHARED_COOKIE_OPTIONS = {
   httpOnly: true,
   sameSite: "none" as const,
@@ -10,19 +18,24 @@ export const SHARED_COOKIE_OPTIONS = {
   partitioned: true,
 };
 
-// ============================================================================
-// OAuth state encoding — encodes redirectTo into the state parameter so it
-// survives redirect chains even when cookies are blocked (mobile webviews).
-// ============================================================================
-
-/** Encode a redirectTo URL into the OAuth state parameter. */
+/**
+ * Encode a redirectTo URL into the OAuth state parameter.
+ *
+ * Folding `redirectTo` into the signed state lets it survive redirect chains
+ * even when cookies are blocked (e.g. mobile webviews).
+ */
 export function encodeOAuthState(state: string, redirectTo: string | null): string {
   if (redirectTo === null) return state;
   const json = JSON.stringify({ s: state, r: redirectTo });
   return btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-/** Decode an OAuth state parameter, extracting the original state and redirectTo. */
+/**
+ * Decode an OAuth state parameter, extracting the original state and redirectTo.
+ *
+ * A non-encoded value is treated as a plain state string with no redirectTo,
+ * preserving backward compatibility with states issued before encoding.
+ */
 export function decodeOAuthState(encoded: string): { state: string; redirectTo: string | null } {
   try {
     const padded = encoded.replace(/-/g, "+").replace(/_/g, "/");
@@ -30,13 +43,11 @@ export function decodeOAuthState(encoded: string): { state: string; redirectTo: 
     if (typeof json === "object" && json !== null && typeof json.s === "string") {
       return { state: json.s, redirectTo: typeof json.r === "string" ? json.r : null };
     }
-  } catch {
-    // Not encoded — plain state string (backward compat)
-  }
+  } catch {}
   return { state: encoded, redirectTo: null };
 }
 
-const REDIRECT_MAX_AGE = 60 * 15; // 15 minutes in seconds
+const REDIRECT_MAX_AGE = 60 * 15;
 /** @internal */
 export function redirectToParamCookie(providerId: string, redirectTo: string) {
   return {
@@ -57,7 +68,6 @@ export function useRedirectToParam(
     return null;
   }
 
-  // Clear the cookie
   const updatedCookie = {
     name: cookieName,
     value: "",

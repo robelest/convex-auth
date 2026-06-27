@@ -1,48 +1,62 @@
-import {
+import type {
+  FunctionArgs,
+  FunctionReference,
+  FunctionReturnType,
   GenericActionCtx,
   GenericDataModel,
-  GenericMutationCtx,
 } from "convex/server";
 
-import type { AuthComponentApi } from "./componentApi";
+import type { AuthComponentApi } from "./component/api";
+import type { Doc } from "./types";
 
-type MutationCtxLike = Pick<GenericMutationCtx<GenericDataModel>, "runQuery" | "runMutation">;
-type ActionCtxLike = Pick<
-  GenericActionCtx<GenericDataModel>,
-  "runQuery" | "runMutation" | "runAction"
->;
-
-type CtxLike = MutationCtxLike | ActionCtxLike;
-
-type AuthComponentApiLike = AuthComponentApi;
+type RunCtx = GenericActionCtx<GenericDataModel>;
+type ComponentRunContext = {
+  runQuery: RunCtx["runQuery"];
+  runMutation: RunCtx["runMutation"];
+  runAction?: RunCtx["runAction"];
+};
 
 /** @internal */
-export type AuthDbConfig = { component: AuthComponentApiLike };
+export type AuthComponentBoundaryConfig = { component: AuthComponentApi };
 
-/** @internal */
-export type AuthDb = ReturnType<typeof authDb>;
+function runQuery<Ref extends FunctionReference<"query", "public" | "internal">>(
+  ctx: ComponentRunContext,
+  ref: Ref,
+  args: FunctionArgs<Ref>,
+): Promise<FunctionReturnType<Ref>> {
+  return ctx.runQuery(ref, args) as Promise<FunctionReturnType<Ref>>;
+}
 
-/** @internal */
-export function authDb(ctx: CtxLike, config: AuthDbConfig) {
+function runMutation<Ref extends FunctionReference<"mutation", "public" | "internal">>(
+  ctx: ComponentRunContext,
+  ref: Ref,
+  args: FunctionArgs<Ref>,
+): Promise<FunctionReturnType<Ref>> {
+  return ctx.runMutation(ref, args) as Promise<FunctionReturnType<Ref>>;
+}
+
+/**
+ * Component boundary adapter: calls cross the isolated Convex component
+ * boundary as string IDs, then domain code re-brands them to typed `Doc`s
+ * inward.
+ *
+ * @internal
+ */
+export function authDb(ctx: ComponentRunContext, config: AuthComponentBoundaryConfig) {
   const component = config.component;
   return {
     users: {
-      getById: (userId: string) => ctx.runQuery(component.user.get, { id: userId }),
-      findByVerifiedEmail: (email: string) =>
-        ctx.runQuery(component.user.get, { verifiedEmail: email }),
-      findByVerifiedPhone: (phone: string) =>
-        ctx.runQuery(component.user.get, { verifiedPhone: phone }),
-      insert: (data: Record<string, unknown>) =>
-        ctx.runMutation(component.user.create, {
-          data,
-        }) as Promise<string>,
-      patch: (userId: string, data: Record<string, unknown>) =>
-        ctx.runMutation(component.user.update, { userId, data }),
+      get: (args: { id: string } | { verifiedEmail: string } | { verifiedPhone: string }) =>
+        runQuery(ctx, component.user.get, args) as Promise<Doc<"User"> | null>,
+      create: (data: Record<string, unknown>) =>
+        runMutation(ctx, component.user.create, { data }) as Promise<string>,
+      update: (userId: string, data: Record<string, unknown>) =>
+        runMutation(ctx, component.user.update, { id: userId, patch: data }),
       upsert: (userId: string | undefined, data: Record<string, unknown>) =>
-        ctx.runMutation(component.user.upsert, {
-          userId,
+        runMutation(ctx, component.user.upsert, {
+          id: userId,
           data,
-        }) as Promise<string>,
+        }),
     },
     emails: {
       upsert: (args: {
@@ -54,74 +68,63 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         accountId?: string;
         provider?: string;
         connectionId?: string;
-      }) => ctx.runMutation(component.user.email.upsert, args) as Promise<string>,
+      }) => runMutation(ctx, component.user.email.upsert, args),
       listByUser: (userId: string) =>
-        ctx.runQuery(component.user.email.list, { userId }),
-      findVerified: (email: string, connectionId?: string) =>
-        ctx.runQuery(component.user.email.owner, { email, connectionId }),
+        runQuery(ctx, component.user.email.list, { userId }) as Promise<Doc<"UserEmail">[]>,
     },
     accounts: {
-      get: (provider: string, providerAccountId: string) =>
-        ctx.runQuery(component.account.get, {
-          provider,
-          providerAccountId,
-        }),
-      getById: (accountId: string) => ctx.runQuery(component.account.get, { id: accountId }),
+      get: (args: { id: string } | { provider: string; providerAccountId: string }) =>
+        runQuery(ctx, component.account.get, args) as Promise<Doc<"Account"> | null>,
       create: (args: {
         userId: string;
         provider: string;
         providerAccountId: string;
         secret?: string;
         extend?: Record<string, unknown>;
-      }) => ctx.runMutation(component.account.create, args) as Promise<string>,
-      patch: (accountId: string, data: Record<string, unknown>) =>
-        ctx.runMutation(component.account.update, { accountId, data }),
-      delete: (accountId: string) => ctx.runMutation(component.account.delete, { accountId }),
+      }) => runMutation(ctx, component.account.create, args),
+      update: (accountId: string, data: Record<string, unknown>) =>
+        runMutation(ctx, component.account.update, { id: accountId, patch: data }),
+      delete: (accountId: string) => runMutation(ctx, component.account.remove, { id: accountId }),
     },
     sessions: {
-      create: (userId: string, expirationTime: number) =>
-        ctx.runMutation(component.session.create, {
-          userId,
-          expirationTime,
-        }) as Promise<string>,
-      issue: (args: {
+      create: (args: {
         userId: string;
         sessionId?: string;
         replaceSessionId?: string;
         sessionExpirationTime: number;
         refreshTokenExpirationTime?: number;
       }) =>
-        ctx.runMutation(component.session.issue!, args) as Promise<{
+        runMutation(ctx, component.session.create, args) as Promise<{
           userId: string;
           sessionId: string;
           refreshTokenId?: string;
         }>,
-      getById: (sessionId: string) => ctx.runQuery(component.session.get, { sessionId }),
-      delete: (sessionId: string) => ctx.runMutation(component.session.delete, { sessionId }),
-      listByUser: (userId: string) => ctx.runQuery(component.session.list, { userId }),
+      get: (sessionId: string) =>
+        runQuery(ctx, component.session.get, { id: sessionId }) as Promise<Doc<"Session"> | null>,
+      delete: (sessionId: string) => runMutation(ctx, component.session.remove, { id: sessionId }),
+      listByUser: (userId: string) =>
+        runQuery(ctx, component.session.list, { userId }) as Promise<Doc<"Session">[]>,
     },
     verifiers: {
       create: (sessionId?: string, signature?: string) =>
-        ctx.runMutation(component.token.pkce.create, {
+        runMutation(ctx, component.token.pkce.create, {
           sessionId,
           signature,
-        }) as Promise<string>,
-      getById: (verifierId: string) =>
-        ctx.runQuery(component.token.pkce.get, { id: verifierId }),
-      getBySignature: (signature: string) =>
-        ctx.runQuery(component.token.pkce.get, { signature }),
-      patch: (verifierId: string, data: Record<string, unknown>) =>
-        ctx.runMutation(component.token.pkce.update, { verifierId, data }),
+        }),
+      get: (args: { id: string } | { signature: string }) =>
+        runQuery(ctx, component.token.pkce.get, args) as Promise<Doc<"AuthVerifier"> | null>,
+      update: (verifierId: string, data: Record<string, unknown>) =>
+        runMutation(ctx, component.token.pkce.update, { id: verifierId, patch: data }),
       delete: (verifierId: string) =>
-        ctx.runMutation(component.token.pkce.delete, { verifierId }),
+        runMutation(ctx, component.token.pkce.remove, { id: verifierId }),
     },
     verificationCodes: {
-      getByAccountId: (accountId: string) =>
-        ctx.runQuery(component.token.verification.get, {
-          accountId,
-        }),
-      getByCode: (code: string) =>
-        ctx.runQuery(component.token.verification.get, { code }),
+      get: (args: { accountId: string } | { code: string }) =>
+        runQuery(
+          ctx,
+          component.token.verification.get,
+          args,
+        ) as Promise<Doc<"VerificationCode"> | null>,
       create: (args: {
         accountId: string;
         provider: string;
@@ -130,10 +133,13 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         verifier?: string;
         emailVerified?: string;
         phoneVerified?: string;
-      }) => ctx.runMutation(component.token.verification.create, args),
+      }) =>
+        runMutation(ctx, component.token.verification.create, args) as Promise<
+          Doc<"VerificationCode">["_id"]
+        >,
       delete: (verificationCodeId: string) =>
-        ctx.runMutation(component.token.verification.delete, {
-          verificationCodeId,
+        runMutation(ctx, component.token.verification.remove, {
+          id: verificationCodeId,
         }),
     },
     refreshTokens: {
@@ -141,7 +147,7 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         sessionId: string;
         expirationTime: number;
         parentRefreshTokenId?: string;
-      }) => ctx.runMutation(component.token.refresh.create, args) as Promise<string>,
+      }) => runMutation(ctx, component.token.refresh.create, args),
       exchange: (args: {
         refreshTokenId: string;
         sessionId: string;
@@ -149,29 +155,35 @@ export function authDb(ctx: CtxLike, config: AuthDbConfig) {
         refreshTokenExpirationTime: number;
         reuseWindowMs: number;
       }) =>
-        ctx.runMutation(component.token.refresh.exchange!, args) as Promise<null | {
-          userId: string;
-          sessionId: string;
-          refreshTokenId: string;
-        }>,
-      getById: (refreshTokenId: string) =>
-        ctx.runQuery(component.token.refresh.get, { id: refreshTokenId }),
-      patch: (refreshTokenId: string, data: Record<string, unknown>) =>
-        ctx.runMutation(component.token.refresh.update, {
-          refreshTokenId,
-          data,
+        runMutation(ctx, component.token.refresh.exchange!, args) as Promise<
+          | { status: "rotated"; userId: string; sessionId: string; refreshTokenId: string }
+          | { status: "reuse_detected"; userId: string; refreshTokenId: string }
+          | { status: "invalid" }
+        >,
+      get: (refreshTokenId: string) =>
+        runQuery(ctx, component.token.refresh.get, {
+          id: refreshTokenId,
+        }) as Promise<Doc<"RefreshToken"> | null>,
+      update: (refreshTokenId: string, data: Record<string, unknown>) =>
+        runMutation(ctx, component.token.refresh.update, {
+          id: refreshTokenId,
+          patch: data,
         }),
       getChildren: (sessionId: string, parentRefreshTokenId: string) =>
-        ctx.runQuery(component.token.refresh.listChildren, {
+        runQuery(ctx, component.token.refresh.list, {
           sessionId,
           parentRefreshTokenId,
-        }),
+        }) as Promise<Doc<"RefreshToken">[]>,
       listBySession: (sessionId: string) =>
-        ctx.runQuery(component.token.refresh.list, { sessionId }),
+        runQuery(ctx, component.token.refresh.list, { sessionId }) as Promise<
+          Doc<"RefreshToken">[]
+        >,
       deleteAll: (sessionId: string) =>
-        ctx.runMutation(component.token.refresh.delete, { sessionId }),
+        runMutation(ctx, component.token.refresh.remove, { sessionId }),
       getActive: (sessionId: string) =>
-        ctx.runQuery(component.token.refresh.get, { activeForSession: sessionId }),
+        runQuery(ctx, component.token.refresh.get, {
+          activeForSession: sessionId,
+        }) as Promise<Doc<"RefreshToken"> | null>,
     },
   };
 }

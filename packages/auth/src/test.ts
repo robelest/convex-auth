@@ -1,4 +1,5 @@
 import rateLimiterTest from "@convex-dev/rate-limiter/test";
+import { streamTest } from "@convex-dev/stream/test";
 import workpoolTest from "@convex-dev/workpool/test";
 import type { TestConvex } from "convex-test";
 import type { GenericSchema, SchemaDefinition } from "convex/server";
@@ -11,7 +12,8 @@ import schema from "./component/schema";
  * `convex-test` environment.
  *
  * Mounts the auth component under `name`, then nests
- * `@convex-dev/rate-limiter` at `<name>/rateLimiter` and
+ * `@convex-dev/rate-limiter` at `<name>/rateLimiter`,
+ * `@convex-dev/stream` at `<name>/stream`, and
  * `@convex-dev/workpool` at `<name>/webhookWorkpool`, matching the
  * structure declared by `component/convex.config.ts`.
  *
@@ -33,6 +35,7 @@ export function register(
 ) {
   t.registerComponent(name, schema, modules);
   rateLimiterTest.register(t, `${name}/rateLimiter`);
+  streamTest.use(t, `${name}/stream`);
   workpoolTest.register(t, `${name}/webhookWorkpool`);
 }
 

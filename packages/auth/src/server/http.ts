@@ -8,15 +8,19 @@ import {
 import { ConvexError } from "convex/values";
 import { parse as parseCookies } from "cookie";
 
+import { ErrorCode } from "../shared/codes";
+import { corsPreflightHandler, registerCorsPreflight, withCors } from "./cors";
 import type { AuthContext, OptionalAuthContext, UserDoc } from "./auth";
-import type { ComponentReadCtx as HttpQueryCtx } from "./component/context";
+import type { ComponentCtx, ComponentReadCtx as HttpQueryCtx } from "./component/context";
 import {
   createUnauthenticatedAuthContext,
   getAuthContextForUser,
   getSessionUserId,
 } from "./context";
 import { logError } from "./log";
+import { verifyOAuthToken } from "./tokens";
 import type { CorsConfig, HttpKeyContext } from "./types";
+import { extractBearerToken } from "./utils/bearer";
 import type { WellKnownEndpoint, WellKnownResponse } from "./wellknown";
 
 type HttpIdentityCtx = {
@@ -28,16 +32,13 @@ type HttpContextCtx = HttpIdentityCtx & HttpQueryCtx;
 
 type HttpContextAuthLike = {
   user: {
-    get: (ctx: HttpQueryCtx, userId: string) => Promise<UserDoc>;
+    get: (ctx: HttpQueryCtx, args: { id: string }) => Promise<UserDoc | null>;
   };
   active: {
-    get: (
-      ctx: HttpQueryCtx,
-      args: { userId: string },
-    ) => Promise<{ groupId: string } | null>;
+    get: (ctx: HttpQueryCtx, args: { userId: string }) => Promise<{ groupId: string } | null>;
   };
   member: {
-    inspect: (
+    get: (
       ctx: HttpQueryCtx,
       args: { userId: string; groupId: string },
     ) => Promise<{
@@ -48,8 +49,8 @@ type HttpContextAuthLike = {
   };
   key: {
     verify: (
-      ctx: GenericActionCtx<GenericDataModel>,
-      rawKey: string,
+      ctx: ComponentCtx,
+      args: { secret: string },
     ) => Promise<{
       userId: string;
       keyId: string;
@@ -83,12 +84,19 @@ export type HttpAuthContext =
       source: "session";
       /** No API key was used for this request. */
       key: null;
+      oauth: null;
     })
   | (AuthContext & {
       /** The request authenticated through an API key. */
       source: "key";
       /** Verified API key metadata for the request. */
       key: HttpKeyContext["key"];
+      oauth: null;
+    })
+  | (AuthContext & {
+      source: "oauth";
+      key: null;
+      oauth: { clientId: string; scopes: string[] };
     });
 
 /**
@@ -104,11 +112,12 @@ export type OptionalHttpAuthContext =
       source: null;
       /** No API key metadata is available. */
       key: null;
+      oauth: null;
     })
   | HttpAuthContext;
 
 /**
- * Configuration for {@link createAuth().request.context}.
+ * Configuration for {@link defineAuth().request.context}.
  *
  * This mirrors {@link AuthContextConfig} for raw HTTP handlers and adds support
  * for enriching mixed session/API-key auth results.
@@ -147,11 +156,20 @@ export type HttpAuthContextConfig<
     ctx: TCtx,
     fallback: () => Promise<HttpAuthContext | null>,
   ) => Promise<HttpAuthContext | null | undefined> | HttpAuthContext | null | undefined;
+  /**
+   * RFC 8707 resource assertion (opt-in). When set, an OAuth `at+jwt` bearer is
+   * only accepted on this route if its `resource` claim equals this value — so a
+   * token minted for a different protected resource is not honored here. Omit it
+   * (the default) to accept any valid OAuth identity; capability is still bounded
+   * by scope grant-intersection regardless. The `/mcp` route sets this to its
+   * canonical resource.
+   */
+  resource?: string;
 };
 
 function createNotSignedInError() {
   return new ConvexError({
-    code: "NOT_SIGNED_IN",
+    code: ErrorCode.NOT_SIGNED_IN,
     message: "Authentication required.",
   });
 }
@@ -187,16 +205,22 @@ async function getHttpKeyContext(
   ctx: HttpContextCtx,
   request: Request,
 ): Promise<HttpAuthContext | null> {
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer sk_")) {
+  const token = extractBearerToken(request);
+  if (token === null || !token.startsWith("sk_")) {
     return null;
   }
 
   try {
-    const verified = await auth.key.verify(
-      ctx as GenericActionCtx<GenericDataModel>,
-      authHeader.slice(7),
-    );
+    /**
+     * The `Bearer sk_*` branch only runs inside an HTTP action, where the
+     * resolved `ctx` additionally carries the `runMutation` that `key.verify`
+     * needs. The HTTP-context surface is otherwise query-shaped, so this one
+     * narrow assertion supplies that single missing member at the boundary.
+     */
+    const keyVerifyCtx: ComponentCtx = ctx as HttpContextCtx & Pick<ComponentCtx, "runMutation">;
+    const verified = await auth.key.verify(keyVerifyCtx, {
+      secret: token,
+    });
     const authContext = await getAuthContextForUser(auth, ctx, verified.userId);
     return {
       ...authContext,
@@ -206,9 +230,38 @@ async function getHttpKeyContext(
         keyId: verified.keyId,
         scopes: verified.scopes,
       },
+      oauth: null,
     };
   } catch (err) {
     console.error("[auth] HTTP key verification failed", { err });
+    return null;
+  }
+}
+
+async function getHttpOAuthContext(
+  auth: HttpContextAuthLike,
+  ctx: HttpContextCtx,
+  request: Request,
+  resource: string | undefined,
+): Promise<HttpAuthContext | null> {
+  const token = extractBearerToken(request);
+  if (token === null || token.startsWith("sk_")) return null;
+  const oauthPayload = await verifyOAuthToken(token, resource !== undefined ? { resource } : undefined);
+  if (!oauthPayload) return null;
+  try {
+    const authContext = await getAuthContextForUser(
+      auth,
+      ctx,
+      oauthPayload.userId,
+      oauthPayload.scopes,
+    );
+    return {
+      ...authContext,
+      source: "oauth",
+      key: null,
+      oauth: { clientId: oauthPayload.clientId, scopes: oauthPayload.scopes },
+    };
+  } catch {
     return null;
   }
 }
@@ -217,7 +270,11 @@ async function resolveHttpAuthContext(
   auth: HttpContextAuthLike,
   ctx: HttpContextCtx,
   request: Request,
+  resource: string | undefined,
 ): Promise<HttpAuthContext | null> {
+  const oauthContext = await getHttpOAuthContext(auth, ctx, request, resource);
+  if (oauthContext !== null) return oauthContext;
+
   const sessionUserId = await getSessionUserId(ctx);
   if (sessionUserId !== null) {
     const authContext = await getAuthContextForUser(auth, ctx, sessionUserId);
@@ -225,6 +282,7 @@ async function resolveHttpAuthContext(
       ...authContext,
       source: "session",
       key: null,
+      oauth: null,
     };
   }
 
@@ -233,6 +291,12 @@ async function resolveHttpAuthContext(
 
 /**
  * Resolver for `auth.request.context(ctx, request, config?)`.
+ *
+ * Authentication sources are tried in a fixed order: OAuth access tokens
+ * first (an `at+jwt` bearer is also a valid Convex identity, so it must be
+ * classified as `oauth` before the session branch would claim it), then the
+ * session identity, then `Bearer sk_*` API keys. Session therefore takes
+ * precedence over an API key when both are present.
  */
 export interface HttpContextResolver {
   <
@@ -266,7 +330,7 @@ async function resolveHttpContext(
   config: HttpAuthContextConfig<Record<string, unknown>> | undefined,
   optional: boolean,
 ) {
-  const fallback = () => resolveHttpAuthContext(auth, ctx, request);
+  const fallback = () => resolveHttpAuthContext(auth, ctx, request, config?.resource);
   const authOverride = config?.authResolve ? await config.authResolve(ctx, fallback) : undefined;
   const resolved = authOverride === undefined ? await fallback() : authOverride;
 
@@ -278,6 +342,7 @@ async function resolveHttpContext(
       ...createUnauthenticatedAuthContext(),
       source: null,
       key: null,
+      oauth: null,
     };
   }
 
@@ -293,6 +358,11 @@ async function resolveHttpContext(
  * @internal
  * Create the implementation behind `auth.request.context(...)` and
  * `auth.request.context.optional(...)`.
+ *
+ * The two assertions below bind a concrete (monomorphic) closure to the
+ * generic call-signature interfaces {@link HttpContextResolver} /
+ * {@link OptionalHttpContextResolver}; TypeScript cannot infer those generics
+ * from a non-generic body, so the typed assertion is the irreducible bridge.
  */
 export function createHttpContext(
   auth: HttpContextAuthLike,
@@ -314,12 +384,22 @@ export function createHttpContext(
   return required;
 }
 
+/**
+ * Build the Bearer-key HTTP action wrapper behind `auth.request.action(...)`.
+ *
+ * Returns a function that wraps a handler with `Authorization: Bearer sk_*`
+ * verification, optional scope checks, CORS headers, and JSON error envelopes.
+ *
+ * @param auth - Provides `key.verify` for API key verification.
+ * @param defaultOrigins - Allowed CORS origins (or a getter) used when a route
+ *   supplies no `cors` config.
+ */
 export function createHttpAction(
   auth: {
     key: {
       verify: (
         ctx: GenericActionCtx<GenericDataModel>,
-        rawKey: string,
+        args: { secret: string },
       ) => Promise<{
         userId: string;
         keyId: string;
@@ -343,12 +423,12 @@ export function createHttpAction(
       const corsHeaders = buildCorsHeaders(request, options?.cors, defaultOrigins);
 
       try {
-        const authHeader = request.headers.get("Authorization");
-        if (!authHeader?.startsWith("Bearer ")) {
+        const rawKey = extractBearerToken(request);
+        if (rawKey === null) {
           return new Response(
             JSON.stringify({
               error: "Missing or malformed Authorization: Bearer header.",
-              code: "MISSING_BEARER_TOKEN",
+              code: ErrorCode.MISSING_BEARER_TOKEN,
             }),
             {
               status: 401,
@@ -360,7 +440,6 @@ export function createHttpAction(
           );
         }
 
-        const rawKey = authHeader.slice(7);
         let keyResult:
           | {
               ok: true;
@@ -372,7 +451,7 @@ export function createHttpAction(
             }
           | { ok: false; error: unknown };
         try {
-          const value = await auth.key.verify(genericCtx, rawKey);
+          const value = await auth.key.verify(genericCtx, { secret: rawKey });
           keyResult = { ok: true, value };
         } catch (error) {
           keyResult = { ok: false, error };
@@ -408,7 +487,7 @@ export function createHttpAction(
           return new Response(
             JSON.stringify({
               error: "This API key does not have the required permissions.",
-              code: "SCOPE_CHECK_FAILED",
+              code: ErrorCode.SCOPE_CHECK_FAILED,
             }),
             {
               status: 403,
@@ -453,7 +532,7 @@ export function createHttpAction(
         return new Response(
           JSON.stringify({
             error: "An unexpected error occurred.",
-            code: "INTERNAL_ERROR",
+            code: ErrorCode.INTERNAL_ERROR,
           }),
           {
             status: 500,
@@ -468,6 +547,15 @@ export function createHttpAction(
   };
 }
 
+/**
+ * Build the route registrar behind `auth.request.route(...)`.
+ *
+ * Returns a function that registers a Bearer-authenticated route plus its
+ * matching `OPTIONS` CORS preflight in one call.
+ *
+ * @param wrapAction - The wrapper produced by {@link createHttpAction}.
+ * @param defaultOrigins - Allowed CORS origins (or a getter) for the preflight.
+ */
 export function createHttpRoute(
   wrapAction: ReturnType<typeof createHttpAction>,
   defaultOrigins: string[] | (() => string[]),
@@ -505,6 +593,16 @@ export function createHttpRoute(
   };
 }
 
+/**
+ * Wrap an HTTP action so thrown `ConvexError`s become JSON error responses.
+ *
+ * Structured `{ code, message }` errors return `errorStatusCode`; other
+ * `ConvexError`s return that status with a plain status text; any other error
+ * is logged and returns a 500.
+ *
+ * @param errorStatusCode - Status used for `ConvexError`s.
+ * @param action - The wrapped HTTP action.
+ */
 export function convertErrorsToResponse(
   errorStatusCode: number,
   action: (ctx: GenericActionCtx<GenericDataModel>, request: Request) => Promise<Response>,
@@ -546,21 +644,20 @@ export function convertErrorsToResponse(
   };
 }
 
+/** Parse the request's `Cookie` header into a name-to-value record. */
 export function getCookies(request: Request): Record<string, string | undefined> {
   return parseCookies(request.headers.get("Cookie") ?? "");
 }
 
-export type SSORuntimeRoute = {
+/** Parsed group connection runtime route: connection id, protocol, and remaining path segments. */
+export type ConnectionRuntimeRoute = {
   pathname?: string;
   connectionId: string;
   protocol: "oidc" | "saml" | "scim";
   rest: string[];
 };
 
-export function parseConnectionRuntimeRoute(
-  pathname: string,
-  routeBase: string,
-): SSORuntimeRoute | null {
+function parseConnectionRuntimeRoute(pathname: string, routeBase: string): ConnectionRuntimeRoute | null {
   const runtimePrefix = `${routeBase}/`;
   const runtimeParts = pathname.startsWith(runtimePrefix)
     ? pathname.slice(runtimePrefix.length).split("/").filter(Boolean)
@@ -581,51 +678,93 @@ export function parseConnectionRuntimeRoute(
   };
 }
 
+/**
+ * Register the OpenID discovery and JWKS endpoints on an HTTP router.
+ *
+ * Adds `<routeBase>/.well-known/openid-configuration` and
+ * `<routeBase>/.well-known/jwks.json`. OAuth-specific discovery fields are
+ * included only when `deps.oauth` is provided.
+ *
+ * Discovery is served at both the issuer prefix and the root, including the
+ * RFC 8414 `oauth-authorization-server` path conventions, because clients
+ * treat either the issuer (`/auth`) or the origin as the base. These exact
+ * routes win over the static-hosting catch-all, so zero-config
+ * `mcp login <url>` resolves to JSON rather than the SPA HTML fallback.
+ */
 export function addOpenIdRoutes(
   http: HttpRouter,
   deps: {
     getIssuer: () => string;
     getJwks: () => string;
     routeBase?: string;
+    oauth?: {
+      scopes?: string[];
+    };
   },
 ) {
   const cacheControl = "public, max-age=15, stale-while-revalidate=15, stale-if-error=86400";
   const routeBase = deps.routeBase ?? "";
 
-  http.route({
-    path: `${routeBase}/.well-known/openid-configuration`,
-    method: "GET",
-    handler: httpActionGeneric(async () => {
-      const issuer = deps.getIssuer();
-      return new Response(
-        JSON.stringify({
-          issuer,
-          jwks_uri: `${issuer}/.well-known/jwks.json`,
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            "Cache-Control": cacheControl,
-          },
-        },
-      );
-    }),
-  });
+  const buildMetadata = () => {
+    const issuer = deps.getIssuer();
+    const body: Record<string, unknown> = {
+      issuer,
+      jwks_uri: `${issuer}/.well-known/jwks.json`,
+    };
+    if (deps.oauth) {
+      body.authorization_endpoint = `${issuer}/oauth2/authorize`;
+      body.token_endpoint = `${issuer}/oauth2/token`;
+      body.registration_endpoint = `${issuer}/oauth2/register`;
+      body.response_types_supported = ["code"];
+      body.grant_types_supported = ["authorization_code", "refresh_token", "client_credentials"];
+      body.code_challenge_methods_supported = ["S256"];
+      body.token_endpoint_auth_methods_supported = ["client_secret_post", "client_secret_basic", "none"];
+      body.scopes_supported = deps.oauth.scopes ?? ["openid", "profile", "email", "offline_access"];
+    }
+    return body;
+  };
 
-  http.route({
-    path: `${routeBase}/.well-known/jwks.json`,
-    method: "GET",
-    handler: httpActionGeneric(async () => {
-      return new Response(deps.getJwks(), {
+  const metadataHandler = httpActionGeneric(
+    withCors(async () => {
+      return new Response(JSON.stringify(buildMetadata()), {
         status: 200,
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": cacheControl,
-        },
+        headers: { "Content-Type": "application/json", "Cache-Control": cacheControl },
       });
     }),
-  });
+  );
+
+  const jwksHandler = httpActionGeneric(
+    withCors(async () => {
+      return new Response(deps.getJwks(), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "Cache-Control": cacheControl },
+      });
+    }),
+  );
+
+  const oidcPaths = new Set<string>([
+    `${routeBase}/.well-known/openid-configuration`,
+    "/.well-known/openid-configuration",
+  ]);
+  const asPaths = deps.oauth
+    ? new Set<string>([
+        `/.well-known/oauth-authorization-server${routeBase}`,
+        `${routeBase}/.well-known/oauth-authorization-server`,
+        "/.well-known/oauth-authorization-server",
+      ])
+    : new Set<string>();
+  const jwksPaths = new Set<string>([
+    `${routeBase}/.well-known/jwks.json`,
+    "/.well-known/jwks.json",
+  ]);
+
+  for (const path of [...oidcPaths, ...asPaths]) {
+    http.route({ path, method: "GET", handler: metadataHandler });
+  }
+  for (const path of jwksPaths) {
+    http.route({ path, method: "GET", handler: jwksHandler });
+  }
+  registerCorsPreflight(http, [...oidcPaths, ...asPaths, ...jwksPaths]);
 }
 
 /** Register root `/.well-known/*` app discovery routes on an HTTP router. */
@@ -664,6 +803,11 @@ export function addWellKnownRoutes(
   }
 }
 
+/**
+ * Register the OAuth sign-in and callback routes on an HTTP router.
+ *
+ * Adds `GET <routeBase>/signin/*` and `GET`/`POST <routeBase>/callback/*`.
+ */
 export function addAuthRoutes(
   http: HttpRouter,
   deps: {
@@ -698,7 +842,72 @@ export function addAuthRoutes(
   });
 }
 
-export function addSSORoutes(
+/**
+ * Register the OAuth provider authorize, token, registration, and RFC 7592
+ * client-management endpoints on an HTTP router.
+ *
+ * Adds `GET <base>/oauth2/authorize`, `POST <base>/oauth2/token`,
+ * `POST <base>/oauth2/register` (DCR), and `GET`/`PUT`/`DELETE`
+ * `<base>/oauth2/register/<client_id>` (management). The exact `register` path
+ * serves DCR; the `register/` prefix serves per-client management.
+ */
+export function addOAuthProviderRoutes(
+  http: HttpRouter,
+  deps: {
+    handleAuthorize: (
+      ctx: GenericActionCtx<GenericDataModel>,
+      request: Request,
+    ) => Promise<Response>;
+    handleToken: (ctx: GenericActionCtx<GenericDataModel>, request: Request) => Promise<Response>;
+    handleRegister: (
+      ctx: GenericActionCtx<GenericDataModel>,
+      request: Request,
+    ) => Promise<Response>;
+    handleManage: (ctx: GenericActionCtx<GenericDataModel>, request: Request) => Promise<Response>;
+    routeBase?: string;
+  },
+) {
+  const base = deps.routeBase ?? "";
+  const authorizePath = `${base}/oauth2/authorize`;
+  const tokenPath = `${base}/oauth2/token`;
+  const registerPath = `${base}/oauth2/register`;
+  const managePrefix = `${registerPath}/`;
+
+  http.route({
+    path: authorizePath,
+    method: "GET",
+    handler: httpActionGeneric(withCors(deps.handleAuthorize)),
+  });
+  http.route({
+    path: tokenPath,
+    method: "POST",
+    handler: httpActionGeneric(withCors(deps.handleToken)),
+  });
+  http.route({
+    path: registerPath,
+    method: "POST",
+    handler: httpActionGeneric(withCors(deps.handleRegister)),
+  });
+  for (const method of ["GET", "PUT", "DELETE"] as const) {
+    http.route({
+      pathPrefix: managePrefix,
+      method,
+      handler: httpActionGeneric(withCors(deps.handleManage)),
+    });
+  }
+  http.route({ pathPrefix: managePrefix, method: "OPTIONS", handler: corsPreflightHandler });
+  registerCorsPreflight(http, [authorizePath, tokenPath, registerPath]);
+}
+
+/**
+ * Register the group connection runtime routes (SAML, OIDC, SCIM) on a router.
+ *
+ * Mounts method-specific handlers under `<routeBase>/<connectionId>/<protocol>/...`
+ * (plus an optional shared OIDC callback path), dispatching by
+ * `${protocol}:${endpoint}` and returning SCIM errors for unmatched
+ * `PATCH`/`DELETE` requests.
+ */
+export function addConnectionRoutes(
   http: HttpRouter,
   deps: {
     routeBase: string;
@@ -707,22 +916,22 @@ export function addSSORoutes(
     handleSamlMetadata: (
       ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
-      route: SSORuntimeRoute,
+      route: ConnectionRuntimeRoute,
     ) => Promise<Response>;
     handleSamlSignIn: (
       ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
-      route: SSORuntimeRoute,
+      route: ConnectionRuntimeRoute,
     ) => Promise<Response>;
     handleOidcSignIn: (
       ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
-      route: SSORuntimeRoute,
+      route: ConnectionRuntimeRoute,
     ) => Promise<Response>;
     handleOidcCallback: (
       ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
-      route: SSORuntimeRoute,
+      route: ConnectionRuntimeRoute,
     ) => Promise<Response>;
     handleOidcSharedCallback: (
       ctx: GenericActionCtx<GenericDataModel>,
@@ -731,12 +940,12 @@ export function addSSORoutes(
     handleSamlAcs: (
       ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
-      route: SSORuntimeRoute,
+      route: ConnectionRuntimeRoute,
     ) => Promise<Response>;
     handleSamlSlo: (
       ctx: GenericActionCtx<GenericDataModel>,
       request: Request,
-      route: SSORuntimeRoute,
+      route: ConnectionRuntimeRoute,
     ) => Promise<Response>;
     handleScimRequest: (
       ctx: GenericActionCtx<GenericDataModel>,
@@ -779,94 +988,76 @@ export function addSSORoutes(
     });
   }
 
-  http.route({
-    pathPrefix: routePrefix,
-    method: "GET",
-    handler: httpActionGeneric(
+  type ConnRouteHandler = (
+    ctx: GenericActionCtx<GenericDataModel>,
+    request: Request,
+    route: ConnectionRuntimeRoute,
+  ) => Promise<Response>;
+  const scimRoute: ConnRouteHandler = (ctx, request) => deps.handleScimRequest(ctx, request);
+
+  const matchConnectionRoute = (
+    route: ConnectionRuntimeRoute | null,
+    handlers: Record<string, ConnRouteHandler>,
+  ): ConnRouteHandler | null => {
+    const endpoint = route?.rest[0];
+    if (!route || endpoint === undefined) return null;
+    const key =
+      route.protocol === "scim"
+        ? endpoint === "v2"
+          ? "scim:v2"
+          : null
+        : route.rest.length === 1
+          ? `${route.protocol}:${endpoint}`
+          : null;
+    return key ? (handlers[key] ?? null) : null;
+  };
+
+  const connectionRouteHandler = (handlers: Record<string, ConnRouteHandler>) =>
+    httpActionGeneric(
       deps.convertErrorsToResponse(400, async (ctx, request) => {
         const route = parseConnectionRuntimeRoute(new URL(request.url).pathname, deps.routeBase);
-        if (!route) {
+        const handler = matchConnectionRoute(route, handlers);
+        if (!handler || !route) {
           throw new ConvexError({
-            code: "INVALID_PARAMETERS",
+            code: ErrorCode.INVALID_PARAMETERS,
             message: "Invalid connection runtime path.",
           });
         }
-        if (route.protocol === "saml" && route.rest.length === 1) {
-          if (route.rest[0] === "metadata") {
-            return await deps.handleSamlMetadata(ctx, request, route);
-          }
-          if (route.rest[0] === "signin") {
-            return await deps.handleSamlSignIn(ctx, request, route);
-          }
-          if (route.rest[0] === "acs") {
-            return await deps.handleSamlAcs(ctx, request, route);
-          }
-          if (route.rest[0] === "slo") {
-            return await deps.handleSamlSlo(ctx, request, route);
-          }
-        }
-        if (route.protocol === "oidc" && route.rest.length === 1) {
-          if (route.rest[0] === "signin") {
-            return await deps.handleOidcSignIn(ctx, request, route);
-          }
-          if (route.rest[0] === "callback") {
-            return await deps.handleOidcCallback(ctx, request, route);
-          }
-        }
-        if (route.protocol === "scim" && route.rest[0] === "v2") {
-          return await deps.handleScimRequest(ctx, request);
-        }
-        throw new ConvexError({
-          code: "INVALID_PARAMETERS",
-          message: "Invalid connection runtime path.",
-        });
+        return await handler(ctx, request, route);
       }),
-    ),
+    );
+
+  http.route({
+    pathPrefix: routePrefix,
+    method: "GET",
+    handler: connectionRouteHandler({
+      "saml:metadata": deps.handleSamlMetadata,
+      "saml:signin": deps.handleSamlSignIn,
+      "saml:acs": deps.handleSamlAcs,
+      "saml:slo": deps.handleSamlSlo,
+      "oidc:signin": deps.handleOidcSignIn,
+      "oidc:callback": deps.handleOidcCallback,
+      "scim:v2": scimRoute,
+    }),
   });
 
   http.route({
     pathPrefix: routePrefix,
     method: "POST",
-    handler: httpActionGeneric(
-      deps.convertErrorsToResponse(400, async (ctx, request) => {
-        const route = parseConnectionRuntimeRoute(new URL(request.url).pathname, deps.routeBase);
-        if (route?.protocol === "saml" && route.rest.length === 1) {
-          if (route.rest[0] === "acs") {
-            return await deps.handleSamlAcs(ctx, request, route);
-          }
-          if (route.rest[0] === "slo") {
-            return await deps.handleSamlSlo(ctx, request, route);
-          }
-        }
-        if (route?.protocol === "oidc" && route.rest.length === 1 && route.rest[0] === "callback") {
-          return await deps.handleOidcCallback(ctx, request, route);
-        }
-        if (route?.protocol === "scim" && route.rest[0] === "v2") {
-          return await deps.handleScimRequest(ctx, request);
-        }
-        throw new ConvexError({
-          code: "INVALID_PARAMETERS",
-          message: "Invalid connection runtime path.",
-        });
-      }),
-    ),
+    handler: connectionRouteHandler({
+      "saml:acs": deps.handleSamlAcs,
+      "saml:slo": deps.handleSamlSlo,
+      "oidc:callback": deps.handleOidcCallback,
+      "scim:v2": scimRoute,
+    }),
   });
 
   http.route({
     pathPrefix: routePrefix,
     method: "PUT",
-    handler: httpActionGeneric(
-      deps.convertErrorsToResponse(400, async (ctx, request) => {
-        const route = parseConnectionRuntimeRoute(new URL(request.url).pathname, deps.routeBase);
-        if (route?.protocol === "scim" && route.rest[0] === "v2") {
-          return await deps.handleScimRequest(ctx, request);
-        }
-        throw new ConvexError({
-          code: "INVALID_PARAMETERS",
-          message: "Invalid connection runtime path.",
-        });
-      }),
-    ),
+    handler: connectionRouteHandler({
+      "scim:v2": scimRoute,
+    }),
   });
 
   for (const method of ["PATCH", "DELETE"] as const) {

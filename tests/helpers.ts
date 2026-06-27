@@ -3,7 +3,6 @@ import { expect, vi } from "vite-plus/test";
 
 import type { TestConvexForDataModel } from "./convex/setup";
 
-// Shared test constants
 export const TEST_EMAIL = "sarah@gmail.com";
 export const TEST_PASSWORD = "44448888";
 export const RESEND_API_URL = "https://api.resend.com/emails";

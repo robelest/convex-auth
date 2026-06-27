@@ -1,15 +1,18 @@
 <script lang="ts">
-	import { useQuery, useConvexClient } from "convex-svelte";
+	import { getConvexClient, useQuery } from "convex-svelte";
+	import { toast } from "svelte-sonner";
+	import { page } from "$app/state";
 	import { api } from "$convex/_generated/api.js";
 	import { getContext } from "svelte";
+	import type { AppContext } from "$lib/app";
 	import AuthModal from "$lib/components/AuthModal.svelte";
 	import OnboardingModal from "$lib/components/OnboardingModal.svelte";
 	import AppSidebar from "$lib/components/AppSidebar.svelte";
 	import IssueListPanel from "$lib/components/IssueListPanel.svelte";
 	import SettingsPanel from "$lib/components/SettingsPanel.svelte";
 
-	let { data } = $props();
-	const client = useConvexClient();
+	const app = getContext<AppContext>("app");
+	const client = getConvexClient();
 	type AuthContext = {
 		invite?: {
 			accept: () => Promise<{ ok: boolean; token?: string }>;
@@ -17,25 +20,21 @@
 	};
 	const auth = getContext<AuthContext>("auth");
 
+	const groupId = $derived(page.params.groupId!);
 	let activeTab = $state<"issues" | "settings">("issues");
 	let selectedProjectSlug = $state<string | null>(null);
-	let inviteMessage = $state<string | null>(null);
 
-	const dashboard = useQuery(api.groups.get, () => ({
-		groupId: data.groupId,
-	}), () => ({
-		initialData: data.demo ?? undefined,
-	}));
+	const dashboard = useQuery(api.groups.get, () => ({ groupId }));
 
-	const ws = $derived(dashboard.data?.selectedGroup ?? null);
+	const workspace = $derived(dashboard.data?.selectedGroup ?? null);
 	const user = $derived(dashboard.data?.user ?? null);
 
 	const selectedProject = $derived.by(() => {
-		if (!ws) return null;
+		if (!workspace) return null;
 		if (selectedProjectSlug) {
-			return ws.projects.find((p: any) => p.slug === selectedProjectSlug) ?? ws.projects[0] ?? null;
+			return workspace.projects.find((p: any) => p.slug === selectedProjectSlug) ?? workspace.projects[0] ?? null;
 		}
-		return ws.projects[0] ?? null;
+		return workspace.projects[0] ?? null;
 	});
 
 	$effect(() => {
@@ -51,43 +50,41 @@
 			auth.invite.accept().then((result: { ok: boolean; token?: string }) => {
 				if (result.ok && result.token) {
 						client.mutation(api.groups.acceptInvite, { token: result.token }).then((acceptResult: any) => {
-					inviteMessage = acceptResult.ok
-						? "Invite accepted! You've been added to the organization."
-						: acceptResult.message ?? "Invalid or expired invite.";
-					setTimeout(() => { inviteMessage = null; }, 5000);
+					if (acceptResult.ok) {
+						toast.success("Invite accepted! You've been added to the organization.");
+					} else {
+						toast.error(typeof acceptResult.message === "string" ? acceptResult.message : "Invalid or expired invite.");
+					}
 				});
 			}
 		});
 	});
 </script>
 
-{#if !data.auth.isAuthenticated}
-	<AuthModal authProviders={data.authProviders} />
+{#if !app.isAuthenticated}
+	<AuthModal authProviders={app.authProviders} />
 {:else if dashboard.isLoading && !dashboard.data}
-	<main class="p-5 px-6 overflow-y-auto max-md:p-4">
+	<main class="p-5 px-6 overflow-y-auto bg-background-primary max-md:p-4">
 		<p class="muted">Loading...</p>
 	</main>
-{:else if !ws || !user}
-	<div class="col-span-full grid min-h-dvh place-items-center p-6 px-4">
+{:else if !workspace || !user}
+	<div class="fixed inset-0 z-50 grid place-items-center bg-black/50 p-6 px-4">
 		<OnboardingModal {client} />
 	</div>
 {:else}
 	<AppSidebar
 		groups={dashboard.data?.groups ?? []}
-		selectedGroup={{ groupId: ws.groupId, name: ws.name }}
-		projects={ws.projects}
+		selectedGroup={{ groupId: workspace.groupId, name: workspace.name }}
+		projects={workspace.projects}
 		permissions={{
-			canCreateProjects: ws.permissions.canCreateProjects,
+			canCreateProjects: workspace.permissions.canCreateProjects,
 		}}
 		bind:activeTab
 		bind:selectedProjectSlug
 		{client}
-		groupId={ws.groupId}
+		groupId={workspace.groupId}
 	/>
-	<main class="p-5 px-6 overflow-y-auto max-md:p-4">
-		{#if inviteMessage}
-			<div class="mb-3 px-3 py-2 border border-gray-300 bg-gray-100 font-label text-[0.75rem] text-gray-700">{inviteMessage}</div>
-		{/if}
+	<main class="p-5 px-6 overflow-y-auto bg-background-primary max-md:p-4">
 		{#if activeTab === "issues"}
 			{#if selectedProject}
 				{#key selectedProject.projectId}
@@ -100,39 +97,39 @@
 							description: selectedProject.description,
 						}}
 						permissions={{
-							canCreateIssues: ws.permissions.canCreateIssues,
-							canMoveIssues: ws.permissions.canMoveIssues,
-							canEditIssues: ws.permissions.canEditIssues,
-							canAssignIssues: ws.permissions.canAssignIssues,
-							canDeleteIssues: ws.permissions.canDeleteIssues,
-							canCreateComments: ws.permissions.canCreateComments,
-							canDeleteComments: ws.permissions.canDeleteComments,
+							canCreateIssues: workspace.permissions.canCreateIssues,
+							canMoveIssues: workspace.permissions.canMoveIssues,
+							canEditIssues: workspace.permissions.canEditIssues,
+							canAssignIssues: workspace.permissions.canAssignIssues,
+							canDeleteIssues: workspace.permissions.canDeleteIssues,
+							canCreateComments: workspace.permissions.canCreateComments,
+							canDeleteComments: workspace.permissions.canDeleteComments,
 						}}
-						members={ws.members.map((m: any) => ({ userId: m.userId, name: m.name }))}
+						members={workspace.members.map((m: any) => ({ userId: m.userId, name: m.name }))}
 						currentUserId={user.userId}
-						groupId={ws.groupId}
+						groupId={workspace.groupId}
 						{client}
 					/>
 				{/key}
 			{:else}
-				<p class="muted">No projects yet{ws.permissions.canCreateProjects ? " — click + New in the sidebar." : "."}</p>
+				<p class="muted">No projects yet{workspace.permissions.canCreateProjects ? " — click + New in the sidebar." : "."}</p>
 			{/if}
 		{:else}
 			<SettingsPanel
 				user={{ name: user.name, email: user.email }}
-				userRoleLabel={ws.userRoleLabel}
+				userRoleLabel={workspace.userRoleLabel}
 				selectedProject={selectedProject
 					? {
 						projectId: selectedProject.projectId,
 						identifier: selectedProject.identifier,
 					}
 					: null}
-				members={ws.members}
+				members={workspace.members}
 				permissions={{
-					canManageMembers: ws.permissions.canManageMembers,
-					canManageSso: ws.permissions.canManageSso,
+					canManageMembers: workspace.permissions.canManageMembers,
+					canManageSso: workspace.permissions.canManageConnection,
 				}}
-				groupId={ws.groupId}
+				groupId={workspace.groupId}
 				{client}
 			/>
 		{/if}

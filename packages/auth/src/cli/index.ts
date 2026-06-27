@@ -20,10 +20,6 @@ import gradientString from "gradient-string";
 
 import { generateKeys } from "./keys";
 
-// ---------------------------------------------------------------------------
-// Branding
-// ---------------------------------------------------------------------------
-
 figlet.parseFont("ANSI Shadow", ansiShadow);
 
 const convexGradient = gradientString(["purple", "pink", "orange"]);
@@ -37,10 +33,6 @@ function printBanner() {
   console.log("  \x1b[35m✦ auth, wired into your convex backend  ✦\x1b[0m\n");
 }
 
-// ---------------------------------------------------------------------------
-// Package version
-// ---------------------------------------------------------------------------
-
 function getPackageVersion(): string {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
   for (const relative of ["..", "../.."]) {
@@ -48,17 +40,13 @@ function getPackageVersion(): string {
       const pkgPath = path.resolve(currentDir, relative, "package.json");
       return JSON.parse(readFileSync(pkgPath, "utf-8")).version;
     } catch {
-      // try next
+      /* empty */
     }
   }
   return "unknown";
 }
 
 const version = getPackageVersion();
-
-// ---------------------------------------------------------------------------
-// Package-manager detection
-// ---------------------------------------------------------------------------
 
 type PackageRunner = { cmd: string; args: string[] };
 
@@ -78,7 +66,7 @@ function detectPackageRunner(): PackageRunner {
           if (name === "yarn") return { cmd: "yarn", args: ["dlx"] };
         }
       } catch {
-        // ignore parse errors
+        /* empty */
       }
     }
 
@@ -98,10 +86,6 @@ const runner = detectPackageRunner();
 function convexCmd(...subArgs: string[]): { file: string; args: string[] } {
   return { file: runner.cmd, args: [...runner.args, "convex", ...subArgs] };
 }
-
-// ---------------------------------------------------------------------------
-// CLI argument parsing
-// ---------------------------------------------------------------------------
 
 type CliOptions = {
   command: "setup" | "doctor" | "urls" | "keys";
@@ -203,12 +187,9 @@ function parseArgs(argv: string[]): CliOptions {
   const rawArgs = argv.slice(2);
   const knownCommands = new Set(["setup", "doctor", "urls", "keys"]);
   const firstArg = rawArgs[0];
-  const command = knownCommands.has(firstArg ?? "")
-    ? (firstArg as CliOptions["command"])
-    : "setup";
-  const args = command === "setup" && !knownCommands.has(firstArg ?? "")
-    ? rawArgs
-    : rawArgs.slice(1);
+  const command = knownCommands.has(firstArg ?? "") ? (firstArg as CliOptions["command"]) : "setup";
+  const args =
+    command === "setup" && !knownCommands.has(firstArg ?? "") ? rawArgs : rawArgs.slice(1);
 
   const strings = new Map<string, string>();
   const booleans = new Set<string>();
@@ -365,7 +346,7 @@ async function runUrls(options: CliOptions) {
       `JWKS: ${authSiteUrl}/.well-known/jwks.json`,
       `OAuth sign-in base: ${authSiteUrl}/signin/<provider>`,
       `OAuth callback base: ${authSiteUrl}/callback/<provider>`,
-      `SSO connections base: ${authSiteUrl}/connections/<connectionId>`,
+      `Connection connections base: ${authSiteUrl}/connections/<connectionId>`,
     ].join("\n"),
   );
 }
@@ -416,10 +397,6 @@ export function runCliMain(argv = process.argv) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 type ProjectConfig = {
   isExpo: boolean;
   isNextjs: boolean;
@@ -439,10 +416,6 @@ type ProjectConfig = {
   };
   step: number;
 };
-
-// ---------------------------------------------------------------------------
-// Step 1: SITE_URL
-// ---------------------------------------------------------------------------
 
 async function configureSiteUrl(
   config: ProjectConfig,
@@ -507,10 +480,6 @@ async function configureSiteUrl(
   });
 }
 
-// ---------------------------------------------------------------------------
-// Generic env var configuration
-// ---------------------------------------------------------------------------
-
 async function configureEnvVar(
   config: ProjectConfig,
   variable: {
@@ -562,10 +531,6 @@ async function configureEnvVar(
   await setEnvVar(config, variable.name, chosenValue);
 }
 
-// ---------------------------------------------------------------------------
-// Step 2: Keys
-// ---------------------------------------------------------------------------
-
 async function configureKeys(config: ProjectConfig) {
   logStep(config, "Configure signing and encryption keys");
   const s = p.spinner();
@@ -596,10 +561,6 @@ async function configureKeys(config: ProjectConfig) {
   });
   s2.stop("Keys configured.");
 }
-
-// ---------------------------------------------------------------------------
-// Convex env helpers
-// ---------------------------------------------------------------------------
 
 function backendEnvVar(config: ProjectConfig, name: string): string {
   const { file, args } = convexCmd("env", "get", ...deploymentArgs(config), name);
@@ -643,7 +604,7 @@ async function setEnvVarFromFile(config: ProjectConfig, name: string, value: str
     try {
       unlinkSync(tmpFile);
     } catch {
-      // cleanup is best-effort
+      /* empty */
     }
   }
 }
@@ -676,10 +637,6 @@ function printDeployment(config: ProjectConfig): string {
   const { name, type } = config.deployment;
   return (type !== null ? `${type} ` : "") + "deployment" + (name !== null ? ` ${name}` : "");
 }
-
-// ---------------------------------------------------------------------------
-// Step 3: tsconfig
-// ---------------------------------------------------------------------------
 
 const compilerOptionsPattern =
   /("compilerOptions"\s*:\s*\{(?:\s*(?:\/\*(?:[^*]|\*(?!\/))*\*\/))*(\s*))(?=")/;
@@ -775,10 +732,6 @@ function addCompilerOption(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Step 4: convex.config
-// ---------------------------------------------------------------------------
-
 async function configureConvexConfig(config: ProjectConfig) {
   logStep(config, "Configure convex config file");
   const sourceTemplate = `\
@@ -819,17 +772,13 @@ export default app;
   }
 }
 
-// ---------------------------------------------------------------------------
-// Step 5: auth.ts
-// ---------------------------------------------------------------------------
-
 async function initializeAuth(config: ProjectConfig) {
   logStep(config, "Initialize auth file");
   const sourceTemplate = `\
-import { createAuth } from "@robelest/convex-auth/component";
+import { defineAuth } from "@robelest/convex-auth/component";
 import { components } from "./_generated/api";
 
-const auth = createAuth(components.auth, {$$
+const auth = defineAuth(components.auth, {$$
   providers: [$$],$$
 });
 
@@ -845,7 +794,7 @@ export const { signIn, signOut, store } = auth;
       p.log.success(`${existingAuthPath} is already set up.`);
     } else {
       p.log.info(
-        `You already have ${existingAuthPath}. Make sure it initializes auth with createAuth:`,
+        `You already have ${existingAuthPath}. Make sure it initializes auth with defineAuth:`,
       );
       p.log.message(indent(`\n${source}\n`));
       const ready = await p.confirm({ message: "Ready to continue?" });
@@ -861,10 +810,6 @@ export const { signIn, signOut, store } = auth;
     p.log.success(`Created ${newAuthPath}`);
   }
 }
-
-// ---------------------------------------------------------------------------
-// Step 5b: http.ts (auth protocol routes)
-// ---------------------------------------------------------------------------
 
 async function initializeHttp(config: ProjectConfig) {
   logStep(config, "Initialize HTTP auth routes");
@@ -898,10 +843,6 @@ export default auth.http();
     p.log.success(`Created ${newPath}`);
   }
 }
-
-// ---------------------------------------------------------------------------
-// Step 5c: auth/core.ts (lightweight context for queries/mutations)
-// ---------------------------------------------------------------------------
 
 async function initializeAuthCore(config: ProjectConfig) {
   logStep(config, "Initialize auth/core file");
@@ -938,10 +879,6 @@ export const auth = createAuthContext(components.auth);
     p.log.success(`Created ${newPath}`);
   }
 }
-
-// ---------------------------------------------------------------------------
-// Step 6: auth.config.ts
-// ---------------------------------------------------------------------------
 
 async function initializeAuthConfig(config: ProjectConfig) {
   logStep(config, "Initialize auth.config file");
@@ -980,10 +917,6 @@ export default {$$
     p.log.success(`Created ${newPath}`);
   }
 }
-
-// ---------------------------------------------------------------------------
-// Extra: --variables
-// ---------------------------------------------------------------------------
 
 type VariableEntry = {
   name: string;
@@ -1111,10 +1044,6 @@ async function configureOtherVariables(config: ProjectConfig, json: string) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Template helpers
-// ---------------------------------------------------------------------------
-
 /** @internal */
 export function doesAlreadyMatchTemplate(existing: string, template: string) {
   const regex = new RegExp(
@@ -1144,17 +1073,9 @@ function existsAndNotEmpty(filePath: string): boolean {
   return existsSync(filePath) && readFileSync(filePath, "utf8").trim() !== "";
 }
 
-// ---------------------------------------------------------------------------
-// Logging
-// ---------------------------------------------------------------------------
-
 function logStep(config: ProjectConfig, message: string) {
   p.log.step(`Step ${config.step++}: ${message}`);
 }
-
-// ---------------------------------------------------------------------------
-// Source control check
-// ---------------------------------------------------------------------------
 
 async function checkSourceControl(options: {
   skipGitCheck?: boolean;
@@ -1205,10 +1126,6 @@ async function checkSourceControl(options: {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Project file readers
-// ---------------------------------------------------------------------------
-
 type PackageJSON = {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
@@ -1251,10 +1168,6 @@ function loadEnvFiles() {
   loadEnvFile({ path: ".env.local", override: false });
   loadEnvFile({ path: ".env", override: false });
 }
-
-// ---------------------------------------------------------------------------
-// Deployment selection
-// ---------------------------------------------------------------------------
 
 /** @internal */
 export function readConvexDeployment(options: {
@@ -1360,10 +1273,6 @@ export function isPreviewDeployKey(adminKey: string) {
   return prefixParts[0] === "preview" && prefixParts.length === 3;
 }
 
-// ---------------------------------------------------------------------------
-// Final success message
-// ---------------------------------------------------------------------------
-
 function printFinalSuccessMessage(config: ProjectConfig) {
   const isProd = config.deployment.type === "prod";
   const deploymentName = config.deployment.name ?? "your deployment";
@@ -1389,18 +1298,10 @@ function printFinalSuccessMessage(config: ProjectConfig) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Error helpers
-// ---------------------------------------------------------------------------
-
 function logErrorAndExit(message: string, error?: string): never {
   p.log.error(`${message}${error !== undefined ? `\n  ${error}` : ""}`);
   process.exit(1);
 }
-
-// ---------------------------------------------------------------------------
-// String helpers
-// ---------------------------------------------------------------------------
 
 function indent(string: string) {
   return string.replace(/^/gm, "  ").slice(2);

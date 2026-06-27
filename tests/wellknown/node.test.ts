@@ -31,8 +31,6 @@ afterEach(() => {
   }
 });
 
-// ---- AASA ----
-
 test("AASA returns null when neither env nor opts provided", () => {
   expect(wellKnown("apple-app-site-association")).toBeNull();
 });
@@ -79,8 +77,6 @@ test("AASA opts.appIds overrides env", () => {
   expect(body.webcredentials.apps).toEqual(["T2.com.example.code"]);
 });
 
-// ---- assetlinks ----
-
 test("assetlinks returns null when nothing configured", () => {
   expect(wellKnown("assetlinks.json")).toBeNull();
 });
@@ -125,8 +121,6 @@ test("assetlinks output is a top-level array, not an object", () => {
   expect(r!.body.startsWith("[")).toBe(true);
 });
 
-// ---- webauthn ----
-
 test("webauthn returns null when no origins configured", () => {
   expect(wellKnown("webauthn")).toBeNull();
 });
@@ -159,8 +153,6 @@ test("webauthn opts.origins overrides env", () => {
   const body = JSON.parse(r!.body) as { origins: string[] };
   expect(body.origins).toEqual(["https://code.example.com"]);
 });
-
-// ---- security.txt ----
 
 test("security.txt returns null without contact", () => {
   expect(wellKnown("security.txt")).toBeNull();
@@ -207,8 +199,6 @@ test("security.txt includes optional fields", () => {
   expect(r!.body).toContain("Policy: https://example.com/security-policy");
   expect(r!.body).toContain("Hiring: https://example.com/jobs");
 });
-
-// ---- change-password ----
 
 test("change-password returns null when not configured", () => {
   expect(wellKnown("change-password")).toBeNull();

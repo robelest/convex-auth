@@ -1,5 +1,6 @@
 import { ConvexError } from "convex/values";
 
+import { ErrorCode } from "../shared/codes";
 import { AuthFlowError } from "../shared/errors";
 
 export type AuthErrorData = {
@@ -8,28 +9,15 @@ export type AuthErrorData = {
 };
 
 /**
- * Internal signal carrying a non-`signedIn` flow result up through a
- * credentials authorize callback.
- *
- * `ctx.auth.provider.signIn` re-enters the canonical sign-in flow so a
- * credentials provider (e.g. password.ts) can hand off to a verify/reset
- * email provider, an OAuth redirect, or a device-code flow. Those handlers
- * resolve to results like `{ kind: "started" }` or `{ kind: "redirect" }`,
- * which the credentials runner has no shape to return — its `authorize`
- * contract is `{ userId, ... } | null`. Throwing a `FlowSignal` lets the
- * runner unwrap it and forward the carried result unchanged to the outer
- * signIn action.
- *
+ * Build a `ConvexError` carrying an auth error `code` and `message`, plus any
+ * extra structured fields.
  * @internal
  */
-export class FlowSignal<T extends { kind: string }> extends Error {
-  readonly result: T;
-  constructor(result: T) {
-    super(`FlowSignal:${result.kind}`);
-    this.name = "FlowSignal";
-    this.result = result;
-  }
-}
+export const convexError = (
+  code: string,
+  message: string,
+  extra?: Record<string, unknown>,
+): ConvexError<AuthErrorData> => new ConvexError({ code, message, ...extra });
 
 /** @internal */
 export const toConvexError = (error: unknown): ConvexError<AuthErrorData> => {
@@ -40,7 +28,7 @@ export const toConvexError = (error: unknown): ConvexError<AuthErrorData> => {
     return new ConvexError({ code: error.code, message: error.message });
   }
   return new ConvexError({
-    code: "INTERNAL_ERROR",
+    code: ErrorCode.INTERNAL_ERROR,
     message: error instanceof Error ? error.message : String(error),
   });
 };

@@ -1,15 +1,10 @@
-import { ConvexError } from "convex/values";
-
+import type { Hashed } from "../shared/brand";
+import { convexError as credentialsError } from "./errors";
 import type { AuthProviderMaterializedConfig, ConvexAuthMaterializedConfig } from "./types";
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
-
-type AuthError = ConvexError<{ code: string; message: string }>;
-
-const credentialsError = (code: string, message: string): AuthError =>
-  new ConvexError({ code, message });
 
 type CredentialsProviderLike = Extract<AuthProviderMaterializedConfig, { type: "credentials" }>;
 
@@ -30,7 +25,7 @@ function asCredentialsProvider(provider: AuthProviderMaterializedConfig): Creden
 export async function hash(
   provider: AuthProviderMaterializedConfig,
   secret: string,
-): Promise<string> {
+): Promise<Hashed<"Password">> {
   const credProvider = asCredentialsProvider(provider);
   const hashSecret = credProvider.crypto?.hashSecret;
   if (!hashSecret) {
@@ -53,7 +48,7 @@ export async function hash(
 export async function verify(
   provider: AuthProviderMaterializedConfig,
   secret: string,
-  hashValue: string,
+  hashValue: Hashed<"Password">,
 ): Promise<boolean> {
   const credProvider = asCredentialsProvider(provider);
   const verifySecret = credProvider.crypto?.verifySecret;

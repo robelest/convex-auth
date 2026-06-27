@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 
 import { auth } from "./auth/core";
-import { authMutation, authQuery, requireUserId } from "./functions";
+import { authMutation, authQuery } from "./functions";
 
 export const list = authQuery({
   args: { groupId: v.string() },
@@ -19,8 +19,8 @@ export const list = authQuery({
     }),
   ),
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
-    await auth.member.require(ctx, {
+    const userId = ctx.auth.userId;
+    await auth.member.assert(ctx, {
       userId,
       groupId: args.groupId,
       grants: ["projects.read"],
@@ -49,26 +49,24 @@ export const create = authMutation({
   args: {
     groupId: v.string(),
     name: v.string(),
-    identifier: v.string(),
+    identifier: v.optional(v.string()),
     description: v.optional(v.string()),
   },
   returns: v.object({ projectId: v.id("projects") }),
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
-    await auth.member.require(ctx, {
+    const userId = ctx.auth.userId;
+    await auth.member.assert(ctx, {
       userId,
       groupId: args.groupId,
       grants: ["projects.create"],
     });
 
-    const identifier = args.identifier
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, "")
-      .slice(0, 6);
-    if (identifier.length < 2) {
-      throw new ConvexError({ code: "INVALID_INPUT", message: "Identifier must be at least 2 characters." });
-    }
+    const baseIdentifier =
+      (args.identifier && args.identifier.trim().length > 0 ? args.identifier : args.name)
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "")
+        .slice(0, 6) || "PROJ";
 
     const slug = args.name
       .trim()
@@ -80,14 +78,18 @@ export const create = authMutation({
       throw new ConvexError({ code: "INVALID_INPUT", message: "Project name is required." });
     }
 
-    const existingIdentifier = await ctx.db
-      .query("projects")
-      .withIndex("by_groupId_and_identifier", (q) =>
-        q.eq("groupId", args.groupId).eq("identifier", identifier),
-      )
-      .first();
-    if (existingIdentifier) {
-      throw new ConvexError({ code: "INVALID_INPUT", message: `Identifier "${identifier}" is already in use.` });
+    let identifier = baseIdentifier;
+    let suffix = 2;
+    while (
+      await ctx.db
+        .query("projects")
+        .withIndex("by_groupId_and_identifier", (q) =>
+          q.eq("groupId", args.groupId).eq("identifier", identifier),
+        )
+        .first()
+    ) {
+      identifier = `${baseIdentifier.slice(0, 5)}${suffix}`;
+      suffix += 1;
     }
 
     const existingSlug = await ctx.db
@@ -95,7 +97,10 @@ export const create = authMutation({
       .withIndex("by_groupId_and_slug", (q) => q.eq("groupId", args.groupId).eq("slug", slug))
       .first();
     if (existingSlug) {
-      throw new ConvexError({ code: "INVALID_INPUT", message: "A project with that name already exists." });
+      throw new ConvexError({
+        code: "INVALID_INPUT",
+        message: "A project with that name already exists.",
+      });
     }
 
     const projectId = await ctx.db.insert("projects", {
@@ -136,9 +141,9 @@ export const detail = authQuery({
 
     const project = await ctx.db.get(projectId);
     if (!project) return null;
-    const userId = await requireUserId(ctx);
+    const userId = ctx.auth.userId;
 
-    await auth.member.require(ctx, {
+    await auth.member.assert(ctx, {
       userId,
       groupId: project.groupId,
       grants: ["projects.read"],
@@ -173,9 +178,9 @@ export const update = authMutation({
     if (!project) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Project not found." });
     }
-    const userId = await requireUserId(ctx);
+    const userId = ctx.auth.userId;
 
-    await auth.member.require(ctx, {
+    await auth.member.assert(ctx, {
       userId,
       groupId: project.groupId,
       grants: ["projects.manage"],

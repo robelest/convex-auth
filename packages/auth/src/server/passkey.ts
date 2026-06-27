@@ -43,14 +43,16 @@ import type {
   SignInPasskeyOptionsResult,
   SignInSessionResult,
 } from "../shared/results";
-import { ConvexError, type GenericId } from "convex/values";
+import { ConvexError } from "convex/values";
 
+import { ErrorCode } from "../shared/codes";
 import { authFlowError } from "../shared/errors";
 import { authDb } from "./db";
 import type { AuthErrorData } from "./errors";
 import { toConvexError } from "./errors";
-import { getAuthenticatedUserIdOrNull } from "./identity";
-import { callSignIn, callVerifier } from "./mutations/index";
+import { emitAuthEvent } from "./events";
+import { getAuthenticatedUserIdOrNull } from "./identity/claims";
+import { callSignIn, callVerifier } from "./mutations/calls";
 import { GenericActionCtxWithAuthConfig, PasskeyProviderConfig } from "./types";
 import {
   AuthDataModel,
@@ -64,6 +66,7 @@ import {
   queryVerifierById,
   SessionInfo,
 } from "./types";
+import { envOptionalString } from "./env";
 import { siteUrlsFromEnv } from "./url";
 
 type EnrichedActionCtx = GenericActionCtxWithAuthConfig<AuthDataModel>;
@@ -115,14 +118,15 @@ type PasskeyParams = {
 
 const requireStringParam = (value: unknown, name: string) => {
   if (typeof value !== "string") {
-    throw convexError("INVALID_PARAMETERS", `Missing \`${name}\` parameter.`);
+    throw convexError(ErrorCode.INVALID_PARAMETERS, `Missing \`${name}\` parameter.`);
   }
   return value;
 };
 
-const convexError = (code: string, message: string) => toConvexError(authFlowError(code, message));
+const convexError = (code: ErrorCode, message: string) =>
+  toConvexError(authFlowError(code, message));
 
-const asConvexError = (error: unknown, code: string, message: string): ConvexError<AuthErrorData> =>
+const asConvexError = (error: unknown, code: ErrorCode, message: string): ConvexError<AuthErrorData> =>
   error instanceof ConvexError
     ? error
     : error instanceof Error
@@ -131,14 +135,15 @@ const asConvexError = (error: unknown, code: string, message: string): ConvexErr
 
 function resolveRpOptions(provider: PasskeyProviderConfig): RpOptions {
   try {
-    const configuredSiteUrls = process.env.SITE_URL === undefined ? null : siteUrlsFromEnv();
+    const configuredSiteUrls =
+      envOptionalString("SITE_URL") === undefined ? null : siteUrlsFromEnv();
     const siteUrl = configuredSiteUrls?.primaryUrl;
     const hasSiteUrl = siteUrl !== undefined && siteUrl !== "";
     const hasRpId = provider.options.rpId !== undefined;
 
     if (!hasSiteUrl && !hasRpId) {
       throw convexError(
-        "PASSKEY_MISSING_CONFIG",
+        ErrorCode.PASSKEY_MISSING_CONFIG,
         "Passkey provider requires SITE_URL env var (your frontend URL) or explicit rpId / origin in the provider config. CONVEX_SITE_URL cannot be used because WebAuthn RP ID must match the frontend domain.",
       );
     }
@@ -159,7 +164,7 @@ function resolveRpOptions(provider: PasskeyProviderConfig): RpOptions {
   } catch (error) {
     throw asConvexError(
       error,
-      "PASSKEY_MISSING_CONFIG",
+      ErrorCode.PASSKEY_MISSING_CONFIG,
       "Passkey relying party configuration is invalid.",
     );
   }
@@ -171,7 +176,7 @@ function verifyClientDataType<T extends { type: ClientDataType }>(
   label: string,
 ): T {
   if (clientData.type !== expectedType) {
-    throw convexError("PASSKEY_INVALID_CLIENT_DATA", `Invalid client data type: expected ${label}`);
+    throw convexError(ErrorCode.PASSKEY_INVALID_CLIENT_DATA, `Invalid client data type: expected ${label}`);
   }
   return clientData;
 }
@@ -180,7 +185,7 @@ function verifyOrigin<T extends { origin: string }>(clientData: T, rp: RpOptions
   const allowed = Array.isArray(rp.origin) ? rp.origin : [rp.origin];
   if (!allowed.includes(clientData.origin)) {
     throw convexError(
-      "PASSKEY_INVALID_ORIGIN",
+      ErrorCode.PASSKEY_INVALID_ORIGIN,
       `Invalid origin: ${clientData.origin}, expected one of: ${allowed.join(", ")}`,
     );
   }
@@ -198,16 +203,16 @@ async function verifyAndConsumeChallenge<T extends { challenge: Uint8Array }>(
     doc = await queryVerifierById(ctx, verifierValue);
   } catch (err) {
     console.error("[auth] passkey error:", err);
-    throw convexError("PASSKEY_INVALID_CHALLENGE", "Invalid or expired passkey challenge.");
+    throw convexError(ErrorCode.PASSKEY_INVALID_CHALLENGE, "Invalid or expired passkey challenge.");
   }
   if (!doc || doc.signature !== challengeHash) {
-    throw convexError("PASSKEY_INVALID_CHALLENGE", "Invalid or expired passkey challenge.");
+    throw convexError(ErrorCode.PASSKEY_INVALID_CHALLENGE, "Invalid or expired passkey challenge.");
   }
   try {
     await mutateVerifierDelete(ctx, verifierValue);
   } catch (err) {
     console.error("[auth] passkey error:", err);
-    throw convexError("PASSKEY_INVALID_CHALLENGE", "Invalid or expired passkey challenge.");
+    throw convexError(ErrorCode.PASSKEY_INVALID_CHALLENGE, "Invalid or expired passkey challenge.");
   }
   return clientData;
 }
@@ -217,7 +222,7 @@ function verifyRpId<T extends { verifyRelyingPartyIdHash: (id: string) => boolea
   rpId: string,
 ): T {
   if (!authData.verifyRelyingPartyIdHash(rpId)) {
-    throw convexError("PASSKEY_RP_MISMATCH", "Relying party ID mismatch.");
+    throw convexError(ErrorCode.PASSKEY_RP_MISMATCH, "Relying party ID mismatch.");
   }
   return authData;
 }
@@ -227,10 +232,10 @@ function verifyUserFlags<T extends { userPresent: boolean; userVerified: boolean
   rp: RpOptions,
 ): T {
   if (!authData.userPresent) {
-    throw convexError("PASSKEY_USER_PRESENCE", "User presence flag not set.");
+    throw convexError(ErrorCode.PASSKEY_USER_PRESENCE, "User presence flag not set.");
   }
   if (rp.userVerification === "required" && !authData.userVerified) {
-    throw convexError("PASSKEY_USER_VERIFICATION", "User verification required but not performed.");
+    throw convexError(ErrorCode.PASSKEY_USER_VERIFICATION, "User verification required but not performed.");
   }
   return authData;
 }
@@ -241,7 +246,7 @@ function resolvePasskeyDispatch(params: Record<string, unknown>): PasskeyDispatc
     return { flow: flow as PasskeyFlow };
   }
   throw convexError(
-    "PASSKEY_MISSING_FLOW",
+    ErrorCode.PASSKEY_MISSING_FLOW,
     "Missing `flow` parameter. Expected one of: " + PASSKEY_FLOWS.join(", "),
   );
 }
@@ -250,7 +255,7 @@ function requirePasskeyVerifier(verifier: string | undefined): string {
   if (verifier != null) {
     return verifier;
   }
-  throw convexError("PASSKEY_MISSING_VERIFIER", "Missing verifier for passkey operation.");
+  throw convexError(ErrorCode.PASSKEY_MISSING_VERIFIER, "Missing verifier for passkey operation.");
 }
 
 async function requireAuthenticatedUserId(ctx: EnrichedActionCtx): Promise<string> {
@@ -258,7 +263,7 @@ async function requireAuthenticatedUserId(ctx: EnrichedActionCtx): Promise<strin
     const userId = await getAuthenticatedUserIdOrNull(ctx);
     if (userId === null) {
       throw convexError(
-        "PASSKEY_AUTH_REQUIRED",
+        ErrorCode.PASSKEY_AUTH_REQUIRED,
         "Sign in first, then add a passkey to your account.",
       );
     }
@@ -266,7 +271,7 @@ async function requireAuthenticatedUserId(ctx: EnrichedActionCtx): Promise<strin
   } catch (err) {
     console.error("[auth] passkey error:", err);
     throw convexError(
-      "PASSKEY_AUTH_REQUIRED",
+      ErrorCode.PASSKEY_AUTH_REQUIRED,
       "Sign in first, then add a passkey to your account.",
     );
   }
@@ -303,7 +308,7 @@ function resolveRegistrationPublicKeyBytes(
     const rsaPubKey = new RSAPublicKey(rsa.n, rsa.e);
     return rsaPubKey.encodePKCS1();
   }
-  throw convexError("PASSKEY_UNSUPPORTED_ALGORITHM", `Unsupported algorithm: ${algorithm}`);
+  throw convexError(ErrorCode.PASSKEY_UNSUPPORTED_ALGORITHM, `Unsupported algorithm: ${algorithm}`);
 }
 
 function verifyAssertionSignature(
@@ -317,7 +322,7 @@ function verifyAssertionSignature(
     const ecPublicKey = decodeSEC1PublicKey(p256, new Uint8Array(passkey.publicKey));
     const ecdsaSignature = decodePKIXECDSASignature(signature);
     if (!verifyECDSASignature(ecPublicKey, messageHash, ecdsaSignature)) {
-      throw convexError("PASSKEY_INVALID_SIGNATURE", "Invalid passkey signature.");
+      throw convexError(ErrorCode.PASSKEY_INVALID_SIGNATURE, "Invalid passkey signature.");
     }
     return;
   }
@@ -326,13 +331,24 @@ function verifyAssertionSignature(
     if (
       !verifyRSASSAPKCS1v15Signature(rsaPublicKey, sha256ObjectIdentifier, messageHash, signature)
     ) {
-      throw convexError("PASSKEY_INVALID_SIGNATURE", "Invalid passkey signature.");
+      throw convexError(ErrorCode.PASSKEY_INVALID_SIGNATURE, "Invalid passkey signature.");
     }
     return;
   }
-  throw convexError("PASSKEY_UNSUPPORTED_ALGORITHM", `Unsupported algorithm: ${passkey.algorithm}`);
+  throw convexError(ErrorCode.PASSKEY_UNSUPPORTED_ALGORITHM, `Unsupported algorithm: ${passkey.algorithm}`);
 }
 
+/**
+ * Drive the passkey provider's `register` / `signIn` / `verify` flow.
+ *
+ * Dispatches on `args.params.flow`; for `verify` it auto-detects whether the
+ * response completes a registration or a sign-in (see {@link PASSKEY_FLOWS}).
+ *
+ * @param ctx - Auth-enriched action context.
+ * @param provider - The resolved passkey provider config (relying-party options).
+ * @param args - The flow params and, for `verify`, the issued challenge verifier.
+ * @returns A WebAuthn challenge (`passkeyOptions`) or a signed-in session.
+ */
 export async function handlePasskeyFx(
   ctx: EnrichedActionCtx,
   provider: PasskeyProviderConfig,
@@ -366,7 +382,7 @@ export async function handlePasskeyFx(
     verifyUserFlags(authData, rp);
 
     if (authData.credential == null) {
-      throw convexError("PASSKEY_NO_CREDENTIAL", "No credential in attestation.");
+      throw convexError(ErrorCode.PASSKEY_NO_CREDENTIAL, "No credential in attestation.");
     }
 
     const credential = authData.credential;
@@ -398,7 +414,7 @@ export async function handlePasskeyFx(
         publicKey: publicKeyBytes.buffer.slice(
           publicKeyBytes.byteOffset,
           publicKeyBytes.byteOffset + publicKeyBytes.byteLength,
-        ),
+        ) as ArrayBuffer,
         algorithm,
         counter: authData.signatureCounter,
         transports: params.transports,
@@ -407,15 +423,17 @@ export async function handlePasskeyFx(
         name: params.passkeyName,
         createdAt: Date.now(),
       });
-      await ctx.auth.config.callbacks?.after?.(ctx, {
-        kind: "passkeyAdded",
-        userId: userId as GenericId<"User">,
-        passkeyId: passkeyId as GenericId<"Passkey">,
-        credentialId,
+      await emitAuthEvent(ctx, ctx.auth.config, {
+        kind: "passkey.added",
+        actor: { type: "user", id: userId },
+        subject: { type: "passkey", id: passkeyId },
+        targets: [{ kind: "user", id: userId }],
+        outcome: "success",
+        data: { passkeyId, credentialId },
       });
     } catch (err) {
       console.error("[auth] passkey error:", err);
-      throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+      throw convexError(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred.");
     }
 
     let signInResult;
@@ -425,7 +443,7 @@ export async function handlePasskeyFx(
         generateTokens: true,
       });
     } catch (error) {
-      throw asConvexError(error, "INTERNAL_ERROR", "Failed to finalize passkey registration.");
+      throw asConvexError(error, ErrorCode.INTERNAL_ERROR, "Failed to finalize passkey registration.");
     }
     return { kind: "signedIn" as const, session: signInResult };
   };
@@ -444,7 +462,7 @@ export async function handlePasskeyFx(
 
     const credentialId = params.credentialId;
     if (credentialId == null) {
-      throw convexError("PASSKEY_UNKNOWN_CREDENTIAL", "Missing credential ID");
+      throw convexError(ErrorCode.PASSKEY_UNKNOWN_CREDENTIAL, "Missing credential ID");
     }
 
     let passkey;
@@ -452,10 +470,10 @@ export async function handlePasskeyFx(
       passkey = await queryPasskeyByCredentialId(ctx, credentialId);
     } catch (err) {
       console.error("[auth] passkey error:", err);
-      throw convexError("PASSKEY_UNKNOWN_CREDENTIAL", "Unknown passkey credential.");
+      throw convexError(ErrorCode.PASSKEY_UNKNOWN_CREDENTIAL, "Unknown passkey credential.");
     }
     if (passkey === null) {
-      throw convexError("PASSKEY_UNKNOWN_CREDENTIAL", "Unknown credential");
+      throw convexError(ErrorCode.PASSKEY_UNKNOWN_CREDENTIAL, "Unknown credential");
     }
 
     const authenticatorDataBytes = decodeBase64urlIgnorePadding(
@@ -465,7 +483,10 @@ export async function handlePasskeyFx(
     const signatureBytes = decodeBase64urlIgnorePadding(
       requireStringParam(params.signature, "signature"),
     );
-    const signatureMessage = createAssertionSignatureMessage(authenticatorDataBytes, clientDataJSON);
+    const signatureMessage = createAssertionSignatureMessage(
+      authenticatorDataBytes,
+      clientDataJSON,
+    );
     const messageHash = sha256(signatureMessage);
 
     verifyRpId(authenticatorData, rp.rpId);
@@ -478,7 +499,7 @@ export async function handlePasskeyFx(
       authenticatorData.signatureCounter <= passkey.counter
     ) {
       throw convexError(
-        "PASSKEY_COUNTER_ERROR",
+        ErrorCode.PASSKEY_COUNTER_ERROR,
         "Authenticator counter did not increase — possible credential cloning detected.",
       );
     }
@@ -491,7 +512,7 @@ export async function handlePasskeyFx(
         Date.now(),
       );
     } catch (error) {
-      throw asConvexError(error, "INTERNAL_ERROR", "Failed to update passkey counter.");
+      throw asConvexError(error, ErrorCode.INTERNAL_ERROR, "Failed to update passkey counter.");
     }
 
     let signInResult;
@@ -501,7 +522,7 @@ export async function handlePasskeyFx(
         generateTokens: true,
       });
     } catch (error) {
-      throw asConvexError(error, "INTERNAL_ERROR", "Failed to finalize passkey sign-in.");
+      throw asConvexError(error, ErrorCode.INTERNAL_ERROR, "Failed to finalize passkey sign-in.");
     }
 
     return { kind: "signedIn" as const, session: signInResult };
@@ -521,7 +542,7 @@ export async function handlePasskeyFx(
         verifier = await callVerifier(ctx, challengeHash);
       } catch (err) {
         console.error("[auth] passkey error:", err);
-        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+        throw convexError(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred.");
       }
 
       let user;
@@ -529,7 +550,7 @@ export async function handlePasskeyFx(
         user = await queryUserById(ctx, userId);
       } catch (err) {
         console.error("[auth] passkey error:", err);
-        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+        throw convexError(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred.");
       }
       const userName = params.userName ?? user?.email ?? "user";
       const userDisplayName = params.userDisplayName ?? user?.name ?? userName;
@@ -539,7 +560,7 @@ export async function handlePasskeyFx(
         existing = await queryPasskeysByUserId(ctx, userId);
       } catch (err) {
         console.error("[auth] passkey error:", err);
-        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+        throw convexError(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred.");
       }
       const excludeCredentials = existing.map((pk) => ({
         id: pk.credentialId,
@@ -592,7 +613,7 @@ export async function handlePasskeyFx(
         verifier = await callVerifier(ctx, challengeHash);
       } catch (err) {
         console.error("[auth] passkey error:", err);
-        throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+        throw convexError(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred.");
       }
 
       let allowCredentials:
@@ -606,7 +627,7 @@ export async function handlePasskeyFx(
           user = await queryUserByVerifiedEmail(ctx, email);
         } catch (err) {
           console.error("[auth] passkey error:", err);
-          throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+          throw convexError(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred.");
         }
         if (user) {
           let passkeys;
@@ -614,7 +635,7 @@ export async function handlePasskeyFx(
             passkeys = await queryPasskeysByUserId(ctx, user._id);
           } catch (err) {
             console.error("[auth] passkey error:", err);
-            throw convexError("INTERNAL_ERROR", "An unexpected error occurred.");
+            throw convexError(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred.");
           }
           if (passkeys.length > 0) {
             allowCredentials = passkeys.map((pk) => ({
@@ -655,9 +676,6 @@ export async function handlePasskeyFx(
     },
 
     verify: async () => {
-      // Auto-detect register-completion vs auth-completion by param shape.
-      // Registration responses carry an `attestationObject`; authentication
-      // responses carry a `signature`.
       const isRegistration =
         typeof params.attestationObject === "string" && params.attestationObject.length > 0;
       const isAuthentication = typeof params.signature === "string" && params.signature.length > 0;
@@ -669,7 +687,7 @@ export async function handlePasskeyFx(
         return await handleAuthVerify();
       }
       throw convexError(
-        "PASSKEY_INVALID_VERIFY",
+        ErrorCode.PASSKEY_INVALID_VERIFY,
         "`verify` flow requires either `attestationObject` (to complete a `register`) " +
           "or `signature` + `credentialId` (to complete a `signIn`).",
       );
@@ -678,7 +696,7 @@ export async function handlePasskeyFx(
 
   const handler = flowHandlers[dispatch.flow];
   if (!handler) {
-    throw convexError("PASSKEY_MISSING_FLOW", `Unknown passkey flow: ${dispatch.flow}`);
+    throw convexError(ErrorCode.PASSKEY_MISSING_FLOW, `Unknown passkey flow: ${dispatch.flow}`);
   }
   return handler();
 }

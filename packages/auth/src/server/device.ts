@@ -4,16 +4,12 @@
 
 import { ConvexError } from "convex/values";
 
-import type {
-  AuthTokens,
-  SignInDeviceCodeResult,
-  SignInSessionResult,
-} from "../shared/results";
+import type { AuthTokens, SignInDeviceCodeResult, SignInSessionResult } from "../shared/results";
 import { AuthFlowError, authFlowError } from "../shared/errors";
 import { requireEnv } from "./env";
 import { toConvexError } from "./errors";
-import { getAuthenticatedUserIdOrNull } from "./identity";
-import { callSignIn } from "./mutations/index";
+import { getAuthenticatedUserIdOrNull } from "./identity/claims";
+import { callSignIn } from "./mutations/calls";
 import { generateRandomString, sha256 } from "./random";
 import type { DeviceProviderConfig, GenericActionCtxWithAuthConfig } from "./types";
 import {
@@ -77,8 +73,7 @@ async function handleCreate(
     status: "pending",
   });
 
-  const verificationUri =
-    provider.verificationUri ?? `${process.env.SITE_URL ?? requireEnv("SITE_URL")}/device`;
+  const verificationUri = provider.verificationUri ?? `${requireEnv("SITE_URL")}/device`;
 
   return {
     kind: "deviceCode" as const,

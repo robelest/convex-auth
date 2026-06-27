@@ -1,3 +1,10 @@
+/**
+ * Leveled console logging shared across auth internals.
+ *
+ * @module
+ */
+
+/** Supported log severities, ordered from most to least severe. */
 export const LOG_LEVELS = {
   ERROR: "ERROR",
   WARN: "WARN",
@@ -5,6 +12,7 @@ export const LOG_LEVELS = {
   DEBUG: "DEBUG",
 } as const;
 
+/** One of the {@link LOG_LEVELS} severity names. */
 export type LogLevel = keyof typeof LOG_LEVELS;
 
 function serialize(value: unknown) {
@@ -21,6 +29,14 @@ function serialize(value: unknown) {
   }
 }
 
+/**
+ * Format and emit a log line, suppressing anything below `configuredLogLevel`.
+ *
+ * @param module - Source module label included in the prefix.
+ * @param level - Severity of this message.
+ * @param args - Values to serialize and join into the message body.
+ * @param configuredLogLevel - Minimum level to emit. Defaults to `"INFO"`.
+ */
 export function logMessage(
   module: string,
   level: LogLevel,
@@ -59,4 +75,3 @@ export function logMessage(
     handler();
   }
 }
-

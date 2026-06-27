@@ -1,0 +1,54 @@
+# fallow.toml - Codebase analysis configuration
+# See https://docs.fallow.tools for documentation
+
+entry = ["src/index.{js,jsx,mjs}", "src/main.{js,jsx,mjs}"]
+
+# Convex's `_generated/server.ts` is a template re-export; the ctx/db type
+# aliases and `httpAction` below are part of every Convex project but only a
+# subset is imported. They're regenerated on every `convex codegen`, so suppress
+# at the config level rather than chasing them in the generated file.
+[[ignoreExports]]
+file = "**/_generated/server.ts"
+exports = ["MutationCtx", "ActionCtx", "DatabaseReader", "DatabaseWriter", "httpAction"]
+
+[workspaces]
+packages = ["packages/*", "demos/*", "tests", "docs"]
+
+# Tooling that is invoked by config/CLI rather than imported in source, so it is
+# never seen as "used" by import analysis but must stay installed:
+#   - @edge-runtime/vm        — Vitest `edge-runtime` test environment
+#   - @oxlint/plugins         — oxlint plugin runtime
+#   - @trestleinc/convex-oxlint — Convex-specific oxlint rules
+#   - @arethetypeswrong/cli / publint — publish-time package validators
+#   - @voidzero-dev/vite-plus-core — resolved via the `vite` catalog alias
+ignoreDependencies = [
+  "@edge-runtime/vm",
+  "@oxlint/plugins",
+  "@trestleinc/convex-oxlint",
+  "@arethetypeswrong/cli",
+  "publint",
+  "@voidzero-dev/vite-plus-core",
+]
+
+# Convex component modules intentionally reuse CRUD verb names (create/get/list/
+# update/delete) across separate function files — each file is its own callable
+# namespace (e.g. `account.create` vs `factor.device.create`), not a barrel
+# re-export, so the duplicate names never resolve ambiguously.
+[[overrides]]
+files = ["packages/auth/src/component/**"]
+rules = { duplicate-exports = "off" }
+
+[duplicates]
+# Hide pair-only clones; focus on widespread copy-paste worth refactoring.
+# Lower to 2 to report every duplicate pair.
+minOccurrences = 3
+# Common additions (uncomment to enable):
+# ignore = [
+#   "**/lib/**",          # for repos that publish transpiled output to lib/
+#   "**/legacy/**",       # for repos with legacy-build artifacts
+#   "**/__generated__/**", # Relay, GraphQL Code Generator
+#   "**/generated/**"     # OpenAPI, Protobuf codegen
+# ]
+
+# Per-issue-type severity: "error" (fail CI), "warn" (report only), "off" (ignore)
+[rules]

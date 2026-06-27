@@ -29,7 +29,7 @@ const publicDeclarationEntries = {
   "expo/index": "src/expo/index.ts",
   "react/index": "src/react/index.tsx",
   "core/index": "src/core/index.ts",
-  "authorization/index": "src/authorization/index.ts",
+  "permissions/index": "src/permissions/index.ts",
   otel: "src/otel.ts",
   test: "src/test.ts",
   "server/index": "src/server/index.ts",
@@ -71,7 +71,7 @@ export default defineConfig([
   {
     entry: {
       "core/index": "src/core/index.ts",
-      "authorization/index": "src/authorization/index.ts",
+      "permissions/index": "src/permissions/index.ts",
       otel: "src/otel.ts",
       test: "src/test.ts",
     },

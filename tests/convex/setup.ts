@@ -1,6 +1,7 @@
 /// <reference types="vite-plus/client" />
 
 import resendTest from "@convex-dev/resend/test";
+import staticHostingTest from "@convex-dev/static-hosting/test";
 import authTest from "@robelest/convex-auth/test";
 import { convexTest as baseConvexTest } from "convex-test";
 import { exportJWK, exportPKCS8, generateKeyPair } from "jose";
@@ -38,7 +39,6 @@ if (!process.env.AUTH_SECRET_ENCRYPTION_KEY) {
 }
 
 if (!process.env.JWT_PRIVATE_KEY || !process.env.JWKS) {
-  // Match the alg used in `packages/auth/src/server/tokens.ts`.
   const keys = await generateKeyPair("EdDSA", {
     crv: "Ed25519",
     extractable: true,
@@ -57,5 +57,6 @@ export const convexTest = ((
   const t = baseConvexTest(schema as never, modules as never);
   authTest.register(t as any, "auth");
   resendTest.register(t as any, "resend");
+  staticHostingTest.register(t as any, "staticHosting");
   return t;
 }) as typeof baseConvexTest;

@@ -1,30 +1,14 @@
-import { ConvexError } from "convex/values";
+import { customAction, customMutation, customQuery } from "convex-helpers/server/customFunctions";
 
 import { action, mutation, query } from "./_generated/server";
-import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
+import { auth } from "./auth";
 
-type AuthCtx = QueryCtx | MutationCtx | ActionCtx;
+const authCtx = auth.ctx();
 
-export async function requireUserId(ctx: AuthCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (identity === null) {
-    throw new ConvexError({ code: "NOT_SIGNED_IN", message: "Authentication required." });
-  }
-  return identity.subject;
-}
+export const authQuery = customQuery(query, authCtx);
+export const authMutation = customMutation(mutation, authCtx);
+export const authAction = customAction(action, authCtx);
 
-export async function requireIdentity(ctx: AuthCtx) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (identity === null) {
-    throw new ConvexError({ code: "NOT_SIGNED_IN", message: "Authentication required." });
-  }
-  return identity;
-}
-
-export const authQuery = query;
-export const authMutation = mutation;
-export const authAction = action;
-
-export const authUserQuery = query;
-export const authUserMutation = mutation;
-export const authUserAction = action;
+export const authUserQuery = authQuery;
+export const authUserMutation = authMutation;
+export const authUserAction = authAction;

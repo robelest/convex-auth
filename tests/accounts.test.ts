@@ -13,7 +13,6 @@ afterEach(() => {
 test("sign in with email signs out existing user with different email", async () => {
   const t = convexTest(schema);
 
-  // 1. Sign up without email verification
   const tokens = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",

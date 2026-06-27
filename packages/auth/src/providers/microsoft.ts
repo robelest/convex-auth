@@ -5,9 +5,9 @@
  * import { microsoft } from "@robelest/convex-auth/providers/microsoft";
  *
  * microsoft({
- *   tenant: process.env.AUTH_MICROSOFT_TENANT_ID!,
- *   clientId: process.env.AUTH_MICROSOFT_ID!,
- *   clientSecret: process.env.AUTH_MICROSOFT_SECRET!,
+ *   tenant: env.AUTH_MICROSOFT_TENANT_ID!,
+ *   clientId: env.AUTH_MICROSOFT_ID!,
+ *   clientSecret: env.AUTH_MICROSOFT_SECRET!,
  * })
  * ```
  *
@@ -46,7 +46,7 @@ export interface MicrosoftConfig {
  * This wrapper enables nonce handling and validates the returned ID token.
  *
  * @param config - Microsoft Entra ID client settings.
- * @returns A configured Microsoft OAuth provider for `createAuth`.
+ * @returns A configured Microsoft OAuth provider for `defineAuth`.
  * @throws {Error} When no callback URL can be derived and `redirectUri` is omitted.
  *
  * @example
@@ -54,9 +54,9 @@ export interface MicrosoftConfig {
  * import { microsoft } from "@robelest/convex-auth/providers/microsoft";
  *
  * microsoft({
- *   tenant: process.env.AUTH_MICROSOFT_TENANT_ID!,
- *   clientId: process.env.AUTH_MICROSOFT_ID!,
- *   clientSecret: process.env.AUTH_MICROSOFT_SECRET!,
+ *   tenant: env.AUTH_MICROSOFT_TENANT_ID!,
+ *   clientId: env.AUTH_MICROSOFT_ID!,
+ *   clientSecret: env.AUTH_MICROSOFT_SECRET!,
  * })
  * ```
  */

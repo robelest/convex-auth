@@ -1,3 +1,4 @@
+// fallow-ignore-file unused-file
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { access, mkdir, rename, rm, writeFile } from "node:fs/promises";
@@ -38,6 +39,7 @@ declare module "vite-plus/test" {
     zitadelInternalUrl: string;
     convexSelfHostedUrl: string;
     convexSiteUrl: string;
+    jwtPrivateKey: string;
   }
 }
 
@@ -89,9 +91,6 @@ export default async function setupNodeInterop(project: {
     const pemPath = path.join(runtimeDir, "jwt-private-key.pem");
     try {
       if (!(await fileExists(buildReadyFile))) {
-        await run("vp", ["run", "cache:build:samlify"], buildEnv, {
-          timeout: convexTimeoutMs,
-        });
         await run("vp", ["run", "cache:build:convex-codegen"], buildEnv, {
           timeout: convexTimeoutMs,
         });
@@ -102,15 +101,19 @@ export default async function setupNodeInterop(project: {
       await run("vp", ["exec", "convex", "deploy", "--yes"], convexEnv, {
         timeout: convexTimeoutMs,
       });
-    await run("vp", ["exec", "convex", "env", "set", "SITE_URL", env.SITE_URL], convexEnv);
-    await run("vp", ["exec", "convex", "env", "set", "APP_URL", env.APP_URL], convexEnv);
-    await run("vp", ["exec", "convex", "env", "set", "CONVEX_AUTH_SITE_URL", env.CONVEX_SITE_URL], convexEnv);
-    await run(
-      "vp",
-      ["exec", "convex", "env", "set", "CONVEX_AUTH_HTTP_PREFIX", env.CONVEX_AUTH_HTTP_PREFIX],
-      convexEnv,
-    );
-    await run("vp", ["exec", "convex", "env", "set", "AUTH_EMAIL", env.AUTH_EMAIL], convexEnv);
+      await run("vp", ["exec", "convex", "env", "set", "SITE_URL", env.SITE_URL], convexEnv);
+      await run("vp", ["exec", "convex", "env", "set", "APP_URL", env.APP_URL], convexEnv);
+      await run(
+        "vp",
+        ["exec", "convex", "env", "set", "CONVEX_AUTH_SITE_URL", env.CONVEX_SITE_URL],
+        convexEnv,
+      );
+      await run(
+        "vp",
+        ["exec", "convex", "env", "set", "CONVEX_AUTH_HTTP_PREFIX", env.CONVEX_AUTH_HTTP_PREFIX],
+        convexEnv,
+      );
+      await run("vp", ["exec", "convex", "env", "set", "AUTH_EMAIL", env.AUTH_EMAIL], convexEnv);
       await run(
         "vp",
         [
@@ -162,7 +165,11 @@ export default async function setupNodeInterop(project: {
     project.provide("zitadelPublicUrl", env.ZITADEL_BASE_URL);
     project.provide("zitadelInternalUrl", env.ZITADEL_RUNTIME_BASE_URL);
     project.provide("convexSelfHostedUrl", env.TEST_TARGET_BASE_URL);
-    project.provide("convexSiteUrl", appendHttpPrefix(env.CONVEX_SITE_URL, env.CONVEX_AUTH_HTTP_PREFIX));
+    project.provide(
+      "convexSiteUrl",
+      appendHttpPrefix(env.CONVEX_SITE_URL, env.CONVEX_AUTH_HTTP_PREFIX),
+    );
+    project.provide("jwtPrivateKey", generated.jwtPrivateKey);
   } catch (error) {
     await dumpDockerLogs();
     throw error;

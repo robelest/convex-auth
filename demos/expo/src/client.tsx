@@ -4,7 +4,8 @@ import React from "react";
 
 const CONVEX_URL =
   process.env.EXPO_PUBLIC_CONVEX_URL ??
-  ((Constants.expoConfig?.extra?.convexUrl as string | undefined) ?? undefined);
+  (Constants.expoConfig?.extra?.convexUrl as string | undefined) ??
+  undefined;
 
 type AppClient = ConvexReactClient;
 
@@ -29,9 +30,7 @@ export function AppClientProvider({
   client: AppClient;
   children: React.ReactNode;
 }) {
-  return (
-    <AppClientContext.Provider value={client}>{children}</AppClientContext.Provider>
-  );
+  return <AppClientContext.Provider value={client}>{children}</AppClientContext.Provider>;
 }
 
 export function useAppClient(): AppClient {

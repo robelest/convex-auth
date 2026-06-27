@@ -6,7 +6,6 @@ import {
   GenericActionCtx,
   GenericDataModel,
   GenericMutationCtx,
-  GenericQueryCtx,
   RegisteredAction,
   RegisteredMutation,
   RegisteredQuery,
@@ -16,7 +15,6 @@ import type { Infer } from "convex/values";
 import { GenericId, Value } from "convex/values";
 
 import {
-  vAccountDoc,
   vApiKeyDoc,
   vAuthVerifierDoc,
   vDeviceCodeDoc,
@@ -25,17 +23,10 @@ import {
   vUserDoc,
 } from "../component/model";
 import schema from "../component/schema";
-import type { AuthComponentApi } from "./componentApi";
+import type { AuthComponentApi } from "./component/api";
 import type { CredentialsConfig } from "../providers/credentials";
-
-type AuthTokens = {
-  token: string;
-  refreshToken: string;
-};
-
-// ============================================================================
-// Utility types
-// ============================================================================
+import type { AuthEventHandlerMap, OidcClaims, SamlClaims, ScimRawAttributes } from "./events";
+import type { AuthTokens, SignInFlowResult } from "../shared/results";
 
 /**
  * A value that is either `T` or a `PromiseLike<T>`.
@@ -45,14 +36,14 @@ type AuthTokens = {
 type Awaitable<T> = T | PromiseLike<T>;
 
 /**
- * A single role definition within the authorization config.
+ * A single role definition within the permissions config.
  *
  * Each role has an optional human-readable label and a list of grant strings
  * that members with this role receive.
  *
- * @see {@link AuthAuthorizationConfig}
+ * @see {@link PermissionsConfig}
  */
-type AuthRoleDefinition = {
+type PermissionRoleDefinition = {
   /** Optional stable identifier (defaults to the record key). */
   id?: string;
   /** Human-readable label for admin UIs. */
@@ -62,15 +53,18 @@ type AuthRoleDefinition = {
 };
 
 /**
- * Authorization configuration mapping role IDs to {@link AuthRoleDefinition}s.
+ * Permissions configuration mapping role IDs to {@link PermissionRoleDefinition}s.
  *
- * Passed as `authorization.roles` in {@link ConvexAuthConfig}.
+ * Pass this as `permissions` in {@link ConvexAuthConfig}. Grants are the
+ * atomic permissions your app checks; roles are named grant bundles assigned to
+ * memberships.
  *
- * @see {@link AuthRoleDefinition}
+ * @see {@link PermissionRoleDefinition}
  * @see {@link ConvexAuthConfig}
  */
-export type AuthAuthorizationConfig = {
-  roles: Record<string, AuthRoleDefinition>;
+export type PermissionsConfig = {
+  grants?: readonly string[];
+  roles: Record<string, PermissionRoleDefinition>;
 };
 
 /** Identity enrichment mode for auth telemetry spans. */
@@ -116,43 +110,54 @@ export type AuthTelemetryConfig = {
 };
 
 /**
- * Extracts the union of role ID strings from an authorization config.
+ * Extracts the union of role ID strings from a permissions config.
  *
- * When `TAuthorization` is defined, this resolves to the literal key union
+ * When `TPermissions` is defined, this resolves to the literal key union
  * of the `roles` record. Otherwise falls back to `string`.
  *
- * @typeParam TAuthorization - The authorization config type, or `undefined`.
+ * @typeParam TPermissions - The permissions config type, or `undefined`.
  *
- * @see {@link AuthGrant}
+ * @see {@link Grant}
  */
-export type AuthRoleId<TAuthorization extends AuthAuthorizationConfig | undefined> =
-  TAuthorization extends {
-    roles: infer TRoles extends Record<string, unknown>;
-  }
-    ? keyof TRoles & string
-    : string;
+export type RoleId<TPermissions extends PermissionsConfig | undefined> = TPermissions extends {
+  roles: infer TRoles extends Record<string, unknown>;
+}
+  ? keyof TRoles & string
+  : string;
 
 /**
- * Extracts the union of grant strings from all roles in an authorization config.
+ * Extracts the union of grant strings from a permissions config.
  *
- * When `TAuthorization` is defined, this resolves to the literal union
- * of all `grants` array elements across every role. Otherwise falls back to `string`.
+ * When `TPermissions` is defined, this resolves to the literal union of the
+ * top-level `grants` array plus all role grant array elements. Otherwise falls
+ * back to `string`.
  *
- * @typeParam TAuthorization - The authorization config type, or `undefined`.
+ * @typeParam TPermissions - The permissions config type, or `undefined`.
  *
- * @see {@link AuthRoleId}
+ * @see {@link RoleId}
  */
-export type AuthGrant<TAuthorization extends AuthAuthorizationConfig | undefined> =
-  TAuthorization extends {
-    roles: infer TRoles extends Record<string, { grants: readonly unknown[] }>;
-  }
-    ? TRoles[keyof TRoles]["grants"][number] & string
+export type Grant<TPermissions extends PermissionsConfig | undefined> =
+  TPermissions extends PermissionsConfig
+    ?
+        | (TPermissions extends { grants: readonly unknown[] }
+            ? TPermissions["grants"][number] & string
+            : never)
+        | (TPermissions extends {
+            roles: infer TRoles extends Record<string, { grants: readonly unknown[] }>;
+          }
+            ? TRoles[keyof TRoles]["grants"][number] & string
+            : never)
     : string;
 
+export type ConnectionHookProtocol = "oidc" | "saml" | "scim";
+
+export type ConnectionHookProfile<TProtocol extends ConnectionHookProtocol = ConnectionHookProtocol> =
+  TProtocol extends "oidc" ? OidcClaims : TProtocol extends "saml" ? SamlClaims : ScimRawAttributes;
+
 /**
- * The config for the Convex Auth library, passed to `createAuth`.
+ * The config for the Convex Auth library, passed to `defineAuth`.
  */
-export type ConvexAuthConfig = {
+export type ConvexAuthConfig<TExtend = {}> = {
   /**
    * A list of authentication provider configs.
    *
@@ -160,30 +165,56 @@ export type ConvexAuthConfig = {
    * `@robelest/convex-auth/providers/<provider-name>`
    */
   providers: AuthProviderConfig[];
-  sso?: {
+  connection?: {
     hooks?: {
       profileResolved?: (args: {
-        protocol: "oidc" | "saml" | "scim";
+        protocol: ConnectionHookProtocol;
         connectionId?: string;
-        profile: Record<string, unknown>;
-      }) => Awaitable<Record<string, unknown> | void>;
+        profile: ConnectionHookProfile;
+      }) => Awaitable<ConnectionHookProfile | void>;
       beforeProvision?: (args: {
-        protocol: "oidc" | "saml" | "scim";
+        protocol: ConnectionHookProtocol;
         connectionId?: string;
-        profile: Record<string, unknown>;
-      }) => Awaitable<Record<string, unknown> | void>;
+        profile: ConnectionHookProfile;
+      }) => Awaitable<ConnectionHookProfile | void>;
       afterProvision?: (args: {
-        protocol: "oidc" | "saml" | "scim";
+        protocol: ConnectionHookProtocol;
         connectionId?: string;
-        profile: Record<string, unknown>;
+        profile: ConnectionHookProfile;
         userId: string;
       }) => Awaitable<void>;
+      /**
+       * Gate linking a sign-in onto an EXISTING user. Called when an SSO
+       * connection sign-in (`protocol: "oidc" | "saml"`) or a credentials
+       * (password) sign-in (`protocol: "credentials"`) resolves to an existing
+       * user by email. Return `false` to deny the attach (a new, separate user
+       * is created instead). The `"credentials"` case lets apps refuse linking a
+       * password account onto a user whose email was verified elsewhere, since
+       * the password sign-up itself has not proven email ownership.
+       */
       allowLink?: (args: {
-        protocol: "oidc" | "saml" | "scim";
+        protocol: ConnectionHookProtocol | "credentials";
         connectionId?: string;
-        profile: Record<string, unknown>;
+        profile: ConnectionHookProfile;
         userId: string;
       }) => Awaitable<boolean | void>;
+    };
+  };
+  /**
+   * Run this deployment as an OAuth 2.1 authorization server (for MCP clients and
+   * other OAuth apps). Providing this block turns on the full server — discovery,
+   * dynamic client registration, authorization-code + PKCE + refresh grants,
+   * audience-bound tokens, and CORS. Omit it for no authorization server.
+   */
+  oauth?: {
+    /**
+     * Paths of the app's headless pages the authorization server redirects the
+     * browser to. `consent` shows the requested access and approves/denies via
+     * `auth.oauth.consent.*`; `login` is where it sends an unauthenticated user.
+     */
+    pages: {
+      login: string;
+      consent: string;
     };
   };
   /**
@@ -243,19 +274,21 @@ export type ConvexAuthConfig = {
     maxFailedAttemptsPerHour?: number;
   };
   /**
-   * Lifecycle callbacks. Two functions, both discriminated by `event.kind`:
+   * Stream-backed lifecycle event handlers.
    *
-   * - {@link AuthCallbacks.before before} — intercept + customize specific
-   *   operations. Returning `undefined` falls back to the default.
-   * - {@link AuthCallbacks.after after} — observe lifecycle events. Events
-   *   fired from mutation context are transactional; events fired from action
-   *   context run after the orchestration mutation commits.
+   * Configure with `authEvents.handlers({ ... })` from
+   * `@robelest/convex-auth/server`.
    */
-  callbacks?: AuthCallbacks;
+  events?: AuthEventHandlerMap<TExtend>;
   /**
-   * Application-defined role and grant model used by membership access checks.
+   * Application-defined permission model used by membership access checks.
+   *
+   * Use `definePermissions({ grants, roles })` from
+   * `@robelest/convex-auth/permissions` to preserve literal role IDs and
+   * grant strings.
    */
-  authorization?: {
+  permissions?: {
+    grants?: readonly string[];
     roles: Record<
       string,
       {
@@ -272,214 +305,6 @@ export type ConvexAuthConfig = {
    */
   telemetry?: AuthTelemetryConfig;
 };
-
-// ============================================================================
-// Lifecycle callback types
-// ============================================================================
-
-/** The provider context that triggered a `link` / `userCreated` / `userUpdated` event. */
-export type AuthCallbackContext = "oauth" | "credentials" | "email" | "phone" | "verification";
-
-/** Profile shape passed to `link` / `userCreated` / `userUpdated` callbacks. */
-export type AuthCallbackProfile = Record<string, unknown> & {
-  email?: string;
-  phone?: string;
-  emailVerified?: boolean;
-  phoneVerified?: boolean;
-};
-
-/**
- * Discriminated union of intercept events. Each variant runs *before* the
- * default behavior for that operation. Returning a value replaces the
- * default; returning `undefined` keeps it.
- */
-export type BeforeEvent =
-  | {
-      kind: "redirect";
-      /** The `redirectTo` param passed to `signIn(provider, { redirectTo })`. */
-      redirectTo: string;
-    }
-  | {
-      kind: "link";
-      /** Existing user ID if this account is already linked, else `null`. */
-      existingUserId: GenericId<"User"> | null;
-      /** Where the link request originated. */
-      type: AuthCallbackContext;
-      /** The provider whose account is being linked. */
-      provider: AuthProviderMaterializedConfig;
-      /** Profile data harvested from the provider. */
-      profile: AuthCallbackProfile;
-      /** The `shouldLink` argument passed to `createAccount`. */
-      shouldLink?: boolean;
-    };
-
-/**
- * Convex context type passed to `before` callbacks.
- *
- * `redirect` events arrive in action context; `link` events arrive
- * in mutation context. Use `if ("db" in ctx)` to narrow when you need
- * mutation-only methods.
- */
-export type BeforeCtx =
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  | GenericMutationCtx<any>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  | GenericActionCtx<any>;
-
-/**
- * Return value contract for a `before` callback:
- *
- * - For `kind: "redirect"` — return a `string` (final URL) or `undefined`
- *   to fall back to the default URL resolver.
- * - For `kind: "link"` — return a `GenericId<"User">` or `undefined`
- *   to fall back to the default user create/link logic.
- */
-export type BeforeResult = string | GenericId<"User"> | undefined;
-
-/**
- * Discriminated union of post-operation lifecycle events. Events fired from
- * mutation context run inside the same Convex transaction, so throwing rolls
- * the operation back. Events fired from action context run after their
- * orchestration mutation commits and cannot roll that mutation back.
- */
-export type AuthEvent =
-  | {
-      kind: "userCreated";
-      userId: GenericId<"User">;
-      type: AuthCallbackContext;
-      provider: AuthProviderMaterializedConfig;
-      profile: AuthCallbackProfile;
-    }
-  | {
-      kind: "userUpdated";
-      userId: GenericId<"User">;
-      existingUserId: GenericId<"User">;
-      type: AuthCallbackContext;
-      provider: AuthProviderMaterializedConfig;
-      profile: AuthCallbackProfile;
-    }
-  | {
-      kind: "signedIn";
-      userId: GenericId<"User">;
-      sessionId: GenericId<"Session">;
-      provider: string;
-      flow?: string;
-    }
-  | {
-      kind: "signedOut";
-      userId: GenericId<"User">;
-      sessionId: GenericId<"Session">;
-    }
-  | {
-      kind: "passwordChanged";
-      userId: GenericId<"User">;
-      flow: "reset" | "change";
-    }
-  | {
-      kind: "passkeyAdded";
-      userId: GenericId<"User">;
-      passkeyId: GenericId<"Passkey">;
-      credentialId: string;
-    }
-  | {
-      kind: "passkeyRemoved";
-      userId: GenericId<"User">;
-      passkeyId: GenericId<"Passkey">;
-    }
-  | {
-      kind: "totpEnrolled";
-      userId: GenericId<"User">;
-      totpId: GenericId<"TotpFactor">;
-    }
-  | {
-      kind: "totpRemoved";
-      userId: GenericId<"User">;
-      totpId: GenericId<"TotpFactor">;
-    }
-  | {
-      kind: "emailVerified";
-      userId: GenericId<"User">;
-      email: string;
-    }
-  | {
-      kind: "phoneVerified";
-      userId: GenericId<"User">;
-      phone: string;
-    }
-  | {
-      kind: "accountLinked";
-      userId: GenericId<"User">;
-      provider: string;
-      providerAccountId: string;
-    }
-  | {
-      kind: "accountUnlinked";
-      userId: GenericId<"User">;
-      accountId: GenericId<"Account">;
-      provider: string;
-    }
-  | {
-      kind: "sessionsInvalidated";
-      userId: GenericId<"User">;
-      sessionIds: GenericId<"Session">[];
-    };
-
-/**
- * Convex context type passed to `after` callbacks.
- *
- * Different events fire from different runtime contexts (some from
- * mutations, some from actions). The union type exposes only methods both
- * share — `runQuery`, `runMutation`, `scheduler`, `auth`. To use ctx-specific
- * features (`db`, `runAction`), narrow with `if ("db" in ctx)`.
- */
-export type AfterCtx =
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  | GenericMutationCtx<any>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  | GenericActionCtx<any>;
-
-/**
- * Lifecycle callback set. Two callbacks, both discriminated by `event.kind`.
- *
- * @example
- * ```ts
- * createAuth(components.auth, {
- *   providers: [google()],
- *   callbacks: {
- *     async before(ctx, event) {
- *       if (event.kind === "redirect") return safeRedirect(event.redirectTo);
- *       // returning undefined falls back to default for other kinds
- *     },
- *     async after(ctx, event) {
- *       if (event.kind === "userCreated") {
- *         await ctx.scheduler.runAfter(0, internal.workflows.onboard, {
- *           userId: event.userId,
- *         });
- *       }
- *     },
- *   },
- * });
- * ```
- */
-export interface AuthCallbacks {
-  /**
-   * Intercept and customize specific operations before they commit.
-   * Returning a value replaces the default; returning `undefined` keeps it.
-   *
-   * Match on `event.kind` to narrow the event shape. See {@link BeforeResult}
-   * for what to return per kind.
-   */
-  before?: (ctx: BeforeCtx, event: BeforeEvent) => Promise<BeforeResult>;
-  /**
-   * Observe lifecycle events. The `ctx` type is a union of mutation and
-   * action ctx — see {@link AfterCtx}. Most events fire from mutation
-   * context (atomic with the operation, throwing rolls back); a few fire
-   * from action context after the orchestration mutation commits.
-   */
-  after?: (ctx: AfterCtx, event: AuthEvent) => Promise<void>;
-}
-
-// ============================================================================
 
 /**
  * Union of all supported auth provider config types.
@@ -500,15 +325,15 @@ export type AuthProviderConfig =
   | (() => TotpProviderConfig)
   | DeviceProviderConfig
   | (() => DeviceProviderConfig)
-  | SSOProviderConfig;
+  | ConnectionProviderConfig;
 
 /**
- * Minimal config stored for the SSO provider at runtime.
+ * Minimal config stored for the Connection provider at runtime.
  * No options — connection configuration is entirely per-tenant runtime state.
  */
-export interface SSOProviderConfig {
+export interface ConnectionProviderConfig {
   id: string;
-  type: "sso";
+  type: "connection";
   /**
    * Optional shared callback URI for all OIDC group connections.
    * When omitted, each connection gets its own callback path.
@@ -517,7 +342,7 @@ export interface SSOProviderConfig {
 }
 
 /**
- * Account linking strategy for group SSO sign-in.
+ * Account linking strategy for group Connection sign-in.
  *
  * - `"sameConnection"` (default) — only link to a user already associated
  *   with **this** connection (via its account/externalId). Never link across
@@ -538,11 +363,11 @@ type GroupConnectionAccountLinkingPolicy = "verifiedEmail" | "none" | "sameConne
 type GroupConnectionScimReuseUserPolicy = "externalId" | "none";
 
 /**
- * Just-in-time provisioning mode for group SSO.
+ * Just-in-time provisioning mode for group Connection.
  *
  * - `"off"` — no JIT provisioning; users must be pre-provisioned.
- * - `"createUser"` — create a user record on first SSO sign-in.
- * - `"createUserAndMembership"` — create a user and add them to the group on first SSO sign-in.
+ * - `"createUser"` — create a user record on first Connection sign-in.
+ * - `"createUserAndMembership"` — create a user and add them to the group on first Connection sign-in.
  */
 type GroupConnectionJitProvisioningMode = "off" | "createUser" | "createUserAndMembership";
 
@@ -555,12 +380,12 @@ type GroupConnectionJitProvisioningMode = "off" | "createUser" | "createUserAndM
 type GroupConnectionDeprovisionMode = "soft" | "hard";
 
 type GroupConnectionProfileUpdateMode = "never" | "missing" | "always";
-type GroupConnectionProvisioningAuthority = "app" | "sso" | "scim";
+type GroupConnectionProvisioningAuthority = "app" | "connection" | "scim";
 type GroupConnectionGroupSyncMode = "ignore" | "sync";
 type GroupConnectionRoleSyncMode = "ignore" | "map";
 
 /**
- * Effective group policy document stored for an SSO/SCIM tenant.
+ * Effective group policy document stored for an Connection/SCIM tenant.
  *
  * Controls account linking, JIT provisioning, SCIM reuse behavior,
  * deprovisioning, and any app-defined extension metadata.
@@ -755,7 +580,7 @@ export interface PhoneConfig<DataModel extends GenericDataModel = GenericDataMod
     ctx: GenericActionCtxWithAuthConfig<DataModel>,
   ) => Promise<void>;
   /**
-   * Defaults to `process.env.AUTH_<PROVIDER_ID>_KEY`.
+   * Defaults to `env.AUTH_<PROVIDER_ID>_KEY`.
    */
   apiKey?: string;
   /**
@@ -889,10 +714,6 @@ export interface TotpProviderConfig {
   };
 }
 
-// ============================================================================
-// OAuth types
-// ============================================================================
-
 /**
  * Normalized user profile returned by an OAuth provider.
  *
@@ -984,7 +805,7 @@ type AuthUpdateAccountArgs = {
   };
 };
 
-/** Arguments for `auth.session.invalidate()`. */
+/** Arguments for `auth.session.revoke()`. */
 type AuthInvalidateSessionsArgs = {
   userId: GenericId<"User">;
   except?: GenericId<"Session">[];
@@ -995,12 +816,12 @@ type AuthUnlinkAccountArgs = {
   accountId: GenericId<"Account">;
 };
 
-/** Arguments for `auth.passkey.delete()`. */
+/** Arguments for `auth.passkey.remove()`. */
 type AuthDeletePasskeyArgs = {
   passkeyId: GenericId<"Passkey">;
 };
 
-/** Arguments for `auth.totp.delete()`. */
+/** Arguments for `auth.totp.remove()`. */
 type AuthDeleteTotpArgs = {
   totpId: GenericId<"TotpFactor">;
 };
@@ -1011,13 +832,20 @@ type AuthProviderSignInArgs = {
   params?: Record<string, Value | undefined>;
 };
 
-/** Return type of `auth.provider.signIn()` — user and session IDs, or `null` on failure. */
-type AuthProviderSignInResult = {
+type AuthProviderImmediateSignInResult = {
   userId: GenericId<"User">;
   sessionId: GenericId<"Session">;
-} | null;
+};
 
-/** Arguments for `auth.member.inspect()`. */
+type AuthProviderDeferredSignInResult = Exclude<SignInFlowResult<null>, { kind: "signedIn" }>;
+
+/** Return type of `auth.provider.signIn()`. */
+type AuthProviderSignInResult =
+  | AuthProviderImmediateSignInResult
+  | AuthProviderDeferredSignInResult
+  | null;
+
+/** Arguments for `auth.member.get()`. */
 type AuthMemberInspectArgs = {
   userId: GenericId<"User">;
   groupId: GenericId<"Group">;
@@ -1025,15 +853,15 @@ type AuthMemberInspectArgs = {
   maxDepth?: number;
 };
 
-/** Result of `auth.member.inspect()` — membership state and derived access details. */
-type AuthMemberInspectResult = {
+/** Result of `auth.member.get()` — membership state and derived access details. */
+export type AuthMemberInspectResult = {
   membership: GenericDoc<GenericDataModel, "GroupMember"> | null;
   roleIds: string[];
   grants: string[];
 };
 
-/** Arguments for `auth.member.require()`. */
-type AuthMemberRequireArgs = AuthMemberInspectArgs & {
+/** Arguments for `auth.member.assert()`. */
+type AuthMemberAssertArgs = AuthMemberInspectArgs & {
   roleIds?: string[];
   grants?: string[];
 };
@@ -1081,8 +909,8 @@ type AuthServerHelpers = {
       args: AuthUpdateAccountArgs,
     ) => Promise<{ accountId: GenericId<"Account"> }>;
     /**
-     * Unlink (delete) a provider-linked account by ID and fire the
-     * `accountUnlinked` lifecycle event with the captured `provider`.
+     * Unlink (delete) a provider-linked account by ID and emit
+     * `account.unlinked` with the captured `provider`.
      */
     unlink: (
       ctx: GenericActionCtx<GenericDataModel>,
@@ -1099,7 +927,7 @@ type AuthServerHelpers = {
      * Delete a passkey credential by ID and fire the `passkeyRemoved`
      * lifecycle event with the owning `userId`.
      */
-    delete: (
+    remove: (
       ctx: GenericActionCtx<GenericDataModel>,
       args: AuthDeletePasskeyArgs,
     ) => Promise<{
@@ -1113,7 +941,7 @@ type AuthServerHelpers = {
      * Delete a TOTP factor by ID and fire the `totpRemoved` lifecycle
      * event.
      */
-    delete: (
+    remove: (
       ctx: GenericActionCtx<GenericDataModel>,
       args: AuthDeleteTotpArgs,
     ) => Promise<{
@@ -1125,7 +953,7 @@ type AuthServerHelpers = {
     current: (ctx: {
       auth: GenericActionCtx<GenericDataModel>["auth"];
     }) => Promise<GenericId<"Session"> | null>;
-    invalidate: (
+    revoke: (
       ctx: GenericActionCtx<GenericDataModel>,
       args: AuthInvalidateSessionsArgs,
     ) => Promise<{
@@ -1134,13 +962,13 @@ type AuthServerHelpers = {
     }>;
   };
   member: {
-    inspect: (
+    get: (
       ctx: GenericActionCtx<GenericDataModel>,
       args: AuthMemberInspectArgs,
     ) => Promise<AuthMemberInspectResult>;
-    require: (
+    assert: (
       ctx: GenericActionCtx<GenericDataModel>,
-      args: AuthMemberRequireArgs,
+      args: AuthMemberAssertArgs,
     ) => Promise<AuthMemberInspectResult>;
   };
   provider: {
@@ -1154,7 +982,7 @@ type AuthServerHelpers = {
 
 /**
  * Your `ActionCtx` enriched with `ctx.auth.config` field with
- * the config passed to `createAuth`.
+ * the config passed to `defineAuth`.
  *
  * @typeParam DataModel - The Convex data model.
  */
@@ -1166,7 +994,7 @@ export type GenericActionCtxWithAuthConfig<DataModel extends GenericDataModel> =
   };
 
 /**
- * The config for the Convex Auth library, passed to `createAuth`,
+ * The config for the Convex Auth library, passed to `defineAuth`,
  * with defaults and initialized providers.
  *
  * See {@link ConvexAuthConfig}
@@ -1175,13 +1003,13 @@ export type ConvexAuthMaterializedConfig = {
   providers: AuthProviderMaterializedConfig[];
 } & Pick<
   ConvexAuthConfig,
-  "component" | "session" | "jwt" | "signIn" | "callbacks" | "authorization" | "sso" | "telemetry"
+  "component" | "session" | "jwt" | "signIn" | "permissions" | "connection" | "oauth" | "telemetry"
 >;
 
 /**
  * Maps SAML assertion attribute names to user profile fields.
  *
- * Use this to tell the SSO flow which SAML attributes correspond to
+ * Use this to tell the Connection flow which SAML attributes correspond to
  * the user's subject identifier, email, and display name fields.
  */
 export interface SAMLAttributeMapping {
@@ -1203,7 +1031,7 @@ export interface SAMLAttributeMapping {
   roles?: string;
 }
 
-interface SSOProfileMapping {
+interface ConnectionProfileMapping {
   subject?: string;
   email?: string;
   emailVerified?: string;
@@ -1219,7 +1047,7 @@ interface SSOProfileMapping {
 }
 
 export interface OIDCClaimMapping extends Pick<
-  SSOProfileMapping,
+  ConnectionProfileMapping,
   "subject" | "email" | "emailVerified" | "name" | "image" | "groups" | "roles"
 > {}
 
@@ -1264,7 +1092,7 @@ export interface OAuthMaterializedConfig {
   /**
    * On a returning OAuth sign-in (matching `(provider, providerAccountId)`),
    * refresh the user's `name` / `image` / `email` from the incoming profile.
-   * Defaults to `true` to match Auth.js / Clerk conventions and SSO's
+   * Defaults to `true` to match Auth.js / Clerk conventions and Connection's
    * `policy.provisioning.user.updateProfileOnLogin` philosophy.
    *
    * Set to `false` when consumer apps own the canonical user profile and
@@ -1311,16 +1139,7 @@ export type AuthProviderMaterializedConfig =
   | PasskeyProviderConfig
   | TotpProviderConfig
   | DeviceProviderConfig
-  | SSOProviderConfig;
-
-/**
- * Resolves to `true` when the providers list includes `sso()`, otherwise `false`.
- *
- * Used to make `auth.group.sso` conditionally present on the `createAuth`
- * return type — it only appears when `sso()` is in the providers array.
- */
-export type HasSSO<P extends AuthProviderConfig[]> =
-  Extract<P[number], { type: "sso" }> extends never ? false : true;
+  | ConnectionProviderConfig;
 
 export type HasPasskeyProvider<P extends AuthProviderConfig[]> =
   Extract<P[number], { type: "passkey" }> extends never ? false : true;
@@ -1330,10 +1149,6 @@ export type HasTotpProvider<P extends AuthProviderConfig[]> =
 
 export type HasDeviceProvider<P extends AuthProviderConfig[]> =
   Extract<P[number], { type: "device" }> extends never ? false : true;
-
-// ============================================================================
-// API Key types
-// ============================================================================
 
 /**
  * A single scope entry stored per API key.
@@ -1353,7 +1168,7 @@ export interface KeyScope {
  * for checking if a key has a specific permission.
  *
  * ```ts
- * const result = await auth.key.verify(ctx, rawKey);
+ * const result = await auth.key.verify(ctx, { secret: rawKey });
  * if (result.scopes.can("users", "read")) {
  *   // authorized
  * }
@@ -1395,123 +1210,6 @@ export interface KeyRecord {
   metadata?: Record<string, unknown>;
 }
 
-// ============================================================================
-// Unified List API types
-// ============================================================================
-
-/**
- * Options for paginated list queries. Every entity list method uses this
- * same shape with entity-specific `TWhere` and `TOrderBy` type parameters.
- *
- * @typeParam TWhere - The type of the optional filter object.
- * @typeParam TOrderBy - The union of sortable field names.
- *
- * ```ts
- * const result = await auth.group.list(ctx, {
- *   where: { type: "team" },
- *   limit: 20,
- *   orderBy: "name",
- *   order: "asc",
- * });
- * ```
- */
-export type ListOptions<TWhere extends Record<string, unknown>, TOrderBy extends string> = {
-  /** Serializable filter — only known fields for the entity. */
-  where?: TWhere;
-  /** Maximum number of items to return. Defaults to 50, max 100. */
-  limit?: number;
-  /** Opaque cursor from a previous `PaginationResult.continueCursor`. */
-  cursor?: string | null;
-  /** Field to sort by. Defaults to `"_creationTime"`. */
-  orderBy?: TOrderBy;
-  /** Sort direction. Defaults to `"desc"`. */
-  order?: "asc" | "desc";
-};
-
-/**
- * Paginated list result returned by every entity list method.
- *
- * @typeParam T - The type of items in the result array.
- */
-export type ListResult<T> = {
-  /** The page of items. */
-  items: T[];
-  /** Opaque cursor for the next page, or `null` when exhausted. */
-  nextCursor: string | null;
-};
-
-// -- Per-entity Where / OrderBy types --
-
-/**
- * A single key/value tag for group classification.
- *
- * Tags are normalized at write time: both `key` and `value` are
- * trimmed and lowercased. Filtering is strict exact-match only.
- */
-type GroupTag = {
-  key: string;
-  value: string;
-};
-
-/** Filter fields for `auth.group.list()`. All optional. */
-export type GroupWhere = {
-  slug?: string;
-  type?: string;
-  parentGroupId?: string;
-  name?: string;
-  /** When `true`, return only root groups (no parent). When `false`, only non-root. */
-  isRoot?: boolean;
-  /**
-   * Return only groups that have **all** of the specified tags.
-   * Each tag is matched exactly on normalized `(key, value)`.
-   */
-  tagsAll?: GroupTag[];
-  /**
-   * Return only groups that have **at least one** of the specified tags.
-   * Each tag is matched exactly on normalized `(key, value)`.
-   */
-  tagsAny?: GroupTag[];
-};
-
-/** Sortable fields for `auth.group.list()`. */
-export type GroupOrderBy = "_creationTime" | "name" | "slug" | "type";
-
-/** Filter fields for `auth.member.list()`. All optional. */
-export type MemberWhere = {
-  groupId?: string;
-  userId?: string;
-  roleId?: string;
-  status?: string;
-};
-
-/** Sortable fields for `auth.member.list()`. */
-export type MemberOrderBy = "_creationTime" | "status";
-
-/** Filter fields for `auth.invite.list()`. All optional. */
-export type InviteWhere = {
-  tokenHash?: string;
-  groupId?: string;
-  status?: "pending" | "accepted" | "revoked" | "expired";
-  email?: string;
-  invitedByUserId?: string;
-  roleId?: string;
-  acceptedByUserId?: string;
-};
-
-/** Sortable fields for `auth.invite.list()`. */
-export type InviteOrderBy = "_creationTime" | "status" | "email" | "expiresTime" | "acceptedTime";
-
-/** Filter fields for `auth.key.list()`. All optional. */
-export type KeyWhere = {
-  userId?: string;
-  revoked?: boolean;
-  name?: string;
-  prefix?: string;
-};
-
-/** Sortable fields for `auth.key.list()`. */
-export type KeyOrderBy = "_creationTime" | "name" | "lastUsedAt" | "expiresAt" | "revoked";
-
 /** Filter fields for `auth.user.list()`. All optional. */
 export type UserWhere = {
   email?: string;
@@ -1522,10 +1220,6 @@ export type UserWhere = {
 
 /** Sortable fields for `auth.user.list()`. */
 export type UserOrderBy = "_creationTime" | "name" | "email" | "phone";
-
-// ============================================================================
-// HTTP Bearer Auth types
-// ============================================================================
 
 /**
  * Context injected into `auth.request.action()` and `auth.request.route()` handlers.
@@ -1570,12 +1264,6 @@ export interface CorsConfig {
   headers?: string;
 }
 
-
-
-// ============================================================================
-// Convex document types (merged from convex_types)
-// ============================================================================
-
 /**
  * Convex document from a given table.
  */
@@ -1603,19 +1291,11 @@ type ConvertReturnType<T> = UndefinedToNull<Awaited<T>>;
 
 type UndefinedToNull<T> = T extends void ? null : T;
 
-// Internal server data-model types (merged from former internalTypes.ts)
-
 /** Data model derived from the component schema. */
 export type AuthDataModel = DataModelFromSchemaDefinition<typeof schema>;
 
-/** Action context typed to the auth component's data model. */
-export type ActionCtx = GenericActionCtx<AuthDataModel>;
-
 /** Mutation context typed to the auth component's data model. */
 export type MutationCtx = GenericMutationCtx<AuthDataModel>;
-
-/** Query context typed to the auth component's data model. */
-export type QueryCtx = GenericQueryCtx<AuthDataModel>;
 
 /** A document from any table in the auth component schema. */
 export type Doc<T extends TableNamesInDataModel<AuthDataModel>> = GenericDoc<AuthDataModel, T>;
@@ -1639,18 +1319,9 @@ export type SessionTokenIdentityClaims = {
   phoneNumberVerified?: boolean;
 };
 
-// ---------------------------------------------------------------------------
-// Cross-component document shapes
-// ---------------------------------------------------------------------------
-// These mirror the component schema tables. They exist so that server-side
-// code can work with typed results from cross-component queries/mutations
-// instead of casting to `any` at every field access.
-
 type TotpDoc = Infer<typeof vTotpFactorDoc>;
 
 type PasskeyDoc = Infer<typeof vPasskeyDoc>;
-
-type AccountDoc = Infer<typeof vAccountDoc>;
 
 type VerifierDoc = Infer<typeof vAuthVerifierDoc>;
 
@@ -1668,14 +1339,14 @@ export type CrossComponentUserDoc = Infer<typeof vUserDoc>;
 
 export type KeyDoc = Infer<typeof vApiKeyDoc>;
 
-// ---------------------------------------------------------------------------
-// Cross-component wrapper context
-// ---------------------------------------------------------------------------
-// Structural type accepted by all wrappers below.  Works for both action and
-// mutation contexts — the only capabilities we need are runQuery / runMutation
-// and access to the component API via `auth.config.component`.
-
-/** @internal */
+/**
+ * Structural context accepted by every cross-component wrapper below.
+ *
+ * Works for both action and mutation contexts; only `runQuery` / `runMutation`
+ * and the component API (`auth.config.component`) are required.
+ *
+ * @internal
+ */
 export type ComponentCallCtx = {
   runQuery: GenericActionCtx<AuthDataModel>["runQuery"];
   runMutation: GenericActionCtx<AuthDataModel>["runMutation"];
@@ -1683,15 +1354,12 @@ export type ComponentCallCtx = {
   auth: { config: { component: AuthComponentApi } };
 };
 
-// ---------------------------------------------------------------------------
-// Typed wrappers for cross-component calls
-// ---------------------------------------------------------------------------
-// Each wrapper encapsulates the single `as any` cast at the component
-// boundary so that callers get full type safety on both args and return
-// values.
-
-// -- User queries --
-
+/**
+ * Fetch a user by ID across the component boundary.
+ *
+ * One of a family of typed wrappers that each encapsulate the single cast at
+ * the component boundary, so callers keep full type safety on args and results.
+ */
 export async function queryUserById(
   ctx: ComponentCallCtx,
   userId: string,
@@ -1701,6 +1369,7 @@ export async function queryUserById(
   })) as CrossComponentUserDoc | null;
 }
 
+/** Fetch a user by verified email across the component boundary. */
 export async function queryUserByVerifiedEmail(
   ctx: ComponentCallCtx,
   email: string,
@@ -1710,8 +1379,7 @@ export async function queryUserByVerifiedEmail(
   })) as CrossComponentUserDoc | null;
 }
 
-// -- Verifier queries / mutations --
-
+/** Fetch a PKCE verifier by ID across the component boundary. */
 export async function queryVerifierById(
   ctx: ComponentCallCtx,
   verifierId: string,
@@ -1721,17 +1389,17 @@ export async function queryVerifierById(
   })) as VerifierDoc | null;
 }
 
+/** Delete a PKCE verifier by ID across the component boundary. */
 export async function mutateVerifierDelete(
   ctx: ComponentCallCtx,
   verifierId: string,
 ): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.token.pkce.delete, {
-    verifierId,
+  await ctx.runMutation(ctx.auth.config.component.token.pkce.remove, {
+    id: verifierId,
   });
 }
 
-// -- TOTP queries / mutations --
-
+/** Fetch a TOTP factor by ID across the component boundary. */
 export async function queryTotpById(
   ctx: ComponentCallCtx,
   totpId: string,
@@ -1741,6 +1409,7 @@ export async function queryTotpById(
   })) as TotpDoc | null;
 }
 
+/** Fetch a user's verified TOTP factor across the component boundary. */
 export async function queryTotpVerifiedByUserId(
   ctx: ComponentCallCtx,
   userId: string,
@@ -1750,6 +1419,7 @@ export async function queryTotpVerifiedByUserId(
   })) as TotpDoc | null;
 }
 
+/** Insert a TOTP factor across the component boundary; returns its ID. */
 export async function mutateTotpInsert(
   ctx: ComponentCallCtx,
   args: {
@@ -1765,30 +1435,31 @@ export async function mutateTotpInsert(
   return (await ctx.runMutation(ctx.auth.config.component.factor.totp.create, args)) as string;
 }
 
+/** Mark a TOTP factor verified across the component boundary. */
 export async function mutateTotpMarkVerified(
   ctx: ComponentCallCtx,
   totpId: string,
   lastUsedAt: number,
 ): Promise<void> {
   await ctx.runMutation(ctx.auth.config.component.factor.totp.update, {
-    totpId,
-    data: { verified: true, lastUsedAt },
+    id: totpId,
+    patch: { verified: true, lastUsedAt },
   });
 }
 
+/** Update a TOTP factor's `lastUsedAt` across the component boundary. */
 export async function mutateTotpUpdateLastUsed(
   ctx: ComponentCallCtx,
   totpId: string,
   lastUsedAt: number,
 ): Promise<void> {
   await ctx.runMutation(ctx.auth.config.component.factor.totp.update, {
-    totpId,
-    data: { lastUsedAt },
+    id: totpId,
+    patch: { lastUsedAt },
   });
 }
 
-// -- Passkey queries / mutations --
-
+/** List a user's passkeys across the component boundary. */
 export async function queryPasskeysByUserId(
   ctx: ComponentCallCtx,
   userId: string,
@@ -1798,6 +1469,7 @@ export async function queryPasskeysByUserId(
   })) as PasskeyDoc[];
 }
 
+/** Fetch a passkey by credential ID across the component boundary. */
 export async function queryPasskeyByCredentialId(
   ctx: ComponentCallCtx,
   credentialId: string,
@@ -1807,12 +1479,13 @@ export async function queryPasskeyByCredentialId(
   })) as PasskeyDoc | null;
 }
 
+/** Insert a passkey across the component boundary; returns its ID. */
 export async function mutatePasskeyInsert(
   ctx: ComponentCallCtx,
   args: {
     userId: string;
     credentialId: string;
-    publicKey: ArrayBuffer | ArrayBufferLike;
+    publicKey: ArrayBuffer;
     algorithm: number;
     counter: number;
     transports?: string[];
@@ -1822,12 +1495,13 @@ export async function mutatePasskeyInsert(
     createdAt: number;
   },
 ): Promise<string> {
-  return (await ctx.runMutation(
-    ctx.auth.config.component.factor.passkey.create,
-    args,
-  )) as string;
+  return (await ctx.runMutation(ctx.auth.config.component.factor.passkey.create, args)) as string;
 }
 
+/**
+ * Update a passkey's signature counter (anti-cloning) and `lastUsedAt` across
+ * the component boundary.
+ */
 export async function mutatePasskeyUpdateCounter(
   ctx: ComponentCallCtx,
   passkeyId: string,
@@ -1835,54 +1509,14 @@ export async function mutatePasskeyUpdateCounter(
   lastUsedAt: number,
 ): Promise<void> {
   await ctx.runMutation(ctx.auth.config.component.factor.passkey.update, {
-    passkeyId,
-    data: { counter, lastUsedAt },
-  });
-}
-
-export async function queryPasskeyById(
-  ctx: ComponentCallCtx,
-  passkeyId: string,
-): Promise<PasskeyDoc | null> {
-  return (await ctx.runQuery(ctx.auth.config.component.factor.passkey.get, {
     id: passkeyId,
-  })) as PasskeyDoc | null;
-}
-
-export async function mutatePasskeyDelete(ctx: ComponentCallCtx, passkeyId: string): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.factor.passkey.delete, {
-    passkeyId,
+    patch: { counter, lastUsedAt },
   });
 }
-
-// -- Account queries / mutations --
-
-export async function queryAccountById(
-  ctx: ComponentCallCtx,
-  accountId: string,
-): Promise<AccountDoc | null> {
-  return (await ctx.runQuery(ctx.auth.config.component.account.get, {
-    id: accountId,
-  })) as AccountDoc | null;
-}
-
-export async function mutateAccountDelete(
-  ctx: ComponentCallCtx,
-  args: { accountId: string; requireOtherAccount?: boolean },
-): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.account.delete, args);
-}
-
-// -- TOTP delete mutation --
-
-export async function mutateTotpDelete(ctx: ComponentCallCtx, totpId: string): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.factor.totp.delete, { totpId });
-}
-
-// -- Device authorization queries / mutations --
 
 type DeviceDoc = Infer<typeof vDeviceCodeDoc>;
 
+/** Insert a device-authorization record across the component boundary; returns its ID. */
 export async function mutateDeviceInsert(
   ctx: ComponentCallCtx,
   args: {
@@ -1893,12 +1527,10 @@ export async function mutateDeviceInsert(
     status: "pending" | "authorized" | "denied";
   },
 ): Promise<string> {
-  return (await ctx.runMutation(
-    ctx.auth.config.component.factor.device.create,
-    args,
-  )) as string;
+  return (await ctx.runMutation(ctx.auth.config.component.factor.device.create, args)) as string;
 }
 
+/** Fetch a device-authorization record by code hash across the component boundary. */
 export async function queryDeviceByCodeHash(
   ctx: ComponentCallCtx,
   deviceCodeHash: string,
@@ -1908,6 +1540,7 @@ export async function queryDeviceByCodeHash(
   })) as DeviceDoc | null;
 }
 
+/** Fetch a device-authorization record by user code across the component boundary. */
 export async function queryDeviceByUserCode(
   ctx: ComponentCallCtx,
   userCode: string,
@@ -1917,6 +1550,7 @@ export async function queryDeviceByUserCode(
   })) as DeviceDoc | null;
 }
 
+/** Mark a device-authorization record authorized for a user/session across the component boundary. */
 export async function mutateDeviceAuthorize(
   ctx: ComponentCallCtx,
   deviceId: string,
@@ -1924,25 +1558,27 @@ export async function mutateDeviceAuthorize(
   sessionId: string,
 ): Promise<void> {
   await ctx.runMutation(ctx.auth.config.component.factor.device.authorize, {
-    deviceId,
+    id: deviceId,
     userId,
     sessionId,
   });
 }
 
+/** Update a device-authorization record's `lastPolledAt` across the component boundary. */
 export async function mutateDeviceUpdateLastPolled(
   ctx: ComponentCallCtx,
   deviceId: string,
   lastPolledAt: number,
 ): Promise<void> {
   await ctx.runMutation(ctx.auth.config.component.factor.device.update, {
-    deviceId,
-    data: { lastPolledAt },
+    id: deviceId,
+    patch: { lastPolledAt },
   });
 }
 
+/** Delete a device-authorization record by ID across the component boundary. */
 export async function mutateDeviceDelete(ctx: ComponentCallCtx, deviceId: string): Promise<void> {
-  await ctx.runMutation(ctx.auth.config.component.factor.device.delete, {
-    deviceId,
+  await ctx.runMutation(ctx.auth.config.component.factor.device.remove, {
+    id: deviceId,
   });
 }

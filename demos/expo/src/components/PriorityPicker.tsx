@@ -22,7 +22,11 @@ export const PriorityPicker = React.memo(function PriorityPicker({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm }}
+      contentContainerStyle={{
+        gap: spacing.sm,
+        paddingHorizontal: spacing.lg,
+        paddingVertical: spacing.sm,
+      }}
     >
       {PRIORITIES.map((priority) => {
         const active = value === priority;
@@ -31,21 +35,27 @@ export const PriorityPicker = React.memo(function PriorityPicker({
           <Pressable
             key={priority}
             onPress={() => onSelect(priority)}
-            style={{
+            style={({ pressed }) => ({
               paddingHorizontal: spacing.lg - 2,
               paddingVertical: spacing.sm - 1,
-              borderRadius: radius.xl,
+              borderRadius: radius.full,
               borderWidth: 1,
               borderCurve: "continuous",
-              backgroundColor: active ? c.bg : colors.white,
-              borderColor: active ? c.border : colors.warm[300],
-            }}
+              backgroundColor: active
+                ? c.bg
+                : pressed
+                  ? colors.background.tertiary
+                  : colors.background.secondary,
+              borderColor: active ? c.border : colors.border.transparent,
+            })}
           >
-            <Text style={{
-              fontSize: fontSize.sm + 1,
-              color: active ? c.text : colors.warm[600],
-              fontWeight: active ? "600" : "400",
-            }}>
+            <Text
+              style={{
+                fontSize: fontSize.sm + 1,
+                color: active ? c.text : colors.warm[600],
+                fontWeight: active ? "600" : "400",
+              }}
+            >
               {LABELS[priority]}
             </Text>
           </Pressable>

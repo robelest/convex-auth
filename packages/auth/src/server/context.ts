@@ -1,9 +1,15 @@
 import type { UserIdentity } from "convex/server";
 import { ConvexError } from "convex/values";
 
+import { ErrorCode } from "../shared/codes";
 import type { AuthContext, AuthLike, OptionalAuthContext, UserDoc } from "./facade";
 import type { ComponentReadCtx as AuthQueryCtx } from "./component/context";
-import { getAuthenticatedUserIdOrNull } from "./identity";
+import {
+  getAuthenticatedUserIdOrNull,
+  getUserIdentityOrNull,
+  oauthScopesFromIdentity,
+  userIdFromIdentity,
+} from "./identity/claims";
 
 type AuthIdentityCtx = {
   auth: {
@@ -13,16 +19,13 @@ type AuthIdentityCtx = {
 
 type AuthContextResolverLike = {
   user: {
-    get: (ctx: AuthQueryCtx, userId: string) => Promise<UserDoc | null>;
+    get: (ctx: AuthQueryCtx, args: { id: string }) => Promise<UserDoc | null>;
   };
   active: {
-    get: (
-      ctx: AuthQueryCtx,
-      args: { userId: string },
-    ) => Promise<{ groupId: string } | null>;
+    get: (ctx: AuthQueryCtx, args: { userId: string }) => Promise<{ groupId: string } | null>;
   };
   member: {
-    inspect: (
+    get: (
       ctx: AuthQueryCtx,
       args: { userId: string; groupId: string },
     ) => Promise<{
@@ -39,23 +42,20 @@ export async function getSessionUserId(ctx: AuthIdentityCtx): Promise<string | n
 }
 
 /**
- * Build the `ctx.auth.require` grant guard from the resolved grants and
- * active group. `require(grant)` throws when a grant is missing;
- * `require(grant, doc)` additionally asserts the group-owned `doc` belongs
- * to the active group. Reuses `member.require`'s `MISSING_GRANTS` code.
+ * Build the `ctx.auth.assert` grant guard from the resolved grants and
+ * active group. `assert(grant)` throws when a grant is missing;
+ * `assert(grant, doc)` additionally asserts the group-owned `doc` belongs
+ * to the active group. Reuses `member.assert`'s `MISSING_GRANTS` code.
  *
  * @internal
  */
-function makeRequire(
-  groupId: string | null,
-  grants: readonly string[],
-): AuthContext["require"] {
+function makeAssert(groupId: string | null, grants: readonly string[]): AuthContext["assert"] {
   return (grant, doc) => {
     const needed = Array.isArray(grant) ? grant : [grant as string];
     const missing = needed.filter((g) => !grants.includes(g));
     if (missing.length > 0) {
       throw new ConvexError({
-        code: "MISSING_GRANTS",
+        code: ErrorCode.MISSING_GRANTS,
         message: "User is missing required grants.",
       });
     }
@@ -63,7 +63,7 @@ function makeRequire(
       const docGroupId = (doc as { groupId?: unknown }).groupId;
       if (groupId === null || String(docGroupId) !== groupId) {
         throw new ConvexError({
-          code: "FORBIDDEN",
+          code: ErrorCode.FORBIDDEN,
           message: "Record is not in the active group.",
         });
       }
@@ -71,33 +71,45 @@ function makeRequire(
   };
 }
 
-/** @internal */
+/**
+ * @internal
+ *
+ * Resolve the caller's auth context. When `oauthScopes` is supplied (the request
+ * is authenticated by a scoped OAuth access token rather than a full session),
+ * the user's role grants are intersected with the token's scopes so the caller's
+ * effective grants — and therefore `assert` — can never exceed the granted
+ * scope. Scopes and grants share one vocabulary, so this is a set intersection.
+ * A session caller passes no scopes and keeps their full role grants.
+ */
 export async function getAuthContextForUser(
   auth: AuthContextResolverLike,
   ctx: AuthQueryCtx,
   userId: string,
+  oauthScopes?: readonly string[],
 ): Promise<AuthContext> {
   const [user, activeGroup] = await Promise.all([
-    auth.user.get(ctx, userId),
+    auth.user.get(ctx, { id: userId }),
     auth.active.get(ctx, { userId }),
   ]);
   const groupId = activeGroup?.groupId ?? null;
   let role: string | null = null;
   let grants: string[] = [];
   if (groupId) {
-    const resolved = await auth.member.inspect(ctx, { userId, groupId });
+    const resolved = await auth.member.get(ctx, { userId, groupId });
     if (resolved.membership) {
       role = resolved.roleIds[0] ?? null;
       grants = resolved.grants;
     }
   }
+  const effectiveGrants =
+    oauthScopes === undefined ? grants : grants.filter((grant) => oauthScopes.includes(grant));
   return {
     userId: userId as AuthContext["userId"],
     user: user as UserDoc,
     groupId,
     role,
-    grants,
-    require: makeRequire(groupId, grants),
+    grants: effectiveGrants,
+    assert: makeAssert(groupId, effectiveGrants),
   };
 }
 
@@ -106,14 +118,17 @@ export async function getAuthContext(
   auth: AuthLike,
   ctx: AuthIdentityCtx & AuthQueryCtx,
 ): Promise<AuthContext | null> {
-  const userId = await getSessionUserId(ctx);
-  if (userId === null) {
+  const identity = await getUserIdentityOrNull(ctx);
+  if (identity === null) {
     return null;
   }
+  const userId = userIdFromIdentity(identity);
+  const oauthScopes = oauthScopesFromIdentity(identity);
   return await getAuthContextForUser(
-    auth as unknown as AuthContextResolverLike,
+    auth as AuthContextResolverLike,
     ctx as AuthQueryCtx,
     userId,
+    oauthScopes ?? undefined,
   );
 }
 
@@ -125,6 +140,6 @@ export function createUnauthenticatedAuthContext(): OptionalAuthContext {
     groupId: null,
     role: null,
     grants: [],
-    require: makeRequire(null, []),
+    assert: makeAssert(null, []),
   };
 }

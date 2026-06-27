@@ -18,8 +18,10 @@ import type * as functions from "../functions.js";
 import type * as groups from "../groups.js";
 import type * as http from "../http.js";
 import type * as issues from "../issues.js";
+import type * as oauth from "../oauth.js";
 import type * as projects from "../projects.js";
 import type * as roles from "../roles.js";
+import type * as staticHosting from "../staticHosting.js";
 
 import type {
   ApiFromModules,
@@ -38,8 +40,10 @@ declare const fullApi: ApiFromModules<{
   groups: typeof groups;
   http: typeof http;
   issues: typeof issues;
+  oauth: typeof oauth;
   projects: typeof projects;
   roles: typeof roles;
+  staticHosting: typeof staticHosting;
 }>;
 
 /**
@@ -71,4 +75,5 @@ export declare const internal: FilterApi<
 export declare const components: {
   auth: import("@robelest/convex-auth/_generated/component.js").ComponentApi<"auth">;
   resend: import("@convex-dev/resend/_generated/component.js").ComponentApi<"resend">;
+  staticHosting: import("@convex-dev/static-hosting/_generated/component.js").ComponentApi<"staticHosting">;
 };

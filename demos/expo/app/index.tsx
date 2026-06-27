@@ -27,19 +27,11 @@ import { useDemoAuth } from "@/src/auth";
 import { useAppClient } from "@/src/client";
 import { useOverlayGuard } from "@/src/overlays";
 import { useProjectSelection } from "@/src/selection";
-import { colors, spacing, fontSize, lineHeight, radius, shadows } from "@/src/theme";
-import {
-  type GroupProject,
-  useGroupData,
-} from "@/src/groups";
+import { colors, spacing, fontSize, lineHeight, radius, shadows, recipes } from "@/src/theme";
+import { Plus } from "@/src/icons";
+import { type GroupProject, useGroupData } from "@/src/groups";
 
-const STATUS_ORDER = [
-  "in_progress",
-  "todo",
-  "backlog",
-  "done",
-  "cancelled",
-] as const;
+const STATUS_ORDER = ["in_progress", "todo", "backlog", "done", "cancelled"] as const;
 
 const STATUS_LABELS: Record<string, string> = {
   in_progress: "In Progress",
@@ -89,9 +81,7 @@ export default function IssuesScreen() {
 
   const selectedProject = React.useMemo<GroupProject | null>(
     () =>
-      projects.find(
-        (project: GroupProject) => project._id === selectedProjectId,
-      ) ??
+      projects.find((project: GroupProject) => project._id === selectedProjectId) ??
       projects[0] ??
       null,
     [projects, selectedProjectId],
@@ -99,9 +89,7 @@ export default function IssuesScreen() {
 
   const issuesData = useQuery(
     api.issues.forProject,
-    readyForSync && selectedProject
-      ? { projectId: selectedProject._id }
-      : "skip",
+    readyForSync && selectedProject ? { projectId: selectedProject._id } : "skip",
   );
 
   const issues = issuesData?.issues ?? [];
@@ -155,7 +143,11 @@ export default function IssuesScreen() {
       setProjectError("Project name is required.");
       return;
     }
-    const identifier = nextName.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) || "DEMO";
+    const identifier =
+      nextName
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "")
+        .slice(0, 6) || "DEMO";
     setCreatingProject(true);
     setProjectError(null);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -180,7 +172,7 @@ export default function IssuesScreen() {
   if (!readyForSync || group === undefined) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator color={colors.accent[500]} />
+        <ActivityIndicator color={colors.util.accent} />
       </View>
     );
   }
@@ -188,7 +180,10 @@ export default function IssuesScreen() {
   if (!currentGroup) {
     return (
       <View style={styles.emptyState}>
-        <Animated.View entering={FadeInDown.duration(400).springify()} style={styles.emptyStateCard}>
+        <Animated.View
+          entering={FadeInDown.duration(400).springify()}
+          style={styles.emptyStateCard}
+        >
           <Text style={styles.emptyStateEyebrow}>Group</Text>
           <Text style={styles.emptyStateTitle}>No group yet</Text>
           <Text style={styles.emptyStateText}>
@@ -207,7 +202,7 @@ export default function IssuesScreen() {
             disabled={creatingGroup}
           >
             {creatingGroup ? (
-              <ActivityIndicator color={colors.white} size="small" />
+              <ActivityIndicator color={colors.content.primary} size="small" />
             ) : (
               <Text style={styles.primaryButtonLabel}>Create group</Text>
             )}
@@ -219,7 +214,10 @@ export default function IssuesScreen() {
           )}
           <Pressable
             onPress={() => void signOut()}
-            style={({ pressed }) => [styles.secondaryFullButton, pressed && { opacity: 0.7 }]}
+            style={({ pressed }) => [
+              styles.secondaryFullButton,
+              pressed && styles.secondaryFullButtonPressed,
+            ]}
           >
             <Text style={styles.secondaryFullButtonLabel}>Sign out</Text>
           </Pressable>
@@ -231,7 +229,10 @@ export default function IssuesScreen() {
   if (!selectedProject) {
     return (
       <View style={styles.emptyState}>
-        <Animated.View entering={FadeInDown.duration(400).springify()} style={styles.emptyStateCard}>
+        <Animated.View
+          entering={FadeInDown.duration(400).springify()}
+          style={styles.emptyStateCard}
+        >
           <Text style={styles.emptyStateEyebrow}>Project</Text>
           <Text style={styles.emptyStateTitle}>Create a project</Text>
           <Text style={styles.emptyStateText}>
@@ -250,7 +251,7 @@ export default function IssuesScreen() {
             disabled={creatingProject}
           >
             {creatingProject ? (
-              <ActivityIndicator color={colors.white} size="small" />
+              <ActivityIndicator color={colors.content.primary} size="small" />
             ) : (
               <Text style={styles.primaryButtonLabel}>Create project</Text>
             )}
@@ -318,7 +319,7 @@ export default function IssuesScreen() {
               <View style={styles.headerActions}>
                 <Pressable
                   onPress={() => void signOut()}
-                  style={({ pressed }) => [styles.chipButton, pressed && { opacity: 0.7 }]}
+                  style={({ pressed }) => [styles.chipButton, pressed && styles.chipButtonPressed]}
                 >
                   <Text style={styles.chipButtonLabel}>Sign out</Text>
                 </Pressable>
@@ -331,7 +332,7 @@ export default function IssuesScreen() {
                       });
                     })
                   }
-                  style={({ pressed }) => [styles.chipButton, pressed && { opacity: 0.7 }]}
+                  style={({ pressed }) => [styles.chipButton, pressed && styles.chipButtonPressed]}
                 >
                   <Text style={styles.chipButtonLabel}>Projects</Text>
                 </Pressable>
@@ -342,9 +343,7 @@ export default function IssuesScreen() {
         ListEmptyComponent={
           <Animated.View entering={FadeIn.duration(300)} style={styles.emptyCard}>
             <Text style={styles.emptyCardTitle}>No issues yet</Text>
-            <Text style={styles.emptyCardText}>
-              Tap the + button to create your first issue.
-            </Text>
+            <Text style={styles.emptyCardText}>Tap the + button to create your first issue.</Text>
           </Animated.View>
         }
       />
@@ -354,7 +353,7 @@ export default function IssuesScreen() {
           style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
           onPress={handleCreateIssue}
         >
-          <Text style={styles.fabIcon}>+</Text>
+          <Plus size={24} color={colors.content.primary} />
         </Pressable>
       </Animated.View>
     </View>
@@ -404,18 +403,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.warm[50],
   },
   emptyStateCard: {
+    ...recipes.card,
     width: "100%",
     maxWidth: 360,
     alignItems: "center",
     gap: spacing.md,
     paddingHorizontal: spacing["2xl"],
     paddingVertical: spacing["3xl"],
-    borderRadius: spacing["2xl"],
-    borderCurve: "continuous",
-    borderWidth: 1,
-    borderColor: colors.warm[300],
-    backgroundColor: colors.white,
-    boxShadow: shadows.md.boxShadow,
   },
   emptyStateEyebrow: {
     fontSize: 11,
@@ -439,54 +433,41 @@ const styles = StyleSheet.create({
   },
 
   input: {
+    ...recipes.input,
     width: "100%",
-    minHeight: 48,
-    borderRadius: radius.lg,
-    borderCurve: "continuous",
-    borderWidth: 1,
-    borderColor: colors.warm[300],
-    backgroundColor: colors.warm[50],
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    color: colors.warm[900],
+    minHeight: 44,
     fontSize: fontSize.lg,
   },
 
   primaryButton: {
-    minHeight: 48,
+    ...recipes.buttonAccent,
+    minHeight: 44,
     width: "100%",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: radius.lg,
-    borderCurve: "continuous",
-    backgroundColor: colors.accent[500],
     paddingHorizontal: spacing.lg,
-    boxShadow: shadows.accent.boxShadow,
   },
   primaryButtonPressed: {
-    backgroundColor: colors.accent[600],
+    ...recipes.buttonAccentPressed,
   },
   primaryButtonLabel: {
-    color: colors.white,
+    ...recipes.buttonAccentLabel,
     fontSize: fontSize.md,
-    fontWeight: "700",
   },
   secondaryFullButton: {
+    ...recipes.buttonNeutral,
     minHeight: 40,
     width: "100%",
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: radius.md,
-    borderCurve: "continuous",
-    borderWidth: 1,
-    borderColor: colors.warm[300],
-    backgroundColor: colors.warm[50],
     paddingHorizontal: spacing.lg,
   },
+  secondaryFullButtonPressed: {
+    ...recipes.buttonNeutralPressed,
+  },
   secondaryFullButtonLabel: {
-    color: colors.warm[700],
+    ...recipes.buttonNeutralLabel,
     fontSize: fontSize.md,
-    fontWeight: "600",
   },
 
   errorRow: {
@@ -535,10 +516,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     borderCurve: "continuous",
     borderWidth: 1,
-    borderColor: colors.warm[300],
-    backgroundColor: colors.white,
+    borderColor: colors.border.transparent,
+    backgroundColor: colors.background.secondary,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs + 2,
+  },
+  chipButtonPressed: {
+    backgroundColor: colors.background.tertiary,
   },
   chipButtonLabel: {
     fontSize: fontSize.xs,
@@ -555,16 +539,11 @@ const styles = StyleSheet.create({
   sectionGap: { height: spacing.sm },
 
   emptyCard: {
-    borderRadius: radius.xl,
-    borderCurve: "continuous",
-    borderWidth: 1,
-    borderColor: colors.warm[300],
-    backgroundColor: colors.white,
+    ...recipes.card,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xl,
     alignItems: "center",
     gap: spacing.xs,
-    boxShadow: shadows.sm.boxShadow,
   },
   emptyCardTitle: {
     fontSize: fontSize.md,
@@ -586,17 +565,13 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: colors.accent[500],
+    backgroundColor: colors.util.accent,
+    borderWidth: 1,
+    borderColor: colors.util.accentBorder,
     alignItems: "center",
     justifyContent: "center",
     borderCurve: "continuous",
     boxShadow: shadows.accent.boxShadow,
   },
-  fabPressed: { backgroundColor: colors.accent[600], transform: [{ scale: 0.92 }] },
-  fabIcon: {
-    fontSize: 28,
-    lineHeight: 30,
-    color: colors.white,
-    fontWeight: "300",
-  },
+  fabPressed: { backgroundColor: colors.util.accentHover, transform: [{ scale: 0.92 }] },
 });

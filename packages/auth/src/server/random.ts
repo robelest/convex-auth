@@ -5,9 +5,18 @@ import {
 import { sha256 as rawSha256 } from "@oslojs/crypto/sha2";
 import { encodeHexLowerCase } from "@oslojs/encoding";
 
+const utf8Encoder = new TextEncoder();
+
+/**
+ * Alphanumeric alphabet used to generate invite and connection tokens.
+ * @internal
+ */
+export const INVITE_TOKEN_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
 /** @internal */
 export async function sha256(input: string) {
-  return encodeHexLowerCase(rawSha256(new TextEncoder().encode(input)));
+  return encodeHexLowerCase(rawSha256(utf8Encoder.encode(input)));
 }
 
 /** @internal */

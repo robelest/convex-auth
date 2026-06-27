@@ -1,6 +1,6 @@
 import "react-native-reanimated";
 
-import { DefaultTheme, ThemeProvider } from "@react-navigation/native";
+import { DarkTheme, ThemeProvider } from "@react-navigation/native";
 import { ConvexProvider } from "convex/react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -14,23 +14,21 @@ import { OverlayGuardProvider } from "@/src/overlays";
 import { ProjectSelectionProvider } from "@/src/selection";
 import { colors } from "@/src/theme";
 
-const WarmTheme = {
-  ...DefaultTheme,
+const ConvexTheme = {
+  ...DarkTheme,
   colors: {
-    ...DefaultTheme.colors,
-    primary: colors.accent[500],
-    background: colors.warm[50],
-    card: colors.white,
-    text: colors.warm[900],
-    border: colors.warm[300],
-    notification: colors.accent[500],
+    ...DarkTheme.colors,
+    primary: colors.util.accent,
+    background: colors.background.primary,
+    card: colors.background.secondary,
+    text: colors.content.primary,
+    border: colors.border.transparent,
+    notification: colors.util.accent,
   },
 };
 
 export default function RootLayout() {
-  const [client, setClient] = React.useState<ReturnType<
-    typeof getClient
-  > | null>(null);
+  const [client, setClient] = React.useState<ReturnType<typeof getClient> | null>(null);
 
   React.useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
@@ -41,17 +39,17 @@ export default function RootLayout() {
 
   if (!client) {
     return (
-      <ThemeProvider value={WarmTheme}>
+      <ThemeProvider value={ConvexTheme}>
         <View
           style={{
             flex: 1,
-            backgroundColor: WarmTheme.colors.background,
+            backgroundColor: ConvexTheme.colors.background,
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <ActivityIndicator color={WarmTheme.colors.primary} />
-          <StatusBar style="dark" />
+          <ActivityIndicator color={ConvexTheme.colors.primary} />
+          <StatusBar style="light" />
         </View>
       </ThemeProvider>
     );
@@ -61,7 +59,7 @@ export default function RootLayout() {
     <ConvexProvider client={client}>
       <AppClientProvider client={client}>
         <DemoAuthProvider>
-          <ThemeProvider value={WarmTheme}>
+          <ThemeProvider value={ConvexTheme}>
             <AuthGate>
               <ProjectSelectionProvider>
                 <OverlayGuardProvider>
@@ -95,7 +93,7 @@ export default function RootLayout() {
                 </OverlayGuardProvider>
               </ProjectSelectionProvider>
             </AuthGate>
-            <StatusBar style="dark" />
+            <StatusBar style="light" />
           </ThemeProvider>
         </DemoAuthProvider>
       </AppClientProvider>

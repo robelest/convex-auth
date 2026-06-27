@@ -1,4 +1,5 @@
 import type { ConvexTransport, SignInActionResult, SignInApiRef, TotpClient } from "../core/types";
+import type { AccessToken } from "../../shared/brand";
 import type { AuthTokens } from "../../shared/results";
 
 function isSignedInResult(
@@ -28,7 +29,7 @@ type TotpDeps = {
         }
       | {
           shouldStore: false;
-          tokens: { token: string } | null;
+          tokens: { token: AccessToken } | null;
           waitForHandshake: boolean;
           context: { provider?: string; flow: string };
         },
@@ -72,7 +73,7 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
       const result = (await convex.action(requireApiRefs().signIn, {
         provider: "totp",
         params,
-      })) as unknown as SignInActionResult;
+      })) as SignInActionResult;
       if (!isTotpSetupResult(result)) {
         throw new Error("Server did not return TOTP setup data.");
       }
@@ -85,8 +86,6 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
     },
 
     confirm: async (opts: { code: string; verifier: string; totpId: string }): Promise<void> => {
-      // Server-side `verify` discriminates by `totpId` presence — with it,
-      // it completes a first-time enrollment confirmation.
       const params: Record<string, unknown> = {
         flow: "verify",
         code: opts.code,
@@ -113,11 +112,11 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
         provider: "totp",
         params,
         verifier: opts.verifier,
-      })) as unknown as SignInActionResult;
+      })) as SignInActionResult;
       if (isSignedInResult(result) && result.session) {
         await setTokenAndMaybeWait({
           shouldStore: true,
-          tokens: (result.session as AuthTokens | null) ?? null,
+          tokens: result.session,
           waitForHandshake: true,
           context: { provider: "totp", flow: "confirm" },
         });
@@ -150,11 +149,11 @@ export function createTotpClient(deps: TotpDeps): TotpClient {
         provider: "totp",
         params,
         verifier: opts.verifier,
-      })) as unknown as SignInActionResult;
+      })) as SignInActionResult;
       if (isSignedInResult(result) && result.session) {
         await setTokenAndMaybeWait({
           shouldStore: true,
-          tokens: (result.session as AuthTokens | null) ?? null,
+          tokens: result.session,
           waitForHandshake: true,
           context: { provider: "totp", flow: "verify" },
         });

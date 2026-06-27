@@ -35,7 +35,7 @@ const DEFAULT_CHARSET = "BCDFGHJKLMNPQRSTVWXZ";
  * Create a device authorization provider.
  *
  * @param config - Optional device flow code and polling settings.
- * @returns A configured device flow provider for `createAuth`.
+ * @returns A configured device flow provider for `defineAuth`.
  *
  * @example
  * ```ts

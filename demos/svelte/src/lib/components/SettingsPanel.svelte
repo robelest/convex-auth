@@ -3,6 +3,8 @@
   import { api } from "$convex/_generated/api.js";
   import { useQuery } from "convex-svelte";
   import { getContext } from "svelte";
+  import { toast } from "svelte-sonner";
+  import { errorText } from "$lib/errors";
   import ChangePasswordForm from "./ChangePasswordForm.svelte";
 
   type AuthContext = {
@@ -41,15 +43,13 @@
     client: ConvexClient;
   }>();
 
-  let tab = $state<"passkeys" | "security" | "apikeys" | "members" | "permissions">("passkeys");
+  let tab = $state<"passkeys" | "security" | "apikeys" | "members">("passkeys");
   let isSigningOut = $state(false);
-  let errorMessage = $state<string | null>(null);
 
   let showInviteForm = $state(false);
   let inviteEmail = $state("");
   let inviteRoleId = $state("member");
   let isInviting = $state(false);
-  let inviteSentTo = $state<string | null>(null);
   let isRegisteringPasskey = $state(false);
   let isDeletingPasskeyId = $state<string | null>(null);
   let apiKeyName = $state("");
@@ -65,9 +65,14 @@
   );
   const passkeysQuery = useQuery(api.account.listPasskeys, () => ({}));
   const apiKeysQuery = useQuery(api.account.listApiKeys, () => ({}));
+  const hasPasswordQuery = useQuery(api.account.hasPassword, () => ({}));
   const pendingInvites = $derived(invitesQuery.data ?? []);
   const passkeys = $derived(passkeysQuery.data ?? []);
   const apiKeys = $derived(apiKeysQuery.data ?? []);
+  const hasPassword = $derived(hasPasswordQuery.data ?? false);
+  const adminCount = $derived(
+    members.filter((m: { roleIds: string[] }) => m.roleIds.includes("orgAdmin")).length,
+  );
   const passkeySupported = $derived(auth.passkey?.isSupported() ?? false);
   const origin = $derived(typeof window === "undefined" ? "" : window.location.origin);
 
@@ -92,8 +97,14 @@
       .join(", ");
   }
 
+  function clockTime(timestamp: number) {
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
   async function handleRoleChange(memberId: string, newRoleId: string) {
-    errorMessage = null;
     try {
       await client.mutation(api.groups.updateMemberRole, {
         groupId: groupId,
@@ -101,7 +112,7 @@
         roleId: newRoleId,
       });
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Failed to update role";
+      toast.error(errorText(e, "Failed to update role"));
     }
   }
 
@@ -111,7 +122,7 @@
       await auth.signOut();
       window.location.reload();
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Sign out failed";
+      toast.error(errorText(e, "Sign out failed"));
     } finally {
       isSigningOut = false;
     }
@@ -120,8 +131,6 @@
   async function handleInvite() {
     if (!inviteEmail.includes("@")) return;
     isInviting = true;
-    errorMessage = null;
-    inviteSentTo = null;
     const emailToSend = inviteEmail;
     try {
       const result = await client.action(api.groups.inviteMember, {
@@ -130,38 +139,35 @@
         roleId: inviteRoleId,
       });
       if ("ok" in result && result.ok) {
-        inviteSentTo = emailToSend;
         inviteEmail = "";
-        setTimeout(() => { inviteSentTo = null; }, 4000);
+        toast.success(`Invite sent to ${emailToSend}`);
       } else if ("message" in result) {
-        errorMessage = typeof result.message === "string" ? result.message : "Failed to invite";
+        toast.error(typeof result.message === "string" ? result.message : "Failed to invite");
       }
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Failed to invite";
+      toast.error(errorText(e, "Failed to invite"));
     } finally {
       isInviting = false;
     }
   }
 
   async function handleRevokeInvite(inviteId: string) {
-    errorMessage = null;
     try {
       await client.mutation(api.groups.revokeInvite, {
         groupId: groupId,
         inviteId,
       });
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Failed to revoke";
+      toast.error(errorText(e, "Failed to revoke"));
     }
   }
 
   async function handleRegisterPasskey() {
     if (!auth.passkey) {
-      errorMessage = "Passkeys are not available in this browser.";
+      toast.error("Passkeys are not available in this browser.");
       return;
     }
     isRegisteringPasskey = true;
-    errorMessage = null;
     try {
       const result = await auth.passkey.register({
         name: typeof navigator === "undefined" ? "This device" : navigator.platform,
@@ -170,7 +176,7 @@
         window.location.href = result.redirect.toString();
       }
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Failed to register passkey";
+      toast.error(errorText(e, "Failed to register passkey"));
     } finally {
       isRegisteringPasskey = false;
     }
@@ -178,11 +184,10 @@
 
   async function handleDeletePasskey(passkeyId: string) {
     isDeletingPasskeyId = passkeyId;
-    errorMessage = null;
     try {
       await client.mutation(api.account.deletePasskey, { passkeyId });
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Failed to delete passkey";
+      toast.error(errorText(e, "Failed to delete passkey"));
     } finally {
       isDeletingPasskeyId = null;
     }
@@ -191,7 +196,6 @@
   async function handleCreateApiKey() {
     if (!apiKeyName.trim()) return;
     isCreatingApiKey = true;
-    errorMessage = null;
     createdApiKey = null;
     try {
       createdApiKey = await client.mutation(api.account.createApiKey, {
@@ -201,7 +205,7 @@
       });
       apiKeyName = "";
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Failed to create API key";
+      toast.error(errorText(e, "Failed to create API key"));
     } finally {
       isCreatingApiKey = false;
     }
@@ -209,42 +213,28 @@
 
   async function handleRevokeApiKey(keyId: string) {
     isRevokingApiKeyId = keyId;
-    errorMessage = null;
     try {
       await client.mutation(api.account.revokeApiKey, { keyId });
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Failed to revoke API key";
+      toast.error(errorText(e, "Failed to revoke API key"));
     } finally {
       isRevokingApiKeyId = null;
     }
   }
 
-  const permissionMatrix = [
-    { label: "View projects & issues", admin: true, member: true, viewer: true },
-    { label: "Create issues", admin: true, member: true, viewer: false },
-    { label: "Edit issues", admin: true, member: true, viewer: false },
-    { label: "Move issue status", admin: true, member: true, viewer: false },
-    { label: "Assign issues to others", admin: true, member: false, viewer: false },
-    { label: "Delete issues", admin: true, member: false, viewer: false },
-    { label: "Create projects", admin: true, member: false, viewer: false },
-    { label: "Manage members & roles", admin: true, member: false, viewer: false },
-    { label: "Configure group SSO", admin: true, member: false, viewer: false },
-  ];
-
-  const tabs = [
+  const tabs = $derived([
     { id: "passkeys" as const, label: "Passkeys" },
-    { id: "security" as const, label: "Security" },
+    ...(hasPassword ? [{ id: "security" as const, label: "Security" }] : []),
     { id: "apikeys" as const, label: "API keys" },
     { id: "members" as const, label: "Members" },
-    { id: "permissions" as const, label: "Permissions" },
-  ];
+  ]);
 </script>
 
 <div class="flex flex-col gap-4">
   <!-- Account bar -->
-  <div class="flex justify-between items-center gap-3 pb-3 border-b border-gray-300">
+  <div class="flex justify-between items-center gap-3 pb-3 border-b border-border-transparent">
     <div class="flex items-center gap-2">
-      <span class="font-label text-[0.75rem] text-gray-700">{user.name}</span>
+      <span class="font-label text-[0.75rem] text-content-primary">{user.name}</span>
       <span class="chip chip--role">{userRoleLabel}</span>
     </div>
     <button
@@ -254,17 +244,16 @@
     >{isSigningOut ? "..." : "Sign out"}</button>
   </div>
 
-  <div class="border border-gray-300 bg-white h-[80dvh] flex flex-col">
-    <div class="flex gap-0 border-b border-gray-300 shrink-0">
+  <div class="flex flex-col gap-4">
+    <div class="segmented self-start">
       {#each tabs as t (t.id)}
-        <button
-          class="py-2 px-4 border-0 border-b-2 bg-transparent font-label text-[0.75rem] font-medium cursor-pointer {tab === t.id ? 'border-b-accent-500 text-accent-600 font-semibold' : 'border-b-transparent text-gray-500 hover:text-gray-700'}"
-          onclick={() => { tab = t.id; }}
-        >{t.label}</button>
+        <button type="button" data-active={tab === t.id} onclick={() => { tab = t.id; }}>
+          {t.label}
+        </button>
       {/each}
     </div>
 
-    <div class="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
+    <div class="panel p-4 flex flex-col gap-3">
       {#if tab === 'passkeys'}
         <div class="flex items-center justify-between gap-3">
           <p class="muted m-0">Register a passkey for faster sign-in on this device.</p>
@@ -282,18 +271,18 @@
         {:else}
           <div class="flex flex-col">
             {#each passkeys as passkey (passkey.passkeyId)}
-              <div class="flex justify-between items-center gap-3 py-1.5 border-b border-gray-200">
+              <div class="flex justify-between items-center gap-3 py-1.5 border-b border-border-transparent">
                 <div class="flex flex-col">
-                  <span class="text-sm text-gray-900">{passkey.name ?? passkey.deviceType}</span>
-                  <span class="font-label text-[0.6875rem] text-gray-400">
+                  <span class="text-sm text-content-primary">{passkey.name ?? passkey.deviceType}</span>
+                  <span class="font-label text-[0.6875rem] text-content-tertiary">
                     {passkey.backedUp ? "Synced" : "Local"}
                     {#if passkey.lastUsedAt}
-                      · last used {new Date(passkey.lastUsedAt).toLocaleString()}
+                      · {clockTime(passkey.lastUsedAt)}
                     {/if}
                   </span>
                 </div>
                 <button
-                  class="button button--ghost text-[0.65rem] text-gray-400 hover:text-accent-600"
+                  class="button button--ghost text-[0.65rem] text-content-tertiary hover:text-content-error"
                   disabled={isDeletingPasskeyId === passkey.passkeyId}
                   onclick={() => handleDeletePasskey(passkey.passkeyId)}
                 >{isDeletingPasskeyId === passkey.passkeyId ? "removing" : "remove"}</button>
@@ -317,11 +306,11 @@
             maxlength="60"
             placeholder="CLI key"
           />
-          <label class="flex items-center gap-2 font-label text-[0.75rem] text-gray-700">
+          <label class="flex items-center gap-2 font-label text-[0.75rem] text-content-primary">
             <input bind:checked={issueReadScope} type="checkbox" />
             Allow <code>GET /api/issues</code>
           </label>
-          <label class="flex items-center gap-2 font-label text-[0.75rem] text-gray-700">
+          <label class="flex items-center gap-2 font-label text-[0.75rem] text-content-primary">
             <input bind:checked={issueWriteScope} type="checkbox" />
             Allow <code>POST /api/issues</code>
           </label>
@@ -331,12 +320,12 @@
         </form>
 
         {#if createdApiKey}
-          <div class="flex flex-col gap-2 p-3 border border-gray-200 bg-gray-50">
-            <p class="m-0 font-label text-[0.75rem] text-gray-700">Copy this secret now. It will only be shown once.</p>
-            <code class="block overflow-x-auto border border-gray-200 bg-white px-2 py-1 text-[0.75rem]">{createdApiKey.secret}</code>
-            <code class="block overflow-x-auto border border-gray-200 bg-white px-2 py-1 text-[0.75rem]">curl -H "Authorization: Bearer {createdApiKey.secret}" {origin}/api/me</code>
+          <div class="flex flex-col gap-2 p-3 border border-border-transparent bg-background-primary rounded-md">
+            <p class="m-0 font-label text-[0.75rem] text-content-secondary">Copy this secret now. It will only be shown once.</p>
+            <code class="code-block">{createdApiKey.secret}</code>
+            <code class="code-block">curl -H "Authorization: Bearer {createdApiKey.secret}" {origin}/api/me</code>
             {#if selectedProject}
-              <code class="block overflow-x-auto border border-gray-200 bg-white px-2 py-1 text-[0.75rem]">curl -H "Authorization: Bearer {createdApiKey.secret}" "{origin}/api/issues?projectId={selectedProject.projectId}"</code>
+              <code class="code-block">curl -H "Authorization: Bearer {createdApiKey.secret}" "{origin}/api/issues?projectId={selectedProject.projectId}"</code>
             {:else}
               <p class="muted m-0">Select a project in the sidebar to get a ready-to-run <code>/api/issues</code> curl command.</p>
             {/if}
@@ -348,10 +337,10 @@
         {:else}
           <div class="flex flex-col">
             {#each apiKeys as key (key.keyId)}
-              <div class="flex justify-between items-center gap-3 py-1.5 border-b border-gray-200">
+              <div class="flex justify-between items-center gap-3 py-1.5 border-b border-border-transparent">
                 <div class="flex flex-col">
-                  <span class="text-sm text-gray-900">{key.name}</span>
-                  <span class="font-label text-[0.6875rem] text-gray-400">
+                  <span class="text-sm text-content-primary">{key.name}</span>
+                  <span class="font-label text-[0.6875rem] text-content-tertiary">
                     {key.prefix}
                     {#if key.scopes.length > 0}
                       · {formatScopes(key.scopes)}
@@ -364,7 +353,7 @@
                   <span class="chip chip--role">Revoked</span>
                 {:else}
                   <button
-                    class="button button--ghost text-[0.65rem] text-gray-400 hover:text-accent-600"
+                    class="button button--ghost text-[0.65rem] text-content-tertiary hover:text-content-error"
                     disabled={isRevokingApiKeyId === key.keyId}
                     onclick={() => handleRevokeApiKey(key.keyId)}
                   >{isRevokingApiKeyId === key.keyId ? "revoking" : "revoke"}</button>
@@ -381,12 +370,12 @@
             {#if permissions.canManageMembers}
               <button
                 class="button button--secondary button--compact"
-                onclick={() => { showInviteForm = !showInviteForm; inviteSentTo = null; }}
+                onclick={() => { showInviteForm = !showInviteForm; }}
               >{showInviteForm ? "Cancel" : "Invite member"}</button>
             {/if}
             {#if permissions.canManageSso}
-              <a class="button button--secondary button--compact no-underline" href="/{groupId}/sso">
-                Configure SSO
+              <a class="button button--secondary button--compact no-underline" href="/{groupId}/connection">
+                Connections
               </a>
             {/if}
           </div>
@@ -394,7 +383,7 @@
 
         <!-- Invite form -->
         {#if showInviteForm}
-          <div class="flex flex-col gap-2 p-3 border border-gray-200 bg-gray-50">
+          <div class="flex flex-col gap-2 p-3 border border-border-transparent bg-background-primary rounded-md">
             <form class="flex gap-1.5 items-center flex-wrap" onsubmit={(e) => { e.preventDefault(); handleInvite(); }}>
               <input
                 class="input input--compact flex-1 min-w-[10rem]"
@@ -414,22 +403,18 @@
               >{isInviting ? "..." : "Send"}</button>
             </form>
 
-            {#if inviteSentTo}
-              <p class="font-label text-[0.75rem] text-green-600 m-0">Invite sent to {inviteSentTo}</p>
-            {/if}
-
             <!-- Pending invites -->
             {#if pendingInvites.length > 0}
               <div class="flex flex-col mt-1">
-                <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-gray-400 mb-1">Pending</span>
+                <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-content-tertiary mb-1">Pending</span>
                 {#each pendingInvites as invite (invite.inviteId)}
-                  <div class="flex justify-between items-center gap-2 py-1 border-b border-gray-200">
+                  <div class="flex justify-between items-center gap-2 py-1 border-b border-border-transparent">
                     <div class="flex items-center gap-2">
-                      <span class="font-label text-[0.75rem] text-gray-700">{invite.email ?? "—"}</span>
+                      <span class="font-label text-[0.75rem] text-content-primary">{invite.email ?? "—"}</span>
                       <span class="chip chip--role">{getRoleLabel(invite.roleIds)}</span>
                     </div>
                     <button
-                      class="button button--ghost text-[0.65rem] text-gray-400 hover:text-accent-600"
+                      class="button button--ghost text-[0.65rem] text-content-tertiary hover:text-content-error"
                       onclick={() => handleRevokeInvite(invite.inviteId)}
                     >revoke</button>
                   </div>
@@ -442,14 +427,14 @@
         <!-- Member list -->
         <div class="flex flex-col">
           {#each members as member (member.userId)}
-            <div class="flex justify-between items-center gap-2 py-1.5 border-b border-gray-200">
+            <div class="flex justify-between items-center gap-2 py-1.5 border-b border-border-transparent">
               <div class="flex flex-col">
-                <span class="text-sm text-gray-900">{member.name}</span>
+                <span class="text-sm text-content-primary">{member.name}</span>
                 {#if member.email}
-                  <span class="font-label text-[0.6875rem] text-gray-400">{member.email}</span>
+                  <span class="font-label text-[0.6875rem] text-content-tertiary">{member.email}</span>
                 {/if}
               </div>
-              {#if permissions.canManageMembers}
+              {#if permissions.canManageMembers && !(adminCount === 1 && member.roleIds.includes("orgAdmin"))}
                 <select
                   class="select select--compact"
                   value={member.roleIds[0] ?? "viewer"}
@@ -460,42 +445,19 @@
                   {/each}
                 </select>
               {:else}
-                <span class="chip chip--role">{getRoleLabel(member.roleIds)}</span>
+                <span
+                  class="chip chip--role"
+                  title={adminCount === 1 && member.roleIds.includes("orgAdmin")
+                    ? "A group must keep at least one admin."
+                    : undefined}
+                >{getRoleLabel(member.roleIds)}</span>
               {/if}
             </div>
           {:else}
             <p class="muted">No members.</p>
           {/each}
         </div>
-
-      {:else if tab === "permissions"}
-        <div class="overflow-x-auto">
-          <table class="w-full font-label text-[0.75rem]">
-            <thead>
-              <tr class="border-b border-gray-300">
-                <th class="text-left py-1.5 pr-4 text-gray-500 font-semibold">Action</th>
-                <th class="text-center py-1.5 px-3 text-gray-500 font-semibold">Admin</th>
-                <th class="text-center py-1.5 px-3 text-gray-500 font-semibold">Member</th>
-                <th class="text-center py-1.5 px-3 text-gray-500 font-semibold">Viewer</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each permissionMatrix as row (row.label)}
-                <tr class="border-b border-gray-200">
-                  <td class="py-1.5 pr-4 text-gray-700">{row.label}</td>
-                  <td class="text-center py-1.5 px-3 {row.admin ? 'text-green-600' : 'text-gray-300'}">{row.admin ? "yes" : "—"}</td>
-                  <td class="text-center py-1.5 px-3 {row.member ? 'text-green-600' : 'text-gray-300'}">{row.member ? "yes" : "—"}</td>
-                  <td class="text-center py-1.5 px-3 {row.viewer ? 'text-green-600' : 'text-gray-300'}">{row.viewer ? "yes" : "—"}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
       {/if}
     </div>
   </div>
-
-  {#if errorMessage}
-    <p class="error-banner">{errorMessage}</p>
-  {/if}
 </div>

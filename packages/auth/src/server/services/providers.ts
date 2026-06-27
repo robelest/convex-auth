@@ -1,5 +1,6 @@
 import { ConvexError } from "convex/values";
 
+import { ErrorCode } from "../../shared/codes";
 import { LOG_LEVELS, type LogLevel } from "../../shared/log";
 import { listAvailableProviders, configDefaults } from "../config";
 import type { GetProviderOrThrowFunc } from "../crypto";
@@ -24,7 +25,7 @@ export const createProviderRegistry = (
         `available providers are ${listAvailableProviders(config, allowExtraProviders)}.`;
       logger.log(LOG_LEVELS.ERROR, detail);
       throw new ConvexError({
-        code: "PROVIDER_NOT_CONFIGURED",
+        code: ErrorCode.PROVIDER_NOT_CONFIGURED,
         message: detail,
         provider: id,
       });

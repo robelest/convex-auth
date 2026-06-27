@@ -6,14 +6,9 @@ type OverlayGuardContextValue = {
   clear: (key: string) => void;
 };
 
-const OverlayGuardContext =
-  React.createContext<OverlayGuardContextValue | null>(null);
+const OverlayGuardContext = React.createContext<OverlayGuardContextValue | null>(null);
 
-export function OverlayGuardProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export function OverlayGuardProvider({ children }: { children: React.ReactNode }) {
   const activeKey = React.useRef<string | null>(null);
   const pendingKey = React.useRef<string | null>(null);
 
@@ -46,11 +41,7 @@ export function OverlayGuardProvider({
     [clear, markMounted, requestOverlay],
   );
 
-  return (
-    <OverlayGuardContext.Provider value={value}>
-      {children}
-    </OverlayGuardContext.Provider>
-  );
+  return <OverlayGuardContext.Provider value={value}>{children}</OverlayGuardContext.Provider>;
 }
 
 export function useOverlayGuard() {

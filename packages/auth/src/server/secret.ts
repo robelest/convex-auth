@@ -2,6 +2,9 @@ import { sha256 as rawSha256 } from "@oslojs/crypto/sha2";
 import { decodeBase64urlIgnorePadding, encodeBase64urlNoPadding } from "@oslojs/encoding";
 import { ConvexError } from "convex/values";
 
+import type { EncryptedSecret } from "../shared/brand";
+import { ErrorCode } from "../shared/codes";
+
 import { requireEnv } from "./env";
 
 const SECRET_KEY_ENV = "AUTH_SECRET_ENCRYPTION_KEY";
@@ -21,7 +24,7 @@ async function getSecretCryptoKey() {
 }
 
 /** @internal */
-export async function encryptSecret(value: string) {
+export async function encryptSecret(value: string): Promise<EncryptedSecret> {
   const key = await getSecretCryptoKey();
   const iv = crypto.getRandomValues(new Uint8Array(SECRET_IV_LENGTH));
   const encrypted = await crypto.subtle.encrypt(
@@ -29,7 +32,7 @@ export async function encryptSecret(value: string) {
     key,
     toArrayBuffer(new TextEncoder().encode(value)),
   );
-  return `${encodeBase64urlNoPadding(iv)}.${encodeBase64urlNoPadding(new Uint8Array(encrypted))}`;
+  return `${encodeBase64urlNoPadding(iv)}.${encodeBase64urlNoPadding(new Uint8Array(encrypted))}` as EncryptedSecret;
 }
 
 /** @internal */
@@ -37,7 +40,7 @@ export async function decryptSecret(ciphertext: string) {
   const parts = ciphertext.split(".");
   if (parts.length !== 2 || !parts[0] || !parts[1]) {
     throw new ConvexError({
-      code: "INVALID_PARAMETERS",
+      code: ErrorCode.INVALID_PARAMETERS,
       message: "Stored group connection secret is malformed.",
     });
   }

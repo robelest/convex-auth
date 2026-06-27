@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 
-import { colors, spacing, fontSize } from "@/src/theme";
+import { colors, spacing, fontSize, recipes } from "@/src/theme";
 
 import { PriorityChip } from "./PriorityChip";
 import { StatusDot } from "./StatusDot";
@@ -23,10 +23,7 @@ export const IssueRow = React.memo(function IssueRow({
   onPress?: () => void;
 }) {
   return (
-    <Pressable
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-      onPress={onPress}
-    >
+    <Pressable style={({ pressed }) => [styles.row, pressed && styles.pressed]} onPress={onPress}>
       <StatusDot status={issue.status} />
       <Text style={styles.identifier}>{issue.identifier}</Text>
       <View style={styles.titleWrap}>
@@ -38,9 +35,7 @@ export const IssueRow = React.memo(function IssueRow({
         <PriorityChip priority={issue.priority} />
         {issue.assigneeName && (
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {issue.assigneeName.charAt(0)}
-            </Text>
+            <Text style={styles.avatarText}>{issue.assigneeName.charAt(0)}</Text>
           </View>
         )}
       </View>
@@ -54,9 +49,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm + 1,
-    backgroundColor: colors.white,
+    backgroundColor: colors.background.secondary,
+    ...recipes.rowBorder,
   },
-  pressed: { backgroundColor: colors.warm[100] },
+  pressed: { ...recipes.rowPressed },
   identifier: {
     fontSize: fontSize.xs,
     fontWeight: "600",
@@ -76,9 +72,9 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: colors.accent[500],
+    backgroundColor: colors.util.accent,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: { fontSize: 9, fontWeight: "700", color: colors.white },
+  avatarText: { fontSize: 9, fontWeight: "700", color: colors.content.primary },
 });

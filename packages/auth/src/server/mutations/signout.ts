@@ -3,7 +3,8 @@ import { GenericId } from "convex/values";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
-import { deleteSession, getAuthSessionId } from "../sessions";
+import { emitAuthEvent } from "../events";
+import { deleteSession, getAuthSessionId } from "../session/lifecycle";
 import { buildSignOutIdentityAttributes } from "../telemetry";
 import { MutationCtx } from "../types";
 import { setActiveSpanAttributes, withSpan } from "../utils/span";
@@ -22,7 +23,7 @@ export async function signOutImpl(ctx: MutationCtx, config: Provider.Config): Pr
       setActiveSpanAttributes({ "auth.signout.result": "no_session" });
       return null;
     }
-    const session = await db.sessions.getById(sessionId);
+    const session = await db.sessions.get(sessionId);
     if (session == null) {
       setActiveSpanAttributes({ "auth.signout.result": "session_missing" });
       return null;
@@ -35,10 +36,15 @@ export async function signOutImpl(ctx: MutationCtx, config: Provider.Config): Pr
         sessionId: session._id,
       })),
     });
-    await config.callbacks?.after?.(ctx, {
-      kind: "signedOut",
-      userId: session.userId,
-      sessionId: session._id,
+    await emitAuthEvent(ctx, config, {
+      kind: "session.signed_out",
+      actor: { type: "user", id: session.userId },
+      subject: { type: "session", id: session._id },
+      targets: [
+        { kind: "user", id: session.userId },
+        { kind: "session", id: session._id },
+      ],
+      outcome: "success",
     });
     return {
       userId: session.userId,

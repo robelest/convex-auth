@@ -1,21 +1,39 @@
 <script lang="ts">
   import { useQuery } from "convex-svelte";
   import { api } from "$convex/_generated/api.js";
+  import Clock from "svelte-radix/Clock.svelte";
 
   let { groupId } = $props<{ groupId: string }>();
 
-  const audit = useQuery(api.auth.group.listAudit, () => ({ groupId, limit: 20 }));
+  const audit = useQuery(api.auth.group.listAudit, () => ({
+    groupId,
+    paginationOpts: { numItems: 20, cursor: null },
+  }));
+  type AuditEvent = {
+    _id: string;
+    kind: string;
+    actorType: string;
+    occurredAt: number;
+  };
+  const auditPage = $derived(
+    ((audit.data as { page: AuditEvent[] } | undefined)?.page ?? []),
+  );
 
-  function relativeTime(timestamp: number): string {
-    const diff = Date.now() - timestamp;
-    const seconds = Math.floor(diff / 1000);
-    if (seconds < 60) return `${seconds}s ago`;
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
+  function clockTime(timestamp: number): string {
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
+  function fullTime(timestamp: number): string {
+    return new Date(timestamp).toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
   }
 </script>
 
@@ -23,13 +41,20 @@
   {#if audit.isLoading}
     <p class="muted">Loading audit log…</p>
   {:else if audit.data}
-    {#if audit.data.length > 0}
-      <div class="border border-gray-300 bg-white">
-        {#each audit.data as event, i (event._id)}
-          <div class="flex items-center gap-4 px-5 py-3 {i > 0 ? 'border-t border-gray-200' : ''} {i % 2 === 1 ? 'bg-gray-50' : ''}">
-            <span class="font-label text-[0.8125rem] font-semibold text-gray-900 flex-1 break-all">{event.eventType}</span>
-            <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] px-2 py-0.5 border border-slate-400/30 text-slate-600 bg-slate-400/10 shrink-0">{event.actorType}</span>
-            <span class="font-label text-xs text-gray-400 shrink-0 w-16 text-right">{relativeTime(event.occurredAt)}</span>
+    {#if auditPage.length > 0}
+      <div class="panel overflow-hidden">
+        {#each auditPage as event, i (event._id)}
+          <div class="row {i % 2 === 1 ? 'bg-background-primary' : ''}">
+            <span class="font-label text-[0.8125rem] font-semibold text-content-primary flex-1 break-all">{event.kind}</span>
+            <span class="chip shrink-0 uppercase tracking-[0.08em]">{event.actorType}</span>
+            <span
+              class="font-label text-xs text-content-tertiary shrink-0 inline-flex w-[5.75rem] items-center justify-end gap-1"
+              title={fullTime(event.occurredAt)}
+              aria-label={fullTime(event.occurredAt)}
+            >
+              <Clock size="13" aria-hidden="true" />
+              {clockTime(event.occurredAt)}
+            </span>
           </div>
         {/each}
       </div>

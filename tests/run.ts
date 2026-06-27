@@ -25,13 +25,11 @@ async function run(command: string, args: string[]) {
 const buildReadyFile = path.join(process.cwd(), ".tmp", "full-test-build-ready");
 
 try {
-  await run("vp", ["run", "cache:build:samlify"]);
   await run("vp", ["run", "cache:build:convex-codegen"]);
   await run("vp", ["run", "cache:build:auth"]);
   await mkdir(path.dirname(buildReadyFile), { recursive: true });
   await writeFile(buildReadyFile, "ready\n");
   await run("vp", ["run", "cache:test:unit"]);
-  await run("vp", ["run", "cache:test:samlify"]);
   await run("vp", ["run", "cache:test:interop"]);
   await run("vp", ["run", "cache:validate"]);
 } catch (error) {

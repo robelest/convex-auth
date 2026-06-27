@@ -14,6 +14,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [tailwindcss(), sveltekit()],
+    ssr: { noExternal: ["svelte-sonner"] },
     envDir: rootEnvDir,
     envPrefix: ["PUBLIC_", "VITE_", "CONVEX_", "AUTH_", "APP_"],
     resolve: {

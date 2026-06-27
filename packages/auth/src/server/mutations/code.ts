@@ -1,17 +1,19 @@
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError, GenericId, Infer, v } from "convex/values";
 
+import type { Hashed, VerificationCode } from "../../shared/brand";
+import { ErrorCode } from "../../shared/codes";
 import * as Provider from "../crypto";
 import { authDb } from "../db";
 import { LOG_LEVELS, log } from "../log";
 import { sha256 } from "../random";
-import { getAuthSessionId } from "../sessions";
+import { getAuthSessionId } from "../session/lifecycle";
 import { MutationCtx } from "../types";
 import { EmailConfig, PhoneConfig } from "../types";
-import { upsertUserAndAccount } from "../users";
+import { upsertUserAndAccount } from "../user/account";
 import { AUTH_STORE_REF } from "./store/refs";
 
-export const createVerificationCodeArgs = v.object({
+export const vCreateVerificationCodeArgs = v.object({
   accountId: v.optional(v.string()),
   provider: v.string(),
   email: v.optional(v.string()),
@@ -25,7 +27,7 @@ type ReturnType = string;
 
 export async function createVerificationCodeImpl(
   ctx: MutationCtx,
-  args: Infer<typeof createVerificationCodeArgs>,
+  args: Infer<typeof vCreateVerificationCodeArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
 ): Promise<ReturnType> {
@@ -43,14 +45,14 @@ export async function createVerificationCodeImpl(
   const typedExistingAccountId = existingAccountId as GenericId<"Account"> | undefined;
   const existingAccount =
     typedExistingAccountId !== undefined
-      ? ((await db.accounts.getById(typedExistingAccountId)) ??
+      ? ((await db.accounts.get({ id: typedExistingAccountId })) ??
         (() => {
           throw new ConvexError({
-            code: "ACCOUNT_NOT_FOUND",
+            code: ErrorCode.ACCOUNT_NOT_FOUND,
             message: `Expected an account to exist for ID "${typedExistingAccountId}"`,
           });
         })())
-      : await db.accounts.get(providerId, email ?? phone!);
+      : await db.accounts.get({ provider: providerId, providerAccountId: email ?? phone! });
 
   const provider = getProviderOrThrow(providerId, allowExtraProviders) as EmailConfig | PhoneConfig;
   const { accountId } = await upsertUserAndAccount(
@@ -66,7 +68,7 @@ export async function createVerificationCodeImpl(
     ctx,
     accountId,
     providerId,
-    code,
+    code as VerificationCode,
     expirationTime,
     { email, phone },
     config,
@@ -76,7 +78,7 @@ export async function createVerificationCodeImpl(
 
 export const callCreateVerificationCode = async <DataModel extends GenericDataModel>(
   ctx: GenericActionCtx<DataModel>,
-  args: Infer<typeof createVerificationCodeArgs>,
+  args: Infer<typeof vCreateVerificationCodeArgs>,
 ): Promise<ReturnType> => {
   return ctx.runMutation(AUTH_STORE_REF, {
     args: {
@@ -90,21 +92,21 @@ async function generateUniqueVerificationCode(
   ctx: MutationCtx,
   accountId: GenericId<"Account">,
   provider: string,
-  code: string,
+  code: VerificationCode,
   expirationTime: number,
   { email, phone }: { email?: string; phone?: string },
   config: Provider.Config,
 ) {
   const db = authDb(ctx, config);
-  const existingCode = await db.verificationCodes.getByAccountId(accountId);
+  const existingCode = await db.verificationCodes.get({ accountId });
   if (existingCode !== null) {
     await db.verificationCodes.delete(existingCode._id);
   }
-  const hashedCode = await sha256(code);
-  const conflictingCode = await db.verificationCodes.getByCode(hashedCode);
+  const hashedCode = (await sha256(code)) as Hashed<"VerificationCode">;
+  const conflictingCode = await db.verificationCodes.get({ code: hashedCode });
   if (conflictingCode !== null && conflictingCode.accountId !== accountId) {
     throw new ConvexError({
-      code: "VERIFICATION_CODE_COLLISION",
+      code: ErrorCode.VERIFICATION_CODE_COLLISION,
       message: "Generated verification code conflicts with another pending sign-in.",
     });
   }

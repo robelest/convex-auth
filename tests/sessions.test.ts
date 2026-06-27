@@ -1,4 +1,4 @@
-import { api } from "@convex/_generated/api";
+import { api, components } from "@convex/_generated/api";
 import schema from "@convex/schema";
 import { decodeJwt } from "jose";
 import { afterEach, expect, test, vi } from "vite-plus/test";
@@ -146,35 +146,25 @@ test("refresh token reuse detection", async () => {
   const refreshTokenB = await exchangeToken(t, refreshTokenA);
   expect(refreshTokenB).not.toBeNull();
 
-  // Advance time within the reuse window (10 seconds)
   vi.advanceTimersByTime(5000);
 
   const refreshTokenB1 = await exchangeToken(t, refreshTokenA);
   expect(refreshTokenB1).not.toBeNull();
-  // Token A is the parent of active refresh token B, so the same token should
-  // be returned
   expect(refreshTokenB1).toEqual(refreshTokenB);
 
-  // Advance time again to be outside of the reuse window
   vi.advanceTimersByTime(5001);
 
   const refreshTokenB2 = await exchangeToken(t, refreshTokenA);
   expect(refreshTokenB2).not.toBeNull();
-  // Even though we're outside of the reuse window, the same refresh token
-  // should be returned because B1 is the active refresh token
   expect(refreshTokenB2).toEqual(refreshTokenB1);
 
   const refreshTokenC = await exchangeToken(t, refreshTokenB!);
   expect(refreshTokenC).not.toBeNull();
 
   const refreshTokenB3 = await exchangeToken(t, refreshTokenA);
-  // Now that B is no longer the active refresh token, and we're outside of the refresh window
-  // we cannot use token A
   expect(refreshTokenB3).toBeNull();
 
   const refreshTokenD = await exchangeToken(t, refreshTokenC!);
-  // Since C descends from A, and A was used outside of the refresh window, we also
-  // cannot use C
   expect(refreshTokenD).toBeNull();
 });
 
@@ -196,18 +186,12 @@ test("refresh token reuse with racing requests", async () => {
   const refreshTokenB = await exchangeToken(t, refreshTokenA);
   expect(refreshTokenB).not.toBeNull();
 
-  // Advance time within the reuse window (10 seconds)
   vi.advanceTimersByTime(5000);
 
   const refreshTokenB1 = await exchangeToken(t, refreshTokenA);
   expect(refreshTokenB1).not.toBeNull();
-  // Token A is the parent of active refresh token B, so the same token should
-  // be returned
   expect(refreshTokenB1).toEqual(refreshTokenB);
 
-  // Regression test: Token B is still usable even after a second request to exchange
-  // token A is made.
-  // In this case, it's because Token B and Token B1 are the same.
   const refreshTokenC = await exchangeToken(t, refreshTokenB!);
   expect(refreshTokenC).not.toBeNull();
 
@@ -215,7 +199,7 @@ test("refresh token reuse with racing requests", async () => {
   expect(refreshTokenC1).not.toBeNull();
 });
 
-test("refresh token invalidate subtree", async () => {
+test("refresh token theft revokes the entire session", async () => {
   vi.useFakeTimers();
   const t = convexTest(schema);
   const initialTokens = expectSignInSession(
@@ -236,37 +220,34 @@ test("refresh token invalidate subtree", async () => {
   const refreshTokenC = await exchangeToken(t, refreshTokenB!);
   expect(refreshTokenC).not.toBeNull();
 
-  // Advance time within the reuse window (10 seconds)
   vi.advanceTimersByTime(5000);
 
   const refreshTokenB1 = await exchangeToken(t, refreshTokenA);
   expect(refreshTokenB1).not.toBeNull();
-
-  // Still within the reuse window for token A, but token B is no longer the active
-  // refresh token, so we should get a new refresh token
   expect(refreshTokenB1).not.toEqual(refreshTokenB);
 
   const refreshTokenC1 = await exchangeToken(t, refreshTokenB1!);
   expect(refreshTokenC1).not.toBeNull();
 
-  // Advance time again to be outside of the reuse window for token B
   vi.advanceTimersByTime(5001);
 
-  // Token B is outside of its refresh window. Its subtree should be invalidated.
   const refreshResultB = await exchangeToken(t, refreshTokenB!);
   expect(refreshResultB).toBeNull();
 
-  // Token C cannot be used because it descends from B, which is invalid.
-  const refreshResultC = await exchangeToken(t, refreshTokenC!);
-  expect(refreshResultC).toBeNull();
+  expect(await exchangeToken(t, refreshTokenC!)).toBeNull();
+  expect(await exchangeToken(t, refreshTokenC1!)).toBeNull();
+  expect(await exchangeToken(t, refreshTokenB1!)).toBeNull();
 
-  // Token C1 is still valid because it does not descend from B
-  const refreshTokenD1 = await exchangeToken(t, refreshTokenC1!);
-  expect(refreshTokenD1).not.toBeNull();
-
-  // Token B1 is still valid because it does not descend from B, and is still within the reuse window
-  const refreshTokenC2 = await exchangeToken(t, refreshTokenB1!);
-  expect(refreshTokenC2).not.toBeNull();
+  const reuseEvents = await t.run(async (ctx) => {
+    return await ctx.runQuery(components.auth.event.list, {
+      where: { kind: "session.refresh_reuse_detected" },
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+  });
+  expect(reuseEvents.page.length).toBeGreaterThan(0);
+  expect(reuseEvents.page.every((p) => p.kind === "session.refresh_reuse_detected")).toBe(true);
+  expect(reuseEvents.page.every((p) => p.outcome === "failure")).toBe(true);
+  expect(reuseEvents.page.some((p) => p.subjectType === "session")).toBe(true);
 });
 
 test("session expiration", async () => {

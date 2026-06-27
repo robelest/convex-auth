@@ -30,7 +30,6 @@ jobs:
 
       - name: Build package prerequisites
         run: |
-          vp run '@robelest/samlify#build'
           vp run '@robelest/convex-auth#build'
 
       - name: Run package publish checks

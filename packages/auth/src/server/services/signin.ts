@@ -2,7 +2,7 @@ import type { GenericId } from "convex/values";
 
 import { configDefaults } from "../config";
 import type { SignInParams } from "../payloads";
-import { signInImpl } from "../signin";
+import { signInImpl } from "../signin/flow";
 import type {
   AuthDataModel,
   AuthProviderMaterializedConfig,
@@ -24,7 +24,7 @@ type AuthSignInService = {
       generateTokens: boolean;
       allowExtraProviders: boolean;
       authSiteUrl?: string;
-      resolveSsoProtocol?: (
+      resolveConnectionProtocol?: (
         ctx: GenericActionCtxWithAuthConfig<AuthDataModel>,
         connectionId: string,
       ) => Promise<"oidc" | "saml">;

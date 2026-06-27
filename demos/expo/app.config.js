@@ -3,15 +3,15 @@ const { config: loadEnvFile } = require("dotenv");
 
 const rootEnvDir = path.resolve(__dirname, "../..");
 
-for (const candidate of [
-  path.join(rootEnvDir, ".env.local"),
-  path.join(rootEnvDir, ".env"),
-]) {
+for (const candidate of [path.join(rootEnvDir, ".env.local"), path.join(rootEnvDir, ".env")]) {
   loadEnvFile({ path: candidate, override: false });
 }
 
 const convexUrl =
-  process.env.EXPO_PUBLIC_CONVEX_URL ?? process.env.VITE_CONVEX_URL ?? process.env.CONVEX_URL ?? null;
+  process.env.EXPO_PUBLIC_CONVEX_URL ??
+  process.env.VITE_CONVEX_URL ??
+  process.env.CONVEX_URL ??
+  null;
 
 if (convexUrl !== null) {
   process.env.EXPO_PUBLIC_CONVEX_URL = convexUrl;
@@ -31,9 +31,7 @@ module.exports = {
     userInterfaceStyle: "automatic",
     ios: {
       supportsTablet: true,
-      ...(passkeyDomain
-        ? { associatedDomains: [`webcredentials:${passkeyDomain}`] }
-        : {}),
+      ...(passkeyDomain ? { associatedDomains: [`webcredentials:${passkeyDomain}`] } : {}),
     },
     android: {
       adaptiveIcon: {

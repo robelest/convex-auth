@@ -3,14 +3,7 @@ import { useQuery } from "convex/react";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import React from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import Animated, { FadeIn, FadeInDown, FadeOut } from "react-native-reanimated";
 
 import { useDemoAuth } from "./auth";
@@ -26,22 +19,27 @@ function useAuthForm() {
   const [mode, setMode] = React.useState<"signIn" | "signUp">("signIn");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
-  const passkeyClient = (auth as { passkey?: { isSupported(): boolean; signIn(): Promise<{ kind: string }> } }).passkey;
+  const passkeyClient = (
+    auth as { passkey?: { isSupported(): boolean; signIn(): Promise<{ kind: string }> } }
+  ).passkey;
 
-  const submit = React.useCallback(async (provider: string, params?: Record<string, unknown>) => {
-    setIsSubmitting(provider);
-    setError(null);
-    try {
-      const result = await signIn(provider, params);
-      if (result.kind !== "signedIn" && result.kind !== "redirect") {
-        setError("Authentication did not complete.");
+  const submit = React.useCallback(
+    async (provider: string, params?: Record<string, unknown>) => {
+      setIsSubmitting(provider);
+      setError(null);
+      try {
+        const result = await signIn(provider, params);
+        if (result.kind !== "signedIn" && result.kind !== "redirect") {
+          setError("Authentication did not complete.");
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Sign-in failed.");
+      } finally {
+        setIsSubmitting(null);
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Sign-in failed.");
-    } finally {
-      setIsSubmitting(null);
-    }
-  }, [signIn]);
+    },
+    [signIn],
+  );
 
   const handleEmailContinue = React.useCallback(async () => {
     const normalized = email.trim().toLowerCase();
@@ -53,12 +51,15 @@ function useAuthForm() {
     setError(null);
     try {
       try {
-        const ssoInfo = await client.query((api as any).auth.group.signInLookup, { email: normalized });
+        const ssoInfo = await client.query((api as any).auth.group.signInLookup, {
+          email: normalized,
+        });
         if (!ssoInfo) throw new Error("No group connection matched the provided input.");
-        await signIn("sso", { connectionId: ssoInfo.connectionId });
+        await signIn("connection", { connectionId: ssoInfo.connectionId });
         return;
       } catch (ssoError) {
-        if (!(ssoError instanceof Error) || !ssoError.message.includes("No group connection")) throw ssoError;
+        if (!(ssoError instanceof Error) || !ssoError.message.includes("No group connection"))
+          throw ssoError;
       }
       const exists = await client.query(api.groups.emailExists, { email: normalized });
       setMode(exists ? "signIn" : "signUp");
@@ -71,18 +72,27 @@ function useAuthForm() {
   }, [client, email, signIn]);
 
   const handlePasswordSubmit = React.useCallback(async () => {
-    if (!email.trim().includes("@")) { setError("Enter a valid email address."); return; }
-    if (!password.trim()) { setError("Enter your password."); return; }
+    if (!email.trim().includes("@")) {
+      setError("Enter a valid email address.");
+      return;
+    }
+    if (!password.trim()) {
+      setError("Enter your password.");
+      return;
+    }
     await submit("password", { flow: mode, email: email.trim().toLowerCase(), password });
   }, [email, mode, password, submit]);
 
   return {
     isSubmitting,
     error,
-    step, setStep,
+    step,
+    setStep,
     mode,
-    email, setEmail,
-    password, setPassword,
+    email,
+    setEmail,
+    password,
+    setPassword,
     passkeySupported: passkeyClient?.isSupported() ?? false,
     handleSignIn: (provider: string) => submit(provider),
     handleEmailContinue,
@@ -110,7 +120,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (state.isLoading || authProviders === undefined) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.warm[50] }}>
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: colors.warm[50],
+        }}
+      >
         <ActivityIndicator color={colors.accent[500]} />
       </View>
     );
@@ -130,14 +147,37 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         }}
         keyboardShouldPersistTaps="handled"
       >
-        <Animated.View entering={FadeInDown.duration(500).springify()} style={{ maxWidth: 420, alignSelf: "center", gap: spacing.sm }}>
-          <Text selectable style={{ fontSize: 11, fontWeight: "700", letterSpacing: 1.6, textTransform: "uppercase", color: colors.warm[400] }}>
+        <Animated.View
+          entering={FadeInDown.duration(500).springify()}
+          style={{ maxWidth: 420, alignSelf: "center", gap: spacing.sm }}
+        >
+          <Text
+            selectable
+            style={{
+              fontSize: 11,
+              fontWeight: "700",
+              letterSpacing: 1.6,
+              textTransform: "uppercase",
+              color: colors.warm[400],
+            }}
+          >
             convex-auth
           </Text>
-          <Text selectable style={{ fontSize: 38, lineHeight: 42, fontWeight: "700", color: colors.warm[900] }}>
+          <Text
+            selectable
+            style={{ fontSize: 38, lineHeight: 42, fontWeight: "700", color: colors.warm[900] }}
+          >
             Sign in
           </Text>
-          <Text selectable style={{ fontSize: fontSize.xl, lineHeight: 26, color: colors.warm[600], maxWidth: 340 }}>
+          <Text
+            selectable
+            style={{
+              fontSize: fontSize.xl,
+              lineHeight: 26,
+              color: colors.warm[600],
+              maxWidth: 340,
+            }}
+          >
             Pick the fastest way back into the demo.
           </Text>
         </Animated.View>
@@ -159,7 +199,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           }}
         >
           <View style={{ gap: spacing.md }}>
-            <Text style={{ fontSize: fontSize.sm, color: colors.warm[500], fontWeight: "700", textTransform: "uppercase", letterSpacing: 1.2 }}>
+            <Text
+              style={{
+                fontSize: fontSize.sm,
+                color: colors.warm[500],
+                fontWeight: "700",
+                textTransform: "uppercase",
+                letterSpacing: 1.2,
+              }}
+            >
               Email
             </Text>
 
@@ -186,7 +234,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   value={form.email}
                 />
                 <Pressable
-                  onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); void form.handleEmailContinue(); }}
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    void form.handleEmailContinue();
+                  }}
                   disabled={form.isSubmitting !== null}
                   style={({ pressed }) => ({
                     minHeight: 52,
@@ -199,24 +250,38 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   })}
                 >
                   {form.isSubmitting === "email" ? (
-                    <ActivityIndicator color={colors.white} size="small" />
+                    <ActivityIndicator color={colors.content.primary} size="small" />
                   ) : (
-                    <Text style={{ color: colors.white, fontSize: fontSize.lg, fontWeight: "700" }}>
+                    <Text
+                      style={{
+                        color: colors.content.primary,
+                        fontSize: fontSize.lg,
+                        fontWeight: "700",
+                      }}
+                    >
                       Continue with email
                     </Text>
                   )}
                 </Pressable>
               </Animated.View>
             ) : (
-              <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(150)} style={{ gap: spacing.md }}>
-                <View style={{
-                  alignSelf: "flex-start",
-                  borderRadius: radius.full,
-                  paddingHorizontal: spacing.sm + 2,
-                  paddingVertical: spacing.xs + 2,
-                  backgroundColor: colors.warm[100],
-                }}>
-                  <Text style={{ fontSize: fontSize.sm, color: colors.warm[700], fontWeight: "700" }}>
+              <Animated.View
+                entering={FadeIn.duration(200)}
+                exiting={FadeOut.duration(150)}
+                style={{ gap: spacing.md }}
+              >
+                <View
+                  style={{
+                    alignSelf: "flex-start",
+                    borderRadius: radius.full,
+                    paddingHorizontal: spacing.sm + 2,
+                    paddingVertical: spacing.xs + 2,
+                    backgroundColor: colors.warm[100],
+                  }}
+                >
+                  <Text
+                    style={{ fontSize: fontSize.sm, color: colors.warm[700], fontWeight: "700" }}
+                  >
                     {form.mode === "signIn" ? "Password sign in" : "Create account"}
                   </Text>
                 </View>
@@ -261,7 +326,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   value={form.password}
                 />
                 <Pressable
-                  onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); void form.handlePasswordSubmit(); }}
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    void form.handlePasswordSubmit();
+                  }}
                   disabled={form.isSubmitting !== null}
                   style={({ pressed }) => ({
                     minHeight: 52,
@@ -274,15 +342,26 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   })}
                 >
                   {form.isSubmitting === "password" ? (
-                    <ActivityIndicator color={colors.white} size="small" />
+                    <ActivityIndicator color={colors.content.primary} size="small" />
                   ) : (
-                    <Text style={{ color: colors.white, fontSize: fontSize.lg, fontWeight: "700" }}>
+                    <Text
+                      style={{
+                        color: colors.content.primary,
+                        fontSize: fontSize.lg,
+                        fontWeight: "700",
+                      }}
+                    >
                       {form.mode === "signIn" ? "Sign in" : "Create account"}
                     </Text>
                   )}
                 </Pressable>
-                <Pressable onPress={() => form.setStep("email")} style={{ alignItems: "center", minHeight: 28 }}>
-                  <Text style={{ color: colors.warm[600], fontSize: fontSize.sm, fontWeight: "600" }}>
+                <Pressable
+                  onPress={() => form.setStep("email")}
+                  style={{ alignItems: "center", minHeight: 28 }}
+                >
+                  <Text
+                    style={{ color: colors.warm[600], fontSize: fontSize.sm, fontWeight: "600" }}
+                  >
                     Use a different email
                   </Text>
                 </Pressable>
@@ -292,7 +371,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm + 2 }}>
             <View style={{ flex: 1, height: 1, backgroundColor: colors.warm[200] }} />
-            <Text style={{ fontSize: fontSize.xs, color: colors.warm[400], fontWeight: "700", textTransform: "uppercase", letterSpacing: 1 }}>
+            <Text
+              style={{
+                fontSize: fontSize.xs,
+                color: colors.warm[400],
+                fontWeight: "700",
+                textTransform: "uppercase",
+                letterSpacing: 1,
+              }}
+            >
               or
             </Text>
             <View style={{ flex: 1, height: 1, backgroundColor: colors.warm[200] }} />
@@ -301,7 +388,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           <View style={{ gap: spacing.sm + 2 }}>
             {authProviders.google && (
               <Pressable
-                onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); void form.handleSignIn("google"); }}
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  void form.handleSignIn("google");
+                }}
                 disabled={form.isSubmitting !== null}
                 style={({ pressed }) => ({
                   flexDirection: "row",
@@ -320,8 +410,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   <ActivityIndicator color={colors.warm[500]} size="small" />
                 ) : (
                   <>
-                    <Image source="sf:globe" style={{ width: 18, height: 18 }} tintColor={colors.warm[700]} />
-                    <Text style={{ color: colors.warm[900], fontSize: fontSize.lg, fontWeight: "600" }}>
+                    <Image
+                      source="sf:globe"
+                      style={{ width: 18, height: 18 }}
+                      tintColor={colors.warm[700]}
+                    />
+                    <Text
+                      style={{ color: colors.warm[900], fontSize: fontSize.lg, fontWeight: "600" }}
+                    >
                       Continue with Google
                     </Text>
                   </>
@@ -331,7 +427,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
             {form.passkeySupported && (
               <Pressable
-                onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); void form.handlePasskey(); }}
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  void form.handlePasskey();
+                }}
                 disabled={form.isSubmitting !== null}
                 style={({ pressed }) => ({
                   flexDirection: "row",
@@ -350,8 +449,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   <ActivityIndicator color={colors.warm[500]} size="small" />
                 ) : (
                   <>
-                    <Image source="sf:person.badge.key" style={{ width: 18, height: 18 }} tintColor={colors.warm[700]} />
-                    <Text style={{ color: colors.warm[900], fontSize: fontSize.lg, fontWeight: "600" }}>
+                    <Image
+                      source="sf:person.badge.key"
+                      style={{ width: 18, height: 18 }}
+                      tintColor={colors.warm[700]}
+                    />
+                    <Text
+                      style={{ color: colors.warm[900], fontSize: fontSize.lg, fontWeight: "600" }}
+                    >
                       Continue with Passkey
                     </Text>
                   </>
@@ -360,7 +465,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             )}
 
             <Pressable
-              onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); void form.handleSignIn("anonymous"); }}
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                void form.handleSignIn("anonymous");
+              }}
               disabled={form.isSubmitting !== null}
               style={({ pressed }) => ({
                 alignItems: "center",
@@ -382,8 +490,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           </View>
 
           {form.error && (
-            <Animated.View entering={FadeIn.duration(200)} style={{ flexDirection: "row", gap: spacing.xs, alignItems: "center" }}>
-              <Image source="sf:exclamationmark.triangle.fill" style={{ width: 14, height: 14 }} tintColor={colors.urgent} />
+            <Animated.View
+              entering={FadeIn.duration(200)}
+              style={{ flexDirection: "row", gap: spacing.xs, alignItems: "center" }}
+            >
+              <Image
+                source="sf:exclamationmark.triangle.fill"
+                style={{ width: 14, height: 14 }}
+                tintColor={colors.urgent}
+              />
               <Text selectable style={{ fontSize: fontSize.sm, color: colors.urgent, flex: 1 }}>
                 {form.error}
               </Text>

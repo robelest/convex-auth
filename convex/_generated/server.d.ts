@@ -22,6 +22,38 @@ import {
 import type { DataModel } from "./dataModel.js";
 
 /**
+ * Typesafe environment variables declared in `convex.config.ts`.
+ */
+type Env = {
+  readonly ANDROID_APP_LINKS: string | undefined;
+  readonly APP_URL: string | undefined;
+  readonly AUTH_EMAIL: string | undefined;
+  readonly AUTH_GOOGLE_ID: string | undefined;
+  readonly AUTH_GOOGLE_SECRET: string | undefined;
+  readonly AUTH_LOG_LEVEL: "DEBUG" | "INFO" | "WARN" | "ERROR" | undefined;
+  readonly AUTH_LOG_SECRETS: "true" | "false" | undefined;
+  readonly AUTH_PASSWORD_EMAIL_VERIFICATION: "true" | "false" | undefined;
+  readonly AUTH_SECRET_ENCRYPTION_KEY: string | undefined;
+  readonly AUTH_SESSION_INACTIVE_DURATION_MS: string | undefined;
+  readonly AUTH_SESSION_TOTAL_DURATION_MS: string | undefined;
+  readonly CHANGE_PASSWORD_URL: string | undefined;
+  readonly CONVEX_AUTH_HTTP_PREFIX: string | undefined;
+  readonly CONVEX_AUTH_SITE_URL: string | undefined;
+  readonly CONVEX_SITE_URL: string | undefined;
+  readonly CUSTOM_AUTH_SITE_URL: string | undefined;
+  readonly IOS_APPLINK_PATHS: string | undefined;
+  readonly IOS_APP_IDS: string | undefined;
+  readonly JWKS: string | undefined;
+  readonly JWT_PRIVATE_KEY: string | undefined;
+  readonly RESEND_API_KEY: string | undefined;
+  readonly SECONDARY_URL: string | undefined;
+  readonly SECURITY_CONTACT: string | undefined;
+  readonly SECURITY_TXT_EXPIRES_DAYS: string | undefined;
+  readonly SITE_URL: string | undefined;
+  readonly WEBAUTHN_ALT_ORIGINS: string | undefined;
+};
+
+/**
  * Define a query in this Convex app's public API.
  *
  * This function will be allowed to read your Convex database and will be accessible from the client.
@@ -94,6 +126,11 @@ export declare const internalAction: ActionBuilder<DataModel, "internal">;
  * @returns The wrapped function. Import this function from `convex/http.js` and route it to hook it up.
  */
 export declare const httpAction: HttpActionBuilder;
+
+/**
+ * Typesafe environment variables declared in `convex.config.ts`.
+ */
+export declare const env: Env;
 
 /**
  * A set of services for use within Convex query functions.

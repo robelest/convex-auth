@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// fallow-ignore-file unused-file
 
 /**
  * Generates src/server/version.ts from package.json version.

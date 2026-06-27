@@ -1,23 +1,16 @@
 import { v } from "convex/values";
 
-const payloadPrimitiveValidator = v.union(v.string(), v.number(), v.boolean(), v.null());
+const vPayloadPrimitive = v.union(v.string(), v.number(), v.boolean(), v.null());
 
-const payloadArrayValidator = v.array(payloadPrimitiveValidator);
+const vPayloadArray = v.array(vPayloadPrimitive);
 
-const payloadNestedRecordValidator = v.record(
-  v.string(),
-  v.union(payloadPrimitiveValidator, payloadArrayValidator),
-);
+const vPayloadNestedRecord = v.record(v.string(), v.union(vPayloadPrimitive, vPayloadArray));
 
-const payloadValueValidator = v.union(
-  payloadPrimitiveValidator,
-  payloadArrayValidator,
-  payloadNestedRecordValidator,
-);
+const vPayloadValue = v.union(vPayloadPrimitive, vPayloadArray, vPayloadNestedRecord);
 
-export const payloadRecordValidator = v.record(v.string(), payloadValueValidator);
+export const vPayloadRecord = v.record(v.string(), vPayloadValue);
 
-const accountIdentityValidator = v.object({
+const vAccountIdentity = v.object({
   type: v.optional(v.string()),
   provider: v.optional(v.string()),
   providerAccountId: v.optional(v.string()),
@@ -29,8 +22,8 @@ const accountIdentityValidator = v.object({
   entityId: v.optional(v.string()),
 });
 
-export const accountExtendValidator = v.object({
-  identity: v.optional(accountIdentityValidator),
+export const vAccountExtend = v.object({
+  identity: v.optional(vAccountIdentity),
   saml: v.optional(
     v.object({
       attributes: v.optional(v.record(v.string(), v.union(v.string(), v.array(v.string())))),

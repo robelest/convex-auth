@@ -1,36 +1,40 @@
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError } from "convex/values";
-import { Infer, v } from "convex/values";
+
+import { ErrorCode } from "../../shared/codes";
+import { GenericId, Infer, v } from "convex/values";
 
 import { getGroup, getGroupConnection } from "../contract";
 import * as Provider from "../crypto";
 import { authDb } from "../db";
 import { log } from "../log";
 import type { AuthAccountExtend, AuthProfile } from "../payloads";
-import { accountExtendValidator, payloadRecordValidator } from "../payloads";
+import { vAccountExtend, vPayloadRecord } from "../payloads";
 import { vProfileEmail } from "../../component/model";
+import { single } from "../component/api";
 import { generateRandomString, sha256 } from "../random";
-import { createSyntheticOAuthMaterializedConfig } from "../sso/oidc";
-import { normalizeGroupConnectionPolicy, resolveProvisionedRoleIds } from "../sso/policy";
+import { createSyntheticOAuthMaterializedConfig } from "../connection/oidc";
+import { normalizeGroupConnectionPolicy, resolveProvisionedRoleIds } from "../connection/policy";
 import {
   GROUP_OIDC_PROVIDER_PREFIX,
   GROUP_SAML_PROVIDER_PREFIX,
   isGroupProviderId,
-} from "../sso/shared";
+} from "../connection/shared";
 import { MutationCtx } from "../types";
 import type { AuthProviderMaterializedConfig } from "../types";
-import { upsertUserAndAccount } from "../users";
+import { upsertUserAndAccount } from "../user/account";
 import { AUTH_STORE_REF } from "./store/refs";
 
-const OAUTH_SIGN_IN_EXPIRATION_MS = 1000 * 60 * 2; // 2 minutes
+const OAUTH_SIGN_IN_EXPIRATION_MS = 1000 * 60 * 2;
 
-export const userOAuthArgs = v.object({
+/** Argument validator for the OAuth/Connection user provisioning mutation. */
+export const vUserOAuthArgs = v.object({
   provider: v.string(),
   providerAccountId: v.string(),
-  profile: payloadRecordValidator,
+  profile: vPayloadRecord,
   emails: v.optional(v.array(vProfileEmail)),
   signature: v.string(),
-  accountExtend: v.optional(accountExtendValidator),
+  accountExtend: v.optional(vAccountExtend),
 });
 
 function normalizeAccountExtend(
@@ -62,6 +66,16 @@ function normalizeAccountExtend(
   };
 }
 
+/**
+ * Read a free-form string-array claim (e.g. `groups`, `roles`) from an IdP
+ * profile. The value arrives as untyped wire data; the array branch is
+ * re-narrowed to `string[]` at this single boundary.
+ */
+function readStringArrayClaim(profile: AuthProfile, key: string): string[] | undefined {
+  const value = profile[key];
+  return Array.isArray(value) ? (value as string[]) : undefined;
+}
+
 async function jitProvisionMembership(
   ctx: MutationCtx,
   config: Provider.Config,
@@ -74,19 +88,17 @@ async function jitProvisionMembership(
   const groupId = connection?.groupId;
   if (!groupId) return;
 
+  const definedRoleIds = new Set(
+    Object.keys((config.permissions?.roles ?? {}) as Record<string, unknown>),
+  );
   const provisionedRoleIds = resolveProvisionedRoleIds({
     policy: connectionPolicy,
-    groups: Array.isArray((profile as Record<string, unknown>).groups)
-      ? ((profile as Record<string, unknown>).groups as string[])
-      : undefined,
-    roles: Array.isArray((profile as Record<string, unknown>).roles)
-      ? ((profile as Record<string, unknown>).roles as string[])
-      : undefined,
-  });
+    groups: readStringArrayClaim(profile, "groups"),
+    roles: readStringArrayClaim(profile, "roles"),
+  }).filter((roleId) => definedRoleIds.has(roleId));
 
-  const existingMembership = await ctx.runQuery(
-    config.component.group.member.get,
-    { userId, groupId },
+  const existingMembership = single(
+    await ctx.runQuery(config.component.group.member.get, { userId, groupId }),
   );
   if (existingMembership === null) {
     await ctx.runMutation(config.component.group.member.create, {
@@ -97,17 +109,26 @@ async function jitProvisionMembership(
     });
   } else if (provisionedRoleIds.length > 0) {
     await ctx.runMutation(config.component.group.member.update, {
-      memberId: existingMembership._id,
-      data: { roleIds: provisionedRoleIds },
+      id: existingMembership._id,
+      patch: { roleIds: provisionedRoleIds },
     });
   }
 }
 
 type OAuthReturnType = string;
 
+/**
+ * Provision a user and account from a verified OAuth/Connection profile.
+ *
+ * Resolves any group connection (OIDC/SAML) and its policy, runs the
+ * profile/provision hooks, upserts the user and account, performs JIT
+ * membership provisioning, and mints a short-lived single-use sign-in code.
+ *
+ * @returns The numeric sign-in code the action side exchanges for tokens.
+ */
 export async function userOAuthImpl(
   ctx: MutationCtx,
-  args: Infer<typeof userOAuthArgs>,
+  args: Infer<typeof vUserOAuthArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
 ): Promise<OAuthReturnType> {
@@ -126,10 +147,10 @@ export async function userOAuthImpl(
       ? "saml"
       : null;
 
-  const existingAccount = await db.accounts.get(provider, providerAccountId);
+  const existingAccount = await db.accounts.get({ provider, providerAccountId });
   const connection =
     connectionId !== null
-      ? await getGroupConnection(ctx, config.component.sso, connectionId)
+      ? await getGroupConnection(ctx, config.component.connection, connectionId)
       : null;
   const group =
     connection !== null ? await getGroup(ctx, config.component.group, connection.groupId) : null;
@@ -139,41 +160,49 @@ export async function userOAuthImpl(
     connectionId !== null &&
     existingAccount === null &&
     connectionPolicy?.provisioning.scimReuse.user === "externalId"
-      ? await ctx.runQuery(config.component.sso.connection.scim.identity.get, {
-          connectionId,
-          resourceType: "user",
-          externalId: providerAccountId,
-        })
+      ? single(
+          await ctx.runQuery(config.component.connection.scim.identity.get, {
+            connectionId,
+            resourceType: "user",
+            externalId: providerAccountId,
+          }),
+        )
       : null;
+
+  /**
+   * SCIM identity `userId` crosses the component boundary as `string`; re-brand
+   * to the server's `Id<"User">` here — the one legitimate cast at the boundary.
+   */
+  const existingScimUserId = existingScimIdentity?.userId as GenericId<"User"> | undefined;
 
   let verifier;
   try {
-    verifier = await db.verifiers.getBySignature(signature);
+    verifier = await db.verifiers.get({ signature });
   } catch (err) {
     console.error("[auth] OAuth verifier lookup failed", { err });
     throw new ConvexError({
-      code: "OAUTH_INVALID_STATE",
+      code: ErrorCode.OAUTH_INVALID_STATE,
       message: "Invalid OAuth state. Please try signing in again.",
     });
   }
   if (verifier === null) {
     throw new ConvexError({
-      code: "OAUTH_INVALID_STATE",
+      code: ErrorCode.OAUTH_INVALID_STATE,
       message: "Invalid OAuth state. Please try signing in again.",
     });
   }
 
   const profileResolved =
-    (config.sso?.hooks?.profileResolved
-      ? await config.sso.hooks.profileResolved({
+    (config.connection?.hooks?.profileResolved
+      ? await config.connection.hooks.profileResolved({
           protocol: connectionProtocol ?? "oidc",
           connectionId: connectionId ?? undefined,
           profile: typedProfile,
         })
       : undefined) ?? typedProfile;
   const profileForProvisioning =
-    (config.sso?.hooks?.beforeProvision
-      ? await config.sso.hooks.beforeProvision({
+    (config.connection?.hooks?.beforeProvision
+      ? await config.connection.hooks.beforeProvision({
           protocol: connectionProtocol ?? "oidc",
           connectionId: connectionId ?? undefined,
           profile: profileResolved as Record<string, unknown>,
@@ -203,22 +232,22 @@ export async function userOAuthImpl(
     config,
     connectionPolicy?.provisioning.user
       ? {
-          existingUserId: existingScimIdentity?.userId,
+          existingUserId: existingScimUserId,
           provisioningUser: connectionPolicy.provisioning.user,
           source: "login",
         }
-      : existingScimIdentity?.userId
-        ? { existingUserId: existingScimIdentity.userId }
+      : existingScimUserId
+        ? { existingUserId: existingScimUserId }
         : undefined,
   );
 
   if (connectionId !== null) {
-    const account = await db.accounts.getById(accountId);
+    const account = await db.accounts.get({ id: accountId });
     const userId = account?.userId;
     if (userId) {
       await jitProvisionMembership(ctx, config, connectionPolicy, connection, userId, typedProfile);
-      if (config.sso?.hooks?.afterProvision) {
-        await config.sso.hooks.afterProvision({
+      if (config.connection?.hooks?.afterProvision) {
+        await config.connection.hooks.afterProvision({
           protocol: connectionProtocol ?? "oidc",
           connectionId,
           profile: profileForProvisioning as Record<string, unknown>,
@@ -230,7 +259,7 @@ export async function userOAuthImpl(
 
   const code = generateRandomString(8, "0123456789");
   await db.verifiers.delete(verifier._id);
-  const existingVerificationCode = await db.verificationCodes.getByAccountId(accountId);
+  const existingVerificationCode = await db.verificationCodes.get({ accountId });
   if (existingVerificationCode !== null) {
     await db.verificationCodes.delete(existingVerificationCode._id);
   }
@@ -244,9 +273,10 @@ export async function userOAuthImpl(
   return code;
 }
 
+/** Action-side wrapper that runs {@link userOAuthImpl} through the auth store. */
 export const callUserOAuth = async <DataModel extends GenericDataModel>(
   ctx: GenericActionCtx<DataModel>,
-  args: Infer<typeof userOAuthArgs>,
+  args: Infer<typeof vUserOAuthArgs>,
 ): Promise<OAuthReturnType> => {
   return ctx.runMutation(AUTH_STORE_REF, {
     args: {

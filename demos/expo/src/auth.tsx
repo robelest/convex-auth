@@ -1,8 +1,5 @@
 import { api } from "$convex/_generated/api";
-import {
-  client as createAuthClient,
-  type AuthClient,
-} from "@robelest/convex-auth/expo";
+import { client as createAuthClient, type AuthClient } from "@robelest/convex-auth/expo";
 import type { AuthState, SignInResult } from "@robelest/convex-auth/client";
 import React from "react";
 
@@ -21,7 +18,7 @@ const DemoAuthContext = React.createContext<DemoAuthContextValue | null>(null);
 
 let authSingleton: DemoAuthClient | null = null;
 
-export function getAuthClient(): DemoAuthClient {
+function getAuthClient(): DemoAuthClient {
   authSingleton ??= createAuthClient({
     convex: getClient(),
     api: api.auth,

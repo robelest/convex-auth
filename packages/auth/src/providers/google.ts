@@ -5,8 +5,8 @@
  * import { google } from "@robelest/convex-auth/providers/google";
  *
  * google({
- *   clientId: process.env.AUTH_GOOGLE_ID!,
- *   clientSecret: process.env.AUTH_GOOGLE_SECRET!,
+ *   clientId: env.AUTH_GOOGLE_ID!,
+ *   clientSecret: env.AUTH_GOOGLE_SECRET!,
  * })
  * ```
  *
@@ -43,7 +43,7 @@ export interface GoogleConfig {
  * default.
  *
  * @param config - Google OAuth client settings.
- * @returns A configured Google OAuth provider for `createAuth`.
+ * @returns A configured Google OAuth provider for `defineAuth`.
  * @throws {Error} When no callback URL can be derived and `redirectUri` is omitted.
  *
  * @example
@@ -51,8 +51,8 @@ export interface GoogleConfig {
  * import { google } from "@robelest/convex-auth/providers/google";
  *
  * google({
- *   clientId: process.env.AUTH_GOOGLE_ID!,
- *   clientSecret: process.env.AUTH_GOOGLE_SECRET!,
+ *   clientId: env.AUTH_GOOGLE_ID!,
+ *   clientSecret: env.AUTH_GOOGLE_SECRET!,
  * })
  * ```
  */

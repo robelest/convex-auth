@@ -243,14 +243,13 @@ export function createPasskeyClient(deps: ClientAdapterDeps): PasskeyClient {
       const getAbortTimer = opts?.autofill
         ? undefined
         : setTimeout(
-            () => getAbort.abort(new DOMException("Passkey authentication timed out", "TimeoutError")),
+            () =>
+              getAbort.abort(new DOMException("Passkey authentication timed out", "TimeoutError")),
             options.timeout ?? 120_000,
           );
       let credential: PublicKeyCredential | null;
       try {
-        credential = (await navigator.credentials.get(
-          getOptions,
-        )) as PublicKeyCredential | null;
+        credential = (await navigator.credentials.get(getOptions)) as PublicKeyCredential | null;
       } finally {
         if (getAbortTimer !== undefined) clearTimeout(getAbortTimer);
       }

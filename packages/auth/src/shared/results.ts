@@ -2,23 +2,24 @@
  * Shared auth result payload types used across client and server internals.
  *
  * @module
- * @internal
  */
 
-/** @internal */
+import type { AccessToken, RefreshToken } from "./brand";
+
+/** Access/refresh token pair issued on a successful sign-in. */
 export type AuthTokens = {
-  token: string;
-  refreshToken: string;
+  token: AccessToken;
+  refreshToken: RefreshToken;
 };
 
-/** @internal */
+/** Data needed to provision a TOTP authenticator (otpauth URI + shared secret). */
 export type TotpSetupPayload = {
   uri: string;
   secret: string;
   totpId: string;
 };
 
-/** @internal */
+/** Device authorization grant details returned to a polling device client. */
 export type DeviceCodePayload = {
   deviceCode: string;
   userCode: string;
@@ -28,51 +29,51 @@ export type DeviceCodePayload = {
   interval: number;
 };
 
-/** @internal */
+/** Terminal sign-in result: the user is authenticated and a session exists. */
 export type SignInSessionResult<TSession> = {
   kind: "signedIn";
   session: TSession;
 };
 
-/** @internal */
+/** Sign-in result requiring the client to follow an OAuth redirect. */
 export type SignInRedirectResult<TRedirect = string> = {
   kind: "redirect";
   redirect: TRedirect;
   verifier: string;
 };
 
-/** @internal */
+/** Sign-in result indicating a verification flow was started (e.g. OTP sent). */
 export type SignInStartResult = {
   kind: "started";
 };
 
-/** @internal */
+/** Sign-in result carrying WebAuthn options for a passkey ceremony. */
 export type SignInPasskeyOptionsResult = {
   kind: "passkeyOptions";
   options: Record<string, unknown>;
   verifier: string;
 };
 
-/** @internal */
+/** Sign-in result requesting a TOTP code to complete two-factor sign-in. */
 export type SignInTotpChallengeResult = {
   kind: "totpRequired";
   verifier: string;
 };
 
-/** @internal */
+/** Sign-in result requesting TOTP enrollment before sign-in can complete. */
 export type SignInTotpSetupResult<TTotpSetup = TotpSetupPayload> = {
   kind: "totpSetup";
   totpSetup: TTotpSetup;
   verifier: string;
 };
 
-/** @internal */
+/** Sign-in result returning a device code for the device authorization flow. */
 export type SignInDeviceCodeResult<TDeviceCode = DeviceCodePayload> = {
   kind: "deviceCode";
   deviceCode: TDeviceCode;
 };
 
-/** @internal */
+/** Discriminated union of every possible sign-in flow outcome, keyed by `kind`. */
 export type SignInFlowResult<TSession, TRedirect = string> =
   | SignInSessionResult<TSession>
   | SignInRedirectResult<TRedirect>

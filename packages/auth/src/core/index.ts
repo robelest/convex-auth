@@ -27,17 +27,17 @@ import {
   callCreateAccountFromCredentials,
   callRetrieveAccountWithCredentials,
   callModifyAccount,
-} from "../server/mutations/index";
-import type { ConvexAuthConfig, AuthAuthorizationConfig } from "../server/types";
+} from "../server/mutations/calls";
+import { INVITE_TOKEN_ALPHABET } from "../server/random";
+import type { ConvexAuthConfig, PermissionsConfig } from "../server/types";
 
 export type { AuthContext, OptionalAuthContext, UserDoc, AuthContextConfig };
-
 
 /**
  * Create a lightweight auth context object.
  *
  * Returns the same `user`, `session`, `member`, `group`, `account`,
- * `invite`, `key`, `context`, and `ctx` APIs as `createAuth`, but
+ * `invite`, `key`, `context`, and `ctx` APIs as `defineAuth`, but
  * without `signIn`, `signOut`, `store`, `http`, or provider logic.
  *
  * Use this in query/mutation files that only need to resolve the
@@ -64,7 +64,7 @@ export type { AuthContext, OptionalAuthContext, UserDoc, AuthContextConfig };
 export function createAuthContext(
   component: ConvexAuthConfig["component"],
   config?: Omit<AuthConfig, "providers"> & {
-    authorization?: AuthAuthorizationConfig;
+    permissions?: PermissionsConfig;
   },
 ) {
   const fullConfig = configDefaults({
@@ -73,7 +73,6 @@ export function createAuthContext(
     ...config,
   });
 
-  const INVITE_TOKEN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   const INVITE_TOKEN_LENGTH = 48;
 
   const enrichCtx = <T>(ctx: T) => ctx;
@@ -87,7 +86,6 @@ export function createAuthContext(
     getEnrichCtx: () => enrichCtx,
     inviteTokenAlphabet: INVITE_TOKEN_ALPHABET,
     inviteTokenLength: INVITE_TOKEN_LENGTH,
-    // signInForProvider intentionally omitted — core doesn't support provider sign-in
   });
 
   const authLike: AuthLike = {

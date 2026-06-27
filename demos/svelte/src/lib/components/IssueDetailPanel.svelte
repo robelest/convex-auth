@@ -2,8 +2,10 @@
   import type { ConvexClient } from "convex/browser";
   import { api } from "$convex/_generated/api.js";
   import { useQuery } from "convex-svelte";
-  import X from "phosphor-svelte/lib/X";
-  import Trash from "phosphor-svelte/lib/Trash";
+  import { toast } from "svelte-sonner";
+  import { errorText } from "$lib/errors";
+  import Pencil1 from "svelte-radix/Pencil1.svelte";
+  import Trash from "svelte-radix/Trash.svelte";
 
   let {
     issue,
@@ -19,7 +21,6 @@
       identifier: string;
       number: number;
       title: string;
-      description: string;
       status: string;
       priority: string;
       labels: string[];
@@ -70,8 +71,6 @@
   let isSubmittingComment = $state(false);
   let isEditing = $state(false);
   let editTitle = $state("");
-  let editDescription = $state("");
-  let errorMessage = $state<string | null>(null);
 
   type IssueStatus = "backlog" | "todo" | "in_progress" | "done" | "cancelled";
   type IssuePriority = "urgent" | "high" | "medium" | "low" | "none";
@@ -95,69 +94,69 @@
   function startEditing() {
     if (!canEdit) return;
     editTitle = issue.title;
-    editDescription = issue.description;
     isEditing = true;
   }
 
+  function focusOnMount(node: HTMLInputElement) {
+    node.focus();
+    node.select();
+  }
+
   async function saveEdit() {
-    errorMessage = null;
+    const next = editTitle.trim();
+    isEditing = false;
+    if (next.length === 0 || next === issue.title) return;
     try {
       await client.mutation(api.issues.update, {
 			issueId: issue._id,
-        title: editTitle,
-        description: editDescription,
+        title: next,
       });
-      isEditing = false;
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Failed to save";
+      toast.error(errorText(e));
     }
   }
 
   async function handleStatusChange(newStatus: string) {
     if (!canMove) return;
-    errorMessage = null;
     try {
       await client.mutation(api.issues.update, {
 			issueId: issue._id,
         status: newStatus,
       });
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Failed to update status";
+      toast.error(errorText(e));
     }
   }
 
   async function handlePriorityChange(newPriority: string) {
     if (!canEdit) return;
-    errorMessage = null;
     try {
       await client.mutation(api.issues.update, {
 			issueId: issue._id,
         priority: newPriority,
       });
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Failed to update priority";
+      toast.error(errorText(e));
     }
   }
 
   async function handleAssigneeChange(newAssigneeUserId: string) {
-    errorMessage = null;
     try {
       const result = await client.mutation(api.issues.update, {
 			issueId: issue._id,
         assigneeUserId: newAssigneeUserId || null,
       });
       if ("ok" in result && !result.ok && "message" in result) {
-        errorMessage = typeof result.message === "string" ? result.message : "Failed to assign";
+        toast.error(typeof result.message === "string" ? result.message : "Failed to assign");
       }
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Failed to assign";
+      toast.error(errorText(e));
     }
   }
 
   async function handleAddComment() {
     if (newComment.trim().length === 0 || !canComment) return;
     isSubmittingComment = true;
-    errorMessage = null;
     try {
       await client.mutation(api.comments.create, {
 			issueId: issue._id,
@@ -165,20 +164,19 @@
       });
       newComment = "";
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Failed to add comment";
+      toast.error(errorText(e));
     } finally {
       isSubmittingComment = false;
     }
   }
 
   async function handleDeleteComment(commentId: string) {
-    errorMessage = null;
     try {
       await client.mutation(api.comments.remove, {
         commentId,
       });
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Failed to delete comment";
+      toast.error(errorText(e));
     }
   }
 
@@ -189,66 +187,65 @@
       confirmingDelete = true;
       return;
     }
-    errorMessage = null;
     try {
       await client.mutation(api.issues.remove, {
         issueId: issue._id,
       });
       onclose();
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Failed to delete issue";
+      toast.error(errorText(e));
     } finally {
       confirmingDelete = false;
     }
   }
 
-  function formatTime(timestamp: number) {
-    const d = new Date(timestamp);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  function clockTime(timestamp: number) {
+    return new Date(timestamp).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   }
 </script>
 
 <div class="p-4 flex flex-col gap-3">
   <!-- Viewer banner -->
   {#if isViewer}
-    <div class="px-3 py-2 bg-gray-200 border border-gray-300 font-label text-[0.75rem] text-gray-600">
+    <div class="callout callout--hint font-label text-[0.75rem]">
       You're a <strong>Viewer</strong> in this organization — this issue is read-only. Ask an admin to upgrade your role.
     </div>
   {/if}
 
   <!-- Title -->
-  <div class="flex items-start justify-between gap-2">
+  <div class="flex items-start gap-2">
     <div class="flex-1">
       {#if isEditing}
-        <input bind:value={editTitle} class="input w-full" type="text" maxlength="120" />
-        <textarea bind:value={editDescription} class="input w-full min-h-16 mt-1.5" placeholder="Description..." rows="3"></textarea>
-        <div class="flex gap-1.5 mt-1.5">
-          <button class="button button--accent button--compact" onclick={saveEdit}>Save</button>
-          <button class="button button--secondary button--compact" onclick={() => { isEditing = false; }}>Cancel</button>
-        </div>
-      {:else if canEdit}
-        <button
-          class="m-0 border-0 bg-transparent p-0 text-left font-sans text-base font-semibold leading-tight text-gray-900 cursor-pointer hover:text-accent-600"
-          onclick={startEditing}
-          type="button"
-        >{issue.title}</button>
-        {#if issue.description}
-          <p class="m-0 mt-1 text-[0.8125rem] text-gray-700 leading-relaxed">{issue.description}</p>
-        {/if}
+        <input
+          bind:value={editTitle}
+          use:focusOnMount
+          class="input w-full text-base font-semibold"
+          type="text"
+          maxlength="120"
+          onblur={saveEdit}
+          onkeydown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+            else if (e.key === "Escape") { editTitle = issue.title; isEditing = false; }
+          }}
+        />
       {:else}
-        <h3 class="m-0 font-sans text-base font-semibold text-gray-900 leading-tight">{issue.title}</h3>
-        {#if issue.description}
-          <p class="m-0 mt-1 text-[0.8125rem] text-gray-700 leading-relaxed">{issue.description}</p>
-        {/if}
+        <div class="flex items-center gap-2">
+          <h3 class="m-0 font-sans text-base font-semibold text-content-primary leading-tight">{issue.title}</h3>
+          {#if canEdit}
+            <button class="icon-button h-6 w-6 shrink-0" onclick={startEditing} aria-label="Edit issue title" type="button"><Pencil1 size="14" /></button>
+          {/if}
+        </div>
       {/if}
     </div>
-    <button class="bg-transparent border-0 p-0 cursor-pointer flex items-center text-gray-400 hover:text-gray-600" onclick={onclose}><X size={16} /></button>
   </div>
 
   <!-- Fields: Status, Priority, Assignee -->
   <div class="grid grid-cols-3 gap-3 max-md:grid-cols-1">
     <div class="flex flex-col gap-1">
-      <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-gray-400">Status</span>
+      <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-content-tertiary">Status</span>
       {#if canMove}
         <select
           class="select select--compact"
@@ -260,12 +257,12 @@
           {/each}
         </select>
       {:else}
-        <span class="font-label text-[0.75rem] text-gray-700">{statusOptions.find((o) => o.value === issue.status)?.label}</span>
+        <span class="font-label text-[0.75rem] text-content-secondary">{statusOptions.find((o) => o.value === issue.status)?.label}</span>
       {/if}
     </div>
 
     <div class="flex flex-col gap-1">
-      <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-gray-400">Priority</span>
+      <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-content-tertiary">Priority</span>
       {#if canEdit}
         <select
           class="select select--compact"
@@ -277,12 +274,12 @@
           {/each}
         </select>
       {:else}
-        <span class="font-label text-[0.75rem] text-gray-700">{priorityOptions.find((o) => o.value === issue.priority)?.label ?? "None"}</span>
+        <span class="font-label text-[0.75rem] text-content-secondary">{priorityOptions.find((o) => o.value === issue.priority)?.label ?? "None"}</span>
       {/if}
     </div>
 
     <div class="flex flex-col gap-1">
-      <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-gray-400">Assignee</span>
+      <span class="font-label text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-content-tertiary">Assignee</span>
       {#if canAssign}
         <select
           class="select select--compact"
@@ -307,7 +304,7 @@
           {/if}
         </select>
       {:else}
-        <span class="font-label text-[0.75rem] text-gray-700">{issue.assigneeName ?? "Unassigned"}</span>
+        <span class="font-label text-[0.75rem] text-content-secondary">{issue.assigneeName ?? "Unassigned"}</span>
       {/if}
     </div>
   </div>
@@ -326,18 +323,18 @@
     {#if comments.length > 0}
       <div class="flex flex-col gap-1.5">
         {#each comments as comment (comment._id)}
-          <div class="flex items-start gap-2 py-1.5 border-b border-gray-200">
+          <div class="flex items-start gap-2 py-1.5 border-b border-border-transparent">
             <div class="flex-1">
-              <span class="font-label text-[0.6875rem] font-semibold text-gray-700">{comment.authorName}</span>
-              <span class="font-label text-[0.6rem] text-gray-400 ml-1">{formatTime(comment.createdAt)}</span>
-              <p class="m-0 mt-0.5 text-[0.8125rem] text-gray-800">{comment.body}</p>
+              <span class="font-label text-[0.6875rem] font-semibold text-content-primary">{comment.authorName}</span>
+              <span class="font-label text-[0.6rem] text-content-tertiary ml-1">{clockTime(comment.createdAt)}</span>
+              <p class="m-0 mt-0.5 text-[0.8125rem] text-content-secondary">{comment.body}</p>
             </div>
             {#if canDeleteComments || comment.authorUserId === currentUserId}
               <button
-                class="bg-transparent border-0 p-0 cursor-pointer flex items-center text-gray-400 hover:text-accent-600"
+                class="icon-button h-7 w-7 text-content-tertiary hover:text-content-error"
                 onclick={() => handleDeleteComment(comment._id)}
               >
-                <Trash size={14} />
+                <Trash size="14" />
               </button>
             {/if}
           </div>
@@ -367,9 +364,9 @@
 
   <!-- Delete (admin only) -->
   {#if canDelete}
-    <div class="mt-2 pt-2 border-t border-gray-200">
+    <div class="mt-2 pt-2 border-t border-border-transparent">
       <button
-        class="button button--compact font-label text-[0.72rem] {confirmingDelete ? 'button--accent' : 'text-accent-600 border border-accent-400 bg-transparent hover:bg-accent-500/10'}"
+        class="button button--danger button--compact font-label text-[0.72rem] {confirmingDelete ? 'bg-background-error-secondary text-content-error' : ''}"
         onclick={handleDeleteIssue}
       >
         {confirmingDelete ? "Confirm delete" : "Delete issue"}
@@ -378,9 +375,5 @@
         <button class="button button--ghost ml-2" onclick={() => { confirmingDelete = false; }}>cancel</button>
       {/if}
     </div>
-  {/if}
-
-  {#if errorMessage}
-    <p class="error-banner">{errorMessage}</p>
   {/if}
 </div>

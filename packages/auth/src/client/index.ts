@@ -1,6 +1,18 @@
+/**
+ * Framework-agnostic auth client for `@robelest/convex-auth/client`.
+ *
+ * Exposes the {@link client} factory, which wires auth tokens into a Convex
+ * transport and returns `signIn`, `signOut`, `onChange`, `state`, and the
+ * factor helpers enabled by the configured providers. Platform entrypoints
+ * (`browser`, `expo`) layer concrete runtime defaults on top of this.
+ *
+ * @module
+ */
+
 import { ConvexError, Value } from "convex/values";
 
 import { LOG_LEVELS, logMessage } from "../shared/log";
+import { retryWithBackoff } from "../shared/retry";
 import {
   createDeferred,
   type AuthApiRefs,
@@ -20,6 +32,7 @@ import {
   type SignInActionResult,
   type SignInResult,
 } from "./core/types";
+import type { AccessToken } from "../shared/brand";
 import type { AuthTokens } from "../shared/results";
 import { createHandshakeError } from "./errors";
 import { createDeviceClient } from "./factors/device";
@@ -62,7 +75,7 @@ export type {
   PlatformAuthClient,
   SignInOverloads,
   SignInResult,
-  SsoParams,
+  ConnectionParams,
   Storage,
   TotpClient,
   TotpConfirmParams,
@@ -81,25 +94,16 @@ const RETRY_BASE_MS = 500;
 const RETRY_MAX_RETRIES = 2;
 const DEFAULT_AUTH_HANDSHAKE_TIMEOUT_MS = 5000;
 
-async function retryWithJitteredBackoff<T>(
+const retryWithJitteredBackoff = <T>(
   fn: () => Promise<T>,
   shouldRetry: (error: unknown) => boolean,
-): Promise<T> {
-  let attempt = 0;
-  while (true) {
-    try {
-      return await fn();
-    } catch (error) {
-      if (attempt >= RETRY_MAX_RETRIES || !shouldRetry(error)) {
-        throw error;
-      }
-      const baseDelay = RETRY_BASE_MS * Math.pow(2, attempt);
-      const jitter = baseDelay * (0.5 + Math.random());
-      await new Promise((resolve) => setTimeout(resolve, jitter));
-      attempt++;
-    }
-  }
-}
+): Promise<T> =>
+  retryWithBackoff(fn, {
+    maxRetries: RETRY_MAX_RETRIES,
+    baseMs: RETRY_BASE_MS,
+    jitterMode: "centered",
+    shouldRetry,
+  });
 
 /**
  * Resolve the Convex deployment URL from the client.
@@ -109,7 +113,7 @@ async function retryWithJitteredBackoff<T>(
  */
 function resolveUrl(convex: ConvexTransport, explicit?: string): string {
   if (explicit) return explicit;
-  const candidate = convex as unknown as {
+  const candidate = convex as {
     url?: unknown;
     client?: { url?: unknown } | null;
   };
@@ -139,7 +143,9 @@ function stableStringify(value: unknown, depth = 0): string {
       .filter(([, entryValue]) => entryValue !== undefined)
       .sort(([left], [right]) => left.localeCompare(right));
     return `{${entries
-      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue, depth + 1)}`)
+      .map(
+        ([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue, depth + 1)}`,
+      )
       .join(",")}}`;
   }
   return JSON.stringify(value);
@@ -153,7 +159,7 @@ function buildSignInRequestKey(
 }
 
 function formDataEntries(formData: unknown): Iterable<[string, string | { name: string }]> {
-  return formData as unknown as Iterable<[string, string | { name: string }]>;
+  return formData as Iterable<[string, string | { name: string }]>;
 }
 
 /**
@@ -189,6 +195,17 @@ function formDataEntries(formData: unknown): Iterable<[string, string | { name: 
  * In proxy mode all auth operations go through the injected proxy runtime.
  * Tokens are stored in httpOnly cookies server-side — the client
  * holds the JWT in memory only.
+ *
+ * When a `tokenSeed` is supplied (SSR hydration), the client treats it as
+ * immediately authenticated, avoiding a handshake-only loading screen on the
+ * first client render. The returned client also auto-wires its tokens into the
+ * passed Convex client via `setAuth`, so queries and mutations are
+ * authenticated without further configuration.
+ *
+ * While a sign-in handshake is pending, a transient `false` from the Convex
+ * client does not reject the session: Convex can emit `false` mid-reauth and a
+ * subsequent `true` confirms the same session. Rejection happens only on
+ * timeout or when the token actually changes or clears.
  *
  * @param options - Client configuration. See {@link ClientOptions}.
  * @typeParam Api - An AuthApiRefs type determining which factor helpers are available.
@@ -247,10 +264,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
         ? runtime.storage
         : null;
   const proxyRuntime = proxy ? requireProxyRuntime() : null;
-
-  // ---------------------------------------------------------------------------
-  // Location — SSR-safe URL reading
-  // ---------------------------------------------------------------------------
 
   function getLocation(): URL | null {
     if (typeof options.location === "function") return options.location();
@@ -340,19 +353,11 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
   const subscribers = new Set<() => void>();
   let disposeStorageListener: (() => void) | null = null;
 
-  // Unauthenticated HTTP client for code verification & OAuth exchange.
-  // Only needed in SPA mode — proxy mode routes everything through the proxy.
   const httpClient: ActionTransport | null = services.httpClient;
 
-  // ---------------------------------------------------------------------------
-  // State
-  // ---------------------------------------------------------------------------
-
-  // If a server-provided token was supplied (SSR hydration), treat it as
-  // immediately authenticated to avoid a handshake-only loading screen.
-  const serverToken =
+  const serverToken: AccessToken | null =
     typeof options.tokenSeed === "string" && options.tokenSeed.trim().length > 0
-      ? options.tokenSeed
+      ? (options.tokenSeed as AccessToken)
       : null;
   const hasServerToken = serverToken !== null;
 
@@ -361,7 +366,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
       ? options.handshakeTimeoutMs
       : DEFAULT_AUTH_HANDSHAKE_TIMEOUT_MS;
 
-  let token: string | null = serverToken;
+  let token: AccessToken | null = serverToken;
   let isLoading = !hasServerToken;
   let authConfirmed = hasServerToken;
   let handshakePending = false;
@@ -464,9 +469,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
       settleHandshakeWaiters(authEpoch, { type: "resolve" });
     } else {
       authConfirmed = false;
-      // Do not reject immediately while a handshake is pending.
-      // Convex can transiently emit `false` while reauth is still in flight,
-      // and a subsequent `true` confirms the same session.
     }
 
     if (updateSnapshot()) {
@@ -531,10 +533,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
   const persistInvite = () => inviteManager.persistInvite();
   const acceptInvite = () => inviteManager.acceptInvite();
 
-  // ---------------------------------------------------------------------------
-  // Token management
-  // ---------------------------------------------------------------------------
-
   const bindConvexAuth = () => {
     convex.setAuth(fetchAccessToken, handleConvexAuthChange);
   };
@@ -549,7 +547,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
         }
       | {
           shouldStore: false;
-          tokens: { token: string } | null;
+          tokens: { token: AccessToken } | null;
           requireHandshake?: boolean;
           resyncConvexAuth?: boolean;
         },
@@ -615,7 +613,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
         }
       | {
           shouldStore: false;
-          tokens: { token: string } | null;
+          tokens: { token: AccessToken } | null;
           waitForHandshake: boolean;
           context: AuthFlowContext;
         },
@@ -624,7 +622,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     await setToken({
       ...(tokenArgs as
         | { shouldStore: true; tokens: AuthTokens | null }
-        | { shouldStore: false; tokens: { token: string } | null }),
+        | { shouldStore: false; tokens: { token: AccessToken } | null }),
       requireHandshake: waitForHandshake,
     });
     if (tokenArgs.tokens === null) {
@@ -644,10 +642,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     setTokenAndMaybeWait,
   };
   const passkeyAdapter = adapters.passkey ?? services.adapterFactories.passkey?.(adapterDeps);
-
-  // ---------------------------------------------------------------------------
-  // Code verification with retries (SPA mode only)
-  // ---------------------------------------------------------------------------
 
   const verifyCode = async (
     args: { code: string; verifier?: string } | { refreshToken: string },
@@ -670,10 +664,10 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     if (result.kind !== "signedIn") {
       throw new Error("Code exchange did not return tokens.");
     }
-    const { session } = result as Extract<SignInActionResult, { kind: "signedIn" }>;
+    const { session } = result;
     await setToken({
       shouldStore: true,
-      tokens: (session as AuthTokens | null) ?? null,
+      tokens: session,
       resyncConvexAuth: opts?.resyncConvexAuth,
     });
     return session !== null;
@@ -704,10 +698,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
   const isSignedInResult = (
     result: SignInActionResult,
   ): result is Extract<SignInActionResult, { kind: "signedIn" }> => result.kind === "signedIn";
-
-  // ---------------------------------------------------------------------------
-  // signIn
-  // ---------------------------------------------------------------------------
 
   /**
    * Sign in with a provider.
@@ -747,7 +737,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     if (destroyed) {
       throw new Error("Convex auth client has been destroyed.");
     }
-    // Persist invite before potential OAuth redirect
     await persistInvite();
 
     const params =
@@ -816,7 +805,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
           : ({ kind: "started" as const } satisfies SignInResult);
       }
 
-      // "started", "passkeyOptions", "totpSetup"
       return { kind: "started" as const } satisfies SignInResult;
     };
 
@@ -859,7 +847,10 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
             error instanceof ConvexError && typeof error.data?.code === "string"
               ? error.data.code
               : null;
-          if (convexCode !== null && ["INVALID_VERIFICATION_CODE", "INVALID_VERIFIER"].includes(convexCode)) {
+          if (
+            convexCode !== null &&
+            ["INVALID_VERIFICATION_CODE", "INVALID_VERIFIER"].includes(convexCode)
+          ) {
             await storageRemove(VERIFIER_STORAGE_KEY);
           }
         }
@@ -877,10 +868,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     }
   };
 
-  // ---------------------------------------------------------------------------
-  // signOut
-  // ---------------------------------------------------------------------------
-
   /**
    * Sign out the current user.
    *
@@ -894,7 +881,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
       try {
         await proxyFetch({ action: "auth:signOut", args: {} });
       } catch {
-        // Ignore sign-out errors
+        /* empty */
       }
       await setToken({ shouldStore: false, tokens: null });
       if (convex.clearAuth) convex.clearAuth();
@@ -904,15 +891,11 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     try {
       await convex.action(requireApiRefs().signOut, {});
     } catch {
-      // Ignore sign-out errors
+      /* empty */
     }
     await setToken({ shouldStore: true, tokens: null });
     if (convex.clearAuth) convex.clearAuth();
   };
-
-  // ---------------------------------------------------------------------------
-  // fetchAccessToken — called by convex.setAuth()
-  // ---------------------------------------------------------------------------
 
   const fetchAccessToken = async ({
     forceRefreshToken,
@@ -930,7 +913,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     if (proxy) {
       const tokenBeforeRefresh = token;
       return await withMutex(`__convexAuthProxyRefresh_${escapedNamespace}`, async () => {
-        // Another tab/call may have already refreshed.
         if (token !== tokenBeforeRefresh) return token;
 
         try {
@@ -968,7 +950,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
       });
     }
 
-    // Direct mode: refresh via storage + httpClient.
     const tokenBeforeLockAcquisition = token;
     return await withMutex(key(REFRESH_TOKEN_STORAGE_KEY), async () => {
       const tokenAfterLockAcquisition = token;
@@ -989,10 +970,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
       return token;
     });
   };
-
-  // ---------------------------------------------------------------------------
-  // OAuth code flow (SPA mode only — server handles this in proxy mode)
-  // ---------------------------------------------------------------------------
 
   const resolveOAuthInput = (input: URL | string | { code: string }) => {
     if (input instanceof URL) {
@@ -1041,15 +1018,11 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     return { handled: true, cleanupUrl };
   };
 
-  // ---------------------------------------------------------------------------
-  // Hydrate from storage (SPA mode only)
-  // ---------------------------------------------------------------------------
-
   const hydrateFromStorage = async () => {
     const storedToken = (await storageGet(JWT_STORAGE_KEY)) ?? null;
     await setToken({
       shouldStore: false,
-      tokens: storedToken === null ? null : { token: storedToken },
+      tokens: storedToken === null ? null : { token: storedToken as AccessToken },
       resyncConvexAuth: storedToken !== null,
     });
   };
@@ -1081,7 +1054,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
         try {
           await setToken({ shouldStore: false, tokens: null, resyncConvexAuth: false });
         } catch {
-          // Ignore cleanup errors
+          /* empty */
         }
       }
     })();
@@ -1092,10 +1065,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
       initializePromise = Promise.resolve();
     }
   };
-
-  // ---------------------------------------------------------------------------
-  // Subscribe
-  // ---------------------------------------------------------------------------
 
   /**
    * Subscribe to auth state changes. Invokes the callback immediately
@@ -1117,18 +1086,13 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     };
   };
 
-  // ---------------------------------------------------------------------------
-  // Initialization
-  // ---------------------------------------------------------------------------
-
-  // Cross-tab sync via storage events (SPA mode only).
   if (!proxy && runtime.sync) {
     disposeStorageListener =
       runtime.sync.subscribe(key(JWT_STORAGE_KEY), (value) => {
         if (value === token) return;
         void setToken({
           shouldStore: false,
-          tokens: value === null ? null : { token: value },
+          tokens: value === null ? null : { token: value as AccessToken },
         }).catch((error) => {
           logMessage("convex-auth/client", LOG_LEVELS.ERROR, [
             "[convex-auth] Storage event handler failed:",
@@ -1138,8 +1102,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
       }) ?? null;
   }
 
-  // Auto-wire: feed our tokens into the Convex client so
-  // queries and mutations are automatically authenticated.
   bindConvexAuth();
 
   void initialize().catch((error) => {
@@ -1149,10 +1111,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     ]);
     finalizeLoadingState();
   });
-
-  // ---------------------------------------------------------------------------
-  // Auth factor helpers
-  // ---------------------------------------------------------------------------
 
   const totp =
     adapters.totp ??

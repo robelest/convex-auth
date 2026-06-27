@@ -13,14 +13,16 @@ const PRIORITY_LABELS: Record<IssuePriority, string> = {
   urgent: "Urgent",
 };
 
-export const PriorityChip = React.memo(function PriorityChip({ priority }: { priority: IssuePriority }) {
+export const PriorityChip = React.memo(function PriorityChip({
+  priority,
+}: {
+  priority: IssuePriority;
+}) {
   if (priority === "none") return null;
   const c = priorityColors[priority];
   return (
     <View style={[styles.chip, { backgroundColor: c.bg, borderColor: c.border }]}>
-      <Text style={[styles.label, { color: c.text }]}>
-        {PRIORITY_LABELS[priority]}
-      </Text>
+      <Text style={[styles.label, { color: c.text }]}>{PRIORITY_LABELS[priority]}</Text>
     </View>
   );
 });

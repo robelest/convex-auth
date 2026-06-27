@@ -2,11 +2,11 @@
  * Per-execution cache for Convex auth component reads.
  *
  * Convex components are invoked across a function boundary — every
- * `auth.user.get`, `auth.member.inspect`, `getGroupConnection`, etc. is
+ * `auth.user.get`, `auth.member.get`, `getGroupConnection`, etc. is
  * `ctx.runQuery(components.auth.…)`. Each crossing costs ~10–30ms.
  * Inside a single handler we often fetch the same entity several times
- * (outer `auth.ctx()` resolver + inner `auth.member.require` calls +
- * SSO admin authorizer target resolution + the handler body itself).
+ * (outer `auth.ctx()` resolver + inner `auth.member.assert` calls +
+ * Connection admin authorizer target resolution + the handler body itself).
  *
  * This module attaches a `Map<string, Promise<unknown>>` to the ctx via
  * a Symbol so that concurrent and repeated reads of the same key within

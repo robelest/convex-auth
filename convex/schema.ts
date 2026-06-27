@@ -41,7 +41,7 @@ export default defineSchema({
     scopeGroupId: v.string(),
     number: v.number(),
     title: v.string(),
-    description: v.string(),
+    description: v.optional(v.string()),
     status: issueStatus,
     priority: issuePriority,
     assigneeUserId: v.optional(v.string()),

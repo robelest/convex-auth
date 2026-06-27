@@ -3,20 +3,21 @@ import { GenericId, Infer, v } from "convex/values";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
+import { emitAuthEvent } from "../events";
 import { LOG_LEVELS } from "../log";
 import { log } from "../log";
-import { deleteSession } from "../sessions";
+import { deleteSession } from "../session/lifecycle";
 import { Doc, MutationCtx } from "../types";
 import { AUTH_STORE_REF } from "./store/refs";
 
-export const invalidateSessionsArgs = v.object({
+export const vInvalidateSessionsArgs = v.object({
   userId: v.string(),
   except: v.optional(v.array(v.string())),
 });
 
 export const callInvalidateSessions = async <DataModel extends GenericDataModel>(
   ctx: GenericActionCtx<DataModel>,
-  args: Infer<typeof invalidateSessionsArgs>,
+  args: Infer<typeof vInvalidateSessionsArgs>,
 ): Promise<void> => {
   return ctx.runMutation(AUTH_STORE_REF, {
     args: {
@@ -28,7 +29,7 @@ export const callInvalidateSessions = async <DataModel extends GenericDataModel>
 
 export async function invalidateSessionsImpl(
   ctx: MutationCtx,
-  args: Infer<typeof invalidateSessionsArgs>,
+  args: Infer<typeof vInvalidateSessionsArgs>,
   config: Provider.Config,
 ): Promise<void> {
   log(LOG_LEVELS.DEBUG, "invalidateSessionsImpl args:", args);
@@ -44,11 +45,18 @@ export async function invalidateSessionsImpl(
       deleted.push(session._id);
     }),
   );
-  if (deleted.length > 0) {
-    await config.callbacks?.after?.(ctx, {
-      kind: "sessionsInvalidated",
-      userId: typedUserId,
-      sessionIds: deleted,
+  for (const sessionId of deleted) {
+    await emitAuthEvent(ctx, config, {
+      kind: "session.invalidated",
+      actor: { type: "system" },
+      subject: { type: "session", id: sessionId },
+      targets: [
+        { kind: "user", id: typedUserId },
+        { kind: "session", id: sessionId },
+        { kind: "global", id: "security" },
+      ],
+      outcome: "success",
+      data: { userId: typedUserId },
     });
   }
 }

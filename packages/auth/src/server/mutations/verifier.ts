@@ -3,19 +3,19 @@ import { GenericId, Infer, v } from "convex/values";
 
 import * as Provider from "../crypto";
 import { authDb } from "../db";
-import { getAuthSessionId } from "../sessions";
+import { getAuthSessionId } from "../session/lifecycle";
 import { MutationCtx } from "../types";
 import { AUTH_STORE_REF } from "./store/refs";
 
 type ReturnType = GenericId<"AuthVerifier">;
 
-export const verifierArgs = v.object({
+export const vVerifierArgs = v.object({
   signature: v.optional(v.string()),
 });
 
 export async function verifierImpl(
   ctx: MutationCtx,
-  args: Infer<typeof verifierArgs>,
+  args: Infer<typeof vVerifierArgs>,
   config: Provider.Config,
 ): Promise<ReturnType> {
   const sessionId = await getAuthSessionId(ctx);

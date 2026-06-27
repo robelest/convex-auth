@@ -78,9 +78,9 @@ async function buildAuthIdentityAttributes(
   }
 
   if (fields.email) {
-    const user = (await authDb(ctx, config).users.getById(
-      args.userId,
-    )) as CrossComponentUserDoc | null;
+    const user = (await authDb(ctx, config).users.get({
+      id: args.userId,
+    })) as CrossComponentUserDoc | null;
     if (typeof user?.email === "string") {
       values.email = user.email;
     }

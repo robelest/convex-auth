@@ -11,6 +11,7 @@ import { sha256 } from "@oslojs/crypto/sha2";
 import { encodeBase64urlNoPadding } from "@oslojs/encoding";
 
 import { createOAuthProvider } from "../server/oauth/factory";
+import { normalizeOAuthTokenResponse } from "../server/oauth/normalize";
 import type { OAuthProfile, OAuthRuntimeClient, OAuthTokens } from "../server/types";
 import { defaultOAuthRedirectUri } from "./redirect";
 
@@ -179,22 +180,7 @@ function createRuntimeClient(config: CustomOAuthConfig): OAuthRuntimeClient {
       }
 
       const raw = (await response.json()) as Record<string, unknown>;
-      const rawScopes = typeof raw.scope === "string" ? raw.scope : undefined;
-      const expiresIn = typeof raw.expires_in === "number" ? raw.expires_in : undefined;
-      return {
-        accessToken: typeof raw.access_token === "string" ? raw.access_token : undefined,
-        refreshToken: typeof raw.refresh_token === "string" ? raw.refresh_token : undefined,
-        idToken: typeof raw.id_token === "string" ? raw.id_token : undefined,
-        accessTokenExpiresAt:
-          expiresIn !== undefined ? new Date(Date.now() + expiresIn * 1000) : undefined,
-        scopes: rawScopes
-          ? rawScopes
-              .split(/[\s,]+/)
-              .map((scope) => scope.trim())
-              .filter((scope) => scope.length > 0)
-          : undefined,
-        raw,
-      };
+      return normalizeOAuthTokenResponse(raw);
     },
   };
 }
@@ -203,7 +189,7 @@ function createRuntimeClient(config: CustomOAuthConfig): OAuthRuntimeClient {
  * Create a custom OAuth provider.
  *
  * @param config - OAuth endpoints, credentials, and profile callbacks.
- * @returns A configured OAuth provider for `createAuth`.
+ * @returns A configured OAuth provider for `defineAuth`.
  *
  * @example
  * ```ts
@@ -211,10 +197,10 @@ function createRuntimeClient(config: CustomOAuthConfig): OAuthRuntimeClient {
  *
  * custom({
  *   id: "workos",
- *   clientId: process.env.WORKOS_CLIENT_ID!,
- *   clientSecret: process.env.WORKOS_CLIENT_SECRET!,
- *   authorization: { url: "https://api.workos.com/sso/authorize" },
- *   token: { url: "https://api.workos.com/sso/token", authMethod: "basic" },
+ *   clientId: env.WORKOS_CLIENT_ID!,
+ *   clientSecret: env.WORKOS_CLIENT_SECRET!,
+ *   authorization: { url: "https://api.workos.com/connection/authorize" },
+ *   token: { url: "https://api.workos.com/connection/token", authMethod: "basic" },
  * })
  * ```
  */

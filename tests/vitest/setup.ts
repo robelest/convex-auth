@@ -1,8 +1,4 @@
-// The demo's password provider can opt into reset + email verification via
-// `AUTH_PASSWORD_EMAIL_VERIFICATION`. Most tests pre-date that wiring and rely
-// on signUp/signIn returning a session directly, so default to disabled in
-// the test environment. This setup file runs before test-file imports so
-// `convex/auth.ts` sees the correct value when first loaded.
+// fallow-ignore-file unused-file
 if (!process.env.AUTH_PASSWORD_EMAIL_VERIFICATION) {
   process.env.AUTH_PASSWORD_EMAIL_VERIFICATION = "false";
 }

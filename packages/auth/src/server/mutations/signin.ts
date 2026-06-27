@@ -2,24 +2,25 @@ import type { GenericDataModel } from "convex/server";
 import { GenericId, Infer, v } from "convex/values";
 
 import * as Provider from "../crypto";
+import { emitAuthEvent } from "../events";
 import { LOG_LEVELS } from "../log";
 import { log } from "../log";
-import { finalizeSessionIssuance, getAuthSessionId, issueSession } from "../sessions";
-import type { SessionIssuance } from "../sessions";
+import { finalizeSessionIssuance, getAuthSessionId, issueSession } from "../session/lifecycle";
+import type { SessionIssuance } from "../session/lifecycle";
 import { buildSignInIdentityAttributes } from "../telemetry";
 import { GenericActionCtxWithAuthConfig, MutationCtx, SessionInfo } from "../types";
 import { setActiveSpanAttributes, withSpan } from "../utils/span";
 import { AUTH_STORE_REF } from "./store/refs";
 
-export const signInArgs = v.object({
+export const vSignInArgs = v.object({
   userId: v.string(),
   sessionId: v.optional(v.string()),
   generateTokens: v.boolean(),
 });
 
-export async function signInImpl(
+export async function signInSessionImpl(
   ctx: MutationCtx,
-  args: Infer<typeof signInArgs>,
+  args: Infer<typeof vSignInArgs>,
   config: Provider.Config,
 ): Promise<SessionIssuance> {
   return withSpan(
@@ -30,7 +31,7 @@ export async function signInImpl(
       generateTokens: args.generateTokens,
     },
     async () => {
-      log(LOG_LEVELS.DEBUG, "signInImpl args:", args);
+      log(LOG_LEVELS.DEBUG, "signInSessionImpl args:", args);
       const { userId, sessionId: existingSessionId, generateTokens } = args;
       const typedUserId = userId as GenericId<"User">;
       const replaceSessionId =
@@ -48,12 +49,16 @@ export async function signInImpl(
           sessionId: issuance.sessionId,
         })),
       });
-      // Fire `signedIn` event atomically with session creation.
-      await config.callbacks?.after?.(ctx, {
-        kind: "signedIn",
-        userId: issuance.userId,
-        sessionId: issuance.sessionId,
-        provider: "session",
+      await emitAuthEvent(ctx, config, {
+        kind: "session.signed_in",
+        actor: { type: "user", id: issuance.userId },
+        subject: { type: "session", id: issuance.sessionId },
+        targets: [
+          { kind: "user", id: issuance.userId },
+          { kind: "session", id: issuance.sessionId },
+        ],
+        outcome: "success",
+        data: { provider: "session" },
       });
       return issuance;
     },
@@ -73,7 +78,7 @@ export async function signInImpl(
  */
 export const callSignIn = async <DataModel extends GenericDataModel>(
   ctx: GenericActionCtxWithAuthConfig<DataModel>,
-  args: Infer<typeof signInArgs>,
+  args: Infer<typeof vSignInArgs>,
 ): Promise<SessionInfo> => {
   const issuance = (await ctx.runMutation(AUTH_STORE_REF, {
     args: {

@@ -14,7 +14,6 @@ on:
       - "convex/**"
       - "demos/svelte/**"
       - "packages/auth/**"
-      - "packages/samlify/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/deploy-demo.yml"

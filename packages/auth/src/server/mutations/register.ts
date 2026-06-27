@@ -1,22 +1,24 @@
 import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { ConvexError, Infer, v } from "convex/values";
 
+import type { Hashed } from "../../shared/brand";
+import { ErrorCode } from "../../shared/codes";
 import * as Provider from "../crypto";
 import { authDb } from "../db";
 import type { AuthErrorData } from "../errors";
 import { LOG_LEVELS, log, maybeRedact } from "../log";
 import type { AuthProfile } from "../payloads";
-import { payloadRecordValidator } from "../payloads";
-import { getAuthSessionId } from "../sessions";
+import { vPayloadRecord } from "../payloads";
+import { getAuthSessionId } from "../session/lifecycle";
 import { Doc, MutationCtx } from "../types";
 import { ConvexCredentialsConfig } from "../types";
-import { upsertUserAndAccount } from "../users";
+import { upsertUserAndAccount } from "../user/account";
 import { AUTH_STORE_REF } from "./store/refs";
 
-export const createAccountFromCredentialsArgs = v.object({
+export const vCreateAccountFromCredentialsArgs = v.object({
   provider: v.string(),
   account: v.object({ id: v.string(), secret: v.optional(v.string()) }),
-  profile: payloadRecordValidator,
+  profile: vPayloadRecord,
   shouldLinkViaEmail: v.optional(v.boolean()),
   shouldLinkViaPhone: v.optional(v.boolean()),
 });
@@ -25,7 +27,7 @@ type ReturnType = { account: Doc<"Account">; user: Doc<"User"> };
 
 export async function createAccountFromCredentialsImpl(
   ctx: MutationCtx,
-  args: Infer<typeof createAccountFromCredentialsArgs>,
+  args: Infer<typeof vCreateAccountFromCredentialsArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
 ): Promise<ReturnType> {
@@ -42,7 +44,10 @@ export async function createAccountFromCredentialsImpl(
   const provider = getProviderOrThrow(providerId) as ConvexCredentialsConfig;
   const typedProfile = profile as AuthProfile;
 
-  const existingAccount = (await db.accounts.get(provider.id, account.id)) as Doc<"Account"> | null;
+  const existingAccount = (await db.accounts.get({
+    provider: provider.id,
+    providerAccountId: account.id,
+  })) as Doc<"Account"> | null;
 
   if (existingAccount === null) {
     const accountSecret = account.secret;
@@ -68,19 +73,19 @@ export async function createAccountFromCredentialsImpl(
       accountId: string;
     };
     const [createdAccount, createdUser] = await Promise.all([
-      db.accounts.getById(accountId) as Promise<Doc<"Account"> | null>,
-      db.users.getById(userId) as Promise<Doc<"User"> | null>,
+      db.accounts.get({ id: accountId }) as Promise<Doc<"Account"> | null>,
+      db.users.get({ id: userId }) as Promise<Doc<"User"> | null>,
     ]);
 
     if (createdAccount === null) {
       throw new ConvexError<AuthErrorData>({
-        code: "ACCOUNT_NOT_FOUND",
+        code: ErrorCode.ACCOUNT_NOT_FOUND,
         message: "Created account was not found.",
       });
     }
     if (createdUser === null) {
       throw new ConvexError<AuthErrorData>({
-        code: "USER_UPDATE_FAILED",
+        code: ErrorCode.USER_UPDATE_FAILED,
         message: "Created user was not found.",
       });
     }
@@ -89,19 +94,23 @@ export async function createAccountFromCredentialsImpl(
   } else {
     if (account.secret !== undefined) {
       const accountSecret = account.secret;
-      const valid = await Provider.verify(provider, accountSecret, existingAccount.secret ?? "");
+      const valid = await Provider.verify(
+        provider,
+        accountSecret,
+        (existingAccount.secret ?? "") as Hashed<"Password">,
+      );
       if (!valid) {
         throw new ConvexError<AuthErrorData>({
-          code: "INVALID_CREDENTIALS",
+          code: ErrorCode.INVALID_CREDENTIALS,
           message: "Invalid credentials.",
         });
       }
     }
 
-    const user = (await db.users.getById(existingAccount.userId)) as Doc<"User"> | null;
+    const user = (await db.users.get({ id: existingAccount.userId })) as Doc<"User"> | null;
     if (user === null) {
       throw new ConvexError<AuthErrorData>({
-        code: "ACCOUNT_NOT_FOUND",
+        code: ErrorCode.ACCOUNT_NOT_FOUND,
         message: `Linked user for account ${account.id} was not found.`,
       });
     }
@@ -112,7 +121,7 @@ export async function createAccountFromCredentialsImpl(
 
 export const callCreateAccountFromCredentials = async <DataModel extends GenericDataModel>(
   ctx: GenericActionCtx<DataModel>,
-  args: Infer<typeof createAccountFromCredentialsArgs>,
+  args: Infer<typeof vCreateAccountFromCredentialsArgs>,
 ): Promise<ReturnType> => {
   return ctx.runMutation(AUTH_STORE_REF, {
     args: {

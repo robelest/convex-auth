@@ -26,11 +26,8 @@ jobs:
           run-install: |
             args: ['--frozen-lockfile']
 
-      - name: Build package prerequisites
-        run: vp run '@robelest/samlify#build'
-
       - name: Run unit and node test projects
-        run: vp test --run --project convex --project node --project samlify
+        run: vp test --run --project convex --project node
 
   interop:
     runs-on: ubuntu-latest

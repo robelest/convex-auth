@@ -1,7 +1,7 @@
 import { password } from "@robelest/convex-auth/providers/password";
 import { credentialsSignInImpl } from "@robelest/convex-auth/server/mutations/credentials/signin";
-import * as mutations from "@robelest/convex-auth/server/mutations/index";
-import { signInImpl } from "@robelest/convex-auth/server/signin";
+import * as mutations from "@robelest/convex-auth/server/mutations/calls";
+import { signInImpl } from "@robelest/convex-auth/server/signin/flow";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 
 afterEach(() => {
@@ -23,7 +23,7 @@ function createCredentialsMutationHarness(args: {
     accountGet: Symbol("accountGet"),
     userGetById: Symbol("userGetById"),
     userPatch: Symbol("userPatch"),
-    sessionIssue: Symbol("sessionIssue"),
+    sessionCreate: Symbol("sessionCreate"),
     signInCheck: Symbol("signInCheck"),
     signInRecord: Symbol("signInRecord"),
     signInReset: Symbol("signInReset"),
@@ -72,7 +72,7 @@ function createCredentialsMutationHarness(args: {
     if (ref === refs.signInReset) {
       return null;
     }
-    if (ref === refs.sessionIssue) {
+    if (ref === refs.sessionCreate) {
       return {
         userId: "user1",
         sessionId: "session1",
@@ -97,7 +97,7 @@ function createCredentialsMutationHarness(args: {
         update: refs.userPatch,
       },
       account: { get: refs.accountGet },
-      session: { issue: refs.sessionIssue },
+      session: { create: refs.sessionCreate },
       limits: {
         signInCheck: refs.signInCheck,
         signInRecord: refs.signInRecord,
@@ -153,7 +153,7 @@ test("credentialsSignIn skips session issuance when email verification is requir
     identifier: "account1",
   });
   expect(harness.runMutation).not.toHaveBeenCalledWith(
-    harness.refs.sessionIssue,
+    harness.refs.sessionCreate,
     expect.anything(),
   );
   expect(harness.runQuery).not.toHaveBeenCalledWith(
@@ -199,12 +199,9 @@ test("credentialsSignIn resolves TOTP enrollment by query without caching", asyn
     harness.refs.totpGetVerifiedByUserId,
     expect.anything(),
   );
-  expect(harness.runMutation).not.toHaveBeenCalledWith(
-    harness.refs.userPatch,
-    expect.anything(),
-  );
+  expect(harness.runMutation).not.toHaveBeenCalledWith(harness.refs.userPatch, expect.anything());
   expect(harness.runMutation).toHaveBeenCalledWith(
-    harness.refs.sessionIssue,
+    harness.refs.sessionCreate,
     expect.objectContaining({ userId: "user1" }),
   );
 });

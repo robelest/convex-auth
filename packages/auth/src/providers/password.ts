@@ -27,8 +27,11 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { DocumentByName, GenericDataModel, WithoutSystemFields } from "convex/server";
 import { ConvexError, Value } from "convex/values";
 
-import { getAuthenticatedUserIdOrNull } from "../server/identity";
-import { callCredentialsSignIn } from "../server/mutations/index";
+import { emitAuthEvent } from "../server/events";
+import { getAuthenticatedUserIdOrNull } from "../server/identity/claims";
+import { callCredentialsSignIn } from "../server/mutations/calls";
+import type { Hashed } from "../shared/brand";
+import { ErrorCode } from "../shared/codes";
 import type {
   EmailConfig,
   GenericActionCtxWithAuthConfig,
@@ -110,7 +113,7 @@ function decodePasswordFlow(flow: unknown): PasswordFlowDispatch {
  *
  * @typeParam DataModel - The Convex data model used by the auth context.
  * @param config - Password flow hooks and optional verification providers.
- * @returns A configured password provider for `createAuth`.
+ * @returns A configured password provider for `defineAuth`.
  */
 export function password<DataModel extends GenericDataModel = GenericDataModel>(
   config: PasswordConfig<DataModel> = {} as PasswordConfig<DataModel>,
@@ -155,8 +158,11 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
         return { userId: user._id, hasTotp: false };
       };
 
-      switch (flowDispatch.tag) {
-        case "signUp": {
+      const flowHandlers: Record<
+        PasswordFlow,
+        () => Promise<Awaited<ReturnType<CredentialsConfig<DataModel>["authorize"]>>>
+      > = {
+        signUp: async () => {
           const secret = requireStringParam(params.password, "password", "signUp");
           validatePasswordRequirements(secret);
           const created = await ctx.auth.account.create(ctx, {
@@ -167,9 +173,9 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
             shouldLinkViaPhone: false,
           });
           return await finalizeCredentialsResult(created.account, created.user);
-        }
+        },
 
-        case "signIn": {
+        signIn: async () => {
           const secret = requireStringParam(params.password, "password", "signIn");
           const result = await callCredentialsSignIn(ctx, {
             provider,
@@ -179,11 +185,14 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
             enforceTotp: true,
           });
           if (result.kind === "invalidAccount" || result.kind === "invalidSecret") {
-            throw new Error("Invalid credentials");
+            throw new ConvexError({
+              code: ErrorCode.INVALID_CREDENTIALS,
+              message: "Invalid credentials",
+            });
           }
           if (result.kind === "tooManyAttempts") {
             throw new ConvexError({
-              code: "RATE_LIMITED",
+              code: ErrorCode.RATE_LIMITED,
               message: "Too many failed sign-in attempts. Please try again later.",
             });
           }
@@ -199,23 +208,26 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
             hasTotp,
             issuance: result.issuance,
           };
-        }
+        },
 
-        case "reset": {
+        reset: async () => {
           if (!resetProvider) {
             throw new Error(`Password reset is not enabled for ${provider}`);
           }
-          const { account } = await ctx.auth.account.get(ctx, {
+          const result = await ctx.auth.account.get(ctx, {
             provider,
             account: { id: email },
           });
+          if (result === null) {
+            return { kind: "started" as const };
+          }
           return await ctx.auth.provider.signIn(ctx, resetProvider, {
-            accountId: account._id,
+            accountId: result.account._id,
             params,
           });
-        }
+        },
 
-        case "verify": {
+        verify: async () => {
           const newPassword = params.newPassword;
           const isResetCompletion = typeof newPassword === "string" && newPassword.length > 0;
 
@@ -226,21 +238,27 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
             validatePasswordRequirements(newPassword as string);
             const result = await ctx.auth.provider.signIn(ctx, resetProvider, { params });
             if (result === null) {
-              throw new Error("Invalid code");
+              throw new ConvexError({ code: ErrorCode.INVALID_CREDENTIALS, message: "Invalid code" });
+            }
+            if ("kind" in result) {
+              throw new ConvexError({ code: ErrorCode.INVALID_CREDENTIALS, message: "Invalid code" });
             }
             const { userId, sessionId } = result;
             await ctx.auth.account.update(ctx, {
               provider,
               account: { id: email, secret: newPassword as string },
             });
-            await ctx.auth.session.invalidate(ctx, {
+            await ctx.auth.session.revoke(ctx, {
               userId,
               except: [sessionId],
             });
-            await ctx.auth.config.callbacks?.after?.(ctx, {
-              kind: "passwordChanged",
-              userId,
-              flow: "reset",
+            await emitAuthEvent(ctx, ctx.auth.config, {
+              kind: "password.changed",
+              actor: { type: "user", id: userId },
+              subject: { type: "user", id: userId },
+              targets: [{ kind: "user", id: userId }],
+              outcome: "success",
+              data: { flow: "reset" },
             });
             return { userId, sessionId };
           }
@@ -248,21 +266,24 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
           if (!verifyProvider) {
             throw new Error(`Email verification is not enabled for ${provider}`);
           }
-          const { account } = await ctx.auth.account.get(ctx, {
+          const result = await ctx.auth.account.get(ctx, {
             provider,
             account: { id: email },
           });
+          if (result === null) {
+            return { kind: "started" as const };
+          }
           return await ctx.auth.provider.signIn(ctx, verifyProvider, {
-            accountId: account._id,
+            accountId: result.account._id,
             params,
           });
-        }
+        },
 
-        case "change": {
+        change: async () => {
           const authedUserId = await getAuthenticatedUserIdOrNull(ctx);
           if (authedUserId === null) {
             throw new ConvexError({
-              code: "NOT_SIGNED_IN",
+              code: ErrorCode.NOT_SIGNED_IN,
               message: "Sign in first to change your password.",
             });
           }
@@ -282,11 +303,14 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
             enforceTotp: false,
           });
           if (result.kind === "invalidAccount" || result.kind === "invalidSecret") {
-            throw new Error("Invalid current password");
+            throw new ConvexError({
+              code: ErrorCode.INVALID_CREDENTIALS,
+              message: "Invalid current password",
+            });
           }
           if (result.kind === "tooManyAttempts") {
             throw new ConvexError({
-              code: "RATE_LIMITED",
+              code: ErrorCode.RATE_LIMITED,
               message: "Too many failed attempts. Please try again later.",
             });
           }
@@ -301,35 +325,38 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
             provider,
             account: { id: email, secret: newPassword },
           });
-          await ctx.auth.session.invalidate(ctx, {
+          await ctx.auth.session.revoke(ctx, {
             userId: verifiedUserId,
             except: [result.issuance.sessionId],
           });
-          await ctx.auth.config.callbacks?.after?.(ctx, {
-            kind: "passwordChanged",
-            userId: verifiedUserId,
-            flow: "change",
+          await emitAuthEvent(ctx, ctx.auth.config, {
+            kind: "password.changed",
+            actor: { type: "user", id: verifiedUserId },
+            subject: { type: "user", id: verifiedUserId },
+            targets: [{ kind: "user", id: verifiedUserId }],
+            outcome: "success",
+            data: { flow: "change" },
           });
           return {
             userId: verifiedUserId,
             hasTotp: false,
             issuance: result.issuance,
           };
-        }
+        },
+      };
 
-        default:
-          throw new Error(
-            "Missing or invalid `flow` param. Expected one of: " +
-              PASSWORD_FLOWS.join(", ") +
-              ".",
-          );
+      if (flowDispatch.tag === "invalid") {
+        throw new Error(
+          "Missing or invalid `flow` param. Expected one of: " + PASSWORD_FLOWS.join(", ") + ".",
+        );
       }
+      return await flowHandlers[flowDispatch.tag]();
     },
     crypto: config.crypto ?? {
       async hashSecret(password: string) {
         return await hashPassword(password);
       },
-      async verifySecret(password: string, hash: string) {
+      async verifySecret(password: string, hash: Hashed<"Password">) {
         return await verifyPassword(password, hash);
       },
     },
@@ -337,10 +364,6 @@ export function password<DataModel extends GenericDataModel = GenericDataModel>(
     ...config,
   });
 }
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 function validateDefaultPasswordRequirements(password: string) {
   if (!password || password.length < 8) {
@@ -367,13 +390,13 @@ const PASSWORD_HASH_PARAMS = {
 
 const PASSWORD_HASH_PREFIX = `scrypt:N=${PASSWORD_HASH_PARAMS.N},r=${PASSWORD_HASH_PARAMS.r},p=${PASSWORD_HASH_PARAMS.p},dkLen=${PASSWORD_HASH_PARAMS.dkLen}`;
 
-async function hashPassword(password: string) {
+async function hashPassword(password: string): Promise<Hashed<"Password">> {
   const salt = crypto.getRandomValues(new Uint8Array(32));
   const hash = await scryptAsync(password, salt, PASSWORD_HASH_PARAMS);
-  return `${PASSWORD_HASH_PREFIX}$${bytesToHex(salt)}$${bytesToHex(hash)}`;
+  return `${PASSWORD_HASH_PREFIX}$${bytesToHex(salt)}$${bytesToHex(hash)}` as Hashed<"Password">;
 }
 
-async function verifyPassword(password: string, storedHash: string) {
+async function verifyPassword(password: string, storedHash: Hashed<"Password">) {
   const [prefix, saltHex, hashHex] = storedHash.split("$");
   if (prefix !== PASSWORD_HASH_PREFIX || saltHex === undefined || hashHex === undefined) {
     return false;

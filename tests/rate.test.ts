@@ -21,7 +21,6 @@ test("rate limit on password", async () => {
   const SECOND_MS = 1000;
   const MINUTE_MS = SECOND_MS * 60;
 
-  // First we're gonna fail 10 times quickly
   for (let i = 0; i < 10; i++) {
     vi.advanceTimersByTime(10 * SECOND_MS);
     await expect(
@@ -37,7 +36,6 @@ test("rate limit on password", async () => {
     ).rejects.toThrow(/ACCOUNT_NOT_FOUND|Invalid credentials|RATE_LIMITED/);
   }
 
-  // Now we can't succeed, even with the right password
   await expect(
     async () =>
       await t.action(api.auth.signIn, {
@@ -50,7 +48,6 @@ test("rate limit on password", async () => {
       }),
   ).rejects.toThrow(/ACCOUNT_NOT_FOUND|Invalid credentials|RATE_LIMITED/);
 
-  // But if we wait a little bit, we can try again
   vi.advanceTimersByTime(8 * MINUTE_MS);
 
   const tokens = expectSignInSession(

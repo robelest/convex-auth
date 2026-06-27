@@ -1,13 +1,12 @@
 import { components } from "@convex/_generated/api";
 import schema from "@convex/schema";
-import { safeParseXml } from "@robelest/samlify";
+import { safeParseXml } from "@robelest/convex-auth/server/connection/saml";
 import { decryptSecret } from "@robelest/convex-auth/server/secret";
 import { setURLSearchParam } from "@robelest/convex-auth/server/redirects";
 import { ConvexError } from "convex/values";
 import { expect, test } from "vite-plus/test";
 
 import { convexTest } from "./convex/setup";
-
 
 test("safeParseXml rejects DOCTYPE declarations", () => {
   const billionLaughs = `<?xml version="1.0"?>
@@ -29,7 +28,6 @@ test("safeParseXml accepts ordinary XML", () => {
   expect(doc).toBeDefined();
 });
 
-
 test("decryptSecret rejects ciphertext with more than two parts", async () => {
   process.env.AUTH_SECRET_ENCRYPTION_KEY = "test-key-for-tier1-regression";
   await expect(decryptSecret("a.b.c")).rejects.toThrow(/malformed/i);
@@ -39,7 +37,6 @@ test("decryptSecret rejects ciphertext with empty payload after dot", async () =
   process.env.AUTH_SECRET_ENCRYPTION_KEY = "test-key-for-tier1-regression";
   await expect(decryptSecret("a.")).rejects.toThrow(/malformed/i);
 });
-
 
 test("setURLSearchParam throws structured error when input has no scheme", () => {
   let caught: unknown;
@@ -58,7 +55,6 @@ test("setURLSearchParam still works on a regular http URL", () => {
   const out = setURLSearchParam("https://example.com/cb", "code", "xyz");
   expect(out).toContain("code=xyz");
 });
-
 
 test("components.auth.user.create rejects unknown fields in data", async () => {
   const t = convexTest(schema);
@@ -91,7 +87,6 @@ test("components.auth.user.upsert rejects unknown fields in data", async () => {
     ),
   ).rejects.toThrow();
 });
-
 
 test("components.auth.user.list pages through with opaque cursor", async () => {
   const t = convexTest(schema);

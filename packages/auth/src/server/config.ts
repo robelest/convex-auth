@@ -1,21 +1,17 @@
+import { envOptionalString } from "./env";
 import {
-  AuthAuthorizationConfig,
   AuthProviderConfig,
   AuthProviderMaterializedConfig,
   AuthTelemetryConfig,
   ConvexAuthConfig,
+  PermissionsConfig,
 } from "./types";
-
-// ============================================================================
-// Public API
-// ============================================================================
 
 /**
  * Resolve raw provider configs into materialized form and apply defaults.
  */
 export function configDefaults(config_: ConvexAuthConfig) {
   const config = materializeAndDefaultProviders(config_);
-  // Collect extra providers from credentials providers
   const extraProviders = config.providers
     .filter((p) => p.type === "credentials")
     .map((p) => p.extraProviders)
@@ -23,7 +19,7 @@ export function configDefaults(config_: ConvexAuthConfig) {
     .filter((p) => p !== undefined);
   return {
     ...config,
-    authorization: normalizeAuthorizationConfig(config.authorization),
+    permissions: normalizePermissionsConfig(config.permissions),
     telemetry: normalizeTelemetryConfig(config.telemetry),
     extraProviders: materializeProviders(extraProviders),
   };
@@ -44,12 +40,11 @@ export function listAvailableProviders(
     : "no providers have been configured";
 }
 
-// ============================================================================
-// Internal helpers
-// ============================================================================
-
 function materializeProviders(providers: AuthProviderConfig[]) {
-  const config = { providers, component: {} } as unknown as ConvexAuthConfig;
+  const config: ConvexAuthConfig = {
+    providers,
+    component: {} as ConvexAuthConfig["component"],
+  };
   materializeAndDefaultProviders(config);
   return config.providers as AuthProviderMaterializedConfig[];
 }
@@ -72,22 +67,23 @@ function materializeAndDefaultProviders(config_: ConvexAuthConfig) {
 
   const config = { ...config_, providers: allProviders };
 
-  // Set phone provider API key from env
   config.providers.forEach((provider) => {
     if (provider.type === "phone") {
       const ID = provider.id.toUpperCase().replace(/-/g, "_");
-      provider.apiKey ??= process.env[`AUTH_${ID}_KEY`];
+      provider.apiKey ??= envOptionalString(`AUTH_${ID}_KEY`);
     }
   });
 
   return config;
 }
 
-function normalizeAuthorizationConfig(
-  authorization: ConvexAuthConfig["authorization"],
-): AuthAuthorizationConfig {
+function normalizePermissionsConfig(
+  permissions: ConvexAuthConfig["permissions"],
+): PermissionsConfig {
+  const declaredGrants = permissions?.grants;
+  const grants = Array.from(new Set(declaredGrants ?? [])).sort();
   const roles = Object.fromEntries(
-    Object.entries(authorization?.roles ?? {}).map(([roleId, role]) => [
+    Object.entries(permissions?.roles ?? {}).map(([roleId, role]) => [
       roleId,
       {
         ...(role.label ? { label: role.label } : {}),
@@ -95,7 +91,7 @@ function normalizeAuthorizationConfig(
       },
     ]),
   );
-  return { roles };
+  return { grants, roles };
 }
 
 function normalizeTelemetryConfig(telemetry: ConvexAuthConfig["telemetry"]): AuthTelemetryConfig {

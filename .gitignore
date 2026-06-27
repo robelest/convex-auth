@@ -50,6 +50,8 @@ test/infra/docker/.zitadel-*.pat
 .vercel
 
 # stray tool caches
+.codex/
+.pnpm-store/
 .ruff_cache/
 .wrangler/
 
@@ -67,3 +69,4 @@ CLAUDE.md
 
 # pack artifacts
 *.tgz
+.fallow/

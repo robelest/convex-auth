@@ -17,12 +17,33 @@
 import { GenericDataModel } from "convex/server";
 import { GenericId, Value } from "convex/values";
 
-import type { SessionIssuance } from "../server/sessions";
+import type { Hashed } from "../shared/brand";
+import type { SignInFlowResult } from "../shared/results";
+import type { SessionIssuance } from "../server/session/lifecycle";
 import type {
   AuthProviderConfig,
   ConvexCredentialsConfig,
   GenericActionCtxWithAuthConfig,
 } from "../server/types";
+
+type CredentialsAuthorizeResult =
+  | {
+      userId: GenericId<"User">;
+      sessionId?: GenericId<"Session">;
+      /**
+       * TOTP step-up hint. `false` skips the verified-TOTP lookup;
+       * `true`/`undefined` falls back to it.
+       */
+      hasTotp?: boolean;
+      /**
+       * Pre-issued session from a combined verify+issue mutation. When set,
+       * the framework skips the second `callSignIn` mutation and finalizes
+       * the issuance directly on the action side.
+       */
+      issuance?: SessionIssuance;
+    }
+  | Exclude<SignInFlowResult<null>, { kind: "signedIn" }>
+  | null;
 
 /** Configuration for the {@link credentials} provider. */
 export interface CredentialsConfig<DataModel extends GenericDataModel = GenericDataModel> {
@@ -35,25 +56,11 @@ export interface CredentialsConfig<DataModel extends GenericDataModel = GenericD
   authorize: (
     credentials: Partial<Record<string, Value | undefined>>,
     ctx: GenericActionCtxWithAuthConfig<DataModel>,
-  ) => Promise<{
-    userId: GenericId<"User">;
-    sessionId?: GenericId<"Session">;
-    /**
-     * TOTP step-up hint. `false` skips the verified-TOTP lookup;
-     * `true`/`undefined` falls back to it.
-     */
-    hasTotp?: boolean;
-    /**
-     * Pre-issued session from a combined verify+issue mutation. When set,
-     * the framework skips the second `callSignIn` mutation and finalizes
-     * the issuance directly on the action side.
-     */
-    issuance?: SessionIssuance;
-  } | null>;
+  ) => Promise<CredentialsAuthorizeResult>;
   /** Optional hashing helpers for password-style credential verification. */
   crypto?: {
-    hashSecret: (secret: string) => Promise<string>;
-    verifySecret: (secret: string, hash: string) => Promise<boolean>;
+    hashSecret: (secret: string) => Promise<Hashed<"Password">>;
+    verifySecret: (secret: string, hash: Hashed<"Password">) => Promise<boolean>;
   };
   /** Additional providers to register alongside this credentials provider. */
   extraProviders?: (AuthProviderConfig | undefined)[];
@@ -64,7 +71,7 @@ export interface CredentialsConfig<DataModel extends GenericDataModel = GenericD
  *
  * @typeParam DataModel - The Convex data model used by the auth context.
  * @param config - Custom authorization and hashing hooks.
- * @returns A configured credentials provider for `createAuth`.
+ * @returns A configured credentials provider for `defineAuth`.
  *
  * @example
  * ```ts

@@ -51,7 +51,6 @@ export function createCache<K, V>(
 
   function evictOldest() {
     if (store.size < capacity) return;
-    // Map iterates in insertion order — first key is oldest
     const firstKey = store.keys().next().value;
     if (firstKey !== undefined) {
       store.delete(firstKey);
@@ -64,7 +63,6 @@ export function createCache<K, V>(
       if (existing && existing.expiresAt > Date.now()) {
         return existing.value;
       }
-      // Miss or expired
       if (existing) store.delete(key);
       evictExpired();
       evictOldest();

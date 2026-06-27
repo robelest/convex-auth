@@ -7,69 +7,118 @@
 }
 
 @font-face {
-  font-family: "Crimson Pro";
-  font-style: normal;
-  font-weight: 400 600;
+  font-family: "GT America";
+  font-weight: 400;
   font-display: swap;
-  src: url("/fonts/crimson-pro.woff2") format("woff2");
+  src: url("https://docs.convex.dev/fonts/GT-America-Standard-Regular.woff2") format("woff2");
 }
 
 @font-face {
-  font-family: "Newsreader";
-  font-style: normal;
-  font-weight: 400 500;
+  font-family: "GT America";
+  font-weight: 500;
   font-display: swap;
-  src: url("/fonts/newsreader.woff2") format("woff2");
+  src: url("https://docs.convex.dev/fonts/GT-America-Standard-Medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "GT America";
+  font-weight: 700;
+  font-display: swap;
+  src: url("https://docs.convex.dev/fonts/GT-America-Standard-Bold.woff2") format("woff2");
 }
 
 @import "tailwindcss";
 
 @theme {
-  --color-accent-300: #e8a070;
-  --color-accent-400: #d4764a;
-  --color-accent-500: #c25d3a;
-  --color-accent-600: #a34a2a;
-  --color-gray-50: #fdfcfa;
-  --color-gray-100: #faf8f5;
-  --color-gray-200: #f5f2ed;
-  --color-gray-300: #e8e2d8;
-  --color-gray-400: #b5aea3;
-  --color-gray-500: #8c8780;
-  --color-gray-600: #6b665f;
-  --color-gray-700: #4a453e;
-  --color-gray-800: #2d2a26;
-  --color-gray-900: #1a1816;
-  --font-sans: "Crimson Pro", Georgia, serif;
-  --font-display: "Newsreader", Georgia, serif;
-  --font-label: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --color-background-brand: rgb(30, 28, 26);
+  --color-background-primary: rgb(30, 28, 26);
+  --color-background-secondary: rgb(42, 40, 37);
+  --color-background-tertiary: rgb(60, 58, 55);
+  --color-background-highlight: rgb(109, 82, 23);
+  --color-background-success: rgb(44, 83, 20);
+  --color-background-warning: rgb(109, 82, 23);
+  --color-background-error: rgb(107, 33, 31);
+  --color-background-error-secondary: rgb(168, 21, 21);
+  --color-content-primary: rgb(255, 255, 255);
+  --color-content-secondary: rgb(185, 177, 170);
+  --color-content-tertiary: rgb(151, 144, 138);
+  --color-content-accent: rgb(99, 168, 248);
+  --color-content-link: rgb(177, 202, 240);
+  --color-content-success: rgb(180, 236, 146);
+  --color-content-warning: rgb(230, 226, 168);
+  --color-content-error: rgb(255, 202, 193);
+  --color-content-error-secondary: rgb(252, 165, 165);
+  --color-border-transparent: rgba(163, 156, 148, 0.3);
+  --color-border-selected: rgb(225, 215, 205);
+  --color-util-accent: rgb(63, 82, 149);
+  --color-info: rgb(7, 191, 232);
+  --color-brand-red: rgb(238, 52, 47);
+  --color-brand-purple: rgb(141, 38, 118);
+  --color-brand-yellow: rgb(243, 176, 28);
+
+  --color-accent-300: rgb(255, 202, 193);
+  --color-accent-400: rgb(253, 76, 65);
+  --color-accent-500: rgb(238, 52, 47);
+  --color-accent-600: rgb(218, 43, 37);
+  --color-gray-50: var(--color-background-primary);
+  --color-gray-100: var(--color-background-secondary);
+  --color-gray-200: var(--color-background-tertiary);
+  --color-gray-300: var(--color-border-transparent);
+  --color-gray-400: var(--color-content-tertiary);
+  --color-gray-500: var(--color-content-secondary);
+  --color-gray-600: var(--color-content-secondary);
+  --color-gray-700: var(--color-content-primary);
+  --color-gray-800: var(--color-content-primary);
+  --color-gray-900: var(--color-content-primary);
+  --color-black: rgb(0, 0, 0);
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, "BlinkMacSystemFont", "Segoe UI", "Roboto",
+    "Helvetica Neue", Arial, sans-serif;
+  --font-display:
+    "GT America", "Inter", ui-sans-serif, system-ui, -apple-system, "BlinkMacSystemFont",
+    "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
+  --font-label: "GT America", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  --color-green-600: #16a34a;
-  --color-indigo-50: #eef2ff;
-  --color-indigo-100: #e0e7ff;
-  --color-indigo-500: #6366f1;
-  --color-indigo-600: #4f46e5;
-  --color-indigo-700: #4338ca;
-  --color-slate-400: #94a3b8;
-  --color-slate-500: #64748b;
-  --color-slate-600: #475569;
+  --color-green-50: rgba(180, 236, 146, 0.1);
+  --color-green-300: rgba(180, 236, 146, 0.28);
+  --color-green-600: rgb(79, 176, 20);
+  --color-green-700: rgb(180, 236, 146);
+  --color-green-800: rgb(180, 236, 146);
+  --color-indigo-50: rgba(99, 168, 248, 0.12);
+  --color-indigo-100: rgba(99, 168, 248, 0.18);
+  --color-indigo-500: rgb(99, 168, 248);
+  --color-indigo-600: rgb(99, 168, 248);
+  --color-indigo-700: rgb(177, 202, 240);
+  --color-indigo-900: rgb(177, 202, 240);
+  --color-amber-50: rgba(230, 226, 168, 0.12);
+  --color-amber-300: rgb(230, 226, 168);
+  --color-amber-700: rgb(230, 226, 168);
+  --color-amber-800: rgb(230, 226, 168);
+  --color-slate-400: var(--color-content-tertiary);
+  --color-slate-500: var(--color-content-secondary);
+  --color-slate-600: var(--color-content-primary);
 }
 
 /* ── Base ── */
 
 html {
-  @apply scroll-smooth bg-gray-50;
+  color-scheme: dark;
+  @apply scroll-smooth bg-background-primary;
 }
 
 body {
-  @apply m-0 min-h-dvh bg-gray-50 text-gray-900 font-sans text-sm leading-relaxed antialiased;
+  @apply m-0 min-h-dvh bg-background-primary text-content-primary font-sans text-sm leading-relaxed antialiased;
+  font-synthesis: none;
+  font-variant-ligatures: no-contextual;
+  overscroll-behavior: contain;
 }
 
 * {
-  @apply box-border border-gray-300;
+  @apply box-border border-border-transparent;
 }
 
 a {
-  @apply text-accent-500 no-underline;
+  @apply text-content-link no-underline;
 }
 
 button,
@@ -79,52 +128,80 @@ textarea {
   font: inherit;
 }
 
+button:not(:disabled),
+[role="button"]:not(:disabled) {
+  cursor: pointer;
+}
+
+*:focus-visible {
+  @apply outline-none;
+}
+
+a:focus-visible {
+  @apply rounded-sm ring-2 ring-util-accent;
+}
+
 /* ── Typography ── */
 
 .label {
-  @apply mb-1.5 font-label text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-gray-500;
+  @apply mb-1.5 font-label text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-content-tertiary;
 }
 
 .heading {
-  @apply m-0 font-display font-medium leading-tight tracking-tight;
+  @apply m-0 font-display font-semibold leading-tight tracking-normal;
 }
 
 .muted {
-  @apply m-0 text-gray-600 text-[0.8125rem];
+  @apply m-0 text-content-secondary text-[0.8125rem];
 }
 
 .section-header {
-  @apply font-label text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-gray-500 pb-1.5 mb-3 border-b border-gray-300 m-0;
+  @apply font-label text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-content-tertiary pb-1.5 mb-3 border-b border-border-transparent m-0;
 }
 
-/* ── Buttons ── */
+/* ── Buttons ──
+   Convex dashboard recipe: padding-based density (no fixed height), Inter,
+   border-based focus, desaturated hover. Primary = util-accent. */
 
 .button {
-  @apply inline-flex items-center justify-center h-9 px-3 border border-transparent bg-transparent font-label text-[0.8125rem] font-semibold cursor-pointer leading-none;
+  @apply inline-flex min-h-9 select-none items-center justify-center gap-1.5 rounded-md border border-transparent bg-transparent px-3 py-1.5 text-sm font-medium leading-none transition-colors;
+}
+
+.button:focus-visible {
+  @apply border-border-selected;
 }
 
 .button--accent {
-  @apply bg-accent-500 text-white;
+  @apply border-white/30 bg-util-accent text-white;
 }
 
 .button--accent:hover {
-  @apply bg-accent-600;
+  @apply bg-util-accent/80;
 }
 
 .button--secondary {
-  @apply border-gray-300 text-gray-800 bg-white;
+  @apply border-border-transparent bg-background-secondary text-content-primary;
 }
 
 .button--secondary:hover {
-  @apply bg-gray-100;
+  @apply bg-background-tertiary;
+}
+
+.button--danger {
+  @apply bg-background-error text-content-error;
+  border-color: rgba(255, 202, 193, 0.3);
+}
+
+.button--danger:hover {
+  @apply bg-background-error-secondary text-content-error;
 }
 
 .button--ghost {
-  @apply p-0 border-0 text-accent-600 bg-transparent text-[0.72rem] h-auto;
+  @apply h-auto border-0 bg-transparent p-0 text-[0.8125rem] text-content-link;
 }
 
 .button--ghost:hover {
-  @apply text-accent-500;
+  @apply text-content-primary underline;
 }
 
 .button--block {
@@ -132,91 +209,240 @@ textarea {
 }
 
 .button--compact {
-  @apply h-7 px-2 text-xs;
+  @apply min-h-7 px-2 py-1 text-xs;
+}
+
+.button--lg {
+  @apply min-h-10 px-4 py-2 text-base;
 }
 
 .button:disabled {
-  @apply opacity-45 cursor-not-allowed;
+  @apply cursor-not-allowed opacity-50;
 }
 
 /* ── Inputs ── */
 
 .input,
 .select {
-  @apply h-9 px-2.5 border border-gray-300 bg-white text-gray-900 font-label text-[0.8125rem];
+  @apply block min-h-9 w-full rounded-md border border-border-transparent bg-background-secondary px-2 py-1.5 text-sm text-content-primary transition-colors;
+}
+
+.input:focus,
+.select:focus,
+textarea:focus {
+  @apply border-border-selected outline-none;
 }
 
 .input--compact,
 .select--compact {
-  @apply h-7 px-2 text-xs;
+  @apply min-h-7 px-1.5 py-1 text-xs;
 }
 
-.input::placeholder {
-  @apply text-gray-400;
+.input::placeholder,
+textarea::placeholder {
+  @apply text-content-tertiary;
 }
 
 /* ── Chips ── */
 
 .chip {
-  @apply inline-flex items-center px-1.5 py-0.5 border border-gray-300 font-label text-[0.6875rem] font-semibold leading-snug;
+  @apply inline-flex items-center rounded-sm px-1.5 py-0.5 border border-border-transparent bg-background-tertiary text-[0.6875rem] font-semibold leading-snug text-content-secondary;
 }
 
 .chip--high {
-  color: #8d2d13;
-  border-color: rgba(194, 93, 58, 0.28);
-  background: rgba(194, 93, 58, 0.08);
+  color: var(--color-content-error);
+  border-color: rgba(238, 52, 47, 0.38);
+  background: rgba(238, 52, 47, 0.12);
 }
 
 .chip--medium {
-  color: #8d5c13;
-  border-color: rgba(212, 118, 74, 0.28);
-  background: rgba(232, 160, 112, 0.12);
+  color: var(--color-content-warning);
+  border-color: rgba(243, 176, 28, 0.34);
+  background: rgba(243, 176, 28, 0.12);
 }
 
 .chip--urgent {
-  color: #991b1b;
-  border-color: rgba(185, 28, 28, 0.28);
-  background: rgba(185, 28, 28, 0.08);
+  color: var(--color-content-error);
+  border-color: rgba(238, 52, 47, 0.48);
+  background: rgba(238, 52, 47, 0.18);
 }
 
 .chip--low {
-  @apply text-gray-700;
+  @apply text-content-secondary;
 }
 
 .chip--role {
-  @apply text-gray-600 bg-gray-100;
+  @apply text-content-secondary bg-background-tertiary;
 }
 
 .chip--grant {
-  @apply text-gray-700 bg-gray-100;
+  @apply text-content-secondary bg-background-tertiary;
 }
 
-/* ── Error ── */
+/* ── Callout / banners ──
+   Convex dashboard recipe: rounded-lg border p-3 text-sm, semantic bg. */
+
+.callout {
+  @apply m-0 flex gap-2 rounded-lg border border-border-transparent p-3 text-sm;
+}
+
+.callout--hint,
+.callout--info {
+  @apply bg-util-accent/30 text-content-primary;
+}
+
+.callout--success {
+  @apply bg-background-success text-content-primary;
+}
+
+.callout--warning {
+  @apply bg-background-warning text-content-primary;
+}
+
+.callout--error {
+  @apply bg-background-error text-content-primary;
+}
 
 .error-banner {
-  @apply m-0 px-2.5 py-2 font-label text-xs font-semibold text-accent-600;
-  background: rgba(194, 93, 58, 0.08);
-  border: 1px solid rgba(194, 93, 58, 0.22);
+  @apply m-0 flex gap-2 rounded-lg border border-border-transparent bg-background-error p-3 text-sm font-medium text-content-error;
+}
+
+.success-banner {
+  @apply m-0 flex gap-2 rounded-lg border border-border-transparent bg-background-success p-3 text-sm font-medium text-content-success;
 }
 
 /* ── Divider ── */
 
 .divider {
-  @apply relative flex justify-center items-center font-label text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-gray-500;
+  @apply relative flex justify-center items-center font-label text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-content-tertiary;
 }
 
 .divider::before {
   content: "";
-  @apply absolute inset-x-0 top-1/2 border-t border-gray-300;
+  @apply absolute inset-x-0 top-1/2 border-t border-border-transparent;
 }
 
 .divider span {
-  @apply relative px-2 bg-white;
+  @apply relative px-2 bg-background-secondary;
+}
+
+/* ── Product console primitives ── */
+
+.panel {
+  @apply border border-border-transparent rounded-lg bg-background-secondary;
+}
+
+.panel--raised {
+  @apply border-border-transparent bg-background-secondary shadow-[0_24px_80px_rgb(0_0_0_/_0.24)];
+}
+
+.panel-header {
+  @apply flex items-center justify-between gap-3 border-b border-border-transparent px-4 py-3;
+}
+
+.row {
+  @apply flex items-center gap-3 border-b border-border-transparent bg-transparent px-3 py-2 text-left transition-colors duration-75;
+}
+
+.row:hover,
+.row--active {
+  @apply bg-background-tertiary;
+}
+
+/* ── Segmented control ── */
+
+.segmented {
+  @apply inline-flex max-w-full gap-1 overflow-auto rounded-full border border-border-transparent bg-background-tertiary p-1;
+}
+
+.segmented button {
+  @apply rounded-full border border-transparent bg-transparent px-4 py-1.5 text-sm font-medium text-content-secondary transition-colors duration-200;
+}
+
+.segmented button:hover {
+  @apply text-content-primary;
+}
+
+.segmented button[aria-pressed="true"],
+.segmented button[data-active="true"] {
+  @apply bg-background-secondary text-content-primary shadow-sm;
+}
+
+/* ── Icon button ── */
+
+.icon-button {
+  @apply inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent bg-transparent text-content-tertiary transition-colors duration-100;
+}
+
+.icon-button:hover {
+  @apply bg-background-tertiary text-content-primary;
+}
+
+.icon-button:focus-visible {
+  @apply border-border-selected;
+}
+
+/* ── Menu / dropdown ── */
+
+.menu {
+  @apply z-50 flex max-h-80 flex-col gap-1 overflow-auto rounded-lg border border-border-transparent bg-background-secondary py-2 text-sm shadow-md;
+}
+
+.menu-item {
+  @apply mx-1 flex items-center gap-2 rounded-sm p-2 text-content-primary transition-colors;
+}
+
+.menu-item:hover {
+  @apply bg-background-tertiary;
+}
+
+.menu-item[data-active="true"] {
+  @apply bg-background-primary;
+}
+
+/* ── Tooltip ── */
+
+.tooltip {
+  @apply z-50 max-w-[16rem] break-words rounded-sm border border-border-transparent bg-background-secondary p-1 text-center text-xs shadow-xs;
+}
+
+/* ── Link ── */
+
+.link {
+  @apply text-content-link underline decoration-content-link/40 underline-offset-2 hover:decoration-content-link;
+}
+
+/* ── Code block ── */
+
+.code-block {
+  @apply block overflow-x-auto rounded-sm border border-border-transparent bg-background-primary px-2 py-1 font-mono text-[0.75rem] text-content-accent;
 }
 
 /* ── Scrollbars ── */
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--color-gray-400) transparent;
+  scrollbar-color: var(--color-content-tertiary) transparent;
+}
+
+/* ── Page transitions ── */
+
+@keyframes vt-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes vt-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+::view-transition-old(root) {
+  animation: 140ms ease-out both vt-fade-out;
+}
+
+::view-transition-new(root) {
+  animation: 220ms ease-in both vt-fade-in;
 }

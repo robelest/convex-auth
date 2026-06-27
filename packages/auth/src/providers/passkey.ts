@@ -38,7 +38,7 @@ export interface PasskeyConfig {
  * Create a passkey provider.
  *
  * @param config - Optional WebAuthn relying party and challenge settings.
- * @returns A configured passkey provider for `createAuth`.
+ * @returns A configured passkey provider for `defineAuth`.
  *
  * @example
  * ```ts

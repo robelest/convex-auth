@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 
 import { auth } from "./auth/core";
-import { authMutation, authQuery, requireUserId } from "./functions";
+import { authMutation, authQuery } from "./functions";
 
 export const forIssue = authQuery({
   args: { issueId: v.string() },
@@ -19,14 +19,14 @@ export const forIssue = authQuery({
     if (!issueId) return [];
     const issue = await ctx.db.get(issueId);
     if (!issue) return [];
-    const userId = await requireUserId(ctx);
+    const userId = ctx.auth.userId;
 
     const [comments] = await Promise.all([
       ctx.db
         .query("comments")
         .withIndex("by_issueId", (q) => q.eq("issueId", issue._id))
         .take(100),
-      auth.member.require(ctx, {
+      auth.member.assert(ctx, {
         userId,
         groupId: issue.groupId,
         grants: ["projects.read"],
@@ -34,7 +34,7 @@ export const forIssue = authQuery({
     ]);
 
     const userIds = comments.map((c) => c.authorUserId);
-    const users = await auth.user.get(ctx, userIds);
+    const users = await auth.user.get(ctx, { ids: userIds });
 
     return comments.map((comment, i) => ({
       _id: comment._id,
@@ -63,9 +63,9 @@ export const create = authMutation({
     if (body.length === 0) {
       throw new ConvexError({ code: "INVALID_INPUT", message: "Comment cannot be empty." });
     }
-    const userId = await requireUserId(ctx);
+    const userId = ctx.auth.userId;
 
-    await auth.member.require(ctx, {
+    await auth.member.assert(ctx, {
       userId,
       groupId: issue.groupId,
       grants: ["comments.create"],
@@ -91,14 +91,14 @@ export const remove = authMutation({
 
     const comment = await ctx.db.get(commentId);
     if (!comment) return null;
-    const userId = await requireUserId(ctx);
+    const userId = ctx.auth.userId;
 
     if (comment.authorUserId !== userId) {
       const issue = await ctx.db.get(comment.issueId);
       if (!issue) {
         throw new ConvexError({ code: "NOT_FOUND", message: "Issue not found." });
       }
-      await auth.member.require(ctx, {
+      await auth.member.assert(ctx, {
         userId,
         groupId: issue.groupId,
         grants: ["comments.delete"],

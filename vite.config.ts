@@ -4,8 +4,6 @@ import { defineConfig } from "vite-plus";
 
 const convexApp = path.resolve(import.meta.dirname, "./convex");
 const authSrc = path.resolve(import.meta.dirname, "./packages/auth/src");
-const samlifyRoot = path.resolve(import.meta.dirname, "./packages/samlify");
-const samlifyTest = path.resolve(import.meta.dirname, "./tests/samlify");
 
 const testProjectAliases = {
   "@convex": convexApp,
@@ -13,10 +11,6 @@ const testProjectAliases = {
   "@robelest/convex-auth/test": path.join(authSrc, "test.ts"),
   "@robelest/convex-auth": authSrc,
   "@robelest/convex-auth/": `${authSrc}/`,
-  "@robelest/samlify/test": samlifyTest,
-  "@robelest/samlify/test/": `${samlifyTest}/`,
-  "@robelest/samlify": samlifyRoot,
-  "@robelest/samlify/": `${samlifyRoot}/`,
 } as const;
 
 export default defineConfig({
@@ -28,7 +22,6 @@ export default defineConfig({
       "**/dist/**",
       "**/_generated/**",
       "**/node_modules/**",
-      "packages/samlify/**",
       "packages/auth/src/server/auth.ts",
       "packages/auth/src/server/index.ts",
       "packages/auth/src/server/implementation.ts",
@@ -44,19 +37,6 @@ export default defineConfig({
       tasks: true,
     },
     tasks: {
-      "cache:build:samlify": {
-        command: "vp run --filter @robelest/samlify build",
-        cache: true,
-        input: [
-          "packages/samlify/**",
-          "package.json",
-          "pnpm-lock.yaml",
-          "pnpm-workspace.yaml",
-          "tsconfig*.json",
-          "vite.config.ts",
-          "!packages/samlify/dist/**",
-        ],
-      },
       "cache:build:convex-codegen": {
         command:
           "vp exec varlock run -- vp exec convex codegen --component-dir ./packages/auth/src/component",
@@ -94,8 +74,7 @@ export default defineConfig({
         ],
       },
       "cache:build": {
-        command:
-          "vp run cache:build:samlify && vp run cache:build:convex-codegen && vp run cache:build:auth",
+        command: "vp run cache:build:convex-codegen && vp run cache:build:auth",
         cache: true,
         input: [
           "convex/**",
@@ -144,20 +123,6 @@ export default defineConfig({
           "!**/_generated/**",
         ],
       },
-      "cache:test:samlify": {
-        command: "vp test --run --project samlify",
-        cache: true,
-        input: [
-          "packages/samlify/**",
-          "tests/samlify/**",
-          "package.json",
-          "pnpm-lock.yaml",
-          "pnpm-workspace.yaml",
-          "tsconfig*.json",
-          "vite.config.ts",
-          "!**/dist/**",
-        ],
-      },
       "cache:test:interop": {
         command: "vp test --run --project interop",
         cache: true,
@@ -175,7 +140,7 @@ export default defineConfig({
         ],
       },
       "cache:test": {
-        command: "vp run cache:test:unit && vp run cache:test:samlify && vp run cache:test:interop",
+        command: "vp run cache:test:unit && vp run cache:test:interop",
         cache: true,
         input: [
           "convex/**",
@@ -192,7 +157,7 @@ export default defineConfig({
       },
       "cache:validate": {
         command:
-          "vp run typecheck:tests && vp run '@robelest/convex-auth#typecheck:consumer' && vp run '@robelest/convex-auth#check:packaging' && vp run --filter @robelest/samlify check:packaging && vp run --filter @robelest/samlify check:runtime-imports && vp run --filter @robelest/samlify report:edge-gaps",
+          "vp run typecheck:tests && vp run '@robelest/convex-auth#typecheck:consumer' && vp run '@robelest/convex-auth#check:packaging'",
         cache: true,
         input: [
           "convex/**",
@@ -236,7 +201,7 @@ export default defineConfig({
         test: {
           name: "node",
           include: ["**/node.test.ts"],
-          exclude: ["sso/**/node.test.ts", "benchmarks/**/node.test.ts"],
+          exclude: ["connection/**/node.test.ts", "benchmarks/**/node.test.ts"],
           environment: "node",
           setupFiles: ["./vitest/setup.ts"],
           server: { deps: { inline: ["convex-test"] } },
@@ -251,13 +216,7 @@ export default defineConfig({
         },
         test: {
           name: "interop",
-          include: [
-            "sso/**/node.test.ts",
-            // Latency benchmarks — same Docker-backed setup as SSO tests
-            // (self-hosted Convex backend, real HTTP actions). Live under
-            // `tests/benchmarks/` so they're discoverable separately.
-            "benchmarks/**/node.test.ts",
-          ],
+          include: ["connection/**/node.test.ts", "benchmarks/**/node.test.ts"],
           environment: "node",
           globalSetup: ["./infra/docker/setup/node.ts"],
           setupFiles: ["./vitest/setup.ts"],
@@ -267,20 +226,6 @@ export default defineConfig({
           sequence: {
             groupOrder: 1,
           },
-        },
-      },
-      {
-        root: "./tests",
-        resolve: {
-          alias: testProjectAliases,
-        },
-        test: {
-          name: "samlify",
-          include: ["samlify/**/*.ts"],
-          exclude: ["node_modules", "dist", "samlify/setup.ts"],
-          environment: "node",
-          globals: false,
-          setupFiles: ["./samlify/setup.ts"],
         },
       },
     ],

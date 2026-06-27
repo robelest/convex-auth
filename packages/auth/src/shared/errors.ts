@@ -1,3 +1,10 @@
+/**
+ * Sign-in flow error type shared between client and server.
+ *
+ * @module
+ */
+
+/** Error raised during a sign-in flow, carrying a machine-readable `code`. */
 export class AuthFlowError extends Error {
   readonly code: string;
 

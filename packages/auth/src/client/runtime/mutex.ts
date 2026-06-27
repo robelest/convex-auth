@@ -18,7 +18,7 @@ export async function localMutex<T>(key: string, callback: () => Promise<T>): Pr
   try {
     await previousTail;
   } catch {
-    // Ignore previous task failures and continue the queue.
+    /* empty */
   }
 
   try {

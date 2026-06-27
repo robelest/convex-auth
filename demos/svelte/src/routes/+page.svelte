@@ -1,15 +1,29 @@
 <script lang="ts">
-  import { useConvexClient } from "convex-svelte";
-
+  import { getConvexClient, useQuery } from "convex-svelte";
+  import { getContext } from "svelte";
+  import { goto } from "$app/navigation";
+  import { api } from "$convex/_generated/api.js";
+  import type { AppContext } from "$lib/app";
   import AuthModal from "$lib/components/AuthModal.svelte";
   import OnboardingModal from "$lib/components/OnboardingModal.svelte";
 
-  let { data } = $props();
-  const client = useConvexClient();
+  const app = getContext<AppContext>("app");
+  const client = getConvexClient();
+
+  const dashboard = useQuery(api.groups.get, () => (app.isAuthenticated ? {} : "skip"));
+
+  $effect(() => {
+    const data = dashboard.data;
+    if (!data || data.groups.length === 0) return;
+    const target = data.selectedGroup?.groupId ?? data.groups[0]?.groupId;
+    if (target) void goto(`/${target}`, { replaceState: true });
+  });
 </script>
 
-{#if !data.auth.isAuthenticated}
-  <AuthModal authProviders={data.authProviders} />
-{:else}
+{#if !app.isAuthenticated}
+  <AuthModal authProviders={app.authProviders} />
+{:else if dashboard.data && dashboard.data.groups.length === 0}
   <OnboardingModal {client} />
+{:else}
+  <p class="muted">Loading…</p>
 {/if}

@@ -13,10 +13,9 @@ import gradientString from "gradient-string";
 import { api } from "../../../convex/_generated/api.js";
 import { clearStoredSession, readStoredSession, writeStoredSession } from "./storage";
 
-
 figlet.parseFont("ANSI Shadow", ansiShadow);
 
-const gradient = gradientString("purple", "pink", "orange");
+const gradient = gradientString("#EE342F", "#F3B01C");
 
 function printBanner() {
   const banner = figlet.textSync("CONVEX-AUTH", {
@@ -24,9 +23,8 @@ function printBanner() {
     horizontalLayout: "default",
   });
   console.log("\n" + gradient(banner));
-  console.log("  \x1b[35m✦  cli demo — device login & direct convex calls  ✦\x1b[0m\n");
+  console.log("  \x1b[38;2;185;177;170m✦  cli demo — device login & direct convex calls  ✦\x1b[0m\n");
 }
-
 
 type DeviceCodeResult = {
   deviceCode: string;
@@ -44,7 +42,6 @@ type SignInSessionResult = {
     refreshToken?: string;
   } | null;
 };
-
 
 function loadCliEnv() {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -143,7 +140,6 @@ async function authedClient() {
   return client;
 }
 
-
 async function doAuthLogin() {
   const client = createClient();
 
@@ -219,7 +215,6 @@ async function doAuthLogout() {
   p.log.success("Stored credentials cleared.");
 }
 
-
 async function doGroupsList() {
   const client = await authedClient();
   const groups = await client.query(api.groups.list, {});
@@ -285,7 +280,6 @@ async function doIssuesCreate() {
   p.log.success("Issue created.");
   console.log(JSON.stringify(result, null, 2));
 }
-
 
 async function run() {
   printBanner();

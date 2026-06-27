@@ -62,7 +62,8 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
 
   const baseClient = createClient({
     ...options,
-    storage: options.storage === undefined && options.proxyPath !== undefined ? null : options.storage,
+    storage:
+      options.storage === undefined && options.proxyPath !== undefined ? null : options.storage,
     runtime: services.runtime,
     adapters: services.adapters,
     adapterFactories: services.adapterFactories,
@@ -93,8 +94,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
 
   const signIn: typeof baseClient.signIn = async (provider, ...args) => {
     const params = args[0] as Record<string, unknown> | undefined;
-    // Forward through the loose internal signature — TS cannot resolve the
-    // generic params type from the wrapper's union-typed `provider` argument.
     const result = await (baseClient.signIn as SignInImpl)(provider, params);
     if (result.kind === "redirect") {
       await services.runtime.oauth?.open(result.redirect);

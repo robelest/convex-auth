@@ -1,13 +1,13 @@
 import type { Infer } from "convex/values";
 
 import { configDefaults } from "../config";
-import { refreshSessionImpl, refreshSessionArgs } from "../mutations/refresh";
+import { refreshSessionImpl, vRefreshSessionArgs } from "../mutations/refresh";
 import type { MutationCtx } from "../types";
 
 type AuthRefreshService = {
   readonly refresh: (
     ctx: MutationCtx,
-    args: Infer<typeof refreshSessionArgs>,
+    args: Infer<typeof vRefreshSessionArgs>,
   ) => ReturnType<typeof refreshSessionImpl>;
 };
 

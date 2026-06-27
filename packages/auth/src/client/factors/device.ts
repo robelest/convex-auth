@@ -7,7 +7,9 @@ import type {
   SignInActionResult,
   SignInApiRef,
 } from "../core/types";
+import type { AccessToken } from "../../shared/brand";
 import type { AuthTokens } from "../../shared/results";
+import { ErrorCode } from "../../shared/codes";
 
 function isSignedInResult(
   result: SignInActionResult,
@@ -30,7 +32,7 @@ type DeviceDeps = {
         }
       | {
           shouldStore: false;
-          tokens: { token: string } | null;
+          tokens: { token: AccessToken } | null;
           waitForHandshake: boolean;
           context: { provider?: string; flow: string };
         },
@@ -64,7 +66,10 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
       const SLOW_DOWN_INCREMENT_MS = 5 * 1000;
       let currentIntervalMs = code.interval * 1000;
       const startedAt = Date.now();
-      const expiresAt = Math.min(startedAt + code.expiresIn * 1000, startedAt + MAX_POLL_DURATION_MS);
+      const expiresAt = Math.min(
+        startedAt + code.expiresIn * 1000,
+        startedAt + MAX_POLL_DURATION_MS,
+      );
 
       while (Date.now() < expiresAt) {
         await new Promise((resolve) => setTimeout(resolve, currentIntervalMs));
@@ -116,7 +121,7 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
       }
 
       throw new ConvexError({
-        code: "DEVICE_CODE_EXPIRED",
+        code: ErrorCode.DEVICE_CODE_EXPIRED,
         message: "Device code expired before authorization was completed.",
       });
     },
@@ -131,7 +136,7 @@ export function createDeviceClient(deps: DeviceDeps): DeviceClient {
         await requestDeviceSignIn(params);
       } catch (error) {
         throw new ConvexError({
-          code: "DEVICE_AUTHORIZATION_FAILED",
+          code: ErrorCode.DEVICE_AUTHORIZATION_FAILED,
           message: error instanceof Error ? error.message : "Invalid or expired code.",
         });
       }

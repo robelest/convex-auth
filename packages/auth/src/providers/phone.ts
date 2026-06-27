@@ -20,7 +20,7 @@ export interface PhoneProviderConfig {
  * Create a phone or SMS verification provider.
  *
  * @param config - SMS delivery hook and optional provider settings.
- * @returns A configured phone provider for `createAuth`.
+ * @returns A configured phone provider for `defineAuth`.
  *
  * @example
  * ```ts

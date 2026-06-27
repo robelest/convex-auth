@@ -3,13 +3,7 @@ import { View, Text, Pressable, ScrollView } from "react-native";
 
 import { colors, statusColors, spacing, fontSize, radius } from "@/src/theme";
 
-const STATUSES = [
-  "in_progress",
-  "todo",
-  "backlog",
-  "done",
-  "cancelled",
-] as const;
+const STATUSES = ["in_progress", "todo", "backlog", "done", "cancelled"] as const;
 const LABELS: Record<string, string> = {
   in_progress: "In Progress",
   todo: "Todo",
@@ -29,7 +23,11 @@ export const StatusPicker = React.memo(function StatusPicker({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm }}
+      contentContainerStyle={{
+        gap: spacing.sm,
+        paddingHorizontal: spacing.lg,
+        paddingVertical: spacing.sm,
+      }}
     >
       {STATUSES.map((status) => {
         const active = value === status;
@@ -38,25 +36,31 @@ export const StatusPicker = React.memo(function StatusPicker({
           <Pressable
             key={status}
             onPress={() => onSelect(status)}
-            style={{
+            style={({ pressed }) => ({
               flexDirection: "row",
               alignItems: "center",
               gap: spacing.xs + 2,
               paddingHorizontal: spacing.md,
               paddingVertical: spacing.sm - 1,
-              borderRadius: radius.xl,
+              borderRadius: radius.full,
               borderWidth: 1,
               borderCurve: "continuous",
-              borderColor: active ? dotColor + "40" : colors.warm[300],
-              backgroundColor: active ? dotColor + "18" : colors.white,
-            }}
+              borderColor: active ? dotColor + "40" : colors.border.transparent,
+              backgroundColor: active
+                ? dotColor + "18"
+                : pressed
+                  ? colors.background.tertiary
+                  : colors.background.secondary,
+            })}
           >
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor }} />
-            <Text style={{
-              fontSize: fontSize.sm + 1,
-              color: active ? colors.warm[900] : colors.warm[600],
-              fontWeight: active ? "600" : "400",
-            }}>
+            <Text
+              style={{
+                fontSize: fontSize.sm + 1,
+                color: active ? colors.warm[900] : colors.warm[600],
+                fontWeight: active ? "600" : "400",
+              }}
+            >
               {LABELS[status]}
             </Text>
           </Pressable>

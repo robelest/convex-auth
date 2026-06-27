@@ -37,12 +37,12 @@ test("anonymous sign-in is not auto-converted during email sign-in", async () =>
   expect(newClaims.sub).not.toEqual(claims.sub);
 
   const oldViewer = await t.run(async (ctx) => {
-    return await auth.user.get(ctx as any, subjectToUserId(claims.sub));
+    return await auth.user.get(ctx as any, { id: subjectToUserId(claims.sub) });
   });
   expect(oldViewer?.isAnonymous).toEqual(true);
 
   const viewer = await t.run(async (ctx) => {
-    return await auth.user.get(ctx as any, subjectToUserId(newClaims.sub));
+    return await auth.user.get(ctx as any, { id: subjectToUserId(newClaims.sub) });
   });
   expect(viewer).toMatchObject({ email: "mike@gmail.com" });
   expect(viewer?.isAnonymous).not.toEqual(true);

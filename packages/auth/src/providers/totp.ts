@@ -26,7 +26,7 @@ export interface TotpConfig {
  * Create a TOTP provider.
  *
  * @param config - Optional issuer and token generation settings.
- * @returns A configured TOTP provider for `createAuth`.
+ * @returns A configured TOTP provider for `defineAuth`.
  *
  * @example
  * ```ts

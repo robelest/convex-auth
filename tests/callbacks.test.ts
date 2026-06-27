@@ -1,14 +1,12 @@
 /**
- * Tests for the lifecycle-aware deletion helpers exposed on
- * `ctx.auth.{passkey.delete, totp.delete, account.unlink}`.
+ * Tests for the event-aware deletion helpers exposed on
+ * `ctx.auth.{passkey.remove, totp.remove, account.unlink}`.
  *
  * Each helper reads the target document, runs the corresponding component
- * mutation, and fires the matching `after` lifecycle event. These tests
- * exercise the underlying component mutations directly to verify the
+ * mutation, and the runtime wrapper emits the matching stream-backed auth
+ * event. These tests exercise the underlying component mutations directly to verify the
  * deletion + supporting state transitions (e.g. `User.hasTotp`) behave
- * correctly. The runtime wrapper that fires the lifecycle event is
- * type-asserted in `consumer/callbacks.ts` and exercised
- * end-to-end by provider-level tests.
+ * correctly.
  */
 
 import { components } from "@convex/_generated/api";
@@ -43,7 +41,7 @@ test("passkeyDelete removes the passkey row", async () => {
   expect(before).not.toBeNull();
   expect(before?.userId).toBe(userId);
 
-  await t.run((ctx) => ctx.runMutation(components.auth.factor.passkey.delete, { passkeyId }));
+  await t.run((ctx) => ctx.runMutation(components.auth.factor.passkey.remove, { id: passkeyId }));
 
   const after = await t.run((ctx) =>
     ctx.runQuery(components.auth.factor.passkey.get, { id: passkeyId }),
@@ -68,8 +66,8 @@ test("totp.delete removes the enrollment row", async () => {
       createdAt: Date.now(),
     });
     await ctx.runMutation(components.auth.factor.totp.update, {
-      totpId,
-      data: { verified: true, lastUsedAt: Date.now() },
+      id: totpId,
+      patch: { verified: true, lastUsedAt: Date.now() },
     });
     return { userId, totpId };
   });
@@ -79,7 +77,7 @@ test("totp.delete removes the enrollment row", async () => {
   );
   expect(verifiedBefore?._id).toBe(totpId);
 
-  await t.run((ctx) => ctx.runMutation(components.auth.factor.totp.delete, { totpId }));
+  await t.run((ctx) => ctx.runMutation(components.auth.factor.totp.remove, { id: totpId }));
 
   const verifiedAfter = await t.run((ctx) =>
     ctx.runQuery(components.auth.factor.totp.get, { verifiedForUserId: userId }),
@@ -108,8 +106,8 @@ test("deleting one verified factor leaves another resolvable", async () => {
       createdAt: Date.now(),
     });
     await ctx.runMutation(components.auth.factor.totp.update, {
-      totpId: firstTotpId,
-      data: { verified: true, lastUsedAt: Date.now() },
+      id: firstTotpId,
+      patch: { verified: true, lastUsedAt: Date.now() },
     });
     const secondTotpId = await ctx.runMutation(components.auth.factor.totp.create, {
       userId: userId as never,
@@ -120,15 +118,13 @@ test("deleting one verified factor leaves another resolvable", async () => {
       createdAt: Date.now(),
     });
     await ctx.runMutation(components.auth.factor.totp.update, {
-      totpId: secondTotpId,
-      data: { verified: true, lastUsedAt: Date.now() },
+      id: secondTotpId,
+      patch: { verified: true, lastUsedAt: Date.now() },
     });
     return { userId, firstTotpId, secondTotpId };
   });
 
-  await t.run((ctx) =>
-    ctx.runMutation(components.auth.factor.totp.delete, { totpId: firstTotpId }),
-  );
+  await t.run((ctx) => ctx.runMutation(components.auth.factor.totp.remove, { id: firstTotpId }));
 
   const stillVerified = await t.run((ctx) =>
     ctx.runQuery(components.auth.factor.totp.get, { verifiedForUserId: userId }),
@@ -151,16 +147,12 @@ test("accountDelete removes the account row", async () => {
     return { userId, accountId };
   });
 
-  const before = await t.run((ctx) =>
-    ctx.runQuery(components.auth.account.get, { id: accountId }),
-  );
+  const before = await t.run((ctx) => ctx.runQuery(components.auth.account.get, { id: accountId }));
   expect(before).not.toBeNull();
   expect(before?.provider).toBe("google");
 
-  await t.run((ctx) => ctx.runMutation(components.auth.account.delete, { accountId }));
+  await t.run((ctx) => ctx.runMutation(components.auth.account.remove, { id: accountId }));
 
-  const after = await t.run((ctx) =>
-    ctx.runQuery(components.auth.account.get, { id: accountId }),
-  );
+  const after = await t.run((ctx) => ctx.runQuery(components.auth.account.get, { id: accountId }));
   expect(after).toBeNull();
 });

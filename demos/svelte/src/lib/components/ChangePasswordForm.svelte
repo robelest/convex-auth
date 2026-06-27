@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { getContext } from "svelte";
+	import { toast } from "svelte-sonner";
+	import { errorText } from "$lib/errors";
 
 	type AuthContext = {
 		signIn: (
@@ -16,8 +18,6 @@
 	let newPassword = $state("");
 	let confirmPassword = $state("");
 	let isSubmitting = $state(false);
-	let errorMessage = $state<string | null>(null);
-	let successMessage = $state<string | null>(null);
 
 	const trimmedEmail = $derived(email?.trim() ?? "");
 	const minLength = 8;
@@ -40,19 +40,16 @@
 	}
 
 	async function handleSubmit() {
-		errorMessage = null;
-		successMessage = null;
-
 		if (trimmedEmail.length === 0) {
-			errorMessage = "Account email is unavailable. Try refreshing the page.";
+			toast.error("Account email is unavailable. Try refreshing the page.");
 			return;
 		}
 		if (!newPasswordLongEnough) {
-			errorMessage = `New password must be at least ${minLength} characters.`;
+			toast.error(`New password must be at least ${minLength} characters.`);
 			return;
 		}
 		if (!passwordsMatch) {
-			errorMessage = "New password and confirmation do not match.";
+			toast.error("New password and confirmation do not match.");
 			return;
 		}
 
@@ -64,10 +61,10 @@
 				currentPassword,
 				newPassword,
 			});
-			successMessage = "Password updated.";
+			toast.success("Password updated.");
 			clearForm();
 		} catch (e) {
-			errorMessage = e instanceof Error ? e.message : "Failed to update password.";
+			toast.error(errorText(e, "Failed to update password."));
 		} finally {
 			isSubmitting = false;
 		}
@@ -82,13 +79,13 @@
 	}}
 >
 	{#if trimmedEmail}
-		<p class="font-label text-[0.75rem] text-gray-500 m-0">
-			Updating password for <span class="text-gray-900">{trimmedEmail}</span>
+		<p class="font-label text-[0.75rem] text-content-secondary m-0">
+			Updating password for <span class="text-content-primary">{trimmedEmail}</span>
 		</p>
 	{/if}
 
 	<label class="flex flex-col gap-1">
-		<span class="font-label text-[0.75rem] text-gray-700">Current password</span>
+		<span class="font-label text-[0.75rem] text-content-primary">Current password</span>
 		<input
 			bind:value={currentPassword}
 			class="input"
@@ -100,7 +97,7 @@
 	</label>
 
 	<label class="flex flex-col gap-1">
-		<span class="font-label text-[0.75rem] text-gray-700">New password</span>
+		<span class="font-label text-[0.75rem] text-content-primary">New password</span>
 		<input
 			bind:value={newPassword}
 			class="input"
@@ -113,7 +110,7 @@
 	</label>
 
 	<label class="flex flex-col gap-1">
-		<span class="font-label text-[0.75rem] text-gray-700">Confirm new password</span>
+		<span class="font-label text-[0.75rem] text-content-primary">Confirm new password</span>
 		<input
 			bind:value={confirmPassword}
 			class="input"
@@ -126,11 +123,11 @@
 	</label>
 
 	{#if newPassword.length > 0 && !newPasswordLongEnough}
-		<p class="font-label text-[0.75rem] text-gray-500 m-0">
+		<p class="font-label text-[0.75rem] text-content-secondary m-0">
 			At least {minLength} characters.
 		</p>
 	{:else if confirmPassword.length > 0 && !passwordsMatch}
-		<p class="font-label text-[0.75rem] text-gray-500 m-0">
+		<p class="font-label text-[0.75rem] text-content-secondary m-0">
 			New password and confirmation do not match.
 		</p>
 	{/if}
@@ -142,12 +139,4 @@
 	>
 		{isSubmitting ? "Updating..." : "Update password"}
 	</button>
-
-	{#if successMessage}
-		<p class="font-label text-[0.75rem] text-green-700 m-0">{successMessage}</p>
-	{/if}
-
-	{#if errorMessage}
-		<p class="error-banner">{errorMessage}</p>
-	{/if}
 </form>

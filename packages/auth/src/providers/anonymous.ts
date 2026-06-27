@@ -45,7 +45,7 @@ function defaultAnonymousProfile<DataModel extends GenericDataModel>() {
  *
  * @typeParam DataModel - The Convex data model used by the auth context.
  * @param config - Optional provider id and profile customization.
- * @returns A configured anonymous provider for `createAuth`.
+ * @returns A configured anonymous provider for `defineAuth`.
  *
  * @example
  * ```ts

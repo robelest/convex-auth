@@ -9,7 +9,8 @@
     "moduleResolution": "bundler",
     "noEmit": true,
     "paths": {
-      "@robelest/convex-auth/authorization": ["./src/authorization/index"],
+      "@convex/*": ["../../convex/*"],
+      "@robelest/convex-auth/permissions": ["./src/permissions/index"],
       "@robelest/convex-auth/browser": ["./src/browser/index"],
       "@robelest/convex-auth/client": ["./src/client/index"],
       "@robelest/convex-auth/component": ["./src/component/index"],
@@ -21,5 +22,5 @@
       "@robelest/convex-auth/providers/*": ["./src/providers/*"]
     }
   },
-  "include": ["consumer/**/*.ts"]
+  "include": ["../../tests/types.ts"]
 }

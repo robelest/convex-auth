@@ -13,10 +13,7 @@
     "paths": {
       "@convex/*": ["../convex/*"],
       "@robelest/convex-auth/test": ["../packages/auth/src/test.ts"],
-      "@robelest/convex-auth/*": ["../packages/auth/src/*"],
-      "@robelest/samlify": ["../packages/samlify"],
-      "@robelest/samlify/*": ["../packages/samlify/*"],
-      "@robelest/samlify/test/*": ["./samlify/*"]
+      "@robelest/convex-auth/*": ["../packages/auth/src/*"]
     }
   },
   "include": ["**/*.ts"],

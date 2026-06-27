@@ -5,10 +5,10 @@
  * import { apple } from "@robelest/convex-auth/providers/apple";
  *
  * apple({
- *   clientId: process.env.AUTH_APPLE_ID!,
- *   teamId: process.env.AUTH_APPLE_TEAM_ID!,
- *   keyId: process.env.AUTH_APPLE_KEY_ID!,
- *   privateKey: process.env.AUTH_APPLE_PRIVATE_KEY!,
+ *   clientId: env.AUTH_APPLE_ID!,
+ *   teamId: env.AUTH_APPLE_TEAM_ID!,
+ *   keyId: env.AUTH_APPLE_KEY_ID!,
+ *   privateKey: env.AUTH_APPLE_PRIVATE_KEY!,
  * })
  * ```
  *
@@ -46,7 +46,7 @@ export interface AppleConfig {
  * Create an Apple OAuth provider.
  *
  * @param config - Apple Sign In client settings and signing key material.
- * @returns A configured Apple OAuth provider for `createAuth`.
+ * @returns A configured Apple OAuth provider for `defineAuth`.
  * @throws {Error} When no callback URL can be derived and `redirectUri` is omitted.
  *
  * @example
@@ -54,10 +54,10 @@ export interface AppleConfig {
  * import { apple } from "@robelest/convex-auth/providers/apple";
  *
  * apple({
- *   clientId: process.env.AUTH_APPLE_ID!,
- *   teamId: process.env.AUTH_APPLE_TEAM_ID!,
- *   keyId: process.env.AUTH_APPLE_KEY_ID!,
- *   privateKey: process.env.AUTH_APPLE_PRIVATE_KEY!,
+ *   clientId: env.AUTH_APPLE_ID!,
+ *   teamId: env.AUTH_APPLE_TEAM_ID!,
+ *   keyId: env.AUTH_APPLE_KEY_ID!,
+ *   privateKey: env.AUTH_APPLE_PRIVATE_KEY!,
  * })
  * ```
  */

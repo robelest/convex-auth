@@ -1,9 +1,9 @@
 import { ConvexError, v } from "convex/values";
 
 import { internal } from "./_generated/api";
-import { query, internalMutation } from "./_generated/server";
+import { env, query, internalMutation } from "./_generated/server";
 import { auth } from "./auth/core";
-import { authAction, authMutation, authQuery, requireIdentity, requireUserId } from "./functions";
+import { authAction, authMutation, authQuery } from "./functions";
 import { roles } from "./roles";
 
 const validRoleIds = [roles.orgAdmin.id, roles.member.id, roles.viewer.id] as const;
@@ -37,7 +37,7 @@ function getPermissions(grants: string[]) {
     canCreateComments: grants.includes("comments.create"),
     canDeleteComments: grants.includes("comments.delete"),
     canManageMembers: grants.includes("members.manage"),
-    canManageSso: grants.includes("sso.connection.manage"),
+    canManageConnection: grants.includes("connection.manage"),
     canManageScim: grants.includes("scim.manage"),
   };
 }
@@ -83,7 +83,7 @@ const permissionsValidator = v.object({
   canCreateComments: v.boolean(),
   canDeleteComments: v.boolean(),
   canManageMembers: v.boolean(),
-  canManageSso: v.boolean(),
+  canManageConnection: v.boolean(),
   canManageScim: v.boolean(),
 });
 
@@ -111,7 +111,7 @@ export const emailExists = query({
   handler: async (ctx, args) => {
     const result = await auth.user.list(ctx, {
       where: { email: args.email.trim().toLowerCase() },
-      limit: 1,
+      paginationOpts: { numItems: 1, cursor: null },
     });
     return result.page.length > 0;
   },
@@ -121,7 +121,7 @@ export const authProviders = query({
   args: {},
   returns: v.object({ google: v.boolean() }),
   handler: async () => ({
-    google: Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET),
+    google: Boolean(env.AUTH_GOOGLE_ID && env.AUTH_GOOGLE_SECRET),
   }),
 });
 
@@ -136,29 +136,27 @@ export const list = authQuery({
     }),
   ),
   handler: async (ctx) => {
-    const userId = await requireUserId(ctx);
+    const userId = ctx.auth.userId;
     const memberships = await auth.member.list(ctx, {
       where: { userId },
-      limit: 50,
+      paginationOpts: { numItems: 50, cursor: null },
       orderBy: "_creationTime",
       order: "asc",
     });
-    const groupIds: readonly string[] = memberships.page.map(
-      (m) => m.groupId,
-    );
-    const groupDocs = await auth.group.get(ctx, groupIds);
-    return memberships.page.flatMap(
-      (m, i) => {
-        const group = groupDocs[i];
-        if (!group) return [];
-        return [{
+    const groupIds: readonly string[] = memberships.page.map((m) => m.groupId);
+    const groupDocs = await auth.group.get(ctx, { ids: groupIds });
+    return memberships.page.flatMap((m, i) => {
+      const group = groupDocs[i];
+      if (!group) return [];
+      return [
+        {
           groupId: group._id,
           name: group.name,
           roleIds: m.roleIds ?? [],
           userRoleLabel: getUserRoleLabel(m.roleIds ?? []),
-        }];
-      },
-    );
+        },
+      ];
+    });
   },
 });
 
@@ -182,30 +180,27 @@ export const get = authQuery({
     ),
   }),
   handler: async (ctx, args) => {
-    const identity = await requireIdentity(ctx);
-    const userId = identity.subject;
+    const userId = ctx.auth.userId;
     const roots = await auth.group.list(ctx, {
       where: { isRoot: true },
       orderBy: "name",
       order: "asc",
-      limit: 20,
+      paginationOpts: { numItems: 20, cursor: null },
     });
 
     const rootGroupIds = roots.page.map((g) => g._id);
-    const resolutions = await auth.member.inspect(ctx, { userId, groupIds: rootGroupIds });
+    const resolutions = await auth.member.get(ctx, { userId, groupIds: rootGroupIds });
 
-    const groups: GroupSummary[] = roots.page.flatMap(
-      (g, i) => {
-        const r = resolutions[i];
-        if (!r || r.membership === null) return [];
-        return [{ groupId: g._id, name: g.name, roleIds: r.roleIds, grants: r.grants }];
-      },
-    );
+    const groups: GroupSummary[] = roots.page.flatMap((g, i) => {
+      const r = resolutions[i];
+      if (!r || r.membership === null) return [];
+      return [{ groupId: g._id, name: g.name, roleIds: r.roleIds, grants: r.grants }];
+    });
 
     const userSummary = {
       userId,
-      name: identity.name ?? identity.email ?? "Unknown user",
-      email: identity.email ?? null,
+      name: ctx.auth.user.name ?? ctx.auth.user.email ?? "Unknown user",
+      email: ctx.auth.user.email ?? null,
     };
 
     if (groups.length === 0) {
@@ -224,14 +219,14 @@ export const get = authQuery({
         : Promise.resolve([]),
       auth.member.list(ctx, {
         where: { groupId: selected.groupId },
-        limit: 20,
+        paginationOpts: { numItems: 20, cursor: null },
         orderBy: "_creationTime",
         order: "asc",
       }),
     ]);
 
     const memberUserIds: readonly string[] = members.page.map((m) => m.userId);
-    const memberUsers = await auth.user.get(ctx, memberUserIds);
+    const memberUsers = await auth.user.get(ctx, { ids: memberUserIds });
 
     return {
       user: userSummary,
@@ -273,8 +268,8 @@ export const listInvites = authQuery({
   args: { groupId: v.string() },
   returns: v.array(inviteSummaryValidator),
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
-    await auth.member.require(ctx, {
+    const userId = ctx.auth.userId;
+    await auth.member.assert(ctx, {
       userId,
       groupId: args.groupId,
       grants: ["members.manage"],
@@ -283,7 +278,7 @@ export const listInvites = authQuery({
       where: { groupId: args.groupId, status: "pending" },
       orderBy: "_creationTime",
       order: "desc",
-      limit: 20,
+      paginationOpts: { numItems: 20, cursor: null },
     });
     return result.page.map((inv) => ({
       inviteId: inv._id,
@@ -300,11 +295,16 @@ export const create = authMutation({
   handler: async (ctx, { name: rawName }) => {
     const name = rawName.trim();
     if (name.length < 3) {
-      throw new ConvexError({ code: "INVALID_INPUT", message: "Name must be at least 3 characters." });
+      throw new ConvexError({
+        code: "INVALID_INPUT",
+        message: "Name must be at least 3 characters.",
+      });
     }
-    const userId = await requireUserId(ctx);
-    const { groupId } = await auth.group.create(ctx, { name, slug: toSlug(name) });
-    await auth.member.create(ctx, { userId, groupId, roleIds: [validRoleIds[0]] });
+    const userId = ctx.auth.userId;
+    const groupId = await auth.group.create(ctx, { data: { name, slug: toSlug(name) } });
+    await auth.member.create(ctx, {
+      data: { userId, groupId, roleIds: [validRoleIds[0]] },
+    });
     return { groupId };
   },
 });
@@ -313,7 +313,7 @@ export const acceptInvite = authMutation({
   args: { token: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
+    const userId = ctx.auth.userId;
     await auth.invite.token.accept(ctx, { token: args.token, acceptedByUserId: userId });
     return null;
   },
@@ -327,8 +327,8 @@ export const updateMemberRole = authMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
-    await auth.member.require(ctx, {
+    const userId = ctx.auth.userId;
+    await auth.member.assert(ctx, {
       userId,
       groupId: args.groupId,
       grants: ["members.manage"],
@@ -338,16 +338,18 @@ export const updateMemberRole = authMutation({
       throw new ConvexError({ code: "INVALID_INPUT", message: "Invalid role." });
     }
     if (matched !== validRoleIds[0]) {
-      const members = await auth.member.list(ctx, { where: { groupId: args.groupId }, limit: 50 });
+      const members = await auth.member.list(ctx, {
+        where: { groupId: args.groupId },
+        paginationOpts: { numItems: 50, cursor: null },
+      });
       const adminCount = members.page.filter(
-        (m) =>
-          m.roleIds?.includes(validRoleIds[0]) && m._id !== args.memberId,
+        (m) => m.roleIds?.includes(validRoleIds[0]) && m._id !== args.memberId,
       ).length;
       if (adminCount === 0) {
         throw new ConvexError({ code: "INVALID_INPUT", message: "Cannot remove the last admin." });
       }
     }
-    await auth.member.update(ctx, args.memberId, { roleIds: [matched] });
+    await auth.member.update(ctx, { id: args.memberId, patch: { roleIds: [matched] } });
     return null;
   },
 });
@@ -356,13 +358,13 @@ export const revokeInvite = authMutation({
   args: { groupId: v.string(), inviteId: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
-    await auth.member.require(ctx, {
+    const userId = ctx.auth.userId;
+    await auth.member.assert(ctx, {
       userId,
       groupId: args.groupId,
       grants: ["members.manage"],
     });
-    await auth.invite.revoke(ctx, args.inviteId);
+    await auth.invite.revoke(ctx, { id: args.inviteId });
     return null;
   },
 });
@@ -376,7 +378,7 @@ export const createInviteInternal = internalMutation({
   },
   returns: v.object({ inviteId: v.string(), token: v.string() }),
   handler: async (ctx, args) => {
-    await auth.member.require(ctx, {
+    await auth.member.assert(ctx, {
       userId: args.invitedByUserId,
       groupId: args.groupId,
       grants: ["members.manage"],
@@ -386,12 +388,14 @@ export const createInviteInternal = internalMutation({
       throw new ConvexError({ code: "INVALID_INPUT", message: "Invalid role." });
     }
     const result = await auth.invite.create(ctx, {
-      groupId: args.groupId,
-      email: args.email,
-      roleIds: [matched],
-      invitedByUserId: args.invitedByUserId,
+      data: {
+        groupId: args.groupId,
+        email: args.email,
+        roleIds: [matched],
+        invitedByUserId: args.invitedByUserId,
+      },
     });
-    return { inviteId: result.inviteId, token: result.token };
+    return { inviteId: result.id, token: result.token };
   },
 });
 
@@ -403,22 +407,22 @@ export const inviteMember = authAction({
   },
   returns: v.object({ inviteId: v.string() }),
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
+    const userId = ctx.auth.userId;
     const email = args.email.trim().toLowerCase();
     const result: { inviteId: string; token: string } = await ctx.runMutation(
       internal.groups.createInviteInternal,
       { groupId: args.groupId, email, roleId: args.roleId, invitedByUserId: userId },
     );
 
-    const appUrl = process.env.APP_URL ?? "http://localhost:3001";
+    const appUrl = env.APP_URL ?? "http://localhost:3001";
     const inviteLink = `${appUrl}/?invite=${result.token}&email=${encodeURIComponent(email)}`;
-    const from = process.env.AUTH_EMAIL ?? "My App <onboarding@resend.dev>";
+    const from = env.AUTH_EMAIL ?? "My App <onboarding@resend.dev>";
 
     try {
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          Authorization: `Bearer ${env.RESEND_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({

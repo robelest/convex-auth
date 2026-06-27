@@ -13,7 +13,7 @@
  *
  * Clean, minimal design that works across email clients.
  * Used by the auto-registered `email` provider when `email` is
- * configured in `createAuth(...)`.
+ * configured in `defineAuth(...)`.
  */
 /** @internal */
 export function defaultMagicLinkEmail(url: string, host: string): string {

@@ -2,6 +2,7 @@ import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { Infer, v } from "convex/values";
 
 import * as Provider from "../crypto";
+import type { Hashed } from "../../shared/brand";
 import { authDb } from "../db";
 import { isSignInRateLimited, recordFailedSignIn, resetSignInRateLimit } from "../limits";
 import { LOG_LEVELS, log, maybeRedact } from "../log";
@@ -9,7 +10,7 @@ import { Doc, MutationCtx } from "../types";
 import { withSpan } from "../utils/span";
 import { AUTH_STORE_REF } from "./store/refs";
 
-export const retrieveAccountWithCredentialsArgs = v.object({
+export const vRetrieveAccountWithCredentialsArgs = v.object({
   provider: v.string(),
   account: v.object({ id: v.string(), secret: v.optional(v.string()) }),
 });
@@ -22,7 +23,7 @@ type ReturnType =
 
 export async function retrieveAccountWithCredentialsImpl(
   ctx: MutationCtx,
-  args: Infer<typeof retrieveAccountWithCredentialsArgs>,
+  args: Infer<typeof vRetrieveAccountWithCredentialsArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
 ): Promise<ReturnType> {
@@ -35,10 +36,10 @@ export async function retrieveAccountWithCredentialsImpl(
   });
 
   try {
-    const existingAccount = (await db.accounts.get(
-      providerId,
-      account.id,
-    )) as Doc<"Account"> | null;
+    const existingAccount = (await db.accounts.get({
+      provider: providerId,
+      providerAccountId: account.id,
+    })) as Doc<"Account"> | null;
     if (existingAccount === null) {
       return "InvalidAccountId" as const;
     }
@@ -54,7 +55,7 @@ export async function retrieveAccountWithCredentialsImpl(
         Provider.verify(
           getProviderOrThrow(providerId),
           accountSecret,
-          existingAccount.secret ?? "",
+          (existingAccount.secret ?? "") as Hashed<"Password">,
         ),
       );
       if (!valid) {
@@ -65,7 +66,7 @@ export async function retrieveAccountWithCredentialsImpl(
       await resetSignInRateLimit(ctx, existingAccount._id, config);
     }
 
-    const user = (await db.users.getById(existingAccount.userId)) as Doc<"User"> | null;
+    const user = (await db.users.get({ id: existingAccount.userId })) as Doc<"User"> | null;
 
     if (user === null) {
       log(
@@ -83,7 +84,7 @@ export async function retrieveAccountWithCredentialsImpl(
 
 export const callRetrieveAccountWithCredentials = async <DataModel extends GenericDataModel>(
   ctx: GenericActionCtx<DataModel>,
-  args: Infer<typeof retrieveAccountWithCredentialsArgs>,
+  args: Infer<typeof vRetrieveAccountWithCredentialsArgs>,
 ): Promise<ReturnType> => {
   return ctx.runMutation(AUTH_STORE_REF, {
     args: {

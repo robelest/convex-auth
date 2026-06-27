@@ -12,7 +12,6 @@
     "**/node_modules/**",
     "**/convex/_generated/**",
     "packages/auth/src/component/_generated/**",
-    "packages/samlify/**",
     "examples/**/.output/**",
     "examples/**/src/routeTree.gen.ts",
     "**/*.d.ts"

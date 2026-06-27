@@ -47,9 +47,6 @@ test("sign up with password", async () => {
     });
   }).rejects.toThrow(/Invalid credentials|InvalidSecret/);
 
-  // Sign out from each session and verify refresh behavior follows
-  // the session lifetime.
-
   const claims = decodeJwt(tokens!.token);
   expect(claims.sub).toBeDefined();
   expect(claims.sid).toBeDefined();
@@ -101,7 +98,7 @@ test("sign up with password keeps email unverified by default", async () => {
 
   const claims = decodeJwt(tokens!.token);
   const viewer = await t.run(async (ctx) => {
-    return await auth.user.get(ctx as any, subjectToUserId(claims.sub));
+    return await auth.user.get(ctx as any, { id: subjectToUserId(claims.sub) });
   });
 
   expect(viewer?.email).toBe("unverified@gmail.com");
@@ -122,8 +119,6 @@ test("password sign up requires email", async () => {
   }).rejects.toThrow("Missing `email` param");
 });
 
-// ---- change flow ----
-
 test("change password requires authentication", async () => {
   const t = convexTest(schema);
 
@@ -143,7 +138,6 @@ test("change password requires authentication", async () => {
 test("change password rotates secret and invalidates other sessions", async () => {
   const t = convexTest(schema);
 
-  // Sign up — session A
   const sessionA = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
@@ -151,7 +145,6 @@ test("change password rotates secret and invalidates other sessions", async () =
     }),
   );
 
-  // Sign in again — session B (separate device)
   const sessionB = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
@@ -159,7 +152,6 @@ test("change password rotates secret and invalidates other sessions", async () =
     }),
   );
 
-  // Authenticated as session A, change password
   const claimsA = decodeJwt(sessionA!.token);
   const asUserA = t.withIdentity({ subject: claimsA.sub, sid: claimsA.sid as any });
 
@@ -177,7 +169,6 @@ test("change password rotates secret and invalidates other sessions", async () =
   );
   expect(changeResult).not.toBeNull();
 
-  // Old password no longer works
   await expect(async () => {
     await t.action(api.auth.signIn, {
       provider: "password",
@@ -185,7 +176,6 @@ test("change password rotates secret and invalidates other sessions", async () =
     });
   }).rejects.toThrow(/Invalid credentials/);
 
-  // New password works
   const newSession = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
@@ -194,7 +184,6 @@ test("change password rotates secret and invalidates other sessions", async () =
   );
   expect(newSession).not.toBeNull();
 
-  // Session B (other device) is invalidated — refresh fails
   const refreshedB = expectSignInSession(
     await t.action(api.auth.signIn, {
       refreshToken: sessionB!.refreshToken,
@@ -226,8 +215,8 @@ test("change password works for authenticated TOTP users", async () => {
       createdAt: Date.now(),
     });
     await ctx.runMutation(components.auth.factor.totp.update, {
-      totpId,
-      data: { verified: true, lastUsedAt: Date.now() },
+      id: totpId,
+      patch: { verified: true, lastUsedAt: Date.now() },
     });
   });
 
@@ -287,13 +276,11 @@ test("change password rejects wrong current password", async () => {
 test("change password rejects email mismatch with authenticated user", async () => {
   const t = convexTest(schema);
 
-  // User A signs up
   await t.action(api.auth.signIn, {
     provider: "password",
     params: { email: "alice@example.com", password: TEST_PASSWORD, flow: "signUp" },
   });
 
-  // User B signs up
   const tokensB = expectSignInSession(
     await t.action(api.auth.signIn, {
       provider: "password",
@@ -301,7 +288,6 @@ test("change password rejects email mismatch with authenticated user", async () 
     }),
   );
 
-  // Authenticated as B, try to change Alice's password (with her real password)
   const claimsB = decodeJwt(tokensB!.token);
   const asUserB = t.withIdentity({ subject: claimsB.sub, sid: claimsB.sid as any });
 
@@ -341,8 +327,6 @@ test("change password validates new password requirements", async () => {
     });
   }).rejects.toThrow("Invalid password");
 });
-
-// ---- reset / verify flows error when not configured ----
 
 test("reset flow fails when reset email provider not configured", async () => {
   const t = convexTest(schema);
@@ -393,8 +377,3 @@ test("invalid flow name surfaces a clear error", async () => {
     });
   }).rejects.toThrow(/Missing or invalid `flow`|signUp.*signIn.*reset.*verify.*change/);
 });
-
-// The end-to-end reset and verify flows live in
-// `tests/passwords/verify.test.ts`. That file flips
-// `AUTH_PASSWORD_EMAIL_VERIFICATION=true` at import time so `convex/auth.ts`
-// is loaded with `password({ reset, verify })` wired in.

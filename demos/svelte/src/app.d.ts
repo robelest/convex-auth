@@ -1,5 +1,3 @@
-// See https://svelte.dev/docs/kit/types#app.d.ts
-// for information about these interfaces
 declare global {
   namespace App {
     interface Platform {
@@ -9,7 +7,6 @@ declare global {
       cf?: IncomingRequestCfProperties;
     }
 
-    // interface Error {}
     interface Locals {
       authToken: string | null;
       isAuthenticated: boolean;
@@ -25,7 +22,6 @@ declare global {
         isAuthenticated: boolean;
       };
     }
-    // interface PageState {}
   }
 }
 

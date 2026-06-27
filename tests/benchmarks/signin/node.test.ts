@@ -36,11 +36,6 @@ import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { beforeAll, expect, inject, test } from "vite-plus/test";
 
-// `convex/bench.ts` is deployed by `tests/infra/docker/setup/node.ts` as part
-// of the standard `convex deploy` step, but its functions are not in the
-// tracked `convex/_generated/api.ts` (that file is regenerated only when the
-// author runs codegen locally). Reference them via `makeFunctionReference`
-// so this test typechecks without a codegen step.
 type BatchResult = { backendMs: number[]; totalMs: number };
 const benchAnonymousBatch = makeFunctionReference<"action", { iterations: number }, BatchResult>(
   "bench:anonymousSignInBatch",
@@ -53,15 +48,12 @@ const benchPasswordBatch = makeFunctionReference<
 
 type SignInEnvelope = {
   kind: string;
-  // Shape varies slightly across deployments — in current Convex runtime
-  // the session tokens sit at the top level of a `signedIn`-kind result.
   tokens?: { token: string; refreshToken: string } | null;
   session?: { tokens: { token: string; refreshToken: string } | null } | null;
 };
 
 const N_ITERATIONS = Number.parseInt(process.env.BENCH_ITERATIONS ?? "20", 10);
 const PASSWORD = "bench-password-!";
-// Randomized to avoid colliding with previous runs in the same backend.
 const BENCH_EMAIL = `bench-${Date.now().toString(36)}@example.com`;
 
 declare module "vite-plus/test" {
@@ -117,11 +109,8 @@ function printRow(label: string, s: Stats) {
   );
 }
 
-// --- Setup: create a password account we can use for repeat sign-ins ----
-
 beforeAll(async () => {
   const client = createClient();
-  // Use the password provider's signUp flow to create the account.
   const result = (await client.action(api.auth.signIn, {
     provider: "password",
     params: { email: BENCH_EMAIL, password: PASSWORD, flow: "signUp" },
@@ -132,12 +121,9 @@ beforeAll(async () => {
   }
 }, 30_000);
 
-// --- Benchmarks ---------------------------------------------------------
-
 test("auth:signIn baseline — anonymous", async () => {
   const client = createClient();
 
-  // Client-observed wall time (HTTP RTT + dispatch + handler).
   const clientSamples: number[] = [];
   for (let i = 0; i < N_ITERATIONS; i += 1) {
     const t0 = performance.now();
@@ -145,7 +131,6 @@ test("auth:signIn baseline — anonymous", async () => {
     clientSamples.push(performance.now() - t0);
   }
 
-  // Backend-only wall time (handler only, no HTTP hop from the test).
   const backend = await client.action(benchAnonymousBatch, {
     iterations: N_ITERATIONS,
   });
@@ -158,7 +143,6 @@ test("auth:signIn baseline — anonymous", async () => {
     `  transport overhead (client p50 − backend p50) = ${transportOverhead.toFixed(1)}ms`,
   );
 
-  // Loose budgets — tighten with data.
   expect(stats(clientSamples).p95).toBeLessThan(1000);
   expect(stats(backend.backendMs).p95).toBeLessThan(800);
 }, 120_000);
@@ -214,7 +198,5 @@ test("scrypt cost = password backend p50 − anonymous backend p50", async () =>
   console.log(`  password  backend p50 = ${fmt(pwP50)}`);
   console.log(`  delta (≈ scrypt verify cost) = ${deltaMs.toFixed(1)}ms`);
 
-  // Delta should be dominated by scrypt verify time. If it's suddenly
-  // negative or tiny, the password flow skipped hashing — bad bug.
   expect(deltaMs).toBeGreaterThan(5);
 }, 180_000);

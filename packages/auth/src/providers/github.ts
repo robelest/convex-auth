@@ -5,8 +5,8 @@
  * import { github } from "@robelest/convex-auth/providers/github";
  *
  * github({
- *   clientId: process.env.AUTH_GITHUB_ID!,
- *   clientSecret: process.env.AUTH_GITHUB_SECRET!,
+ *   clientId: env.AUTH_GITHUB_ID!,
+ *   clientSecret: env.AUTH_GITHUB_SECRET!,
  * })
  * ```
  *
@@ -56,7 +56,7 @@ export interface GitHubConfig {
  * data for you after the OAuth code exchange.
  *
  * @param config - GitHub OAuth client settings.
- * @returns A configured GitHub OAuth provider for `createAuth`.
+ * @returns A configured GitHub OAuth provider for `defineAuth`.
  * @throws {Error} When no callback URL can be derived and `redirectUri` is omitted.
  *
  * @example
@@ -64,8 +64,8 @@ export interface GitHubConfig {
  * import { github } from "@robelest/convex-auth/providers/github";
  *
  * github({
- *   clientId: process.env.AUTH_GITHUB_ID!,
- *   clientSecret: process.env.AUTH_GITHUB_SECRET!,
+ *   clientId: env.AUTH_GITHUB_ID!,
+ *   clientSecret: env.AUTH_GITHUB_SECRET!,
  * })
  * ```
  */

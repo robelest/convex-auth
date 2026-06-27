@@ -1,6 +1,7 @@
 import type { GenericDataModel } from "convex/server";
 import { Infer, v } from "convex/values";
 
+import type { Hashed } from "../../shared/brand";
 import * as Provider from "../crypto";
 import { authDb } from "../db";
 import { requireEnv } from "../env";
@@ -13,19 +14,19 @@ import {
 } from "../limits";
 import { LOG_LEVELS, log } from "../log";
 import type { SignInParams } from "../payloads";
-import { payloadRecordValidator } from "../payloads";
+import { vPayloadRecord } from "../payloads";
 import { sha256 } from "../random";
-import { finalizeSessionIssuance, getAuthSessionId, issueSession } from "../sessions";
-import type { SessionIssuance } from "../sessions";
-import { createSyntheticOAuthMaterializedConfig } from "../sso/oidc";
-import { isGroupProviderId } from "../sso/shared";
+import { finalizeSessionIssuance, getAuthSessionId, issueSession } from "../session/lifecycle";
+import type { SessionIssuance } from "../session/lifecycle";
+import { createSyntheticOAuthMaterializedConfig } from "../connection/oidc";
+import { isGroupProviderId } from "../connection/shared";
 import { GenericActionCtxWithAuthConfig, MutationCtx, SessionInfo } from "../types";
-import { upsertUserAndAccount } from "../users";
+import { upsertUserAndAccount } from "../user/account";
 import { withSpan } from "../utils/span";
 import { AUTH_STORE_REF } from "./store/refs";
 
-export const verifyCodeAndSignInArgs = v.object({
-  params: payloadRecordValidator,
+export const vVerifyCodeAndSignInArgs = v.object({
+  params: vPayloadRecord,
   provider: v.optional(v.string()),
   verifier: v.optional(v.string()),
   generateTokens: v.boolean(),
@@ -34,13 +35,9 @@ export const verifyCodeAndSignInArgs = v.object({
 
 type MutationReturnType = null | SessionIssuance;
 
-// ============================================================================
-// Main exported function
-// ============================================================================
-
 export async function verifyCodeAndSignInImpl(
   ctx: MutationCtx,
-  args: Infer<typeof verifyCodeAndSignInArgs>,
+  args: Infer<typeof vVerifyCodeAndSignInArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
 ): Promise<MutationReturnType> {
@@ -56,7 +53,7 @@ export async function verifyCodeAndSignInImpl(
 
 async function verifyCodeAndSignInImplInner(
   ctx: MutationCtx,
-  args: Infer<typeof verifyCodeAndSignInArgs>,
+  args: Infer<typeof vVerifyCodeAndSignInArgs>,
   getProviderOrThrow: Provider.GetProviderOrThrowFunc,
   config: Provider.Config,
 ): Promise<MutationReturnType> {
@@ -100,8 +97,8 @@ async function verifyCodeAndSignInImplInner(
     if (typeof codeValue !== "string") {
       throw new VerifyFailure("Invalid verification code");
     }
-    const hash = await sha256(codeValue);
-    const code = await db.verificationCodes.getByCode(hash);
+    const hash = (await sha256(codeValue)) as Hashed<"VerificationCode">;
+    const code = await db.verificationCodes.get({ code: hash });
     if (code === null) {
       throw new VerifyFailure("Invalid verification code");
     }
@@ -116,7 +113,7 @@ async function verifyCodeAndSignInImplInner(
       throw new VerifyFailure(`Invalid provider "${provider}" for given \`code\``);
     }
 
-    const account = await db.accounts.getById(code.accountId);
+    const account = await db.accounts.get({ id: code.accountId });
     if (account === null) {
       throw new VerifyFailure("Account associated with this email has been deleted");
     }
@@ -203,10 +200,6 @@ class VerifyFailure extends Error {
   }
 }
 
-// ============================================================================
-// Action-level caller (unchanged -- just forwards to mutation)
-// ============================================================================
-
 /**
  * Run the verify-code-and-sign-in mutation, then sign the JWT on the action
  * side. See {@link callSignIn} for the rationale — the mutation returns
@@ -217,7 +210,7 @@ class VerifyFailure extends Error {
  */
 export const callVerifyCodeAndSignIn = async <DataModel extends GenericDataModel>(
   ctx: GenericActionCtxWithAuthConfig<DataModel>,
-  args: Infer<typeof verifyCodeAndSignInArgs>,
+  args: Infer<typeof vVerifyCodeAndSignInArgs>,
 ): Promise<SessionInfo | null> => {
   const issuance = (await ctx.runMutation(AUTH_STORE_REF, {
     args: {

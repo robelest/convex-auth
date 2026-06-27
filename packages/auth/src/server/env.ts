@@ -1,19 +1,62 @@
-import { ConvexError } from "convex/values";
+import type { EnvFromDefinition } from "convex/server";
+import { ConvexError, v } from "convex/values";
+
+import { ErrorCode } from "../shared/codes";
+
+const vOptionalBooleanString = v.optional(v.union(v.literal("true"), v.literal("false")));
+
+/**
+ * Convex app environment variables used by Convex Auth.
+ *
+ * Pass this to `defineApp({ env: authEnv })` to get Convex 1.41 deployment-time
+ * validation and generated `env` typing in the parent app.
+ */
+export const authEnv = {
+  ANDROID_APP_LINKS: v.optional(v.string()),
+  APP_URL: v.optional(v.string()),
+  AUTH_EMAIL: v.optional(v.string()),
+  AUTH_GOOGLE_ID: v.optional(v.string()),
+  AUTH_GOOGLE_SECRET: v.optional(v.string()),
+  AUTH_LOG_LEVEL: v.optional(
+    v.union(v.literal("DEBUG"), v.literal("INFO"), v.literal("WARN"), v.literal("ERROR")),
+  ),
+  AUTH_LOG_SECRETS: vOptionalBooleanString,
+  AUTH_PASSWORD_EMAIL_VERIFICATION: vOptionalBooleanString,
+  AUTH_SECRET_ENCRYPTION_KEY: v.optional(v.string()),
+  AUTH_SESSION_INACTIVE_DURATION_MS: v.optional(v.string()),
+  AUTH_SESSION_TOTAL_DURATION_MS: v.optional(v.string()),
+  CHANGE_PASSWORD_URL: v.optional(v.string()),
+  CONVEX_AUTH_HTTP_PREFIX: v.optional(v.string()),
+  CONVEX_AUTH_SITE_URL: v.optional(v.string()),
+  CONVEX_SITE_URL: v.optional(v.string()),
+  CUSTOM_AUTH_SITE_URL: v.optional(v.string()),
+  IOS_APP_IDS: v.optional(v.string()),
+  IOS_APPLINK_PATHS: v.optional(v.string()),
+  JWKS: v.optional(v.string()),
+  JWT_PRIVATE_KEY: v.optional(v.string()),
+  RESEND_API_KEY: v.optional(v.string()),
+  SECONDARY_URL: v.optional(v.string()),
+  SECURITY_CONTACT: v.optional(v.string()),
+  SECURITY_TXT_EXPIRES_DAYS: v.optional(v.string()),
+  SITE_URL: v.optional(v.string()),
+  WEBAUTHN_ALT_ORIGINS: v.optional(v.string()),
+} as const;
+
+/** Inferred type of the validated auth environment from {@link authEnv}. */
+export type AuthEnv = EnvFromDefinition<typeof authEnv>;
 
 function readEnv(name: string): string | undefined {
   const value = typeof process === "undefined" ? undefined : process.env?.[name];
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+/** Env vars whose absence points the user at the setup wizard rather than a bare miss. */
+const SETUP_WIZARD_ENV = new Set(["JWT_PRIVATE_KEY", "JWKS", "AUTH_SECRET_ENCRYPTION_KEY"]);
+
 function missingEnvMessage(name: string) {
-  switch (name) {
-    case "JWT_PRIVATE_KEY":
-    case "JWKS":
-    case "AUTH_SECRET_ENCRYPTION_KEY":
-      return `Missing environment variable \`${name}\`. Run the convex-auth setup wizard to generate and configure auth keys.`;
-    default:
-      return `Missing environment variable \`${name}\``;
-  }
+  return SETUP_WIZARD_ENV.has(name)
+    ? `Missing environment variable \`${name}\`. Run the convex-auth setup wizard to generate and configure auth keys.`
+    : `Missing environment variable \`${name}\``;
 }
 
 /** @internal */
@@ -65,7 +108,7 @@ export function requireEnv(name: string) {
     return readConfigSync(envString(name));
   } catch {
     throw new ConvexError({
-      code: "MISSING_ENV_VAR",
+      code: ErrorCode.MISSING_ENV_VAR,
       message: missingEnvMessage(name),
     });
   }

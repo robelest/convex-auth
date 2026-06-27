@@ -7,18 +7,20 @@ import {
   internalMutationGeneric,
 } from "convex/server";
 import { ConvexError, type GenericId } from "convex/values";
-import type { Value } from "convex/values";
+import type { GenericValidator, Value } from "convex/values";
 import { v } from "convex/values";
 import { serialize as serializeCookie } from "cookie";
 
+import { ErrorCode } from "../shared/codes";
 import type { AuthTokens, SignInFlowResult } from "../shared/results";
 import { decodeOAuthState, encodeOAuthState } from "./cookies";
 import { createCoreDomains } from "./core";
 import { GetProviderOrThrowFunc } from "./crypto";
 import { envOptionalString, readConfigSync, requireEnv } from "./env";
-import { FlowSignal } from "./errors";
+import { createAuthEventDomain, emitAuthEvent } from "./events";
 import {
   addAuthRoutes,
+  addOAuthProviderRoutes,
   addOpenIdRoutes,
   addWellKnownRoutes,
   convertErrorsToResponse,
@@ -27,6 +29,12 @@ import {
   createHttpRoute,
   getCookies,
 } from "./http";
+import { addMcpRoutes, type McpToolDef } from "./mcp";
+import { createAuthorizeHandler } from "./oauth/authorize";
+import { createClientManagementHandler } from "./oauth/manage";
+import { createRegisterHandler } from "./oauth/register";
+import { createTokenHandler } from "./oauth/token";
+import { verifyOAuthToken } from "./tokens";
 import { wellKnown } from "./wellknown";
 import { logError, log, LOG_LEVELS } from "./log";
 import {
@@ -37,25 +45,26 @@ import {
   callSignOut,
   callUserOAuth,
   callVerifierSignature,
-  storeArgs,
+  vStoreArgs,
   storeImpl,
-} from "./mutations/index";
+} from "./mutations/calls";
 import { createOAuthAuthorizationURL, handleOAuthCallback } from "./oauth/runtime";
 import type { AuthProfile } from "./payloads";
-import { payloadRecordValidator } from "./payloads";
-import { generateRandomString, sha256 } from "./random";
+import { vPayloadRecord } from "./payloads";
+import { generateRandomString, INVITE_TOKEN_ALPHABET, sha256 } from "./random";
 import { redirectAbsoluteUrl, setURLSearchParam } from "./redirects";
+import { extractBearerToken } from "./utils/bearer";
 import { encryptSecret } from "./secret";
-import { createGroupService } from "./services/group";
+import { createGroupService } from "./connection/group/service";
 import { resolveServerServices } from "./services/resolve";
-import { createGroupConnectionDomain } from "./sso/domain";
-import { addGroupHttpRuntime } from "./sso/http";
-import { normalizeGroupConnectionPolicy } from "./sso/policy";
+import { createGroupConnectionDomain } from "./connection/domain";
+import { addGroupHttpRuntime } from "./connection/http";
+import { normalizeGroupConnectionPolicy } from "./connection/policy";
 import type {
   ConvexAuthConfig,
   FunctionReferenceFromExport,
   OAuthMaterializedConfig,
-  SSOProviderConfig,
+  ConnectionProviderConfig,
 } from "./types";
 import { MutationCtx } from "./types";
 import { siteUrlsFromEnv } from "./url";
@@ -65,7 +74,21 @@ const GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND = "oidc_client_secret" as const;
 const vHeaderPairs = v.array(v.array(v.string()));
 
 function formDataEntries(formData: unknown): Iterable<[string, string | { name: string }]> {
-  return formData as unknown as Iterable<[string, string | { name: string }]>;
+  return formData as Iterable<[string, string | { name: string }]>;
+}
+
+/**
+ * Single sanctioned bridge across an irreducible cross-package ctx/domain
+ * family boundary. Several runtime values are structurally equivalent at
+ * runtime to a consumer's nominal type but cannot be positively unified by
+ * TypeScript — e.g. the {@link enrichCtx}-enriched action ctx versus the
+ * sign-in service's `GenericActionCtxWithAuthConfig`, or the assembled
+ * `authBase` versus the HTTP context's `HttpContextAuthLike`. This is the one
+ * narrow, typed assertion those boundaries route through; callers name the
+ * exact target via the `T` type argument so the result stays precisely typed.
+ */
+function bridgeRuntimeType<T>(value: object): T {
+  return value as T;
 }
 
 const vHttpDelegateResponse = v.object({
@@ -203,10 +226,10 @@ export type SignOutAction = FunctionReferenceFromExport<ReturnType<typeof Auth>[
  * from `convex/auth.ts` to make them callable:
  *
  * ```ts filename="convex/auth.ts"
- * import { createAuth } from "@robelest/convex-auth/component";
+ * import { defineAuth } from "@robelest/convex-auth/component";
  * import { components } from "./_generated/api";
  *
- * export const auth = createAuth(components.auth, {
+ * export const auth = defineAuth(components.auth, {
  *   providers: [],
  * });
  * export const signIn = auth.signIn;
@@ -221,13 +244,13 @@ export type SignOutAction = FunctionReferenceFromExport<ReturnType<typeof Auth>[
 export function Auth(config_: ConvexAuthConfig) {
   const services = resolveServerServices(config_);
   const config = services.config;
+  const delegatableGrants: string[] = [...(config.permissions?.grants ?? [])];
   const hasOAuth = config.providers.some((provider) => provider.type === "oauth");
-  const hasSSO = config.providers.some((provider) => provider.type === "sso");
+  const hasConnection = config.providers.some((provider) => provider.type === "connection");
   const ssoProvider = config.providers.find(
-    (provider): provider is SSOProviderConfig => provider.type === "sso",
+    (provider): provider is ConnectionProviderConfig => provider.type === "connection",
   );
   const getProviderOrThrow: GetProviderOrThrowFunc = services.providerRegistry.getProviderOrThrow;
-  const INVITE_TOKEN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   const INVITE_TOKEN_LENGTH = 48;
 
   const GROUP_CONNECTION_ROUTE_BASE = "/connections";
@@ -236,7 +259,8 @@ export function Auth(config_: ConvexAuthConfig) {
     name === "CONVEX_SITE_URL" ? authSiteUrlFromEnv() : requireEnv(name);
 
   type AuthRuntimeBase = ReturnType<typeof createCoreDomains> & {
-    sso: ReturnType<typeof createGroupConnectionDomain>;
+    event: ReturnType<typeof createAuthEventDomain>;
+    connection: ReturnType<typeof createGroupConnectionDomain>;
   };
 
   const authBase: AuthRuntimeBase = {
@@ -249,21 +273,11 @@ export function Auth(config_: ConvexAuthConfig) {
       getEnrichCtx: () => enrichCtx,
       inviteTokenAlphabet: INVITE_TOKEN_ALPHABET,
       inviteTokenLength: INVITE_TOKEN_LENGTH,
-      // Wire `auth.provider.signIn` through the canonical sign-in service so
-      // credential providers (e.g. password.ts) can re-enter the flow with a
-      // different provider config (verify/reset OTP issuance, OAuth redirect,
-      // device flow).
-      //
-      // Non-`signedIn` flow results (e.g. `started` after sending an OTP
-      // email) are surfaced via a thrown {@link FlowSignal} so the outer
-      // signIn action receives the original `{ kind: "started" }` shape
-      // rather than collapsing through the credentials authorize → handler
-      // mapping (which only knows about `signedIn` and `totpRequired`).
       signInForProvider: async (ctx, providerConfig, args) => {
         const materialized =
           typeof providerConfig === "function" ? providerConfig() : providerConfig;
         const result = await services.signIn.signIn(
-          enrichCtx(ctx) as unknown as Parameters<typeof services.signIn.signIn>[0],
+          bridgeRuntimeType<Parameters<typeof services.signIn.signIn>[0]>(enrichCtx(ctx)),
           materialized as Parameters<typeof services.signIn.signIn>[1],
           args,
           {
@@ -287,23 +301,20 @@ export function Auth(config_: ConvexAuthConfig) {
           }
           return { userId, sessionId };
         }
-        // Bubble the non-signedIn result up to the action handler. The
-        // credentials runner unwraps `FlowSignal` and re-emits the carried
-        // result so e.g. `{ kind: "started" }` reaches the client unchanged.
-        throw new FlowSignal(result as { kind: string; [key: string]: unknown });
+        return result as Exclude<typeof result, { kind: "signedIn" }>;
       },
     }),
+    event: createAuthEventDomain(config),
     /**
-     * SSO namespace — group connection management, domain, OIDC,
+     * Connection namespace — group connection management, domain, OIDC,
      * SAML, SCIM, audit, and webhook helpers.
      */
-    sso: createGroupConnectionDomain({
+    connection: createGroupConnectionDomain({
       config,
       getGroupConnectionSecret: group.getGroupConnectionSecret,
       loadConnectionOrThrow: group.loadConnectionOrThrow,
       validateGroupConnectionPolicy: group.validateGroupConnectionPolicy,
-      recordGroupAuditEvent: group.recordGroupAuditEvent,
-      emitGroupWebhookDeliveries: group.emitGroupWebhookDeliveries,
+      emitGroupAuthEvent: group.emitGroupAuthEvent,
       connectionNotFoundError: "Connection not found.",
       GROUP_CONNECTION_OIDC_CLIENT_SECRET_KIND,
       requireEnv: authRequireEnv,
@@ -315,30 +326,148 @@ export function Auth(config_: ConvexAuthConfig) {
     }),
   };
 
-  // HTTP wiring stays local to the factory because it still depends on a
-  // dense mix of OAuth, SAML, SCIM, cookie, and response helpers.
   const getDefaultCorsOrigins = () => siteUrlsFromEnv().allowedUrls.map((u) => new URL(u).origin);
 
   const getAuthSiteUrl = (_ctx: GenericActionCtx<GenericDataModel>) => authSiteUrlFromEnv();
+
+  const createOAuthHttpHandlers = () => ({
+    handleSignIn: convertErrorsToResponse(400, async (ctx, request) => {
+      const url = new URL(request.url);
+      const pathParts = url.pathname.split("/");
+      const providerId = pathParts[pathParts.length - 1]!;
+      if (providerId === null) {
+        throw convexError({
+          code: ErrorCode.OAUTH_MISSING_PROVIDER,
+          message: "Missing OAuth provider ID.",
+        });
+      }
+      const verifier = url.searchParams.get("code");
+      if (verifier === null) {
+        throw convexError({
+          code: ErrorCode.OAUTH_MISSING_VERIFIER,
+          message: "Missing sign-in verifier.",
+        });
+      }
+      const provider = getProviderOrThrow(providerId);
+
+      const oauthConfig = provider as OAuthMaterializedConfig;
+      const redirectTo = url.searchParams.get("redirectTo");
+      const { redirect, cookies, signature } = await createOAuthAuthorizationURL(
+        providerId,
+        oauthConfig,
+        {
+          stateTransform: (state) => encodeOAuthState(state, redirectTo),
+        },
+      );
+
+      await callVerifierSignature(ctx, {
+        verifier,
+        signature,
+      });
+
+      const headers = new Headers({ Location: redirect });
+      for (const { name, value, options } of cookies) {
+        headers.append("Set-Cookie", serializeCookie(name, value, options));
+      }
+
+      return new Response(null, { status: 302, headers });
+    }),
+    handleCallback: async (ctx: GenericActionCtx<GenericDataModel>, request: Request) => {
+      const url = new URL(request.url);
+      const callbackPathParts = new URL(request.url).pathname.split("/");
+      const providerId = callbackPathParts[callbackPathParts.length - 1];
+      if (!providerId) {
+        throw convexError({
+          code: ErrorCode.OAUTH_MISSING_PROVIDER,
+          message: "Missing OAuth provider ID.",
+        });
+      }
+      log(LOG_LEVELS.DEBUG, "Handling OAuth callback for provider:", providerId);
+      const provider = getProviderOrThrow(providerId);
+
+      const cookies = getCookies(request);
+
+      const params = url.searchParams;
+
+      if (request.headers.get("Content-Type")?.includes("application/x-www-form-urlencoded")) {
+        const formData = await request.formData();
+        for (const [key, value] of formDataEntries(formData)) {
+          if (typeof value === "string") {
+            params.append(key, value);
+          }
+        }
+      }
+
+      const fallbackDestinationUrl = await redirectAbsoluteUrl(ctx, config, {
+        redirectTo: undefined,
+      });
+
+      try {
+        const oauthConfig = provider as OAuthMaterializedConfig;
+        const result = await handleOAuthCallback(
+          providerId,
+          oauthConfig,
+          Object.fromEntries(params.entries()),
+          cookies,
+        );
+        const oauthCookies = result.cookies;
+        const { id: profileId, emails: profileEmails, ...profileData } = result.profile;
+        const { signature } = result;
+        const { redirectTo: stateRedirectTo } = decodeOAuthState(params.get("state") ?? "");
+        const destinationUrl = await redirectAbsoluteUrl(ctx, config, {
+          redirectTo: stateRedirectTo ?? undefined,
+        });
+
+        const verificationCode = await callUserOAuth(ctx, {
+          provider: providerId,
+          providerAccountId: profileId,
+          profile: profileData as AuthProfile,
+          emails: profileEmails,
+          signature,
+        });
+
+        const redirUrl = setURLSearchParam(destinationUrl, "code", verificationCode);
+        const redirHeaders = new Headers({ Location: redirUrl });
+        redirHeaders.set("Cache-Control", "must-revalidate");
+        for (const { name, value, options } of oauthCookies as Array<{
+          name: string;
+          value: string;
+          options: Parameters<typeof serializeCookie>[2];
+        }>) {
+          redirHeaders.append("Set-Cookie", serializeCookie(name, value, options));
+        }
+        return new Response(null, {
+          status: 302,
+          headers: redirHeaders,
+        });
+      } catch (error) {
+        logError(error);
+        return new Response(null, {
+          status: 302,
+          headers: { Location: fallbackDestinationUrl },
+        });
+      }
+    },
+  });
 
   const createProtocolRouter = (authSiteUrl: string) => {
     const protocolHttp = createInMemoryHttpRouter();
     const protocolRequireEnv = (name: string) =>
       name === "CONVEX_SITE_URL" ? authSiteUrl : requireEnv(name);
 
-    addOpenIdRoutes(protocolHttp as unknown as HttpRouter, {
+    addOpenIdRoutes(protocolHttp as HttpRouter, {
       getIssuer: () => authSiteUrl,
       getJwks: () => requireEnv("JWKS"),
     });
 
-    addWellKnownRoutes(protocolHttp as unknown as HttpRouter, {
+    addWellKnownRoutes(protocolHttp as HttpRouter, {
       getResponse: (endpoint) => wellKnown(endpoint),
     });
 
     addGroupHttpRuntime({
-      http: protocolHttp as unknown as HttpRouter,
-      hasSSO,
-      auth: authBase as unknown as Parameters<typeof addGroupHttpRuntime>[0]["auth"],
+      http: protocolHttp as HttpRouter,
+      hasConnection,
+      auth: authBase as Parameters<typeof addGroupHttpRuntime>[0]["auth"],
       config,
       routeBase: "/connections",
       requireEnv: protocolRequireEnv,
@@ -347,8 +476,7 @@ export function Auth(config_: ConvexAuthConfig) {
       getGroupConnectionScimContext: group.getGroupConnectionScimContext,
       loadGroupPolicyOrThrow: group.loadGroupPolicyOrThrow,
       normalizeGroupConnectionPolicy,
-      recordGroupAuditEvent: group.recordGroupAuditEvent,
-      emitGroupWebhookDeliveries: group.emitGroupWebhookDeliveries,
+      emitGroupAuthEvent: group.emitGroupAuthEvent,
       generateRandomString,
       inviteTokenAlphabet: INVITE_TOKEN_ALPHABET,
       callUserOAuth,
@@ -357,125 +485,9 @@ export function Auth(config_: ConvexAuthConfig) {
     });
 
     if (hasOAuth) {
-      addAuthRoutes(protocolHttp as unknown as HttpRouter, {
+      addAuthRoutes(protocolHttp as HttpRouter, {
         routeBase: "",
-        handleSignIn: convertErrorsToResponse(400, async (ctx, request) => {
-          const url = new URL(request.url);
-          const pathParts = url.pathname.split("/");
-          const providerId = pathParts[pathParts.length - 1]!;
-          if (providerId === null) {
-            throw convexError({
-              code: "OAUTH_MISSING_PROVIDER",
-              message: "Missing OAuth provider ID.",
-            });
-          }
-          const verifier = url.searchParams.get("code");
-          if (verifier === null) {
-            throw convexError({
-              code: "OAUTH_MISSING_VERIFIER",
-              message: "Missing sign-in verifier.",
-            });
-          }
-          const provider = getProviderOrThrow(providerId);
-
-          const oauthConfig = provider as OAuthMaterializedConfig;
-          const redirectTo = url.searchParams.get("redirectTo");
-          const { redirect, cookies, signature } = await createOAuthAuthorizationURL(
-            providerId,
-            oauthConfig,
-            {
-              stateTransform: (state) => encodeOAuthState(state, redirectTo),
-            },
-          );
-
-          await callVerifierSignature(ctx, {
-            verifier,
-            signature,
-          });
-
-          const headers = new Headers({ Location: redirect });
-          for (const { name, value, options } of cookies) {
-            headers.append("Set-Cookie", serializeCookie(name, value, options));
-          }
-
-          return new Response(null, { status: 302, headers });
-        }),
-        handleCallback: async (ctx, request) => {
-          const url = new URL(request.url);
-          const callbackPathParts = new URL(request.url).pathname.split("/");
-          const providerId = callbackPathParts[callbackPathParts.length - 1];
-          if (!providerId) {
-            throw convexError({
-              code: "OAUTH_MISSING_PROVIDER",
-              message: "Missing OAuth provider ID.",
-            });
-          }
-          log(LOG_LEVELS.DEBUG, "Handling OAuth callback for provider:", providerId);
-          const provider = getProviderOrThrow(providerId);
-
-          const cookies = getCookies(request);
-
-          const params = url.searchParams;
-
-          if (request.headers.get("Content-Type")?.includes("application/x-www-form-urlencoded")) {
-            const formData = await request.formData();
-            for (const [key, value] of formDataEntries(formData)) {
-              if (typeof value === "string") {
-                params.append(key, value);
-              }
-            }
-          }
-
-          const fallbackDestinationUrl = await redirectAbsoluteUrl(ctx, config, {
-            redirectTo: undefined,
-          });
-
-          try {
-            const oauthConfig = provider as OAuthMaterializedConfig;
-            const result = await handleOAuthCallback(
-              providerId,
-              oauthConfig,
-              Object.fromEntries(params.entries()),
-              cookies,
-            );
-            const oauthCookies = result.cookies;
-            const { id: profileId, emails: profileEmails, ...profileData } = result.profile;
-            const { signature } = result;
-            const { redirectTo: stateRedirectTo } = decodeOAuthState(params.get("state") ?? "");
-            const destinationUrl = await redirectAbsoluteUrl(ctx, config, {
-              redirectTo: stateRedirectTo ?? undefined,
-            });
-
-            const verificationCode = await callUserOAuth(ctx, {
-              provider: providerId,
-              providerAccountId: profileId,
-              profile: profileData as AuthProfile,
-              emails: profileEmails,
-              signature,
-            });
-
-            const redirUrl = setURLSearchParam(destinationUrl, "code", verificationCode);
-            const redirHeaders = new Headers({ Location: redirUrl });
-            redirHeaders.set("Cache-Control", "must-revalidate");
-            for (const { name, value, options } of oauthCookies as Array<{
-              name: string;
-              value: string;
-              options: Parameters<typeof serializeCookie>[2];
-            }>) {
-              redirHeaders.append("Set-Cookie", serializeCookie(name, value, options));
-            }
-            return new Response(null, {
-              status: 302,
-              headers: redirHeaders,
-            });
-          } catch (error) {
-            logError(error);
-            return new Response(null, {
-              status: 302,
-              headers: { Location: fallbackDestinationUrl },
-            });
-          }
-        },
+        ...createOAuthHttpHandlers(),
       });
     }
 
@@ -521,6 +533,7 @@ export function Auth(config_: ConvexAuthConfig) {
         routeBase: routePrefix,
         getIssuer: authSiteUrl,
         getJwks: () => requireEnv("JWKS"),
+        oauth: config.oauth ? { scopes: delegatableGrants } : undefined,
       });
 
       addWellKnownRoutes(http, {
@@ -529,8 +542,8 @@ export function Auth(config_: ConvexAuthConfig) {
 
       addGroupHttpRuntime({
         http,
-        hasSSO,
-        auth: authBase as unknown as Parameters<typeof addGroupHttpRuntime>[0]["auth"],
+        hasConnection,
+        auth: authBase as Parameters<typeof addGroupHttpRuntime>[0]["auth"],
         config,
         routeBase: `${routePrefix}${GROUP_CONNECTION_ROUTE_BASE}`,
         requireEnv: protocolRequireEnv,
@@ -539,8 +552,7 @@ export function Auth(config_: ConvexAuthConfig) {
         getGroupConnectionScimContext: group.getGroupConnectionScimContext,
         loadGroupPolicyOrThrow: group.loadGroupPolicyOrThrow,
         normalizeGroupConnectionPolicy,
-        recordGroupAuditEvent: group.recordGroupAuditEvent,
-        emitGroupWebhookDeliveries: group.emitGroupWebhookDeliveries,
+        emitGroupAuthEvent: group.emitGroupAuthEvent,
         generateRandomString,
         inviteTokenAlphabet: INVITE_TOKEN_ALPHABET,
         callUserOAuth,
@@ -548,128 +560,46 @@ export function Auth(config_: ConvexAuthConfig) {
         sharedOidcRedirectURI: ssoProvider?.redirectURI,
       });
 
+      if (config.oauth) {
+        addOAuthProviderRoutes(http, {
+          routeBase: routePrefix,
+          handleAuthorize: createAuthorizeHandler({
+            getClient: (ctx, clientId) => authBase.oauth.client.get(ctx, { clientId }),
+            consentPage: config.oauth.pages.consent,
+            authSiteUrl,
+          }),
+          handleToken: createTokenHandler({
+            getClient: (ctx, clientId) => authBase.oauth.client.get(ctx, { clientId }),
+            verifyClientSecret: (ctx, clientId, clientSecret) =>
+              authBase.oauth.client.verify(ctx, { clientId, clientSecret }),
+            acceptCode: (ctx, codeHash, clientId, redirectUri, codeChallenge) =>
+              authBase.oauth.code.accept(ctx, { codeHash, clientId, redirectUri, codeChallenge }),
+            createRefresh: (ctx, args) => authBase.oauth.refresh.create(ctx, args),
+            exchangeRefresh: (ctx, args) => authBase.oauth.refresh.exchange(ctx, args),
+            emitEvent: async (ctx, event) => await emitAuthEvent(ctx, config, event),
+          }),
+          handleRegister: createRegisterHandler({
+            createClient: (ctx, opts) =>
+              authBase.oauth.client.create(ctx, { data: { ...opts, extend: { kind: "dcr" } } }),
+            allowedScopes: delegatableGrants,
+            registrationClientUri: (clientId) => `${authSiteUrl()}/oauth2/register/${clientId}`,
+          }),
+          handleManage: createClientManagementHandler({
+            verifyRegistrationToken: (ctx, args) =>
+              authBase.oauth.client.verifyRegistrationToken(ctx, args),
+            update: (ctx, args) => authBase.oauth.client.update(ctx, args),
+            revoke: (ctx, args) => authBase.oauth.client.revoke(ctx, args),
+            allowedScopes: delegatableGrants,
+            registrationClientUri: (clientId) => `${authSiteUrl()}/oauth2/register/${clientId}`,
+          }),
+        });
+
+      }
+
       if (hasOAuth) {
         addAuthRoutes(http, {
           routeBase: routePrefix,
-          handleSignIn: convertErrorsToResponse(400, async (ctx, request) => {
-            const url = new URL(request.url);
-            const pathParts = url.pathname.split("/");
-            const providerId = pathParts[pathParts.length - 1]!;
-            if (providerId === null) {
-              throw convexError({
-                code: "OAUTH_MISSING_PROVIDER",
-                message: "Missing OAuth provider ID.",
-              });
-            }
-            const verifier = url.searchParams.get("code");
-            if (verifier === null) {
-              throw convexError({
-                code: "OAUTH_MISSING_VERIFIER",
-                message: "Missing sign-in verifier.",
-              });
-            }
-            const provider = getProviderOrThrow(providerId);
-
-            const oauthConfig = provider as OAuthMaterializedConfig;
-            const redirectTo = url.searchParams.get("redirectTo");
-            const { redirect, cookies, signature } = await createOAuthAuthorizationURL(
-              providerId,
-              oauthConfig,
-              {
-                stateTransform: (state) => encodeOAuthState(state, redirectTo),
-              },
-            );
-
-            await callVerifierSignature(ctx, {
-              verifier,
-              signature,
-            });
-
-            const headers = new Headers({ Location: redirect });
-            for (const { name, value, options } of cookies) {
-              headers.append("Set-Cookie", serializeCookie(name, value, options));
-            }
-
-            return new Response(null, { status: 302, headers });
-          }),
-          handleCallback: async (ctx, request) => {
-            const url = new URL(request.url);
-            const callbackPathParts = new URL(request.url).pathname.split("/");
-            const providerId = callbackPathParts[callbackPathParts.length - 1];
-            if (!providerId) {
-              throw convexError({
-                code: "OAUTH_MISSING_PROVIDER",
-                message: "Missing OAuth provider ID.",
-              });
-            }
-            log(LOG_LEVELS.DEBUG, "Handling OAuth callback for provider:", providerId);
-            const provider = getProviderOrThrow(providerId);
-
-            const cookies = getCookies(request);
-
-            const params = url.searchParams;
-
-            if (
-              request.headers.get("Content-Type")?.includes("application/x-www-form-urlencoded")
-            ) {
-              const formData = await request.formData();
-              for (const [key, value] of formDataEntries(formData)) {
-                if (typeof value === "string") {
-                  params.append(key, value);
-                }
-              }
-            }
-
-            const fallbackDestinationUrl = await redirectAbsoluteUrl(ctx, config, {
-              redirectTo: undefined,
-            });
-
-            try {
-              const oauthConfig = provider as OAuthMaterializedConfig;
-              const result = await handleOAuthCallback(
-                providerId,
-                oauthConfig,
-                Object.fromEntries(params.entries()),
-                cookies,
-              );
-              const oauthCookies = result.cookies;
-              const { id: profileId, emails: profileEmails, ...profileData } = result.profile;
-              const { signature } = result;
-              const { redirectTo: stateRedirectTo } = decodeOAuthState(params.get("state") ?? "");
-              const destinationUrl = await redirectAbsoluteUrl(ctx, config, {
-                redirectTo: stateRedirectTo ?? undefined,
-              });
-
-              const verificationCode = await callUserOAuth(ctx, {
-                provider: providerId,
-                providerAccountId: profileId,
-                profile: profileData as AuthProfile,
-                emails: profileEmails,
-                signature,
-              });
-
-              const redirUrl = setURLSearchParam(destinationUrl, "code", verificationCode);
-              const redirHeaders = new Headers({ Location: redirUrl });
-              redirHeaders.set("Cache-Control", "must-revalidate");
-              for (const { name, value, options } of oauthCookies as Array<{
-                name: string;
-                value: string;
-                options: Parameters<typeof serializeCookie>[2];
-              }>) {
-                redirHeaders.append("Set-Cookie", serializeCookie(name, value, options));
-              }
-              return new Response(null, {
-                status: 302,
-                headers: redirHeaders,
-              });
-            } catch (error) {
-              logError(error);
-              return new Response(null, {
-                status: 302,
-                headers: { Location: fallbackDestinationUrl },
-              });
-            }
-          },
+          ...createOAuthHttpHandlers(),
         });
       }
     },
@@ -716,7 +646,7 @@ export function Auth(config_: ConvexAuthConfig) {
      * });
      * ```
      */
-    context: createHttpContext(authBase as unknown as Parameters<typeof createHttpContext>[0]),
+    context: createHttpContext(bridgeRuntimeType<Parameters<typeof createHttpContext>[0]>(authBase)),
 
     /**
      * Wrap an HTTP action handler with Bearer token authentication.
@@ -743,7 +673,7 @@ export function Auth(config_: ConvexAuthConfig) {
      * @param options.cors - CORS config; defaults to site URLs from environment.
      */
     action: createHttpAction(
-      authBase as unknown as Parameters<typeof createHttpAction>[0],
+      authBase as Parameters<typeof createHttpAction>[0],
       getDefaultCorsOrigins,
     ),
 
@@ -775,11 +705,53 @@ export function Auth(config_: ConvexAuthConfig) {
      */
     route: createHttpRoute(
       createHttpAction(
-        authBase as unknown as Parameters<typeof createHttpAction>[0],
+        authBase as Parameters<typeof createHttpAction>[0],
         getDefaultCorsOrigins,
       ),
       getDefaultCorsOrigins,
     ),
+
+    /**
+     * Mount a remote MCP server (an OAuth-protected resource server) on `http`,
+     * next to the other HTTP registrars (`add`, `route`). Requires `oauth` to be
+     * configured in `defineAuth` — the MCP server shares the AS `scopes` and
+     * bearer-token verification — and throws at registration time otherwise.
+     * Tools are plain `{ description, scope, args, handler }` objects; each
+     * handler's `args` are inferred from its Convex validator.
+     */
+    mcp: (
+      http: HttpRouter,
+      tools: Record<string, McpToolDef>,
+      opts?: { name?: string; version?: string; mcpPath?: string },
+    ): void => {
+      if (config.oauth === undefined) {
+        throw new Error(
+          "`auth.request.mcp(...)` requires `oauth` to be configured in `defineAuth` — the MCP server is protected by the OAuth authorization server.",
+        );
+      }
+      if (delegatableGrants.length === 0) {
+        throw new Error(
+          "`auth.request.mcp(...)` requires `permissions` with at least one grant — MCP tools delegate your app's grants, and none are defined.",
+        );
+      }
+      const mcpPath = opts?.mcpPath ?? "/mcp";
+      const canonicalResource = () => requireEnv("CONVEX_SITE_URL").replace(/\/+$/, "") + mcpPath;
+      addMcpRoutes(http, {
+        tools,
+        name: opts?.name,
+        version: opts?.version,
+        scopes: delegatableGrants,
+        mcpPath,
+        resource: canonicalResource,
+        authorizationServers: () => [authSiteUrlFromEnv()],
+        resolveScopes: async (_ctx, request) => {
+          const token = extractBearerToken(request);
+          if (token === null) return null;
+          const verified = await verifyOAuthToken(token, { resource: canonicalResource() });
+          return verified ? verified.scopes : null;
+        },
+      });
+    },
   };
 
   const auth = Object.assign(authBase, { request });
@@ -820,14 +792,6 @@ export function Auth(config_: ConvexAuthConfig) {
     httpDelegate,
   );
 
-  // ---------------------------------------------------------------------------
-  // Lifecycle-aware deletion helpers exposed on `ctx.auth.{account,passkey,totp}`.
-  //
-  // Each helper reads the target doc first (to capture identifying fields like
-  // `userId` / `provider` before deletion), runs the corresponding component
-  // mutation, then fires the matching `after` lifecycle event so callbacks
-  // observe the change atomically with the mutation that performed it.
-  // ---------------------------------------------------------------------------
   const accountUnlink = async (
     ctx: GenericActionCtx<GenericDataModel>,
     args: { accountId: GenericId<"Account"> },
@@ -837,20 +801,25 @@ export function Auth(config_: ConvexAuthConfig) {
     })) as { _id: string; userId: string; provider: string } | null;
     if (accountDoc === null) {
       throw convexError({
-        code: "ACCOUNT_NOT_FOUND",
+        code: ErrorCode.ACCOUNT_NOT_FOUND,
         message: "Account not found.",
       });
     }
-    await ctx.runMutation(config.component.account.delete, {
-      accountId: args.accountId,
+    await ctx.runMutation(config.component.account.remove, {
+      id: args.accountId,
     });
     const userId = accountDoc.userId as GenericId<"User">;
     const provider = accountDoc.provider;
-    await config.callbacks?.after?.(ctx, {
-      kind: "accountUnlinked",
-      userId,
-      accountId: args.accountId,
-      provider,
+    await emitAuthEvent(ctx, config, {
+      kind: "account.unlinked",
+      actor: { type: "user", id: userId },
+      subject: { type: "account", id: args.accountId },
+      targets: [{ kind: "user", id: userId }],
+      outcome: "success",
+      data: {
+        accountId: args.accountId,
+        provider,
+      },
     });
     return { accountId: args.accountId, userId, provider };
   };
@@ -864,18 +833,21 @@ export function Auth(config_: ConvexAuthConfig) {
     })) as { _id: string; userId: string } | null;
     if (passkeyDoc === null) {
       throw convexError({
-        code: "PASSKEY_NOT_FOUND",
+        code: ErrorCode.PASSKEY_NOT_FOUND,
         message: "Passkey not found.",
       });
     }
-    await ctx.runMutation(config.component.factor.passkey.delete, {
-      passkeyId: args.passkeyId,
+    await ctx.runMutation(config.component.factor.passkey.remove, {
+      id: args.passkeyId,
     });
     const userId = passkeyDoc.userId as GenericId<"User">;
-    await config.callbacks?.after?.(ctx, {
-      kind: "passkeyRemoved",
-      userId,
-      passkeyId: args.passkeyId,
+    await emitAuthEvent(ctx, config, {
+      kind: "passkey.removed",
+      actor: { type: "user", id: userId },
+      subject: { type: "passkey", id: args.passkeyId },
+      targets: [{ kind: "user", id: userId }],
+      outcome: "success",
+      data: { passkeyId: args.passkeyId },
     });
     return { passkeyId: args.passkeyId, userId };
   };
@@ -889,33 +861,33 @@ export function Auth(config_: ConvexAuthConfig) {
     })) as { _id: string; userId: string } | null;
     if (totpDoc === null) {
       throw convexError({
-        code: "TOTP_NOT_FOUND",
+        code: ErrorCode.TOTP_NOT_FOUND,
         message: "TOTP factor not found.",
       });
     }
-    await ctx.runMutation(config.component.factor.totp.delete, {
-      totpId: args.totpId,
+    await ctx.runMutation(config.component.factor.totp.remove, {
+      id: args.totpId,
     });
     const userId = totpDoc.userId as GenericId<"User">;
-    await config.callbacks?.after?.(ctx, {
-      kind: "totpRemoved",
-      userId,
-      totpId: args.totpId,
+    await emitAuthEvent(ctx, config, {
+      kind: "totp.removed",
+      actor: { type: "user", id: userId },
+      subject: { type: "totp", id: args.totpId },
+      targets: [{ kind: "user", id: userId }],
+      outcome: "success",
+      data: { totpId: args.totpId },
     });
     return { totpId: args.totpId, userId };
   };
 
   const enrichedAccount = Object.assign({}, auth.account, { unlink: accountUnlink });
-  const passkeyHelpers = { delete: passkeyDelete };
-  const totpHelpers = { delete: totpDelete };
+  const passkeyHelpers = { remove: passkeyDelete };
+  const totpHelpers = { remove: totpDelete };
 
   const enrichCtx = <DataModel extends GenericDataModel>(ctx: GenericActionCtx<DataModel>) => ({
     ...ctx,
     auth: {
       ...ctx.auth,
-      // Methods on `ctx.auth` may live on the class prototype — spread only
-      // copies own enumerable properties, so re-bind the ones we know we'll
-      // need from inside provider authorize callbacks.
       getUserIdentity: ctx.auth.getUserIdentity.bind(ctx.auth),
       config,
       account: enrichedAccount,
@@ -924,6 +896,7 @@ export function Auth(config_: ConvexAuthConfig) {
       session: auth.session,
       member: auth.member,
       provider: auth.provider,
+      event: auth.event,
     },
   });
 
@@ -937,7 +910,7 @@ export function Auth(config_: ConvexAuthConfig) {
     signIn: actionGeneric({
       args: {
         provider: v.optional(v.string()),
-        params: v.optional(payloadRecordValidator),
+        params: v.optional(vPayloadRecord),
         verifier: v.optional(v.string()),
         refreshToken: v.optional(v.string()),
         calledBy: v.optional(v.string()),
@@ -948,35 +921,36 @@ export function Auth(config_: ConvexAuthConfig) {
         }
         const provider = args.provider !== undefined ? getProviderOrThrow(args.provider) : null;
         const authSiteUrl =
-          provider?.type === "oauth" || provider?.type === "sso" ? getAuthSiteUrl(ctx) : undefined;
+          provider?.type === "oauth" || provider?.type === "connection" ? getAuthSiteUrl(ctx) : undefined;
         const result = await services.signIn.signIn(
-          enrichCtx(ctx) as unknown as Parameters<typeof services.signIn.signIn>[0],
+          bridgeRuntimeType<Parameters<typeof services.signIn.signIn>[0]>(enrichCtx(ctx)),
           provider,
           args,
           {
             generateTokens: true,
             allowExtraProviders: false,
             authSiteUrl,
-            resolveSsoProtocol: group.resolveGroupConnectionSsoProtocolOrThrow,
+            resolveConnectionProtocol: group.resolveGroupConnectionConnectionProtocolOrThrow,
           },
         );
-        const resultMap: Record<string, (r: any) => SignInActionResult> = {
-          redirect: (r) => r,
-          signedIn: (r) => ({
-            kind: "signedIn" as const,
-            session: r.session?.tokens ?? null,
-          }),
-          started: (r) => r,
-          passkeyOptions: (r) => r,
-          totpRequired: (r) => r,
-          totpSetup: (r) => r,
-          deviceCode: (r) => r,
-        };
-        const handler = resultMap[result.kind];
-        if (!handler) {
-          throw new Error(`Unexpected sign-in result kind: ${result.kind}`);
+        const resultKind: string = result.kind;
+        /** Exhaustive narrowing dispatch: only `signedIn` reshapes its session into tokens; every other variant passes through unchanged. */
+        switch (result.kind) {
+          case "signedIn":
+            return {
+              kind: "signedIn",
+              session: result.session?.tokens ?? null,
+            };
+          case "redirect":
+          case "started":
+          case "passkeyOptions":
+          case "totpRequired":
+          case "totpSetup":
+          case "deviceCode":
+            return result;
+          default:
+            throw new Error(`Unexpected sign-in result kind: ${resultKind}`);
         }
-        return handler(result);
       },
     }),
     /**
@@ -994,7 +968,7 @@ export function Auth(config_: ConvexAuthConfig) {
      * to the database during signin and signout.
      */
     store: internalMutationGeneric({
-      args: storeArgs,
+      args: vStoreArgs,
       handler: async (ctx: MutationCtx, args) => {
         return storeImpl(ctx, args, services);
       },

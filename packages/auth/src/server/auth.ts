@@ -4,11 +4,14 @@
  * @module
  */
 
-import type { GenericActionCtx, GenericDataModel } from "convex/server";
+import type { GenericActionCtx, GenericDataModel, HttpRouter } from "convex/server";
 import { ConvexError } from "convex/values";
+import type { GenericValidator } from "convex/values";
 
+import { ErrorCode } from "../shared/codes";
 import type { AuthApiRefs } from "../client/index";
 import { createAuthContextFacade } from "./facade";
+import type { McpToolDef } from "./mcp";
 import type {
   AuthConfig,
   AuthContext,
@@ -24,101 +27,125 @@ import type {
   UserDoc,
 } from "./facade";
 import { Auth as AuthFactory } from "./runtime";
-import { buildAuthValidators } from "./validators";
+import { createAuthValidators } from "./validators";
 import type { AuthExtendValidators, AuthValidators } from "./validators";
 import type {
-  AuthAuthorizationConfig,
-  AuthGrant,
+  AuthMemberInspectResult,
   AuthProviderConfig,
-  AuthRoleId,
   ConvexAuthConfig,
+  Grant,
   HasDeviceProvider,
   HasPasskeyProvider,
-  HasSSO,
   HasTotpProvider,
+  PermissionsConfig,
+  RoleId,
 } from "./types";
 
-// Re-export for backward compat (other files import these from auth.ts)
-export type {
-  AuthConfig,
-  AuthContext,
-  AuthContextConfig,
-  InferAuth,
-  OptionalAuthContext,
-  UserDoc,
-};
+export type { AuthConfig, AuthContext, AuthContextConfig, InferAuth, OptionalAuthContext, UserDoc };
 export type { AuthExtendValidators, AuthValidators };
 
+/**
+ * `member.get`/`member.assert` result with `roleIds`/`grants` narrowed
+ * from `string[]` to the permission-typed literal unions.
+ */
+type MemberAccessResult<TPermissions extends PermissionsConfig | undefined> = Omit<
+  AuthMemberInspectResult,
+  "roleIds" | "grants"
+> & {
+  roleIds: RoleId<TPermissions>[];
+  grants: Grant<TPermissions>[];
+};
 
-// ============================================================================
-// Types
-// ============================================================================
-
-type MemberApiWithAuthorization<TAuthorization extends AuthAuthorizationConfig | undefined> = Omit<
+type MemberApiWithPermissions<TPermissions extends PermissionsConfig | undefined> = Omit<
   ReturnType<typeof AuthFactory>["auth"]["member"],
-  "create" | "list" | "update" | "inspect" | "require"
+  "create" | "list" | "update" | "get" | "assert"
 > & {
   create: (
     ctx: Parameters<ReturnType<typeof AuthFactory>["auth"]["member"]["create"]>[0],
-    data: {
-      groupId: string;
-      userId: string;
-      roleIds?: AuthRoleId<TAuthorization>[];
-      status?: string;
-      extend?: Record<string, unknown>;
+    args: {
+      data: {
+        groupId: string;
+        userId: string;
+        roleIds?: RoleId<TPermissions>[];
+        status?: string;
+        extend?: Record<string, unknown>;
+      };
     },
-  ) => Promise<{ memberId: string }>;
+  ) => Promise<string>;
   list: (
     ctx: Parameters<ReturnType<typeof AuthFactory>["auth"]["member"]["list"]>[0],
     opts?: {
       where?: {
         groupId?: string;
         userId?: string;
-        roleId?: AuthRoleId<TAuthorization>;
+        roleId?: RoleId<TPermissions>;
         status?: string;
       };
-      limit?: number;
-      cursor?: string | null;
+      paginationOpts: { numItems: number; cursor: string | null };
       orderBy?: "_creationTime" | "status";
       order?: "asc" | "desc";
     },
   ) => ReturnType<ReturnType<typeof AuthFactory>["auth"]["member"]["list"]>;
   update: (
     ctx: Parameters<ReturnType<typeof AuthFactory>["auth"]["member"]["update"]>[0],
-    memberId: string,
-    data: Record<string, unknown> & { roleIds?: AuthRoleId<TAuthorization>[] },
-  ) => Promise<{ memberId: string }>;
-  inspect: ReturnType<typeof AuthFactory>["auth"]["member"]["inspect"];
-  require: (
-    ctx: Parameters<ReturnType<typeof AuthFactory>["auth"]["member"]["require"]>[0],
+    args: {
+      id: string;
+      patch: Record<string, unknown> & { roleIds?: RoleId<TPermissions>[] };
+    },
+  ) => Promise<null>;
+  get: {
+    (
+      ctx: Parameters<ReturnType<typeof AuthFactory>["auth"]["member"]["get"]>[0],
+      args: { userId: string; groupId: string; ancestry?: boolean; maxDepth?: number },
+    ): Promise<MemberAccessResult<TPermissions>>;
+    (
+      ctx: Parameters<ReturnType<typeof AuthFactory>["auth"]["member"]["get"]>[0],
+      args: { userId: string; groupIds: readonly string[] },
+    ): Promise<MemberAccessResult<TPermissions>[]>;
+  };
+  assert: (
+    ctx: Parameters<ReturnType<typeof AuthFactory>["auth"]["member"]["assert"]>[0],
     opts: {
       userId: string;
       groupId: string;
       ancestry?: boolean;
-      roleIds?: AuthRoleId<TAuthorization>[];
-      grants?: AuthGrant<TAuthorization>[];
+      roleIds?: RoleId<TPermissions>[];
+      grants?: Grant<TPermissions>[];
       maxDepth?: number;
     },
-  ) => ReturnType<ReturnType<typeof AuthFactory>["auth"]["member"]["require"]>;
+  ) => Promise<MemberAccessResult<TPermissions>>;
 };
 
 /**
- * The base auth API surface returned by {@link createAuth}.
+ * `request.mcp` with each tool's `scope` narrowed from `string` to the
+ * permission-typed grant union — a tool may only require a declared grant, so a
+ * typo or stale scope is a compile error.
+ */
+type RequestApiWithPermissions<TPermissions extends PermissionsConfig | undefined> = Omit<
+  ReturnType<typeof AuthFactory>["auth"]["request"],
+  "mcp"
+> & {
+  mcp: <T extends Record<string, GenericValidator>>(
+    http: HttpRouter,
+    tools: { [K in keyof T]: McpToolDef<T[K], Grant<TPermissions>> },
+    opts?: { name?: string; version?: string },
+  ) => void;
+};
+
+/**
+ * The base auth API surface returned by {@link defineAuth}.
  *
  * Provides core namespaces — `signIn`, `signOut`, `user`, `session`,
  * `member`, `invite`, `group`, `key`, and `request` — that are
  * always available regardless of which providers are configured.
- * Group SSO helpers under `group.sso` are added conditionally by
- * {@link AuthApi} when an SSO provider is present.
- *
  * Use this type when you want to describe code that only depends on the
  * standard auth surface and should not assume group connection features exist.
  *
- * @typeParam TAuthorization - The authorization config, used to narrow
+ * @typeParam TPermissions - The permissions config, used to narrow
  *   role IDs and grant strings on the `member` API.
  */
 export type AuthApiBase<
-  TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+  TPermissions extends PermissionsConfig | undefined = undefined,
   TExtend extends AuthExtendValidators = {},
 > = {
   /**
@@ -127,13 +154,14 @@ export type AuthApiBase<
    * Set these as a function's `returns:` so client-side `useQuery`
    * inference flows end-to-end without hand-rolled validators or DTO
    * mappers. The `extend` field of each document carries the shape
-   * supplied via `createAuth({ extend: { ... } })`.
+   * supplied via `defineAuth({ extend: { ... } })`.
    *
    * Available validators:
    * - `v.user` / `v.group` / `v.member` — single documents (extend-aware).
    * - `v.invite` — a single group invite document.
    * - `v.viewer` — `User | null`, for a current-user query.
-   * - `v.list(item)` — wraps an item validator in `{ items, nextCursor }`.
+   * - `v.list(item)` — wraps an item validator in Convex's
+   *   `{ page, isDone, continueCursor }` pagination result shape.
    *
    * Compose these for richer reads — e.g. a current user plus their
    * memberships and groups — using the existing `auth.user.viewer`,
@@ -158,13 +186,13 @@ export type AuthApiBase<
    *   handler: async (ctx) => {
    *     const me = await ctx.auth.user.viewer(ctx);
    *     if (me === null) return null;
-   *     const { items: memberships } = await ctx.auth.member.list(ctx, {
+   *     const { page: memberships } = await ctx.auth.member.list(ctx, {
    *       where: { userId: me._id },
+   *       paginationOpts: { cursor: null, numItems: 25 },
    *     });
-   *     const groups = await ctx.auth.group.get(
-   *       ctx,
-   *       memberships.map((m) => m.groupId),
-   *     );
+   *     const groups = await ctx.auth.group.get(ctx, {
+   *       ids: memberships.map((m) => m.groupId),
+   *     });
    *     return { ...me, memberships, groups };
    *   },
    * });
@@ -183,10 +211,19 @@ export type AuthApiBase<
     /** Current user's active-group selection (`get` / `set` / `clear`). */
     active: ReturnType<typeof AuthFactory>["auth"]["active"];
   };
-  member: MemberApiWithAuthorization<TAuthorization>;
+  member: MemberApiWithPermissions<TPermissions>;
   invite: ReturnType<typeof AuthFactory>["auth"]["invite"];
   key: ReturnType<typeof AuthFactory>["auth"]["key"];
-  request: ReturnType<typeof AuthFactory>["auth"]["request"];
+  oauth: ReturnType<typeof AuthFactory>["auth"]["oauth"];
+  event: ReturnType<typeof AuthFactory>["auth"]["event"];
+  request: RequestApiWithPermissions<TPermissions>;
+  /**
+   * Build app-owned public RPCs for group Connection admin screens.
+   *
+   * This mirrors Convex component setup: start from the configured auth
+   * handle, then mount the Connection routes/functions from that handle.
+   */
+  connection: PublicGroupConnectionApi;
   /**
    * Resolve the current request's auth context. Framework-agnostic — use
    * this in custom wrappers, middleware, or anywhere you need the current
@@ -269,11 +306,11 @@ export type AuthApiBase<
   ctx: AuthContextFactory & { optional: OptionalAuthContextFactory };
 };
 
-type InternalSsoApi = ReturnType<typeof AuthFactory>["auth"]["sso"];
+type InternalConnectionApi = ReturnType<typeof AuthFactory>["auth"]["connection"];
 
-type PublicGroupSsoApi = {
+type PublicGroupConnectionApi = InternalConnectionApi["connection"] & {
   signIn: (
-    ctx: Parameters<InternalSsoApi["connection"]["create"]>[0],
+    ctx: Parameters<InternalConnectionApi["connection"]["create"]>[0],
     data: {
       connectionId?: string;
       email?: string;
@@ -289,19 +326,20 @@ type PublicGroupSsoApi = {
     callbackPath: string;
     redirectTo?: string;
   }>;
-  metadata: InternalSsoApi["saml"]["metadata"];
-  connection: InternalSsoApi["connection"] & {
-    domain: {
-      list: InternalSsoApi["domain"]["list"];
-      validate: InternalSsoApi["domain"]["validate"];
-      status: InternalSsoApi["domain"]["status"];
+  metadata: InternalConnectionApi["saml"]["metadata"];
+  domain: {
+      list: InternalConnectionApi["domain"]["list"];
+      validate: InternalConnectionApi["domain"]["validate"];
+      status: InternalConnectionApi["domain"]["status"];
       set: (
-        ctx: Parameters<InternalSsoApi["connection"]["create"]>[0],
-        connectionId: string,
-        domains: Array<{
-          domain: string;
-          isPrimary?: boolean;
-        }>,
+        ctx: Parameters<InternalConnectionApi["connection"]["create"]>[0],
+        args: {
+          connectionId: string;
+          domains: Array<{
+            domain: string;
+            isPrimary?: boolean;
+          }>;
+        },
       ) => Promise<{
         connectionId: string;
         domains: Array<{
@@ -314,7 +352,7 @@ type PublicGroupSsoApi = {
       }>;
       verification: {
         request: (
-          ctx: Parameters<InternalSsoApi["connection"]["create"]>[0],
+          ctx: Parameters<InternalConnectionApi["connection"]["create"]>[0],
           args: { connectionId: string; domain: string },
         ) => Promise<{
           connectionId: string;
@@ -328,7 +366,7 @@ type PublicGroupSsoApi = {
           };
         }>;
         confirm: (
-          ctx: Parameters<InternalSsoApi["connection"]["create"]>[0],
+          ctx: Parameters<InternalConnectionApi["connection"]["create"]>[0],
           args: { connectionId: string; domain: string },
         ) => Promise<{
           connectionId: string;
@@ -338,77 +376,56 @@ type PublicGroupSsoApi = {
         }>;
       };
     };
-  };
-  oidc: Omit<InternalSsoApi["oidc"], "signIn">;
-  saml: InternalSsoApi["saml"];
-  policy: InternalSsoApi["policy"];
+  oidc: Omit<InternalConnectionApi["oidc"], "signIn">;
+  saml: InternalConnectionApi["saml"];
+  policy: InternalConnectionApi["policy"];
   audit: {
-    list: InternalSsoApi["audit"]["list"];
+    list: InternalConnectionApi["audit"]["list"];
   };
   webhook: {
-    endpoint: InternalSsoApi["webhook"]["endpoint"];
+    endpoint: InternalConnectionApi["webhook"]["endpoint"];
     delivery: {
-      list: InternalSsoApi["webhook"]["delivery"]["list"];
+      list: InternalConnectionApi["webhook"]["delivery"]["list"];
     };
   };
-  scim: Omit<InternalSsoApi["scim"], "getConfigByToken" | "identity">;
+  scim: Omit<InternalConnectionApi["scim"], "getConfigByToken" | "identity">;
 };
 
 /**
- * Extended auth API that includes group SSO and SCIM namespaces.
+ * Auth API returned by {@link defineAuth}.
  *
- * This type is the union of {@link AuthApiBase} plus `group.sso`
- * (SSO connection management, OIDC/SAML, SCIM, domain verification,
- * policies, audit, and webhooks). It is returned by
- * {@link createAuth} only when `sso()` is included in the providers
- * array; otherwise the narrower {@link AuthApiBase} is returned instead.
- * Attempting to access `auth.group.sso` without an SSO provider
- * produces a compile-time error because the return type narrows back to
- * {@link AuthApiBase}.
- *
- * @typeParam TAuthorization - The authorization config, forwarded to
+ * @typeParam TPermissions - The permissions config, forwarded to
  *   {@link AuthApiBase} for typed role IDs and grant strings.
  */
 export type AuthApi<
-  TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+  TPermissions extends PermissionsConfig | undefined = undefined,
   TExtend extends AuthExtendValidators = {},
-> = AuthApiBase<TAuthorization, TExtend> & {
-  group: AuthApiBase<TAuthorization, TExtend>["group"] & {
-    sso: PublicGroupSsoApi;
-  };
-};
+> = AuthApiBase<TPermissions, TExtend>;
 
 /**
- * The return type of {@link createAuth}.
+ * The return type of {@link defineAuth}.
  *
- * Resolves to {@link AuthApi} (with `group.sso` helpers) when
- * `sso()` is present in the providers array, or to the narrower
- * {@link AuthApiBase} otherwise. This conditional type ensures that
- * group connection-only APIs are only accessible when the SSO provider is
- * configured, producing a compile-time error if you try to access
- * `auth.group.sso` without it.
- * This lets application code keep a single `createAuth()` call while still
- * getting provider-aware typing on the resulting API object.
+ * This lets application code keep a single `defineAuth()` call while getting
+ * the canonical auth namespaces, including the flat `auth.connection.*` admin
+ * facade for group connections.
  *
- * @typeParam P - The tuple of provider configs passed to `createAuth`.
- * @typeParam TAuthorization - Optional authorization config for typed roles/grants.
+ * @typeParam P - The tuple of provider configs passed to `defineAuth`.
+ * @typeParam TPermissions - Optional permissions config for typed roles/grants.
  */
 export type ConvexAuthResult<
   P extends AuthProviderConfig[],
-  TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+  TPermissions extends PermissionsConfig | undefined = undefined,
   TExtend extends AuthExtendValidators = {},
-> = HasSSO<P> extends true
-  ? AuthApi<TAuthorization, TExtend>
-  : AuthApiBase<TAuthorization, TExtend>;
+> = AuthApi<TPermissions, TExtend>;
 
 /**
- * Infer the typed `AuthApiRefs` for the client SDK from a `createAuth` call.
+ * Infer the typed `AuthApiRefs` for the client SDK from a `defineAuth` call.
  *
  * Use this as the generic parameter for `client()` on the frontend:
  *
  * ```ts
  * // convex/auth.ts
- * export const auth = createAuth(components.auth, { providers: [...] });
+ * export const auth = defineAuth(components.auth, { providers: [...] });
  *
  * // Frontend
  * import type { auth } from "../convex/auth";
@@ -423,45 +440,40 @@ export type InferClientApi<T> =
     ? AuthApiRefs<HasPasskeyProvider<P>, HasTotpProvider<P>, HasDeviceProvider<P>>
     : AuthApiRefs;
 
-// ============================================================================
-// Auth setup APIs
-// ============================================================================
-
 /**
- * Create an auth API object.
+ * Define an auth API object.
  *
- * When `sso()` is included in providers, `auth.group.sso` is available
- * on the returned object. Without it, that namespace is absent and
- * accessing it is a TypeScript compile error.
+ * Connection admin RPCs are exposed by wrapping the `auth.connection.*`
+ * facade in your own `authMutation`/`authQuery` functions (authorize with
+ * `auth.member.assert`), the same pattern as every other namespace.
  *
  * @param component - The installed auth component reference from
  *   `components.auth` in your Convex app definition.
  * @param config - Auth configuration including `providers` and optional
- *   `authorization`. All fields from {@link AuthConfig} are accepted
+ *   `permissions`. All fields from {@link AuthConfig} are accepted
  *   except `component` (passed as the first argument).
- * @returns A {@link ConvexAuthResult} object — either {@link AuthApi}
- *   (with `group.sso`) or {@link AuthApiBase}, depending on whether
- *   an SSO provider is present.
+ * @returns A {@link ConvexAuthResult} — the full auth API surface
+ *   ({@link AuthApiBase}) plus the `connection` group-admin facade.
  *
  * @example
  * ```ts
- * export const auth = createAuth(components.auth, {
+ * export const auth = defineAuth(components.auth, {
  *   providers: [password(), google()],
- *   authorization: { roles },
+ *   permissions,
  * });
  * ```
  *
  * @see {@link AuthContextConfig}
  */
-export function createAuth<
+export function defineAuth<
   P extends AuthProviderConfig[],
-  TAuthorization extends AuthAuthorizationConfig | undefined = undefined,
+  TPermissions extends PermissionsConfig | undefined = undefined,
   TExtend extends AuthExtendValidators = {},
 >(
-  component: ConvexAuthConfig["component"],
-  config: Omit<AuthConfig, "providers" | "authorization"> & {
+  component: ConvexAuthConfig<TExtend>["component"],
+  config: Omit<AuthConfig<TExtend>, "providers" | "permissions"> & {
     providers: P;
-    authorization?: TAuthorization;
+    permissions?: TPermissions;
     /**
      * Validators for the `extend` field of each table. Drives both the
      * inferred type of `auth.v.*` (so `viewer.extend.<field>` is typed)
@@ -469,7 +481,7 @@ export function createAuth<
      *
      * @example
      * ```ts
-     * createAuth(components.auth, {
+     * defineAuth(components.auth, {
      *   providers: [password()],
      *   extend: { User: v.object({ stripeCustomerId: v.optional(v.string()) }) },
      * });
@@ -477,12 +489,12 @@ export function createAuth<
      */
     extend?: TExtend;
   },
-): ConvexAuthResult<P, TAuthorization, TExtend> {
+): ConvexAuthResult<P, TPermissions, TExtend> {
   const authResult = AuthFactory({
     ...config,
     component,
     providers: [...config.providers],
-  });
+  } as ConvexAuthConfig);
   const {
     domain: domainApi,
     scim: scimApi,
@@ -491,23 +503,24 @@ export function createAuth<
     webhook: webhookApi,
     oidc: oidcApi,
     saml: samlApi,
-    ...restSso
-  } = authResult.auth.sso as InternalSsoApi;
+    ...restConnection
+  } = authResult.auth.connection as InternalConnectionApi;
 
-  type SetGroupConnectionDomains = PublicGroupSsoApi["connection"]["domain"]["set"];
+  type SetGroupConnectionDomains = PublicGroupConnectionApi["domain"]["set"];
   type GroupConnectionDomainInput = Array<{
     domain: string;
     isPrimary?: boolean;
   }>;
-  const setGroupConnectionDomains: PublicGroupSsoApi["connection"]["domain"]["set"] = async (
+  const setGroupConnectionDomains: PublicGroupConnectionApi["domain"]["set"] = async (
     ctx: Parameters<SetGroupConnectionDomains>[0],
-    connectionId: Parameters<SetGroupConnectionDomains>[1],
-    domains: GroupConnectionDomainInput,
+    args: Parameters<SetGroupConnectionDomains>[1],
   ) => {
-    const connection = await connectionApi.get(ctx, connectionId);
+    const { connectionId } = args;
+    const domains: GroupConnectionDomainInput = args.domains;
+    const connection = await connectionApi.get(ctx, { id: connectionId });
     if (connection === null) {
       throw new ConvexError({
-        code: "INVALID_PARAMETERS",
+        code: ErrorCode.INVALID_PARAMETERS,
         message: "Connection not found.",
       });
     }
@@ -520,13 +533,13 @@ export function createAuth<
     for (const entry of normalized) {
       if (entry.domain.length === 0) {
         throw new ConvexError({
-          code: "INVALID_PARAMETERS",
+          code: ErrorCode.INVALID_PARAMETERS,
           message: "Domain must not be empty.",
         });
       }
       if (deduped.has(entry.domain)) {
         throw new ConvexError({
-          code: "INVALID_PARAMETERS",
+          code: ErrorCode.INVALID_PARAMETERS,
           message: `Duplicate domain: ${entry.domain}`,
         });
       }
@@ -537,7 +550,7 @@ export function createAuth<
     const primaryCount = nextDomains.filter((entry) => entry.isPrimary).length;
     if (primaryCount > 1) {
       throw new ConvexError({
-        code: "INVALID_PARAMETERS",
+        code: ErrorCode.INVALID_PARAMETERS,
         message: "Only one primary domain may be set.",
       });
     }
@@ -545,7 +558,7 @@ export function createAuth<
       nextDomains[0] = { ...nextDomains[0], isPrimary: true };
     }
 
-    const currentDomains = await domainApi.list(ctx, connectionId);
+    const currentDomains = await domainApi.list(ctx, { connectionId });
     const currentByDomain = new Map<string, (typeof currentDomains)[number]>(
       currentDomains.map((entry: (typeof currentDomains)[number]) => [
         entry.domain.toLowerCase(),
@@ -555,7 +568,7 @@ export function createAuth<
 
     for (const existing of currentDomains) {
       if (!deduped.has(existing.domain.toLowerCase())) {
-        await domainApi.remove(ctx, existing._id);
+        await domainApi.remove(ctx, { id: existing._id });
       }
     }
 
@@ -565,9 +578,9 @@ export function createAuth<
         continue;
       }
       if (current) {
-        await domainApi.remove(ctx, current._id);
+        await domainApi.remove(ctx, { id: current._id });
       }
-      const domainId = await domainApi.add(ctx, {
+      const domainId = await domainApi.create(ctx, {
         connectionId: connection._id,
         groupId: connection.groupId,
         domain: nextDomain.domain,
@@ -578,14 +591,14 @@ export function createAuth<
           ctx as {
             runMutation: GenericActionCtx<GenericDataModel>["runMutation"];
           }
-        ).runMutation(component.sso.connection.domain.verify, {
-          domainId,
+        ).runMutation(component.connection.domain.verify, {
+          id: domainId,
           verifiedAt: current.verifiedAt,
         });
       }
     }
 
-    const updatedDomains = await domainApi.list(ctx, connectionId);
+    const updatedDomains = await domainApi.list(ctx, { connectionId });
     return {
       connectionId,
       domains: updatedDomains.map((domain: (typeof updatedDomains)[number]) => ({
@@ -598,8 +611,9 @@ export function createAuth<
     };
   };
 
-  const publicGroupSso: PublicGroupSsoApi = {
-    ...restSso,
+  const publicGroupConnection: PublicGroupConnectionApi = {
+    ...restConnection,
+    ...connectionApi,
     signIn: oidcApi.signIn,
     metadata: samlApi.metadata,
     oidc: {
@@ -608,20 +622,17 @@ export function createAuth<
     saml: {
       ...samlApi,
     },
-    connection: {
-      ...connectionApi,
-      domain: {
-        list: domainApi.list,
-        validate: domainApi.validate,
-        status: domainApi.status,
-        set: setGroupConnectionDomains,
-        verification: {
-          request: domainApi.verification.request,
-          confirm: domainApi.verification.confirm,
-        },
+    domain: {
+      list: domainApi.list,
+      validate: domainApi.validate,
+      status: domainApi.status,
+      set: setGroupConnectionDomains,
+      verification: {
+        request: domainApi.verification.request,
+        confirm: domainApi.verification.confirm,
       },
     },
-    policy: restSso.policy,
+    policy: restConnection.policy,
     audit: {
       list: auditApi.list,
     },
@@ -632,15 +643,20 @@ export function createAuth<
       },
     },
     scim: {
-      configure: scimApi.configure,
+      set: scimApi.set,
       get: scimApi.get,
       status: scimApi.status,
       validate: scimApi.validate,
     },
   };
 
-  return {
-    v: buildAuthValidators(config.extend ?? ({} as TExtend)),
+  const groupApi = {
+    ...authResult.auth.group,
+    active: authResult.auth.active,
+  };
+
+  const api = {
+    v: createAuthValidators(config.extend ?? ({} as TExtend)),
     signIn: authResult.signIn,
     signOut: authResult.signOut,
     store: authResult.store,
@@ -649,16 +665,16 @@ export function createAuth<
     session: authResult.auth.session,
     provider: authResult.auth.provider,
     account: authResult.auth.account,
-    group: {
-      ...authResult.auth.group,
-      sso: publicGroupSso,
-      active: authResult.auth.active,
-    },
+    group: groupApi,
     member: authResult.auth.member,
     invite: authResult.auth.invite,
     key: authResult.auth.key,
+    oauth: authResult.auth.oauth,
+    event: authResult.auth.event,
     request: authResult.auth.request,
+    connection: publicGroupConnection,
 
     ...(createAuthContextFacade(authResult.auth as AuthLike) as AuthContextFacade),
-  } as unknown as ConvexAuthResult<P, TAuthorization>;
+  } as unknown as ConvexAuthResult<P, TPermissions, TExtend>;
+  return api;
 }

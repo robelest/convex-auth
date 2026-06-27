@@ -6,10 +6,6 @@ import { expect, test, vi } from "vite-plus/test";
 
 import { convexTest } from "./convex/setup";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 /** Unwrap a key.get result, asserting non-null and returning the key doc. */
 function expectKey(result: any) {
   expect(result).not.toBeNull();
@@ -25,24 +21,46 @@ async function createUser(t: any, email = "test@example.com") {
   });
 }
 
-// ---------------------------------------------------------------------------
-// key.create
-// ---------------------------------------------------------------------------
-
 test("key.create returns secret starting with sk_", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
   const result = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "CI Pipeline",
-      scopes: [],
+      data: {
+        userId,
+        name: "CI Pipeline",
+        scopes: [],
+      },
     });
   });
 
   expect(result.secret).toMatch(/^sk_/);
-  expect(result.keyId).toBeTruthy();
+  expect(result.id).toBeTruthy();
+});
+
+test("key.create and key.revoke emit audit events", async () => {
+  const t = convexTest(schema);
+  const userId = await createUser(t, "key-audit@example.com");
+
+  const { id: keyId } = await t.run(async (ctx) => {
+    return await auth.key.create(ctx, {
+      data: { userId, name: "Audit Key", scopes: [] },
+    });
+  });
+  await t.run(async (ctx) => {
+    return await auth.key.revoke(ctx, { id: keyId });
+  });
+
+  const events = await t.run(async (ctx) => {
+    return await ctx.runQuery(components.auth.event.list, {
+      where: { subject: { type: "user", id: userId } },
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+  });
+  const kinds = (events.page as Array<{ kind: string }>).map((event) => event.kind);
+  expect(kinds).toContain("api_key.issued");
+  expect(kinds).toContain("api_key.revoked");
 });
 
 test("key.create with no scopes succeeds", async () => {
@@ -51,14 +69,16 @@ test("key.create with no scopes succeeds", async () => {
 
   const result = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "No Scopes Key",
-      scopes: [],
+      data: {
+        userId,
+        name: "No Scopes Key",
+        scopes: [],
+      },
     });
   });
 
   expect(result.secret).toBeTruthy();
-  expect(result.keyId).toBeTruthy();
+  expect(result.id).toBeTruthy();
 });
 
 test("key.create with freeform scopes stores them as-is", async () => {
@@ -70,16 +90,18 @@ test("key.create with freeform scopes stores them as-is", async () => {
     { resource: "admin", actions: ["*"] },
   ];
 
-  const { keyId } = await t.run(async (ctx) => {
+  const { id: keyId } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "Scoped Key",
-      scopes,
+      data: {
+        userId,
+        name: "Scoped Key",
+        scopes,
+      },
     });
   });
 
   const result = await t.run(async (ctx) => {
-    return await auth.key.get(ctx, keyId);
+    return await auth.key.get(ctx, { id: keyId });
   });
 
   expect(expectKey(result).scopes).toEqual(scopes);
@@ -90,17 +112,19 @@ test("key.create with expiry stores expiresAt", async () => {
   const userId = await createUser(t);
   const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
 
-  const { keyId } = await t.run(async (ctx) => {
+  const { id: keyId } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "Expiring Key",
-      scopes: [],
-      expiresAt,
+      data: {
+        userId,
+        name: "Expiring Key",
+        scopes: [],
+        expiresAt,
+      },
     });
   });
 
   const expiryResult = await t.run(async (ctx) => {
-    return await auth.key.get(ctx, keyId);
+    return await auth.key.get(ctx, { id: keyId });
   });
 
   expect(expectKey(expiryResult).expiresAt).toBe(expiresAt);
@@ -111,39 +135,37 @@ test("key.create with per-key rateLimit stores it", async () => {
   const userId = await createUser(t);
   const rateLimit = { maxRequests: 100, windowMs: 60_000 };
 
-  const { keyId } = await t.run(async (ctx) => {
+  const { id: keyId } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "Rate Limited Key",
-      scopes: [],
-      rateLimit,
+      data: {
+        userId,
+        name: "Rate Limited Key",
+        scopes: [],
+        rateLimit,
+      },
     });
   });
 
   const rateResult = await t.run(async (ctx) => {
-    return await auth.key.get(ctx, keyId);
+    return await auth.key.get(ctx, { id: keyId });
   });
 
   expect(expectKey(rateResult).rateLimit).toEqual(rateLimit);
 });
-
-// ---------------------------------------------------------------------------
-// key.verify
-// ---------------------------------------------------------------------------
 
 test("key.verify with valid secret returns userId keyId and scopes", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
   const scopes = [{ resource: "data", actions: ["read"] }];
 
-  const { secret, keyId } = await t.run(async (ctx) => {
-    return await auth.key.create(ctx, { userId, name: "Test Key", scopes });
+  const { secret, id: keyId } = await t.run(async (ctx) => {
+    return await auth.key.create(ctx, {
+      data: { userId, name: "Test Key", scopes },
+    });
   });
 
-  // Verify and evaluate scopes inside a single t.run to avoid serializing
-  // the ScopeChecker (which contains a function).
   const result = await t.run(async (ctx) => {
-    const verified = await auth.key.verify(ctx, secret);
+    const verified = await auth.key.verify(ctx, { secret: secret });
     return {
       userId: verified.userId,
       keyId: verified.keyId,
@@ -163,7 +185,7 @@ test("key.verify with unknown key throws ConvexError", async () => {
 
   await expect(
     t.run(async (ctx) => {
-      return await auth.key.verify(ctx, "sk_not_a_real_key_abc123");
+      return await auth.key.verify(ctx, { secret: "sk_not_a_real_key_abc123" });
     }),
   ).rejects.toThrow(ConvexError);
 });
@@ -172,21 +194,23 @@ test("key.verify after revoke throws ConvexError", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
-  const { secret, keyId } = await t.run(async (ctx) => {
+  const { secret, id: keyId } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "Revokable",
-      scopes: [],
+      data: {
+        userId,
+        name: "Revokable",
+        scopes: [],
+      },
     });
   });
 
   await t.run(async (ctx) => {
-    await auth.key.revoke(ctx, keyId);
+    await auth.key.revoke(ctx, { id: keyId });
   });
 
   await expect(
     t.run(async (ctx) => {
-      return await auth.key.verify(ctx, secret);
+      return await auth.key.verify(ctx, { secret: secret });
     }),
   ).rejects.toThrow(ConvexError);
 });
@@ -199,10 +223,12 @@ test("key.verify after expiry throws ConvexError", async () => {
 
   const { secret } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "Short-lived Key",
-      scopes: [],
-      expiresAt,
+      data: {
+        userId,
+        name: "Short-lived Key",
+        scopes: [],
+        expiresAt,
+      },
     });
   });
 
@@ -210,7 +236,7 @@ test("key.verify after expiry throws ConvexError", async () => {
 
   await expect(
     t.run(async (ctx) => {
-      return await auth.key.verify(ctx, secret);
+      return await auth.key.verify(ctx, { secret: secret });
     }),
   ).rejects.toThrow(ConvexError);
 
@@ -224,34 +250,30 @@ test("key.verify rate limiting triggers after threshold", async () => {
 
   const { secret } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "Rate Limited",
-      scopes: [],
-      rateLimit: { maxRequests: 3, windowMs: 60_000 },
+      data: {
+        userId,
+        name: "Rate Limited",
+        scopes: [],
+        rateLimit: { maxRequests: 3, windowMs: 60_000 },
+      },
     });
   });
 
-  // First three calls should succeed (verify + discard scopes inside run)
   for (let i = 0; i < 3; i++) {
     await t.run(async (ctx) => {
-      const verified = await auth.key.verify(ctx, secret);
+      const verified = await auth.key.verify(ctx, { secret: secret });
       return verified.userId;
     });
   }
 
-  // Fourth call should be rate limited
   await expect(
     t.run(async (ctx) => {
-      return await auth.key.verify(ctx, secret);
+      return await auth.key.verify(ctx, { secret: secret });
     }),
   ).rejects.toThrow(ConvexError);
 
   vi.useRealTimers();
 });
-
-// ---------------------------------------------------------------------------
-// key.list
-// ---------------------------------------------------------------------------
 
 test("key.list returns only keys for the given userId", async () => {
   const t = convexTest(schema);
@@ -259,13 +281,22 @@ test("key.list returns only keys for the given userId", async () => {
   const userId2 = await createUser(t, "user2@example.com");
 
   await t.run(async (ctx) => {
-    await auth.key.create(ctx, { userId: userId1, name: "Key A", scopes: [] });
-    await auth.key.create(ctx, { userId: userId1, name: "Key B", scopes: [] });
-    await auth.key.create(ctx, { userId: userId2, name: "Key C", scopes: [] });
+    await auth.key.create(ctx, {
+      data: { userId: userId1, name: "Key A", scopes: [] },
+    });
+    await auth.key.create(ctx, {
+      data: { userId: userId1, name: "Key B", scopes: [] },
+    });
+    await auth.key.create(ctx, {
+      data: { userId: userId2, name: "Key C", scopes: [] },
+    });
   });
 
   const result = await t.run(async (ctx) => {
-    return await auth.key.list(ctx, { where: { userId: userId1 } });
+    return await auth.key.list(ctx, {
+      where: { userId: userId1 },
+      paginationOpts: { numItems: 50, cursor: null },
+    });
   });
 
   expect(result.page).toHaveLength(2);
@@ -276,41 +307,46 @@ test("key.list with revoked: false excludes revoked keys", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
-  const { keyId } = await t.run(async (ctx) => {
-    await auth.key.create(ctx, { userId, name: "Active Key", scopes: [] });
+  const { id: keyId } = await t.run(async (ctx) => {
+    await auth.key.create(ctx, {
+      data: { userId, name: "Active Key", scopes: [] },
+    });
     return await auth.key.create(ctx, {
-      userId,
-      name: "To Revoke",
-      scopes: [],
+      data: {
+        userId,
+        name: "To Revoke",
+        scopes: [],
+      },
     });
   });
 
   await t.run(async (ctx) => {
-    await auth.key.revoke(ctx, keyId);
+    await auth.key.revoke(ctx, { id: keyId });
   });
 
   const result = await t.run(async (ctx) => {
-    return await auth.key.list(ctx, { where: { userId, revoked: false } });
+    return await auth.key.list(ctx, {
+      where: { userId, revoked: false },
+      paginationOpts: { numItems: 50, cursor: null },
+    });
   });
 
   expect(result.page).toHaveLength(1);
   expect(result.page[0].name).toBe("Active Key");
 });
 
-// ---------------------------------------------------------------------------
-// key.get
-// ---------------------------------------------------------------------------
-
 test("key.get returns record without secret", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
-  const { keyId, secret } = await t.run(async (ctx) => {
-    return await auth.key.create(ctx, { userId, name: "Get Test", scopes: [] });
+  const { id: keyId, secret } = await t.run(async (ctx) => {
+    return await auth.key.create(ctx, {
+      data: { userId, name: "Get Test", scopes: [] },
+    });
   });
 
   const getResult = await t.run(async (ctx) => {
-    return await auth.key.get(ctx, keyId);
+    return await auth.key.get(ctx, { id: keyId });
   });
 
   const record = expectKey(getResult);
@@ -318,7 +354,6 @@ test("key.get returns record without secret", async () => {
   expect(record.userId).toBe(userId);
   expect(record.name).toBe("Get Test");
   expect(record.prefix).toMatch(/^sk_/);
-  // Raw key must not be stored
   expect(JSON.stringify(record)).not.toContain(secret);
 });
 
@@ -326,61 +361,57 @@ test("key.get after revoke still returns record with revoked: true", async () =>
   const t = convexTest(schema);
   const userId = await createUser(t);
 
-  const { keyId } = await t.run(async (ctx) => {
+  const { id: keyId } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "Revoke Check",
-      scopes: [],
+      data: {
+        userId,
+        name: "Revoke Check",
+        scopes: [],
+      },
     });
   });
 
   await t.run(async (ctx) => {
-    await auth.key.revoke(ctx, keyId);
+    await auth.key.revoke(ctx, { id: keyId });
   });
 
   const revokeResult = await t.run(async (ctx) => {
-    return await auth.key.get(ctx, keyId);
+    return await auth.key.get(ctx, { id: keyId });
   });
 
   expect(expectKey(revokeResult).revoked).toBe(true);
 });
 
-// ---------------------------------------------------------------------------
-// key.revoke
-// ---------------------------------------------------------------------------
-
 test("key.revoke sets revoked flag and verify throws ConvexError", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
-  const { secret, keyId } = await t.run(async (ctx) => {
+  const { secret, id: keyId } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "To Revoke",
-      scopes: [],
+      data: {
+        userId,
+        name: "To Revoke",
+        scopes: [],
+      },
     });
   });
 
   await t.run(async (ctx) => {
-    await auth.key.revoke(ctx, keyId);
+    await auth.key.revoke(ctx, { id: keyId });
   });
 
   const revokedGet = await t.run(async (ctx) => {
-    return await auth.key.get(ctx, keyId);
+    return await auth.key.get(ctx, { id: keyId });
   });
 
   expect(expectKey(revokedGet).revoked).toBe(true);
 
   await expect(
     t.run(async (ctx) => {
-      return await auth.key.verify(ctx, secret);
+      return await auth.key.verify(ctx, { secret: secret });
     }),
   ).rejects.toThrow(ConvexError);
 });
-
-// ---------------------------------------------------------------------------
-// scopes.can
-// ---------------------------------------------------------------------------
 
 test("scopes.can returns true for exact resource and action match", async () => {
   const t = convexTest(schema);
@@ -388,14 +419,16 @@ test("scopes.can returns true for exact resource and action match", async () => 
 
   const { secret } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "Scoped",
-      scopes: [{ resource: "reports", actions: ["read", "export"] }],
+      data: {
+        userId,
+        name: "Scoped",
+        scopes: [{ resource: "reports", actions: ["read", "export"] }],
+      },
     });
   });
 
   const checks = await t.run(async (ctx) => {
-    const verified = await auth.key.verify(ctx, secret);
+    const verified = await auth.key.verify(ctx, { secret: secret });
     return {
       reportsRead: verified.scopes.can("reports", "read"),
       reportsExport: verified.scopes.can("reports", "export"),
@@ -416,14 +449,16 @@ test("scopes.can wildcard action grants all actions on resource", async () => {
 
   const { secret } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "Wildcard Action",
-      scopes: [{ resource: "data", actions: ["*"] }],
+      data: {
+        userId,
+        name: "Wildcard Action",
+        scopes: [{ resource: "data", actions: ["*"] }],
+      },
     });
   });
 
   const checks = await t.run(async (ctx) => {
-    const verified = await auth.key.verify(ctx, secret);
+    const verified = await auth.key.verify(ctx, { secret: secret });
     return {
       dataRead: verified.scopes.can("data", "read"),
       dataWrite: verified.scopes.can("data", "write"),
@@ -444,14 +479,16 @@ test("scopes.can wildcard resource grants action on all resources", async () => 
 
   const { secret } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "Wildcard Resource",
-      scopes: [{ resource: "*", actions: ["read"] }],
+      data: {
+        userId,
+        name: "Wildcard Resource",
+        scopes: [{ resource: "*", actions: ["read"] }],
+      },
     });
   });
 
   const checks = await t.run(async (ctx) => {
-    const verified = await auth.key.verify(ctx, secret);
+    const verified = await auth.key.verify(ctx, { secret: secret });
     return {
       dataRead: verified.scopes.can("data", "read"),
       usersRead: verified.scopes.can("users", "read"),
@@ -472,14 +509,16 @@ test("scopes.can full wildcard grants everything", async () => {
 
   const { secret } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "Full Access",
-      scopes: [{ resource: "*", actions: ["*"] }],
+      data: {
+        userId,
+        name: "Full Access",
+        scopes: [{ resource: "*", actions: ["*"] }],
+      },
     });
   });
 
   const checks = await t.run(async (ctx) => {
-    const verified = await auth.key.verify(ctx, secret);
+    const verified = await auth.key.verify(ctx, { secret: secret });
     return {
       anythingAnything: verified.scopes.can("anything", "anything"),
       dataDelete: verified.scopes.can("data", "delete"),
@@ -491,10 +530,6 @@ test("scopes.can full wildcard grants everything", async () => {
   expect(checks.dataDelete).toBe(true);
   expect(checks.adminImpersonate).toBe(true);
 });
-
-// ---------------------------------------------------------------------------
-// auth.context / auth.request.context
-// ---------------------------------------------------------------------------
 
 test("auth.context returns auth state from a session identity", async () => {
   const t = convexTest(schema);
@@ -540,7 +575,7 @@ test("auth.context optional returns null-shaped auth when unauthenticated", asyn
       groupId: c.groupId,
       role: c.role,
       grants: c.grants,
-      requireType: typeof c.require,
+      assertType: typeof c.assert,
     };
   });
 
@@ -550,7 +585,7 @@ test("auth.context optional returns null-shaped auth when unauthenticated", asyn
     groupId: null,
     role: null,
     grants: [],
-    requireType: "function",
+    assertType: "function",
   });
 });
 
@@ -560,9 +595,11 @@ test("auth.request.context returns userId from API key Bearer header", async () 
 
   const { secret } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "Bearer Key",
-      scopes: [],
+      data: {
+        userId,
+        name: "Bearer Key",
+        scopes: [],
+      },
     });
   });
 
@@ -599,7 +636,7 @@ test("auth.request.context optional returns null-shaped auth with no session and
       grants: c.grants,
       source: c.source,
       key: c.key,
-      requireType: typeof c.require,
+      assertType: typeof c.assert,
     };
   });
 
@@ -611,7 +648,7 @@ test("auth.request.context optional returns null-shaped auth with no session and
     grants: [],
     source: null,
     key: null,
-    requireType: "function",
+    assertType: "function",
   });
 });
 
@@ -631,7 +668,7 @@ test("auth.request.context optional returns null-shaped auth with invalid Bearer
       grants: c.grants,
       source: c.source,
       key: c.key,
-      requireType: typeof c.require,
+      assertType: typeof c.assert,
     };
   });
 
@@ -643,7 +680,7 @@ test("auth.request.context optional returns null-shaped auth with invalid Bearer
     grants: [],
     source: null,
     key: null,
-    requireType: "function",
+    assertType: "function",
   });
 });
 
@@ -651,10 +688,12 @@ test("auth.request.context optional returns null-shaped auth with revoked key", 
   const t = convexTest(schema);
   const userId = await createUser(t);
 
-  const { secret, keyId } = await t.run(async (ctx) => {
-    return await auth.key.create(ctx, { userId, name: "Revoked", scopes: [] });
+  const { secret, id: keyId } = await t.run(async (ctx) => {
+    return await auth.key.create(ctx, {
+      data: { userId, name: "Revoked", scopes: [] },
+    });
   });
-  await t.run(async (ctx) => auth.key.revoke(ctx, keyId));
+  await t.run(async (ctx) => auth.key.revoke(ctx, { id: keyId }));
 
   const resolved = await t.run(async (ctx) => {
     const request = new Request("https://example.com/api/data", {
@@ -669,7 +708,7 @@ test("auth.request.context optional returns null-shaped auth with revoked key", 
       grants: c.grants,
       source: c.source,
       key: c.key,
-      requireType: typeof c.require,
+      assertType: typeof c.assert,
     };
   });
 
@@ -681,7 +720,7 @@ test("auth.request.context optional returns null-shaped auth with revoked key", 
     grants: [],
     source: null,
     key: null,
-    requireType: "function",
+    assertType: "function",
   });
 });
 
@@ -690,7 +729,9 @@ test("auth.request.context prefers session auth over API key when both are prese
   const userId = await createUser(t);
 
   const { secret } = await t.run(async (ctx) => {
-    return await auth.key.create(ctx, { userId, name: "Fallback", scopes: [] });
+    return await auth.key.create(ctx, {
+      data: { userId, name: "Fallback", scopes: [] },
+    });
   });
 
   const resolved = await t.run(async (ctx) => {
@@ -734,24 +775,22 @@ test("auth.request.context throws when required auth is missing", async () => {
   ).rejects.toThrow(ConvexError);
 });
 
-// ---------------------------------------------------------------------------
-// auth.key.rotate
-// ---------------------------------------------------------------------------
-
 test("key.rotate returns new secret starting with sk_", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
-  const { keyId: oldKeyId } = await t.run(async (ctx) => {
+  const { id: oldKeyId } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "Rotate Me",
-      scopes: [{ resource: "data", actions: ["read"] }],
+      data: {
+        userId,
+        name: "Rotate Me",
+        scopes: [{ resource: "data", actions: ["read"] }],
+      },
     });
   });
 
-  const { keyId: newKeyId, secret } = await t.run(async (ctx) => {
-    return await auth.key.rotate(ctx, oldKeyId);
+  const { id: newKeyId, secret } = await t.run(async (ctx) => {
+    return await auth.key.rotate(ctx, { id: oldKeyId });
   });
 
   expect(secret).toMatch(/^sk_/);
@@ -762,37 +801,43 @@ test("key.rotate: old key verify throws ConvexError after rotation", async () =>
   const t = convexTest(schema);
   const userId = await createUser(t);
 
-  const { keyId: oldKeyId, secret: oldSecret } = await t.run(async (ctx) => {
+  const { id: oldKeyId, secret: oldSecret } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "To Rotate",
-      scopes: [],
+      data: {
+        userId,
+        name: "To Rotate",
+        scopes: [],
+      },
     });
   });
 
-  await t.run(async (ctx) => auth.key.rotate(ctx, oldKeyId));
+  await t.run(async (ctx) => auth.key.rotate(ctx, { id: oldKeyId }));
 
-  await expect(t.run(async (ctx) => auth.key.verify(ctx, oldSecret))).rejects.toThrow(ConvexError);
+  await expect(t.run(async (ctx) => auth.key.verify(ctx, { secret: oldSecret }))).rejects.toThrow(
+    ConvexError,
+  );
 });
 
 test("key.rotate: new key verify succeeds with same userId", async () => {
   const t = convexTest(schema);
   const userId = await createUser(t);
 
-  const { keyId: oldKeyId } = await t.run(async (ctx) => {
+  const { id: oldKeyId } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "Rotate",
-      scopes: [{ resource: "reports", actions: ["read"] }],
+      data: {
+        userId,
+        name: "Rotate",
+        scopes: [{ resource: "reports", actions: ["read"] }],
+      },
     });
   });
 
   const { secret: newSecret } = await t.run(async (ctx) => {
-    return await auth.key.rotate(ctx, oldKeyId);
+    return await auth.key.rotate(ctx, { id: oldKeyId });
   });
 
   const result = await t.run(async (ctx) => {
-    const verified = await auth.key.verify(ctx, newSecret);
+    const verified = await auth.key.verify(ctx, { secret: newSecret });
     return {
       userId: verified.userId,
       canReportsRead: verified.scopes.can("reports", "read"),
@@ -809,20 +854,22 @@ test("key.rotate: new key inherits scopes and rateLimit", async () => {
   const scopes = [{ resource: "data", actions: ["write"] }];
   const rateLimit = { maxRequests: 50, windowMs: 60_000 };
 
-  const { keyId: oldKeyId } = await t.run(async (ctx) => {
+  const { id: oldKeyId } = await t.run(async (ctx) => {
     return await auth.key.create(ctx, {
-      userId,
-      name: "Config Key",
-      scopes,
-      rateLimit,
+      data: {
+        userId,
+        name: "Config Key",
+        scopes,
+        rateLimit,
+      },
     });
   });
 
-  const { keyId: newKeyId } = await t.run(async (ctx) => {
-    return await auth.key.rotate(ctx, oldKeyId);
+  const { id: newKeyId } = await t.run(async (ctx) => {
+    return await auth.key.rotate(ctx, { id: oldKeyId });
   });
 
-  const rotateGet = await t.run(async (ctx) => auth.key.get(ctx, newKeyId));
+  const rotateGet = await t.run(async (ctx) => auth.key.get(ctx, { id: newKeyId }));
 
   const rotated = expectKey(rotateGet);
   expect(rotated.scopes).toEqual(scopes);
@@ -833,11 +880,15 @@ test("key.rotate: rotating already-revoked key throws ConvexError", async () => 
   const t = convexTest(schema);
   const userId = await createUser(t);
 
-  const { keyId } = await t.run(async (ctx) => {
-    return await auth.key.create(ctx, { userId, name: "Revoked", scopes: [] });
+  const { id: keyId } = await t.run(async (ctx) => {
+    return await auth.key.create(ctx, {
+      data: { userId, name: "Revoked", scopes: [] },
+    });
   });
 
-  await t.run(async (ctx) => auth.key.revoke(ctx, keyId));
+  await t.run(async (ctx) => auth.key.revoke(ctx, { id: keyId }));
 
-  await expect(t.run(async (ctx) => auth.key.rotate(ctx, keyId))).rejects.toThrow(ConvexError);
+  await expect(t.run(async (ctx) => auth.key.rotate(ctx, { id: keyId }))).rejects.toThrow(
+    ConvexError,
+  );
 });

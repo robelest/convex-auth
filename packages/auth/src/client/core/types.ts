@@ -1,19 +1,8 @@
 import type { FunctionReference } from "convex/server";
 import type { ConvexError, Value } from "convex/values";
 
-type AuthTokens = {
-  token: string;
-  refreshToken: string;
-};
-
-type SignInFlowResult<TSession> =
-  | { kind: "signedIn"; session: TSession }
-  | { kind: "redirect"; redirect: string; verifier: string }
-  | { kind: "started" }
-  | { kind: "passkeyOptions"; options: Record<string, unknown>; verifier: string }
-  | { kind: "totpRequired"; verifier: string }
-  | { kind: "totpSetup"; totpSetup: TotpSetupResult; verifier: string }
-  | { kind: "deviceCode"; deviceCode: DeviceCodeResult };
+import type { AccessToken } from "../../shared/brand";
+import type { AuthTokens, SignInFlowResult } from "../../shared/results";
 
 /**
  * Structural interface for any Convex client.
@@ -120,7 +109,7 @@ export interface ClientAdapterDeps {
         }
       | {
           shouldStore: false;
-          tokens: { token: string } | null;
+          tokens: { token: AccessToken } | null;
           waitForHandshake: boolean;
           context: { provider?: string; flow: string };
         },
@@ -200,7 +189,7 @@ export type AuthApiRefs<
 > = {
   signIn: FunctionReference<"action", "public", Record<string, Value>, unknown>;
   signOut: FunctionReference<"action", "public", Record<string, Value>, unknown>;
-  /** @internal Set automatically by `createAuth` — do not set manually. */
+  /** @internal Set automatically by `defineAuth` — do not set manually. */
   _capabilities?: {
     passkey: HasPasskey;
     totp: HasTotp;
@@ -277,7 +266,7 @@ export interface PasskeyClient {
    * @param opts.email - Email hint for discoverable credentials.
    * @param opts.userName - WebAuthn `user.name` override.
    * @param opts.userDisplayName - WebAuthn `user.displayName` override.
-    * @returns A {@link SignInResult} — typically `{ kind: "signedIn" }` once a client session is available.
+   * @returns A {@link SignInResult} — typically `{ kind: "signedIn" }` once a client session is available.
    *
    * @example
    * ```ts
@@ -527,8 +516,8 @@ export type EmailInitiateParams = { email: string; redirectTo?: string };
  */
 export type CodeCompletionParams = { code: string; redirectTo?: string };
 
-/** Params for the `sso` provider — requires a connection ID. */
-export type SsoParams = { connectionId: string; redirectTo?: string };
+/** Params for the `connection` provider — requires a connection ID. */
+export type ConnectionParams = { connectionId: string; redirectTo?: string };
 
 /** Params for the anonymous provider. Empty / `redirectTo` only. */
 export type AnonymousParams = { redirectTo?: string };
@@ -556,8 +545,8 @@ export type ParamsForProvider<P> = P extends "password"
     ? EmailInitiateParams
     : P extends "anonymous"
       ? AnonymousParams | undefined
-      : P extends "sso"
-        ? SsoParams
+      : P extends "connection"
+        ? ConnectionParams
         : P extends "passkey"
           ? PasskeySignInParams | undefined
           : P extends undefined
@@ -570,9 +559,10 @@ export type ParamsForProvider<P> = P extends "password"
  *
  * @internal
  */
-export type SignInArgs<P> = undefined extends ParamsForProvider<P>
-  ? [params?: ParamsForProvider<P>]
-  : [params: ParamsForProvider<P>];
+export type SignInArgs<P> =
+  undefined extends ParamsForProvider<P>
+    ? [params?: ParamsForProvider<P>]
+    : [params: ParamsForProvider<P>];
 
 /**
  * Public signature for `auth.signIn`. The provider literal discriminates the
@@ -710,9 +700,7 @@ export type ClientOptions<Api extends AuthApiRefs<boolean, boolean, boolean> = A
   handshakeTimeoutMs?: number;
 };
 
-export type OAuthCompletionResult =
-  | { handled: false }
-  | { handled: true; cleanupUrl: URL | null };
+export type OAuthCompletionResult = { handled: false } | { handled: true; cleanupUrl: URL | null };
 
 /**
  * Metadata describing the current auth flow for handshake diagnostics.

@@ -11,14 +11,21 @@
 
 import { encodeBase32LowerCaseNoPadding } from "@oslojs/encoding";
 import { createTOTPKeyURI, verifyTOTPWithGracePeriod } from "@oslojs/otp";
-import { ConvexError, type GenericId } from "convex/values";
+import { ConvexError } from "convex/values";
 
+import { ErrorCode } from "../shared/codes";
 import { authFlowError } from "../shared/errors";
 import type { AuthTokens, SignInSessionResult, SignInTotpSetupResult } from "../shared/results";
 import type { AuthErrorData } from "./errors";
 import { toConvexError } from "./errors";
-import { getAuthenticatedUserIdOrNull } from "./identity";
-import { callSignIn, callVerifier } from "./mutations/index";
+import { emitAuthEvent } from "./events";
+import { getAuthenticatedUserIdOrNull } from "./identity/claims";
+import {
+  isSignInRateLimited,
+  recordFailedSignIn,
+  resetSignInRateLimit,
+} from "./limits";
+import { callSignIn, callVerifier } from "./mutations/calls";
 import { GenericActionCtxWithAuthConfig, TotpProviderConfig } from "./types";
 import {
   AuthDataModel,
@@ -50,14 +57,38 @@ type TotpDispatch =
   /** 2FA challenge during sign-in. */
   | { flow: "verify"; code: string; verifier: string; totpId?: undefined; intent: "challenge" };
 
-const convexError = (code: string, message: string) => toConvexError(authFlowError(code, message));
+const convexError = (code: ErrorCode, message: string) =>
+  toConvexError(authFlowError(code, message));
 
-const asConvexError = (error: unknown, code: string, message: string): ConvexError<AuthErrorData> =>
+const asConvexError = (error: unknown, code: ErrorCode, message: string): ConvexError<AuthErrorData> =>
   error instanceof ConvexError
     ? error
     : error instanceof Error
       ? toConvexError(authFlowError(code, error.message || message))
       : convexError(code, message);
+
+/**
+ * Parse a verifier's stored signature into the TOTP ceremony payload.
+ *
+ * A verifier with a missing or non-JSON signature (e.g. one minted for a
+ * different flow) is rejected with a clean `TOTP_INVALID_VERIFIER` rather than
+ * surfacing a raw `JSON.parse`/null-deref error.
+ */
+function parseTotpVerifierData(signature: string | undefined): Record<string, unknown> {
+  if (typeof signature !== "string") {
+    throw convexError(ErrorCode.TOTP_INVALID_VERIFIER, "Invalid or expired TOTP verifier.");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(signature);
+  } catch {
+    throw convexError(ErrorCode.TOTP_INVALID_VERIFIER, "Invalid or expired TOTP verifier.");
+  }
+  if (typeof parsed !== "object" || parsed === null) {
+    throw convexError(ErrorCode.TOTP_INVALID_VERIFIER, "Invalid or expired TOTP verifier.");
+  }
+  return parsed as Record<string, unknown>;
+}
 
 function resolveTotpFlow(params: Record<string, unknown>): TotpFlow {
   const flow = params.flow;
@@ -65,7 +96,7 @@ function resolveTotpFlow(params: Record<string, unknown>): TotpFlow {
     return flow as TotpFlow;
   }
   throw convexError(
-    "TOTP_MISSING_FLOW",
+    ErrorCode.TOTP_MISSING_FLOW,
     "Missing `flow` parameter. Expected one of: " + TOTP_FLOWS.join(", "),
   );
 }
@@ -74,14 +105,14 @@ function requireTotpVerifier(verifier: string | undefined): string {
   if (verifier != null) {
     return verifier;
   }
-  throw convexError("TOTP_MISSING_VERIFIER", "Missing verifier for TOTP operation.");
+  throw convexError(ErrorCode.TOTP_MISSING_VERIFIER, "Missing verifier for TOTP operation.");
 }
 
 function requireTotpCode(params: Record<string, unknown>): string {
   if (typeof params.code === "string") {
     return params.code;
   }
-  throw convexError("TOTP_MISSING_CODE", "Missing TOTP code.");
+  throw convexError(ErrorCode.TOTP_MISSING_CODE, "Missing TOTP code.");
 }
 
 function resolveTotpDispatch(
@@ -92,7 +123,6 @@ function resolveTotpDispatch(
   if (flow === "setup") {
     return { flow: "setup" as const, params };
   }
-  // flow === "verify" — discriminate by `totpId` presence.
   const resolvedVerifier = requireTotpVerifier(verifier);
   const code = requireTotpCode(params);
   if (typeof params.totpId === "string" && params.totpId.length > 0) {
@@ -117,7 +147,7 @@ async function requireAuthenticatedUserId(ctx: EnrichedActionCtx): Promise<strin
     const userId = await getAuthenticatedUserIdOrNull(ctx);
     if (userId === null) {
       throw convexError(
-        "TOTP_AUTH_REQUIRED",
+        ErrorCode.TOTP_AUTH_REQUIRED,
         "Sign in first, then set up two-factor authentication.",
       );
     }
@@ -126,11 +156,19 @@ async function requireAuthenticatedUserId(ctx: EnrichedActionCtx): Promise<strin
     if (error instanceof ConvexError) {
       throw error;
     }
-    throw asConvexError(error, "INTERNAL_ERROR", String(error));
+    throw asConvexError(error, ErrorCode.INTERNAL_ERROR, String(error));
   }
 }
 
-/** @internal */
+/**
+ * Drive the TOTP provider's `setup` / `verify` flow.
+ *
+ * `setup` issues an enrollment secret and `otpauth://` URI; `verify` either
+ * confirms a first-time enrollment (when `params.totpId` is present) or
+ * completes a 2FA challenge during sign-in.
+ *
+ * @internal
+ */
 export const handleTotp = async (
   ctx: EnrichedActionCtx,
   provider: TotpProviderConfig,
@@ -152,7 +190,7 @@ export const handleTotp = async (
         try {
           user = await queryUserById(ctx, userId);
         } catch (error) {
-          throw asConvexError(error, "INTERNAL_ERROR", `TOTP setup failed: ${String(error)}`);
+          throw asConvexError(error, ErrorCode.INTERNAL_ERROR, `TOTP setup failed: ${String(error)}`);
         }
         accountName = user?.email ?? "user";
       }
@@ -178,7 +216,7 @@ export const handleTotp = async (
           createdAt: Date.now(),
         });
       } catch (error) {
-        throw asConvexError(error, "INTERNAL_ERROR", `TOTP setup failed: ${String(error)}`);
+        throw asConvexError(error, ErrorCode.INTERNAL_ERROR, `TOTP setup failed: ${String(error)}`);
       }
 
       let verifier: string;
@@ -195,7 +233,7 @@ export const handleTotp = async (
           }),
         );
       } catch (error) {
-        throw asConvexError(error, "INTERNAL_ERROR", `TOTP setup failed: ${String(error)}`);
+        throw asConvexError(error, ErrorCode.INTERNAL_ERROR, `TOTP setup failed: ${String(error)}`);
       }
 
       return {
@@ -211,7 +249,7 @@ export const handleTotp = async (
 
     verify: async () => {
       if (dispatch.flow !== "verify") {
-        throw convexError("TOTP_MISSING_FLOW", `Unexpected dispatch: ${dispatch.flow}`);
+        throw convexError(ErrorCode.TOTP_MISSING_FLOW, `Unexpected dispatch: ${dispatch.flow}`);
       }
       if (dispatch.intent === "enrollment") {
         return await confirmEnrollment(dispatch.code, dispatch.totpId, dispatch.verifier);
@@ -234,38 +272,36 @@ export const handleTotp = async (
     try {
       verifierDoc = await queryVerifierById(ctx, verifier);
     } catch {
-      throw convexError("TOTP_INVALID_VERIFIER", "Invalid or expired TOTP verifier.");
+      throw convexError(ErrorCode.TOTP_INVALID_VERIFIER, "Invalid or expired TOTP verifier.");
     }
     if (verifierDoc === null) {
-      throw convexError("TOTP_INVALID_VERIFIER", "Invalid or expired TOTP verifier.");
+      throw convexError(ErrorCode.TOTP_INVALID_VERIFIER, "Invalid or expired TOTP verifier.");
     }
-    let verifierData: Record<string, unknown>;
-    try {
-      verifierData = JSON.parse(verifierDoc.signature!);
-    } catch {
-      throw convexError("TOTP_INVALID_VERIFIER", "Invalid or expired TOTP verifier.");
-    }
+    const verifierData = parseTotpVerifierData(verifierDoc.signature ?? undefined);
     if (
       verifierData.purpose !== "totp.setup" ||
       verifierData.userId !== userId ||
       verifierData.totpId !== totpId
     ) {
-      throw convexError("TOTP_INVALID_VERIFIER", "Invalid or expired TOTP verifier.");
+      throw convexError(ErrorCode.TOTP_INVALID_VERIFIER, "Invalid or expired TOTP verifier.");
+    }
+    if (await isSignInRateLimited(ctx, userId, ctx.auth.config)) {
+      throw convexError(ErrorCode.RATE_LIMITED, "Too many TOTP attempts. Try again later.");
     }
     let doc;
     try {
       doc = await queryTotpById(ctx, totpId);
     } catch {
-      throw convexError("TOTP_NOT_FOUND", "TOTP enrollment not found.");
+      throw convexError(ErrorCode.TOTP_NOT_FOUND, "TOTP enrollment not found.");
     }
     if (doc === null) {
-      throw convexError("TOTP_NOT_FOUND", "TOTP enrollment not found.");
+      throw convexError(ErrorCode.TOTP_NOT_FOUND, "TOTP enrollment not found.");
     }
     if (doc.userId !== userId) {
-      throw convexError("TOTP_NOT_FOUND", "TOTP enrollment not found.");
+      throw convexError(ErrorCode.TOTP_NOT_FOUND, "TOTP enrollment not found.");
     }
     if (doc.verified) {
-      throw convexError("TOTP_ALREADY_VERIFIED", "TOTP enrollment is already verified.");
+      throw convexError(ErrorCode.TOTP_ALREADY_VERIFIED, "TOTP enrollment is already verified.");
     }
     if (
       !verifyTOTPWithGracePeriod(
@@ -276,8 +312,10 @@ export const handleTotp = async (
         30,
       )
     ) {
-      throw convexError("TOTP_INVALID_CODE", "Invalid TOTP code.");
+      await recordFailedSignIn(ctx, userId, ctx.auth.config);
+      throw convexError(ErrorCode.TOTP_INVALID_CODE, "Invalid TOTP code.");
     }
+    await resetSignInRateLimit(ctx, userId, ctx.auth.config);
     let signInResult;
     try {
       await mutateTotpMarkVerified(ctx, totpId, Date.now());
@@ -287,12 +325,15 @@ export const handleTotp = async (
         generateTokens: true,
       });
     } catch (error) {
-      throw asConvexError(error, "INTERNAL_ERROR", String(error));
+      throw asConvexError(error, ErrorCode.INTERNAL_ERROR, String(error));
     }
-    await ctx.auth.config.callbacks?.after?.(ctx, {
-      kind: "totpEnrolled",
-      userId: userId as GenericId<"User">,
-      totpId: totpId as GenericId<"TotpFactor">,
+    await emitAuthEvent(ctx, ctx.auth.config, {
+      kind: "totp.enrolled",
+      actor: { type: "user", id: userId },
+      subject: { type: "totp", id: totpId },
+      targets: [{ kind: "user", id: userId }],
+      outcome: "success",
+      data: { totpId },
     });
     return { kind: "signedIn" as const, session: signInResult };
   }
@@ -306,28 +347,37 @@ export const handleTotp = async (
     try {
       doc = await queryVerifierById(ctx, verifier);
     } catch {
-      throw convexError("TOTP_INVALID_VERIFIER", "Invalid or expired TOTP verifier.");
+      throw convexError(ErrorCode.TOTP_INVALID_VERIFIER, "Invalid or expired TOTP verifier.");
     }
     if (doc === null) {
-      throw convexError("TOTP_INVALID_VERIFIER", "Invalid or expired TOTP verifier.");
+      throw convexError(ErrorCode.TOTP_INVALID_VERIFIER, "Invalid or expired TOTP verifier.");
     }
-    const data = JSON.parse(doc.signature!);
-    const userId = data.userId as string;
+    const data = parseTotpVerifierData(doc.signature ?? undefined);
+    if (typeof data.userId !== "string" || data.userId.length === 0) {
+      throw convexError(ErrorCode.TOTP_INVALID_VERIFIER, "Invalid or expired TOTP verifier.");
+    }
+    const userId = data.userId;
+
+    if (await isSignInRateLimited(ctx, userId, ctx.auth.config)) {
+      throw convexError(ErrorCode.RATE_LIMITED, "Too many TOTP attempts. Try again later.");
+    }
 
     let totp;
     try {
       totp = await queryTotpVerifiedByUserId(ctx, userId);
     } catch {
-      throw convexError("TOTP_NO_ENROLLMENT", "No verified TOTP enrollment found.");
+      throw convexError(ErrorCode.TOTP_NO_ENROLLMENT, "No verified TOTP enrollment found.");
     }
     if (totp === null) {
-      throw convexError("TOTP_NO_ENROLLMENT", "No verified TOTP enrollment found.");
+      throw convexError(ErrorCode.TOTP_NO_ENROLLMENT, "No verified TOTP enrollment found.");
     }
     if (
       !verifyTOTPWithGracePeriod(new Uint8Array(totp.secret), totp.period, totp.digits, code, 30)
     ) {
-      throw convexError("TOTP_INVALID_CODE", "Invalid TOTP code.");
+      await recordFailedSignIn(ctx, userId, ctx.auth.config);
+      throw convexError(ErrorCode.TOTP_INVALID_CODE, "Invalid TOTP code.");
     }
+    await resetSignInRateLimit(ctx, userId, ctx.auth.config);
 
     let signInResult;
     try {
@@ -335,14 +385,14 @@ export const handleTotp = async (
       await mutateVerifierDelete(ctx, verifier);
       signInResult = await callSignIn(ctx, { userId, generateTokens: true });
     } catch (error) {
-      throw asConvexError(error, "INTERNAL_ERROR", String(error));
+      throw asConvexError(error, ErrorCode.INTERNAL_ERROR, String(error));
     }
     return { kind: "signedIn" as const, session: signInResult };
   }
 
   const handler = flowHandlers[dispatch.flow];
   if (!handler) {
-    throw convexError("TOTP_MISSING_FLOW", `Unknown TOTP flow: ${dispatch.flow}`);
+    throw convexError(ErrorCode.TOTP_MISSING_FLOW, `Unknown TOTP flow: ${dispatch.flow}`);
   }
   return handler();
 };

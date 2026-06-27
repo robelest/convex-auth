@@ -1,0 +1,64 @@
+name: Preview package
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["**"]
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  preview:
+    name: Test and publish preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.32.1 --activate
+
+      - name: Node setup
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Expose local binaries
+        run: echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Typecheck
+        run: vp run typecheck
+
+      - name: Test auth
+        run: vp test --run --project convex --project node
+
+      - name: Build auth
+        run: |
+          vp exec convex codegen --component-dir ./packages/auth/src/component
+          vp run '@robelest/convex-auth#build'
+
+      - name: Publish preview package
+        run: >
+          vp exec pkg-pr-new publish ./packages/auth
+          --pnpm
+          --no-compact
+          --comment=update
+          --commentWithSha
+          --packageManager=npm

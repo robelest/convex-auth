@@ -11,21 +11,21 @@
 import type { UserIdentity } from "convex/server";
 import { ConvexError, type GenericId } from "convex/values";
 
+import { ErrorCode } from "../shared/codes";
 import {
   createUnauthenticatedAuthContext,
   getAuthContext as getResolvedAuthContext,
 } from "./context";
 import type { Doc } from "./types";
 
-// ============================================================================
-// Types
-// ============================================================================
-
 /**
  * Config for auth setup. Extends the standard auth config
  * minus `component` (which is passed as the first constructor argument).
  */
-export type AuthConfig = Omit<import("./types").ConvexAuthConfig, "component">;
+export type AuthConfig<TExtend = {}> = Omit<
+  import("./types").ConvexAuthConfig<TExtend>,
+  "component"
+>;
 
 /** Canonical user document type exposed by Convex Auth. */
 export type UserDoc = Doc<"User">;
@@ -46,7 +46,7 @@ type CustomFunctionInputResult<TAuth extends Record<string, unknown>> = Promise<
 
 /**
  * Current request auth context injected into `ctx.auth` by `auth.ctx()`. This
- * is the authenticated auth shape returned by {@link createAuth().context}.
+ * is the authenticated auth shape returned by {@link defineAuth().context}.
  * Optional context builders may still surface nullable fields when
  * `optional: true` is used.
  *
@@ -80,21 +80,21 @@ export type AuthContext = {
   grants: string[];
   /**
    * Assert the current user holds the given grant(s); throws
-   * `ConvexError({ code: "MISSING_GRANTS" })` otherwise. Pass a
+   * `ConvexError({ code: ErrorCode.MISSING_GRANTS })` otherwise. Pass a
    * group-owned document as the second argument to also assert the
-   * record belongs to the active group (`code: "FORBIDDEN"` if not).
+   * record belongs to the active group (`code: ErrorCode.FORBIDDEN` if not).
    *
    * For a boolean check, read `grants` directly:
    * `ctx.auth.grants.includes("issues.read")`.
    *
    * @example
    * ```ts
-   * ctx.auth.require("members.manage");
-   * ctx.auth.require(["issues.edit", "issues.move"]);
-   * ctx.auth.require("issues.edit", issueDoc); // group-scoped
+   * ctx.auth.assert("members.manage");
+   * ctx.auth.assert(["issues.edit", "issues.move"]);
+   * ctx.auth.assert("issues.edit", issueDoc); // group-scoped
    * ```
    */
-  require: (grant: string | readonly string[], doc?: { groupId?: unknown }) => void;
+  assert: (grant: string | readonly string[], doc?: { groupId?: unknown }) => void;
 };
 
 /**
@@ -133,7 +133,7 @@ export type OptionalAuthContext = {
    * group). When unauthenticated this always throws. For a boolean
    * check read `grants` directly.
    */
-  require: (grant: string | readonly string[], doc?: { groupId?: unknown }) => void;
+  assert: (grant: string | readonly string[], doc?: { groupId?: unknown }) => void;
 };
 
 type AuthContextBase = {
@@ -203,15 +203,15 @@ interface OptionalAuthContextFactory {
  */
 export type AuthLike = {
   user: {
-    get: (...args: any[]) => Promise<UserDoc | null>;
+    get: (...args: never[]) => Promise<UserDoc | null>;
     [key: string]: unknown;
   };
   active: {
-    get: (...args: any[]) => Promise<{ groupId: string } | null>;
+    get: (...args: never[]) => Promise<{ groupId: string } | null>;
     [key: string]: unknown;
   };
   member: {
-    inspect: (...args: any[]) => Promise<{
+    get: (...args: never[]) => Promise<{
       membership: unknown;
       roleIds: string[];
       grants: string[];
@@ -221,9 +221,9 @@ export type AuthLike = {
 };
 
 /**
- * Configuration for {@link createAuth().ctx} context enrichment.
+ * Configuration for {@link defineAuth().ctx} context enrichment.
  *
- * The same config shape is also used by {@link createAuth().context}.
+ * The same config shape is also used by {@link defineAuth().context}.
  *
  * @typeParam TResolve - Extra fields returned from `resolve()` and merged into
  *   the resulting `ctx.auth` object.
@@ -243,13 +243,13 @@ export type AuthContextConfig<
   TCtx extends AuthIdentityCtx = AuthIdentityCtx,
 > = {
   /**
-   * Enforce grant(s) inline — equivalent to calling `ctx.auth.require(...)`
+   * Enforce grant(s) inline — equivalent to calling `ctx.auth.assert(...)`
    * at the top of every handler built with this customization. Throws
-   * `ConvexError({ code: "MISSING_GRANTS" })` when missing.
+   * `ConvexError({ code: ErrorCode.MISSING_GRANTS })` when missing.
    */
-  require?: string | readonly string[];
+  assert?: string | readonly string[];
   /**
-   * Require an active group; throws `ConvexError({ code: "NO_ACTIVE_GROUP" })`
+   * Require an active group; throws `ConvexError({ code: ErrorCode.NO_ACTIVE_GROUP })`
    * when the resolved context has no `groupId`. Reuses the `active` concept.
    */
   active?: true;
@@ -284,7 +284,7 @@ export type AuthContextConfig<
  * // Auth = { userId: Id<"User">; user: UserDoc; getUserIdentity: ...; orgId: string }
  * ```
  *
- * @see {@link createAuth}
+ * @see {@link defineAuth}
  */
 export type InferAuth<
   T extends {
@@ -305,9 +305,17 @@ export type {
   OptionalAuthContextFactory,
 };
 
-// ============================================================================
-// Functions
-// ============================================================================
+/**
+ * Single sanctioned bridge for the resolver's irreducible ctx-family boundary.
+ * `getResolvedAuthContext` over-specifies its `runQuery` ctx with the concrete
+ * Convex `ComponentReadCtx`, which TypeScript cannot positively unify with the
+ * facade's loose `AuthIdentityCtx & AuthQueryCtx` shape. Callers route their
+ * generic ctx through this one narrow, typed assertion — naming the exact target
+ * via `T` — instead of asserting at each call site.
+ */
+function bridgeResolverCtx<T>(ctx: object): T {
+  return ctx as T;
+}
 
 async function resolveConfiguredAuthContext<
   TCtx extends AuthIdentityCtx & AuthQueryCtx,
@@ -319,13 +327,13 @@ async function resolveConfiguredAuthContext<
 ): Promise<AuthContext | null> {
   return await getResolvedAuthContext(
     auth,
-    ctx as unknown as Parameters<typeof getResolvedAuthContext>[1],
+    bridgeResolverCtx<Parameters<typeof getResolvedAuthContext>[1]>(ctx),
   );
 }
 
 function createNotSignedInError() {
   return new ConvexError({
-    code: "NOT_SIGNED_IN",
+    code: ErrorCode.NOT_SIGNED_IN,
     message: "Authentication required.",
   });
 }
@@ -356,23 +364,23 @@ export function assertAuthResolverContext<TCtx>(ctx: TCtx): asserts ctx is TCtx 
  * Resolve the public auth context for a Convex handler context.
  *
  * Enforce the `require` / `active` builder options against a resolved
- * context. Reuses `ctx.auth.require` for grants so behavior is identical
+ * context. Reuses `ctx.auth.assert` for grants so behavior is identical
  * to an inline call.
  *
  * @internal
  */
 function enforceAuthRequirements(
   resolved: AuthContext,
-  config?: { require?: string | readonly string[]; active?: true },
+  config?: { assert?: string | readonly string[]; active?: true },
 ) {
   if (config?.active === true && resolved.groupId === null) {
     throw new ConvexError({
-      code: "NO_ACTIVE_GROUP",
+      code: ErrorCode.NO_ACTIVE_GROUP,
       message: "An active group is required.",
     });
   }
-  if (config?.require !== undefined) {
-    resolved.require(config.require);
+  if (config?.assert !== undefined) {
+    resolved.assert(config.assert);
   }
 }
 
@@ -383,7 +391,12 @@ function enforceAuthRequirements(
 async function createPublicAuthContext<
   TCtx extends AuthIdentityCtx & AuthQueryCtx,
   TResolve extends Record<string, unknown> = Record<string, never>,
->(auth: AuthLike, ctx: TCtx, config: AuthContextConfig<TResolve, TCtx> | undefined, optional: boolean) {
+>(
+  auth: AuthLike,
+  ctx: TCtx,
+  config: AuthContextConfig<TResolve, TCtx> | undefined,
+  optional: boolean,
+) {
   const resolved = await resolveConfiguredAuthContext(auth, ctx, config);
 
   if (resolved === null) {
@@ -455,27 +468,33 @@ function createAuthContextCustomization<
 }
 
 /**
- * Build the shared public auth context facade used by both `createAuth()` and
+ * Build the shared public auth context facade used by both `defineAuth()` and
  * `createAuthContext()`.
  *
  * @internal
  */
 export function createAuthContextFacade(auth: AuthLike): AuthContextFacade {
-  const context = ((ctx: AuthResolverCtx, config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>) => {
+  const context = ((
+    ctx: AuthResolverCtx,
+    config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>,
+  ) => {
     assertAuthResolverContext(ctx);
     return createPublicAuthContext(auth, ctx, config, false);
-  }) as unknown as AuthContextFacade["context"];
+  }) as AuthContextFacade["context"];
 
-  context.optional = ((ctx: AuthResolverCtx, config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>) => {
+  context.optional = ((
+    ctx: AuthResolverCtx,
+    config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>,
+  ) => {
     assertAuthResolverContext(ctx);
     return createPublicAuthContext(auth, ctx, config, true);
-  }) as unknown as OptionalAuthContextResolver;
+  }) as OptionalAuthContextResolver;
 
   const ctxFactory = ((config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>) =>
-    createAuthContextCustomization(auth, config, false)) as unknown as AuthContextFacade["ctx"];
+    createAuthContextCustomization(auth, config, false)) as AuthContextFacade["ctx"];
 
   ctxFactory.optional = ((config?: AuthContextConfig<Record<string, unknown>, AuthResolverCtx>) =>
-    createAuthContextCustomization(auth, config, true)) as unknown as OptionalAuthContextFactory;
+    createAuthContextCustomization(auth, config, true)) as OptionalAuthContextFactory;
 
   return {
     context,

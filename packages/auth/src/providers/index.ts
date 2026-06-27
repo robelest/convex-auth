@@ -30,7 +30,7 @@ export { credentials } from "./credentials";
 export type { CredentialsConfig } from "./credentials";
 export { device } from "./device";
 export type { DeviceConfig } from "./device";
-export { sso } from "./sso";
+export { connection } from "./connection";
 export { email } from "./email";
 export type { EmailProviderConfig } from "./email";
 export type { EmailConfig } from "../server/types";

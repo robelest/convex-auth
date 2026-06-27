@@ -5,8 +5,13 @@ import {
   vApiKeyRateLimit,
   vApiKeyRateLimitState,
   vApiKeyScope,
-  vAuditActorType,
-  vAuditStatus,
+  vAuthEventActorType,
+  vAuthEventCategory,
+  vAuthEventData,
+  vAuthEventKind,
+  vAuthEventOutcome,
+  vAuthEventTargetKind,
+  vAuthEventSubjectType,
   vDeviceStatus,
   vGroupConnectionPolicy,
   vGroupConnectionProtocol,
@@ -15,7 +20,7 @@ import {
   vInviteStatus,
   vScimResourceType,
   vScimStatus,
-  vTag,
+  vTokenEndpointAuthMethod,
   vWebhookDeliveryStatus,
   vWebhookEndpointStatus,
 } from "./model";
@@ -41,10 +46,12 @@ export default defineSchema({
     phoneVerificationTime: v.optional(v.number()),
     isAnonymous: v.optional(v.boolean()),
     lastActiveGroup: v.optional(v.id("Group")),
-    // Deprecated. Retained only so pre-existing rows still validate after
-    // the denormalized-cache removal. Not part of the typed surface or
-    // any verb — strip it from existing data via the `dropHasTotp`
-    // migration; it is removed from this schema in a future major.
+    /**
+     * @deprecated Retained so pre-existing rows still validate after the
+     * denormalized-cache removal. Still accepted on the `user.patch` validator
+     * (`vUserPatchData`) until the major-version removal — nothing writes a
+     * meaningful value; strip existing data via the `dropHasTotp` migration.
+     */
     hasTotp: v.optional(v.boolean()),
     extend: v.optional(v.any()),
   })
@@ -57,11 +64,11 @@ export default defineSchema({
    * All emails a user owns, across providers/connections. `User.email`
    * remains the single denormalized primary pointer (the row with
    * `isPrimary: true`); this table is the source of truth for the full
-   * set and carries provenance so SSO linking can be connection-scoped.
+   * set and carries provenance so Connection linking can be connection-scoped.
    *
    * `verificationTime` present ⇔ the email is verified. `source` and
-   * `connectionId` record which provider/SSO connection asserted it —
-   * email-based account linking for SSO must stay scoped to the same
+   * `connectionId` record which provider/Connection connection asserted it —
+   * email-based account linking for Connection must stay scoped to the same
    * `connectionId` (see server/users.ts) to avoid cross-IdP takeover.
    */
   UserEmail: defineTable({
@@ -94,7 +101,9 @@ export default defineSchema({
   Session: defineTable({
     userId: v.id("User"),
     expirationTime: v.number(),
-  }).index("user_id", ["userId"]),
+  })
+    .index("user_id", ["userId"])
+    .index("expiration_time", ["expirationTime"]),
 
   /**
    * Authentication accounts. Each account links a user to a single
@@ -129,7 +138,8 @@ export default defineSchema({
   })
     .index("session_id", ["sessionId"])
     .index("session_id_first_used", ["sessionId", "firstUsedTime"])
-    .index("session_id_parent_refresh_token_id", ["sessionId", "parentRefreshTokenId"]),
+    .index("session_id_parent_refresh_token_id", ["sessionId", "parentRefreshTokenId"])
+    .index("expiration_time", ["expirationTime"]),
 
   /**
    * Verification codes for OTP tokens, magic link tokens, and OAuth codes.
@@ -144,7 +154,8 @@ export default defineSchema({
     phoneVerified: v.optional(v.string()),
   })
     .index("account_id", ["accountId"])
-    .index("code", ["code"]),
+    .index("code", ["code"])
+    .index("expiration_time", ["expirationTime"]),
 
   /**
    * PKCE verifiers for OAuth flows. Stores the cryptographic verifier
@@ -154,7 +165,9 @@ export default defineSchema({
     sessionId: v.optional(v.id("Session")),
     signature: v.optional(v.string()),
     expirationTime: v.optional(v.number()),
-  }).index("signature", ["signature"]),
+  })
+    .index("signature", ["signature"])
+    .index("expiration_time", ["expirationTime"]),
 
   /**
    * WebAuthn passkey credentials. Each credential links a user to a
@@ -236,7 +249,8 @@ export default defineSchema({
     lastPolledAt: v.optional(v.number()),
   })
     .index("device_code_hash", ["deviceCodeHash"])
-    .index("user_code_status", ["userCode", "status"]),
+    .index("user_code_status", ["userCode", "status"])
+    .index("expires_at", ["expiresAt"]),
 
   /**
    * Hierarchical groups. A group with no `parentGroupId` is a root group.
@@ -252,31 +266,19 @@ export default defineSchema({
     rootGroupId: v.optional(v.id("Group")),
     /** Denormalized flag: `true` when `parentGroupId` is absent. */
     isRoot: v.optional(v.boolean()),
-    /** Faceted classification tags. Normalized at write time (trimmed, lowercased). */
-    tags: v.optional(v.array(vTag)),
     policy: v.optional(vGroupConnectionPolicy),
     extend: v.optional(v.any()),
   })
+    .index("name", ["name"])
     .index("slug", ["slug"])
     .index("parent_group_id", ["parentGroupId"])
+    .index("parent_group_id_name", ["parentGroupId", "name"])
+    .index("parent_group_id_slug", ["parentGroupId", "slug"])
+    .index("parent_group_id_type", ["parentGroupId", "type"])
     .index("root_group_id", ["rootGroupId"])
     .index("is_root", ["isRoot"])
     .index("type", ["type"])
     .index("type_parent_group_id", ["type", "parentGroupId"]),
-
-  /**
-   * Denormalized group-tag index table for efficient tag-based filtering.
-   * Each row maps one `(key, value)` pair to a group. Kept in sync by
-   * `groupCreate`, `groupUpdate`, and `groupDelete`.
-   */
-  GroupTag: defineTable({
-    group_id: v.id("Group"),
-    key: v.string(),
-    value: v.string(),
-  })
-    .index("by_group", ["group_id"])
-    .index("by_key_value", ["key", "value"])
-    .index("by_key", ["key"]),
 
   /**
    * Group membership. Links a user to a group with an application-defined
@@ -322,7 +324,8 @@ export default defineSchema({
     .index("email_status", ["email", "status"])
     .index("invited_by_user_id_status", ["invitedByUserId", "status"])
     .index("group_id", ["groupId"])
-    .index("group_id_status", ["groupId", "status"]),
+    .index("group_id_status", ["groupId", "status"])
+    .index("expires_time", ["expiresTime"]),
 
   /**
    * Group Connection configuration attached to a root group/organization.
@@ -341,8 +344,10 @@ export default defineSchema({
     extend: v.optional(v.any()),
   })
     .index("group_id", ["groupId"])
+    .index("name", ["name"])
     .index("slug", ["slug"])
     .index("status", ["status"])
+    .index("group_id_name", ["groupId", "name"])
     .index("group_id_status", ["groupId", "status"])
     .index("group_id_slug", ["groupId", "slug"]),
 
@@ -435,25 +440,44 @@ export default defineSchema({
     .index("mapped_group_id", ["mappedGroupId"]),
 
   /**
-   * Immutable audit trail for group connection operations.
+   * Queryable projection rows for stream-backed auth events.
+   *
+   * The durable stream owns the immutable event envelope. This table projects
+   * the fields auth needs for native Convex reads without duplicating event
+   * timelines into multiple tables.
    */
-  GroupAuditEvent: defineTable({
-    connectionId: v.optional(v.id("GroupConnection")),
-    groupId: v.id("Group"),
-    eventType: v.string(),
-    actorType: vAuditActorType,
-    actorId: v.optional(v.string()),
-    subjectType: v.string(),
-    subjectId: v.optional(v.string()),
-    status: vAuditStatus,
+  AuthEventProjection: defineTable({
+    eventId: v.string(),
+    targetKind: vAuthEventTargetKind,
+    targetId: v.string(),
+    kind: vAuthEventKind,
+    category: vAuthEventCategory,
     occurredAt: v.number(),
+    actorType: vAuthEventActorType,
+    actorId: v.optional(v.string()),
+    subjectType: vAuthEventSubjectType,
+    subjectId: v.optional(v.string()),
+    outcome: vAuthEventOutcome,
+    errorCode: v.optional(v.string()),
     requestId: v.optional(v.string()),
     ip: v.optional(v.string()),
-    metadata: v.optional(v.any()),
+    userAgent: v.optional(v.string()),
+    data: v.optional(vAuthEventData),
+    streamId: v.string(),
+    streamIndex: v.number(),
   })
-    .index("group_connection_id_occurred_at", ["connectionId", "occurredAt"])
-    .index("group_id_occurred_at", ["groupId", "occurredAt"])
-    .index("event_type_occurred_at", ["eventType", "occurredAt"]),
+    .index("target_time", ["targetKind", "targetId", "occurredAt"])
+    .index("target_kind_time", ["targetKind", "targetId", "kind", "occurredAt"])
+    .index("target_outcome_time", ["targetKind", "targetId", "outcome", "occurredAt"])
+    .index("target_kind_outcome_time", ["targetKind", "targetId", "kind", "outcome", "occurredAt"])
+    .index("event_id_target", ["eventId", "targetKind", "targetId"])
+    .index("kind_time", ["kind", "occurredAt"])
+    .index("category_time", ["category", "occurredAt"])
+    .index("outcome_time", ["outcome", "occurredAt"])
+    .index("actor_time", ["actorType", "actorId", "occurredAt"])
+    .index("subject_time", ["subjectType", "subjectId", "occurredAt"])
+    .index("request_id_time", ["requestId", "occurredAt"])
+    .index("by_stream_index", ["streamIndex"]),
 
   /**
    * Webhook endpoints subscribed to group audit and lifecycle events.
@@ -470,7 +494,7 @@ export default defineSchema({
      * `X-Auth-Signature`.
      */
     secretCiphertext: v.string(),
-    subscriptions: v.array(v.string()),
+    subscriptions: v.array(vAuthEventKind),
     createdByUserId: v.optional(v.id("User")),
     lastSuccessAt: v.optional(v.number()),
     lastFailureAt: v.optional(v.number()),
@@ -487,8 +511,8 @@ export default defineSchema({
   GroupWebhookDelivery: defineTable({
     connectionId: v.id("GroupConnection"),
     endpointId: v.id("GroupWebhookEndpoint"),
-    auditEventId: v.optional(v.id("GroupAuditEvent")),
-    eventType: v.string(),
+    eventId: v.string(),
+    kind: vAuthEventKind,
     status: vWebhookDeliveryStatus,
     attemptCount: v.number(),
     nextAttemptAt: v.number(),
@@ -504,7 +528,8 @@ export default defineSchema({
     .index("group_connection_id", ["connectionId"])
     .index("status_next_attempt_at", ["status", "nextAttemptAt"])
     .index("endpoint_id_status", ["endpointId", "status"])
-    .index("audit_event_id", ["auditEventId"]),
+    .index("event_id", ["eventId"])
+    .index("event_id_endpoint_id", ["eventId", "endpointId"]),
 
   /**
    * API keys for programmatic access. Each key links a user to a set of
@@ -540,8 +565,73 @@ export default defineSchema({
     /** Soft-revoke flag. Revoked keys are kept for audit trail. */
     revoked: v.boolean(),
     /** Arbitrary app-specific metadata attached to the key. */
-    metadata: v.optional(v.any()),
+    extend: v.optional(v.any()),
   })
     .index("user_id", ["userId"])
     .index("hashed_key", ["hashedKey"]),
+
+  OAuthClient: defineTable({
+    clientId: v.string(),
+    clientSecretHash: v.optional(v.string()),
+    name: v.string(),
+    redirectUris: v.array(v.string()),
+    scopes: v.array(v.string()),
+    grantTypes: v.array(v.string()),
+    /** RFC 7591 token-endpoint auth method; `none` = public client. Optional
+     *  so pre-existing rows validate before the backfill migration runs. */
+    tokenEndpointAuthMethod: v.optional(vTokenEndpointAuthMethod),
+    /** SHA-256 of the RFC 7592 registration access token (management bearer). */
+    registrationAccessTokenHash: v.optional(v.string()),
+    createdBy: v.optional(v.id("User")),
+    revoked: v.boolean(),
+    extend: v.optional(v.any()),
+  })
+    .index("client_id", ["clientId"])
+    .index("created_by", ["createdBy"])
+    .index("created_by_revoked", ["createdBy", "revoked"])
+    .index("revoked", ["revoked"]),
+
+  OAuthCode: defineTable({
+    codeHash: v.string(),
+    userId: v.id("User"),
+    clientId: v.string(),
+    redirectUri: v.string(),
+    scopes: v.array(v.string()),
+    codeChallenge: v.string(),
+    resource: v.optional(v.string()),
+    expiresAt: v.number(),
+    usedAt: v.optional(v.number()),
+  })
+    .index("code_hash", ["codeHash"])
+    .index("user_id", ["userId"]),
+
+  /**
+   * Root record for a refresh-token rotation chain (one per code exchange).
+   * Carries the identity/authorization shared by every token in the chain;
+   * setting `revokedAt` kills the whole chain in O(1) (reuse-detection / sign-out)
+   * — token lookups reject a revoked or missing grant before the bounded,
+   * scheduled token-row cleanup runs. Mirrors `Session` for OAuth refresh.
+   */
+  OAuthRefreshGrant: defineTable({
+    clientId: v.string(),
+    userId: v.id("User"),
+    scopes: v.array(v.string()),
+    resource: v.optional(v.string()),
+    expiresAt: v.number(),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("expires_at", ["expiresAt"])
+    .index("revoked_at", ["revokedAt"]),
+
+  OAuthRefreshToken: defineTable({
+    tokenHash: v.string(),
+    grantId: v.optional(v.id("OAuthRefreshGrant")),
+    expiresAt: v.number(),
+    firstUsedTime: v.optional(v.number()),
+    parentTokenId: v.optional(v.id("OAuthRefreshToken")),
+  })
+    .index("token_hash", ["tokenHash"])
+    .index("grant_id", ["grantId"])
+    .index("grant_id_first_used", ["grantId", "firstUsedTime"])
+    .index("expires_at", ["expiresAt"]),
 });

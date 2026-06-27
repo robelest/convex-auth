@@ -4,15 +4,16 @@ import { GenericId, Infer, v } from "convex/values";
 import type { AuthTokens } from "../../shared/results";
 import type * as Provider from "../crypto";
 import { authDb } from "../db";
+import { emitAuthEvent } from "../events";
 import { log, maybeRedact } from "../log";
 import {
+  encodeRefreshToken,
   parseRefreshToken,
   REFRESH_TOKEN_REUSE_WINDOW_MS,
   refreshTokenExpirationTime,
-} from "../refresh";
-import { REFRESH_TOKEN_DIVIDER } from "../refresh";
-import { finalizeSessionIssuance } from "../sessions";
-import type { SessionIssuance } from "../sessions";
+} from "../token/refresh";
+import { finalizeSessionIssuance } from "../session/lifecycle";
+import type { SessionIssuance } from "../session/lifecycle";
 import { buildRefreshIdentityAttributes } from "../telemetry";
 import {
   GenericActionCtxWithAuthConfig,
@@ -23,7 +24,7 @@ import {
 import { setActiveSpanAttributes, withSpan } from "../utils/span";
 import { AUTH_STORE_REF } from "./store/refs";
 
-export const refreshSessionArgs = v.object({
+export const vRefreshSessionArgs = v.object({
   refreshToken: v.string(),
 });
 
@@ -37,7 +38,7 @@ export const refreshSessionArgs = v.object({
  */
 export async function refreshSessionImpl(
   ctx: MutationCtx,
-  args: Infer<typeof refreshSessionArgs>,
+  args: Infer<typeof vRefreshSessionArgs>,
   config: Provider.Config,
 ): Promise<SessionIssuance | null> {
   const db = authDb(ctx, config);
@@ -73,7 +74,24 @@ export async function refreshSessionImpl(
           throw new RefreshFailure("exchange_failure", "Failed to exchange refresh token");
         }
 
-        if (exchanged === null) {
+        if (exchanged.status === "reuse_detected") {
+          setActiveSpanAttributes({ "auth.refresh.result": "reuse_detected" });
+          await emitAuthEvent(ctx, config, {
+            kind: "session.refresh_reuse_detected",
+            actor: { type: "system" },
+            subject: { type: "session", id: sessionId },
+            targets: [
+              { kind: "user", id: exchanged.userId },
+              { kind: "session", id: sessionId },
+              { kind: "global", id: "security" },
+            ],
+            outcome: "failure",
+            data: { userId: exchanged.userId, refreshTokenId: exchanged.refreshTokenId },
+          });
+          return null;
+        }
+
+        if (exchanged.status === "invalid") {
           setActiveSpanAttributes({ "auth.refresh.result": "null" });
           return null;
         }
@@ -87,7 +105,19 @@ export async function refreshSessionImpl(
           })),
         });
 
-        const user = (await db.users.getById(exchanged.userId)) as Doc<"User"> | null;
+        await emitAuthEvent(ctx, config, {
+          kind: "session.refresh_exchanged",
+          actor: { type: "system" },
+          subject: { type: "session", id: exchanged.sessionId },
+          targets: [
+            { kind: "user", id: exchanged.userId },
+            { kind: "session", id: exchanged.sessionId },
+          ],
+          outcome: "success",
+          data: { sessionId: exchanged.sessionId },
+        });
+
+        const user = (await db.users.get({ id: exchanged.userId })) as Doc<"User"> | null;
 
         return {
           userId: exchanged.userId as GenericId<"User">,
@@ -110,7 +140,10 @@ export async function refreshSessionImpl(
                 ? { phoneNumberVerified: false }
                 : null),
           },
-          refreshToken: `${exchanged.refreshTokenId as string}${REFRESH_TOKEN_DIVIDER}${exchanged.sessionId as string}`,
+          refreshToken: encodeRefreshToken(
+            exchanged.refreshTokenId as GenericId<"RefreshToken">,
+            exchanged.sessionId as GenericId<"Session">,
+          ),
         } satisfies SessionIssuance;
       } catch (e) {
         if (e instanceof RefreshFailure) {
@@ -145,7 +178,7 @@ class RefreshFailure extends Error {
  */
 export const callRefreshSession = async <DataModel extends GenericDataModel>(
   ctx: GenericActionCtxWithAuthConfig<DataModel>,
-  args: Infer<typeof refreshSessionArgs>,
+  args: Infer<typeof vRefreshSessionArgs>,
 ): Promise<SessionInfo<AuthTokens> | null> => {
   const issuance = (await ctx.runMutation(AUTH_STORE_REF, {
     args: {

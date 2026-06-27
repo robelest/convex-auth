@@ -6,22 +6,20 @@
   "scripts": {
     "dev": "vp dev",
     "build": "vp build",
-    "deploy": "wrangler deploy",
-    "deploy:preview": "wrangler versions upload",
-    "preview": "wrangler dev .svelte-kit/cloudflare/_worker.js --port 4173",
+    "preview": "vp exec vite preview",
     "prepare": "vp exec svelte-kit sync || true",
     "check": "vp exec svelte-kit sync && vp exec svelte-check --tsconfig ./tsconfig.json",
-    "check:watch": "vp exec svelte-kit sync && vp exec svelte-check --tsconfig ./tsconfig.json --watch",
-    "gen": "wrangler types"
+    "check:watch": "vp exec svelte-kit sync && vp exec svelte-check --tsconfig ./tsconfig.json --watch"
   },
   "dependencies": {
     "@robelest/convex-auth": "workspace:*",
     "convex": "catalog:",
-    "convex-svelte": "^0.0.12",
-    "phosphor-svelte": "^2.0.1"
+    "convex-svelte": "^0.14.0",
+    "svelte-radix": "^3.0.2",
+    "svelte-sonner": "^1.1.1"
   },
   "devDependencies": {
-    "@sveltejs/adapter-cloudflare": "^7.2.8",
+    "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.55.0",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "@tailwindcss/vite": "^4.2.2",
@@ -31,7 +29,6 @@
     "tailwindcss": "^4.2.2",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "wrangler": "^4.77.0"
+    "vite-plus": "catalog:"
   }
 }

@@ -24,6 +24,7 @@ export type WellKnownResponse = {
   body: string;
 };
 
+/** Supported `/.well-known/*` endpoint names, without the `/.well-known/` prefix. */
 export type WellKnownEndpoint =
   | "apple-app-site-association"
   | "assetlinks.json"
@@ -31,6 +32,7 @@ export type WellKnownEndpoint =
   | "security.txt"
   | "change-password";
 
+/** Explicit per-endpoint overrides for {@link wellKnown}, bypassing env vars. */
 export type WellKnownOptions = {
   /** Options for `/.well-known/apple-app-site-association`. */
   appleAppSiteAssociation?: {
@@ -281,18 +283,17 @@ export function wellKnown(
   endpoint: WellKnownEndpoint,
   options?: WellKnownOptions,
 ): WellKnownResponse | null {
-  switch (endpoint) {
-    case "apple-app-site-association":
-      return appleAppSiteAssociationResponse(options?.appleAppSiteAssociation);
-    case "assetlinks.json":
-      return assetLinksResponse(options?.assetLinks);
-    case "webauthn":
-      return webAuthnResponse(options?.webAuthn);
-    case "security.txt":
-      return securityTxtResponse(options?.securityTxt);
-    case "change-password":
-      return changePasswordResponse(options?.changePassword);
-  }
-  const _exhaustive: never = endpoint;
-  return _exhaustive;
+  return WELL_KNOWN_HANDLERS[endpoint](options);
 }
+
+const WELL_KNOWN_HANDLERS: Record<
+  WellKnownEndpoint,
+  (options?: WellKnownOptions) => WellKnownResponse | null
+> = {
+  "apple-app-site-association": (options) =>
+    appleAppSiteAssociationResponse(options?.appleAppSiteAssociation),
+  "assetlinks.json": (options) => assetLinksResponse(options?.assetLinks),
+  webauthn: (options) => webAuthnResponse(options?.webAuthn),
+  "security.txt": (options) => securityTxtResponse(options?.securityTxt),
+  "change-password": (options) => changePasswordResponse(options?.changePassword),
+};

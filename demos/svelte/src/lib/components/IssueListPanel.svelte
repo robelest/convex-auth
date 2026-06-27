@@ -2,6 +2,8 @@
   import type { ConvexClient } from "convex/browser";
   import { api } from "$convex/_generated/api.js";
   import { useQuery } from "convex-svelte";
+  import { toast } from "svelte-sonner";
+  import { errorText } from "$lib/errors";
   import IssueDetailPanel from "./IssueDetailPanel.svelte";
 
   let { project, permissions, members, currentUserId, groupId, client } = $props<{
@@ -35,15 +37,12 @@
   );
 
   const issues = $derived(issuesQuery.data?.issues ?? []);
-  const issuesError = $derived.by(() => {
-    const error = issuesQuery.error;
-    if (!error) {
-      return null;
+  const issuesError = $derived(issuesQuery.error);
+
+  $effect(() => {
+    if (issuesError) {
+      toast.error(errorText(issuesError, "Failed to load issues."));
     }
-    if (error instanceof Error) {
-      return error.message;
-    }
-    return "Failed to load issues.";
   });
 
   const statusOrder = ["in_progress", "todo", "backlog", "done", "cancelled"] as const;
@@ -57,11 +56,11 @@
   };
 
   const statusColors: Record<string, string> = {
-    backlog: "text-gray-400",
-    todo: "text-gray-600",
-    in_progress: "text-accent-500",
-    done: "text-green-600",
-    cancelled: "text-gray-300",
+    backlog: "text-content-tertiary",
+    todo: "text-content-secondary",
+    in_progress: "text-content-accent",
+    done: "text-content-success",
+    cancelled: "text-border-transparent",
   };
 
   const priorityWeight: Record<string, number> = {
@@ -102,7 +101,6 @@
   let expandedIssueId = $state<string | null>(null);
   let isCreating = $state(false);
   let newTitle = $state("");
-  let errorMessage = $state<string | null>(null);
 
   function toggleIssue(issueId: string) {
     expandedIssueId = expandedIssueId === issueId ? null : issueId;
@@ -117,19 +115,18 @@
   async function handleCreateIssue() {
     if (newTitle.trim().length === 0) return;
     isCreating = true;
-    errorMessage = null;
     try {
 		const result = await client.mutation(api.issues.create, {
 			projectId: project.projectId,
 			title: newTitle,
 		});
       if ("ok" in result && !result.ok && "message" in result) {
-        errorMessage = result.message ?? "Failed to create issue";
+        toast.error(typeof result.message === "string" ? result.message : "Failed to create issue");
       } else {
         newTitle = "";
       }
     } catch (e: unknown) {
-      errorMessage = e instanceof Error ? e.message : "Failed to create issue";
+      toast.error(errorText(e, "Failed to create issue"));
     } finally {
       isCreating = false;
     }
@@ -144,7 +141,7 @@
   <div class="flex items-center justify-between gap-4 max-md:flex-col max-md:items-stretch flex-wrap">
     <div class="flex flex-col">
       <h2 class="section-header" style="border:0;margin:0;padding:0">
-        <span class="text-gray-400">{project.identifier}</span>
+        <span class="text-content-tertiary">{project.identifier}</span>
         <span class="ml-1">{project.name}</span>
       </h2>
     </div>
@@ -168,39 +165,33 @@
     {/if}
   </div>
 
-  {#if errorMessage}
-    <p class="error-banner">{errorMessage}</p>
-  {/if}
-
   <!-- Issue list grouped by status -->
-  {#if issuesError}
-    <p class="error-banner">{issuesError}</p>
-  {:else if issues.length === 0}
+  {#if issues.length === 0}
     <p class="muted">No issues yet.</p>
   {:else}
-    <div class="flex flex-col border border-gray-300 bg-white">
+    <div class="panel flex flex-col overflow-hidden">
       {#each groupedIssues as group (group.status)}
         <!-- Status group header -->
-        <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-100 border-b border-gray-200">
-          <span class="inline-block w-2 h-2 rounded-full {statusColors[group.status]} {group.status === 'done' ? 'bg-green-600' : group.status === 'in_progress' ? 'bg-accent-500/50' : group.status === 'cancelled' ? 'bg-gray-300' : 'bg-current'}"></span>
-          <span class="font-label text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-gray-500">{group.label}</span>
-          <span class="font-label text-[0.6rem] text-gray-400">{group.issues.length}</span>
+        <div class="flex items-center gap-2 px-3 py-1.5 bg-background-tertiary border-b border-border-transparent">
+          <span class="inline-block w-2 h-2 rounded-full {statusColors[group.status]} {group.status === 'done' ? 'bg-content-success' : group.status === 'in_progress' ? 'bg-content-accent/70' : group.status === 'cancelled' ? 'bg-border-transparent' : 'bg-current'}"></span>
+          <span class="font-label text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-content-tertiary">{group.label}</span>
+          <span class="font-label text-[0.6rem] text-content-tertiary">{group.issues.length}</span>
         </div>
 
 						{#each group.issues as issue (issue._id)}
           <!-- Issue row -->
           <div
-							class="flex items-center gap-3 px-3 py-2 border-b border-gray-200 bg-transparent cursor-pointer hover:bg-gray-50 text-left w-full transition-colors duration-75 {expandedIssueId === issue._id ? 'bg-gray-100' : ''}"
+							class="row cursor-pointer text-left w-full {expandedIssueId === issue._id ? 'row--active' : ''}"
 							onclick={() => toggleIssue(issue._id)}
 							onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleIssue(issue._id); } }}
             role="button"
             tabindex="0"
           >
             <!-- Identifier -->
-            <span class="font-label text-[0.6875rem] font-semibold text-gray-400 shrink-0 w-16">{issue.identifier}</span>
+            <span class="font-label text-[0.6875rem] font-semibold text-content-tertiary shrink-0 w-16">{issue.identifier}</span>
 
             <!-- Title -->
-            <span class="font-sans text-[0.8125rem] font-medium text-gray-900 flex-1 truncate">{issue.title}</span>
+            <span class="font-sans text-[0.8125rem] font-medium text-content-primary flex-1 truncate">{issue.title}</span>
 
             <!-- Priority -->
             {#if issue.priority !== "none"}
@@ -213,14 +204,14 @@
             {/each}
 
             <!-- Assignee -->
-            <span class="font-label text-[0.6875rem] text-gray-500 shrink-0 w-20 text-right truncate">
+            <span class="font-label text-[0.6875rem] text-content-secondary shrink-0 w-20 text-right truncate">
               {issue.assigneeName ?? "—"}
             </span>
           </div>
 
           <!-- Inline expand -->
           {#if expandedIssueId === issue._id}
-            <div class="border-b border-gray-300 bg-gray-50">
+            <div class="border-b border-border-transparent bg-background-primary">
               <IssueDetailPanel
                 {issue}
                 {permissions}

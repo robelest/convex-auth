@@ -33,8 +33,22 @@ import { resolveClientServices } from "../client/services/resolve";
 import { ClientRuntimeLive } from "../client/services/runtime";
 import { createExpoPasskeyClient } from "./passkey";
 
-export interface ExpoClientOptions<Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs>
-  extends ClientOptions<Api> {
+/**
+ * Options for the Expo {@link client}.
+ *
+ * Extends {@link ClientOptions} with Expo auth-session settings used to launch
+ * the OAuth flow and resolve the native redirect URI.
+ *
+ * @typeParam Api - An AuthApiRefs type that controls which factor helpers are
+ *   available on the returned client.
+ */
+export interface ExpoClientOptions<
+  Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs,
+> extends ClientOptions<Api> {
+  /**
+   * Expo auth-session options. `redirectUri` overrides the auto-derived
+   * redirect URI; `preferEphemeralSession` requests a private browser session.
+   */
   authSession?: AuthSession.AuthSessionRedirectUriOptions & {
     redirectUri?: string;
     preferEphemeralSession?: boolean;
@@ -75,6 +89,11 @@ const secureStoreStorage = {
  *
  * Native Expo defaults include SecureStore persistence, auth session launch,
  * and native passkey support. Web falls back to the browser entrypoint.
+ *
+ * @param options - Expo client configuration. See {@link ExpoClientOptions}.
+ * @typeParam Api - Auth API references that control which factor helpers are
+ *   available on the returned client.
+ * @returns An Expo auth client with the configured auth helpers.
  */
 export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs>(
   options: ExpoClientOptions<Api>,
@@ -103,7 +122,8 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
   const redirectUri = resolveRedirectUri(options.authSession);
   const baseClient = createClient({
     ...options,
-    storage: options.storage === undefined && options.proxyPath !== undefined ? null : options.storage,
+    storage:
+      options.storage === undefined && options.proxyPath !== undefined ? null : options.storage,
     runtime: services.runtime,
     adapters: services.adapters,
     adapterFactories: services.adapterFactories,
@@ -117,8 +137,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
   const signIn: typeof baseClient.signIn = async (provider, ...args) => {
     const params = args[0] as Record<string, unknown> | undefined;
     const nextParams = withRedirectTo(params, redirectUri);
-    // Forward through the loose internal signature — TS cannot resolve the
-    // generic params type from the wrapper's union-typed `provider` argument.
     const result = await (baseClient.signIn as SignInImpl)(provider, nextParams);
     if (result.kind !== "redirect") {
       return result;
@@ -128,9 +146,13 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
         "Expo OAuth is not supported when `proxyPath` is set. Use direct mode with `api` and an Expo redirect URI.",
       );
     }
-    const authResult = await WebBrowser.openAuthSessionAsync(result.redirect.toString(), redirectUri, {
-      preferEphemeralSession: options.authSession?.preferEphemeralSession,
-    });
+    const authResult = await WebBrowser.openAuthSessionAsync(
+      result.redirect.toString(),
+      redirectUri,
+      {
+        preferEphemeralSession: options.authSession?.preferEphemeralSession,
+      },
+    );
     if (authResult.type === "success") {
       const completion = await baseClient.completeOAuth(authResult.url);
       if (completion.handled) {
