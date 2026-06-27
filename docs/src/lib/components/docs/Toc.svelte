@@ -18,7 +18,7 @@
 		headings = Array.from(els).map((el) => ({
 			id: el.id,
 			text: el.textContent ?? '',
-			level: parseInt(el.tagName[1])
+			level: parseInt(el.tagName[1]),
 		}));
 
 		const observer = new IntersectionObserver(
@@ -29,7 +29,7 @@
 					}
 				}
 			},
-			{ rootMargin: '-80px 0px -70% 0px' }
+			{ rootMargin: '-80px 0px -70% 0px' },
 		);
 
 		for (const el of els) observer.observe(el);

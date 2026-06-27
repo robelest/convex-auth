@@ -12,12 +12,12 @@ description: Required and optional environment variables for convex-auth.
 
 ## Required
 
-| Variable                     | Purpose                                     |
-| ---------------------------- | ------------------------------------------- |
-| `JWT_PRIVATE_KEY`            | Signs session JWTs                          |
-| `JWKS`                       | JSON Web Key Set for verification           |
+| Variable                     | Purpose                                                                       |
+| ---------------------------- | ----------------------------------------------------------------------------- |
+| `JWT_PRIVATE_KEY`            | Signs session JWTs                                                            |
+| `JWKS`                       | JSON Web Key Set for verification                                             |
 | `AUTH_SECRET_ENCRYPTION_KEY` | Encrypts stored OIDC client secrets and group webhook signing secrets at rest |
-| `SITE_URL`                   | Frontend URL for OAuth/magic link redirects |
+| `SITE_URL`                   | Frontend URL for OAuth/magic link redirects                                   |
 
 These are set automatically by the CLI setup wizard.
 
@@ -81,15 +81,15 @@ you want to override that default.
 These drive the [.well-known endpoints](/reference/well-known) — leave them
 unset to disable a given endpoint (it then returns 404).
 
-| Variable                    | Purpose                                                            | Default           |
-| --------------------------- | ------------------------------------------------------------------ | ----------------- |
-| `IOS_APP_IDS`               | Comma-separated `TEAMID.bundle.id` for `apple-app-site-association`| -                 |
-| `IOS_APPLINK_PATHS`         | Comma-separated path patterns for `applinks` (e.g., `/auth/*`)     | `/auth/*,/callback/*` |
-| `ANDROID_APP_LINKS`         | `package:FP1;package2:FP2` for `assetlinks.json`                   | -                 |
-| `WEBAUTHN_ALT_ORIGINS`      | Comma-separated origins for `/.well-known/webauthn`                | falls back to `SECONDARY_URL` |
-| `CHANGE_PASSWORD_URL`       | Redirect target for `/.well-known/change-password`                 | -                 |
-| `SECURITY_CONTACT`          | `Contact:` for `security.txt` (`mailto:` or `https:`)              | -                 |
-| `SECURITY_TXT_EXPIRES_DAYS` | Days until `Expires:` in `security.txt`                            | 365               |
+| Variable                    | Purpose                                                             | Default                       |
+| --------------------------- | ------------------------------------------------------------------- | ----------------------------- |
+| `IOS_APP_IDS`               | Comma-separated `TEAMID.bundle.id` for `apple-app-site-association` | -                             |
+| `IOS_APPLINK_PATHS`         | Comma-separated path patterns for `applinks` (e.g., `/auth/*`)      | `/auth/*,/callback/*`         |
+| `ANDROID_APP_LINKS`         | `package:FP1;package2:FP2` for `assetlinks.json`                    | -                             |
+| `WEBAUTHN_ALT_ORIGINS`      | Comma-separated origins for `/.well-known/webauthn`                 | falls back to `SECONDARY_URL` |
+| `CHANGE_PASSWORD_URL`       | Redirect target for `/.well-known/change-password`                  | -                             |
+| `SECURITY_CONTACT`          | `Contact:` for `security.txt` (`mailto:` or `https:`)               | -                             |
+| `SECURITY_TXT_EXPIRES_DAYS` | Days until `Expires:` in `security.txt`                             | 365                           |
 
 `SITE_URL` remains the canonical frontend URL used for generated links and
 default redirects. Use `SECONDARY_URL` to allow additional localhost or hosted

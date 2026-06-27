@@ -13,9 +13,13 @@
 	}
 
 	setContext('tabs', {
-		get activeTab() { return activeTab; },
+		get activeTab() {
+			return activeTab;
+		},
 		registerTab,
-		setActive: (idx: number) => { activeTab = idx; }
+		setActive: (idx: number) => {
+			activeTab = idx;
+		},
 	});
 </script>
 
@@ -26,7 +30,9 @@
 				role="tab"
 				aria-selected={activeTab === i}
 				class:active={activeTab === i}
-				onclick={() => { activeTab = i; }}
+				onclick={() => {
+					activeTab = i;
+				}}
 			>
 				{label}
 			</button>
@@ -65,7 +71,9 @@
 		border-bottom: 2px solid transparent;
 		cursor: pointer;
 		margin-bottom: -1px;
-		transition: color 0.15s ease, border-color 0.15s ease;
+		transition:
+			color 0.15s ease,
+			border-color 0.15s ease;
 	}
 
 	button:hover {

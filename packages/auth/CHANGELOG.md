@@ -26,12 +26,13 @@
   user fields will see them overwritten on next OAuth sign-in; opt out
   with `google({ updateProfileOnLogin: false, ... })`.
 - **`@robelest/convex-auth/react`** subpath — ships `ConvexAuthProvider`
-  + `useAuth()` + `useConvexAuthClient()`. One composite hook returning
-  `{ phase, isLoading, isAuthenticated, token, signIn, signOut }`.
-  `react` is **not** a declared peer dep — consumers who use this
-  subpath bring their own React (any React app already has it).
+  - `useAuth()` + `useConvexAuthClient()`. One composite hook returning
+    `{ phase, isLoading, isAuthenticated, token, signIn, signOut }`.
+    `react` is **not** a declared peer dep — consumers who use this
+    subpath bring their own React (any React app already has it).
 
 ### Verified already covered (no change)
+
 - `auth.session.invalidate(ctx, { userId, except? })` already exists in
   `server/core.ts:491` — sign-out-everywhere works without a new verb.
 - After-callbacks via `after: (ctx, event)` (`server/types.ts`).
@@ -39,6 +40,7 @@
 - Per-provider OAuth `redirectUri` + `accountLinking`.
 
 ### Not adopted
+
 - `server-only` marker package — Convex's runtime doesn't set the
   `react-server` export condition that makes the package a no-op, so
   importing it would throw at load time inside Convex functions. Skip.
@@ -57,7 +59,7 @@
 - **`AuthComponentApi.rateLimit` → `AuthComponentApi.limits`.** The component
   namespace for rate-limit operations is now `auth.limits.signInCheck` /
   `signInRecord` / `signInReset` instead of the old `auth.rateLimit.{get, create,
-  update, delete}` table CRUD. Internal — most consumers won't see this.
+update, delete}` table CRUD. Internal — most consumers won't see this.
 - **All component `query`/`mutation` are now `internalQuery`/`internalMutation`.**
   107 functions across `component/public/*` flipped visibility. Defense in
   depth: the auth component's internals aren't client-callable through any
@@ -75,18 +77,19 @@
   Endpoint signing secrets are now stored encrypted at rest
   (`GroupWebhookEndpoint.secretCiphertext`, AES-GCM via
   `AUTH_SECRET_ENCRYPTION_KEY`) — the prior `secretHash` field was never used
-  and is replaced. At emit time, `emitGroupWebhookDeliveries` decrypts the
-  secret and HMAC-SHA256-signs `${signedAt}.${body}` where `body` is the
-  exact JSON the dispatch action sends. Signature + timestamp are stored on
-  the delivery row.
+  and is replaced. Auth events are the durable source of truth; subscribed
+  webhook deliveries are projected from those events, decrypt the endpoint
+  secret, and HMAC-SHA256-sign `${signedAt}.${body}` where `body` is the exact
+  JSON the dispatch action sends. Signature + timestamp are stored on the
+  delivery row.
 
   Wire format (subscribers verify by reconstructing the pre-image and HMAC):
   - `Content-Type: application/json`
-  - `X-Auth-Event-Type: <eventType>`
+  - `X-Auth-Event-Type: <kind>`
   - `X-Auth-Delivery-Id: <deliveryId>`
   - `X-Auth-Timestamp: <epochMs>`
   - `X-Auth-Signature: sha256=<hex>`
-  - Body: `{ "eventType": "...", "payload": {...} }`
+  - Body: `{ "kind": "...", "payload": {...} }`
 
 - **Daily cleanup cron** inside the component (`component/crons.ts`) drives
   `pruneExpired` against Session / RefreshToken / VerificationCode /
@@ -100,7 +103,7 @@
   verifierPatch, passkeyUpdate, totpUpdate, deviceUpdate, groupUpdate,
   memberUpdate, groupConnectionUpdate, groupWebhookEndpointUpdate,
   groupWebhookDeliveryPatch) with `data: v.object({ ...fields, all
-  v.optional })`. Catches typo'd / unknown patch fields at the
+v.optional })`. Catches typo'd / unknown patch fields at the
   validation boundary instead of silently writing them.
 
 - `convex-test` catalog bumped to `^0.0.53` to match what `@convex-dev/rate-limiter`
@@ -169,10 +172,10 @@
 
 ## Unreleased
 
-- Stabilize the group/connection namespace model around `auth.group.sso.*` for
-  inbound SSO, `auth.group.sso.scim.*` for provisioning, and a planned
+- Stabilize the group/connection namespace model around `auth.sso.mount(...)` for
+  inbound SSO, `mounted.admin.scim.*` for provisioning, and a planned
   `auth.oauth.*` provider-mode surface.
-- Move public domain ownership under `auth.group.sso.connection.*` and keep the
+- Move public domain ownership under `mounted.admin.connection.*` and keep the
   next release focused on shipping this stable core shape before larger group
   features land.
 - Harden group SSO management surfaces by adding tenant-admin checks to the
@@ -186,10 +189,10 @@
 - Refresh group docs to reflect the current policy scope and provider-mode
   status.
 - Add first-class group connection domain verification with
-  `auth.group.sso.connection.domain.verification.request/confirm` and flat
+  `mounted.admin.connection.domain.verification.request/confirm` and flat
   `requestDomainVerification` / `confirmDomainVerification` RPC helpers.
 - Require verified group connection domains for
-  `auth.group.sso.signIn({ email | domain })` routing while keeping explicit
+  `mounted.client.signIn({ email | domain })` routing while keeping explicit
   `connectionId` sign-in available for setup.
 
 ## 0.0.4-preview.12

@@ -1,5 +1,7 @@
 # AGENTS.md — Coding Agent Guidelines for convex-auth
 
+> **Read [`packages/auth/LEXICON.md`](packages/auth/LEXICON.md) before adding any new public API.** It is the authoritative naming and shape contract: verbs, arg shapes, validator names, file paths, pagination discipline, function visibility. Deviating from it requires written justification in the PR.
+
 ## Project Overview
 
 Monorepo for `@robelest/convex-auth` — a Convex authentication library. Uses
@@ -82,52 +84,54 @@ Root config is minimal: `{ "proseWrap": "always" }`. Defaults apply:
 
 ### Naming Conventions
 
-| Element           | Convention         | Examples                             |
-| ----------------- | ------------------ | ------------------------------------ |
-| Files             | `camelCase.ts`     | `signIn.ts`, `authCookies.ts`        |
-| Functions         | `camelCase`        | `signIn`, `parseAuthCookies`         |
-| Classes           | `PascalCase`       | `Auth`                               |
-| Types/Interfaces  | `PascalCase`       | `AuthCookies`, `ConvexAuthConfig`    |
-| Constants         | `UPPER_SNAKE_CASE` | `AUTH_ERRORS`, `JWT_STORAGE_KEY`     |
-| Unused params     | `_` prefix         | `_ctx`, `_args`                      |
-| Private fields    | `_` prefix         | `_auth`                              |
-| Provider defaults | lowercase function | `export default function password()` |
+| Element           | Convention         | Examples                                |
+| ----------------- | ------------------ | --------------------------------------- |
+| Files             | one-word lowercase | `signin.ts`, `cookies.ts`, `codes.ts`   |
+| Functions         | `camelCase`        | `signIn`, `parseAuthCookies`            |
+| Classes           | `PascalCase`       | `Auth`                                  |
+| Types/Interfaces  | `PascalCase`       | `AuthCookies`, `ConvexAuthConfig`       |
+| Constants         | `UPPER_SNAKE_CASE` | `JWT_DEFAULT_EXPIRY`, `DEFAULT_MAX_AGE` |
+| Unused params     | `_` prefix         | `_ctx`, `_args`                         |
+| Private fields    | `_` prefix         | `_auth`                                 |
+| Provider defaults | lowercase function | `export default function password()`    |
+
+**File naming rule:** every source filename is a single lowercase word — no
+hyphens, no `camelCase`. Multi-concept names become nested directories:
+`auth-code.ts` → `auth/code.ts`, `error-codes.ts` → `shared/codes.ts`,
+`xml-builder.ts` → `xml/builder.ts`. Avoid `index.ts` barrel files — prefer
+a descriptively-named file (e.g. `meta.ts`, `entity.ts`). `.tsx` is allowed
+where JSX requires it, e.g. `react/index.tsx`.
 
 ### Error Handling
 
-The project uses a **structured error system** built on `ConvexError` and the Fx
-`AuthError` class:
+The project uses a **structured error system** built on `ConvexError` and a
+typed `ErrorCode` registry:
 
 ```typescript
-import { AuthError } from "./fx";
-import { isAuthError, parseAuthError } from "./errors";
+import { toConvexError } from "./server/errors";
+import type { AuthErrorData } from "./server/errors";
+import { ErrorCode } from "./shared/codes";
 
-// Internal: throw via AuthError (preferred in server code)
-throw new AuthError("NOT_SIGNED_IN").toConvexError();
+// Throw a structured ConvexError at a handler boundary
+throw new ConvexError<AuthErrorData>({
+  code: ErrorCode.NOT_SIGNED_IN,
+  message: "You must be signed in.",
+});
 
-// Internal: in Fx pipelines
-Fx.fail(new AuthError("EMAIL_SEND_FAILED", "Custom message"));
+// Normalize an unknown error into ConvexError<AuthErrorData>
+throw toConvexError(caughtError);
 
-// Consumer API: throwAuthError (exported for library consumers)
-import { throwAuthError } from "@robelest/convex-auth/errors";
-throwAuthError("NOT_SIGNED_IN");
-
-// Type guard
-if (isAuthError(error)) {
-  /* error is ConvexError<{code, message}> */
-}
-
-// Parse from any error shape
-const parsed = parseAuthError(error); // { code, message } | null
+// Internal flow control — caught within the server layer, not user-facing
+import { authFlowError } from "./shared/errors";
+throw authFlowError(ErrorCode.EMAIL_SEND_FAILED, "Custom message");
 ```
 
-- Internal code uses `new AuthError(code).toConvexError()` or
-  `Fx.fail(new AuthError(code))` — do NOT throw raw `ConvexError` directly.
-- `throwAuthError(code)` is exported for **consumer** convenience.
-- Use `try/catch` with `console.error` for non-fatal issues (token refresh,
-  etc.).
-- Silent `catch {}` is acceptable for cleanup operations (sign-out, storage
-  deletion).
+- `toConvexError` and `AuthErrorData` live in `server/errors.ts`.
+- `AuthFlowError` / `authFlowError` live in `shared/errors.ts`.
+- `ErrorCode` registry lives in `shared/codes.ts` — always use `ErrorCode.<NAME>`
+  over inline string literals so typos are caught at compile time.
+- Use `try/catch` with `console.error` for non-fatal issues (token refresh, etc.).
+- Silent `catch {}` is acceptable for cleanup operations (sign-out, storage deletion).
 - Provider validation errors can use plain `throw new Error("message")`.
 
 ### CRUD Verb Conventions
@@ -151,7 +155,7 @@ use options objects.
 - **Factory functions over classes**: prefer `function createThing(opts)`
   returning an object over `class Thing`. This enables Convex bundler
   tree-shaking via `export const { x, y } = factory(config)`.
-- **Barrel files**: use `index.ts` to re-export public API from sub-modules.
+- **Barrel files**: package-entry barrels use `index.ts` (the package `exports` map points at stable `index.ts` paths); internal re-export barrels use a descriptively-named file (e.g. `mutations/calls.ts`), per the naming rule above.
 - **Named exports** for most things; **default exports** only for provider
   functions.
 - Use `as const satisfies Record<K, V>` for exhaustive typed constant maps.
@@ -213,87 +217,29 @@ use options objects.
 
 # Using Vite+, the Unified Toolchain for the Web
 
-This project is using Vite+, a unified toolchain built on top of Vite, Rolldown, Vitest, tsdown, Oxlint, Oxfmt, and Vite Task. Vite+ wraps runtime management, package management, and frontend tooling in a single global CLI called `vp`. Vite+ is distinct from Vite, but it invokes Vite through `vp dev` and `vp build`.
+This project is using Vite+, a unified toolchain built on top of Vite, Rolldown, Vitest, tsdown, Oxlint, Oxfmt, and Vite Task. Vite+ wraps runtime management, package management, and frontend tooling in a single global CLI called `vp`. Vite+ is distinct from Vite, and it invokes Vite through `vp dev` and `vp build`. Run `vp help` to print a list of commands and `vp <command> --help` for information about a specific command.
 
-## Vite+ Workflow
+Docs are local at `node_modules/vite-plus/docs` or online at https://viteplus.dev/guide/.
 
-`vp` is a global binary that handles the full development lifecycle. Run `vp help` to print a list of commands and `vp <command> --help` for information about a specific command.
-
-### Start
-
-- create - Create a new project from a template
-- migrate - Migrate an existing project to Vite+
-- config - Configure hooks and agent integration
-- staged - Run linters on staged files
-- install (`i`) - Install dependencies
-- env - Manage Node.js versions
-
-### Develop
-
-- dev - Run the development server
-- check - Run format, lint, and TypeScript type checks
-- lint - Lint code
-- fmt - Format code
-- test - Run tests
-
-### Execute
-
-- run - Run monorepo tasks
-- exec - Execute a command from local `node_modules/.bin`
-- dlx - Execute a package binary without installing it as a dependency
-- cache - Manage the task cache
-
-### Build
-
-- build - Build for production
-- pack - Build libraries
-- preview - Preview production build
-
-### Manage Dependencies
-
-Vite+ automatically detects and wraps the underlying package manager such as pnpm, npm, or Yarn through the `packageManager` field in `package.json` or package manager-specific lockfiles.
-
-- add - Add packages to dependencies
-- remove (`rm`, `un`, `uninstall`) - Remove packages from dependencies
-- update (`up`) - Update packages to latest versions
-- dedupe - Deduplicate dependencies
-- outdated - Check for outdated packages
-- list (`ls`) - List installed packages
-- why (`explain`) - Show why a package is installed
-- info (`view`, `show`) - View package information from the registry
-- link (`ln`) / unlink - Manage local package links
-- pm - Forward a command to the package manager
-
-### Maintain
-
-- upgrade - Update `vp` itself to the latest version
-
-These commands map to their corresponding tools. For example, `vp dev --port 3000` runs Vite's dev server and works the same as Vite. `vp test` runs JavaScript tests through the bundled Vitest. The version of all tools can be checked using `vp --version`. This is useful when researching documentation, features, and bugs.
-
-## Common Pitfalls
-
-- **Using the package manager directly:** Do not use pnpm, npm, or Yarn directly. Vite+ can handle all package manager operations.
-- **Always use Vite commands to run tools:** Don't attempt to run `vp vitest` or `vp oxlint`. They do not exist. Use `vp test` and `vp lint` instead.
-- **Running scripts:** Vite+ built-in commands (`vp dev`, `vp build`, `vp test`, etc.) always run the Vite+ built-in tool, not any `package.json` script of the same name. To run a custom script that shares a name with a built-in command, use `vp run <script>`. For example, if you have a custom `dev` script that runs multiple services concurrently, run it with `vp run dev`, not `vp dev` (which always starts Vite's dev server).
-- **Do not install Vitest, Oxlint, Oxfmt, or tsdown directly:** Vite+ wraps these tools. They must not be installed directly. You cannot upgrade these tools by installing their latest versions. Always use Vite+ commands.
-- **Use Vite+ wrappers for one-off binaries:** Use `vp dlx` instead of package-manager-specific `dlx`/`npx` commands.
-- **Import JavaScript modules from `vite-plus`:** Instead of importing from `vite` or `vitest`, all modules should be imported from the project's `vite-plus` dependency. For example, `import { defineConfig } from 'vite-plus';` or `import { expect, test, vi } from 'vite-plus/test';`. You must not install `vitest` to import test utilities.
-- **Type-Aware Linting:** There is no need to install `oxlint-tsgolint`, `vp lint --type-aware` works out of the box.
-
-## CI Integration
-
-For GitHub Actions, consider using [`voidzero-dev/setup-vp`](https://github.com/voidzero-dev/setup-vp) to replace separate `actions/setup-node`, package-manager setup, cache, and install steps with a single action.
-
-```yaml
-- uses: voidzero-dev/setup-vp@v1
-  with:
-    cache: true
-- run: vp check
-- run: vp test
-```
-
-## Review Checklist for Agents
+## Review Checklist
 
 - [ ] Run `vp install` after pulling remote changes and before getting started.
-- [ ] Run `vp check` and `vp test` to validate changes.
+- [ ] Run `vp check` and `vp test` to format, lint, type check and test changes.
+- [ ] Check if there are `vite.config.ts` tasks or `package.json` scripts necessary for validation, run via `vp run <script>`.
+- [ ] If setup, runtime, or package-manager behavior looks wrong, run `vp env doctor` and include its output when asking for help.
+
 <!--VITE PLUS END-->
+
+<!-- convex-ai-start -->
+
+This project uses [Convex](https://convex.dev) as its backend.
+
+When working on Convex code, **always read
+`convex/_generated/ai/guidelines.md` first** for important guidelines on
+how to correctly use Convex APIs and patterns. The file contains rules that
+override what you may have learned about Convex from training data.
+
+Convex agent skills for common tasks can be installed by running
+`npx convex ai-files install`.
+
+<!-- convex-ai-end -->

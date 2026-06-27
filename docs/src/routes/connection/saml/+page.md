@@ -1,36 +1,37 @@
 ---
-title: auth.group.sso.saml
+title: auth.connection.saml
 description: SAML 2.0 provider configuration — metadata exchange and assertion validation.
 ---
 
 <svelte:head>
 
-  <title>auth.group.sso.saml - convex-auth</title>
+  <title>auth.connection.saml - convex-auth</title>
 </svelte:head>
 
-# auth.group.sso.saml
+# auth.connection.saml
 
-The `auth.group.sso.saml` namespace configures SAML 2.0 identity providers for
+The `auth.connection.saml` namespace configures SAML 2.0 identity providers for
 SSO connections.
 
 > This page documents the **server-side helper API**:
-> [`auth.group.sso.saml.*`](/sso/saml/). Public RPC like
-> [`api.auth.group.configureSaml`](/sso/rpc/) only exists after your app exposes
-> app-owned group SSO wrappers.
+> [`auth.connection.saml.*`](/connection/saml/). Client-callable admin RPC like
+> `api.auth.group.setSaml` only exists after you expose it yourself —
+> write an `authAction` (SAML configure fetches IdP metadata over the network)
+> that authorizes with `auth.member.assert` and forwards to this facade, the
+> same pattern as the rest of your app.
 
 Use the `connectionId` returned by
-[`auth.group.sso.connection.create(...)`](/sso/connection/) when configuring
-SAML.
+[`auth.connection.create(...)`](/connection/connection/) when configuring SAML.
 
 ## Methods
 
 | Method      | Signature                                                                                      | Returns                      | Description                                                                                                             |
 | ----------- | ---------------------------------------------------------------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `configure` | `(ctx, { connectionId, metadata, domains?, request?, security?, serviceProvider?, profile? })` | `{ connectionId, groupId }`  | Configures SAML settings for a connection. Accepts a metadata URL or raw XML.                                           |
-| `get`       | `(ctx, connectionId)`                                                                          | SAML config document         | Returns the current normalized SAML config for a connection.                                                            |
-| `status`    | `(ctx, connectionId)`                                                                          | `{ configured, ready, ... }` | Returns a lightweight readiness summary for a connection.                                                               |
-| `metadata`  | `(ctx, { connectionId, entityId?, acsUrl?, sloUrl? })`                                         | `string`                     | Returns the SP metadata XML for the connection via [`auth.group.sso.metadata(...)`](/sso/rpc/).                         |
-| `validate`  | `(ctx, connectionId)`                                                                          | `{ checks: [...] }`          | Validates that the SAML configuration is complete and the IdP metadata is parseable. Each check has its own `ok` field. |
+| `get`       | `(ctx, { connectionId })`                                                                      | SAML config document         | Returns the current normalized SAML config for a connection.                                                            |
+| `status`    | `(ctx, { connectionId })`                                                                      | `{ configured, ready, ... }` | Returns a lightweight readiness summary for a connection.                                                               |
+| `metadata`  | `(ctx, { connectionId, entityId?, acsUrl?, sloUrl? })`                                         | `string`                     | Returns the SP metadata XML for the connection via [`auth.connection.metadata(...)`](/connection/rpc/).                         |
+| `validate`  | `(ctx, { connectionId })`                                                                      | `{ checks: [...] }`          | Validates that the SAML configuration is complete and the IdP metadata is parseable. Each check has its own `ok` field. |
 | `refresh`   | `(ctx, { connectionId })`                                                                      | `{ connectionId, groupId }`  | Re-fetches metadata from the configured `metadataUrl` and updates the stored IdP metadata.                              |
 
 ## Example
@@ -38,7 +39,7 @@ SAML.
 ### Configure with a metadata URL
 
 ```ts
-await auth.group.sso.saml.configure(ctx, {
+await auth.connection.saml.set(ctx, {
   connectionId,
   metadata: {
     url: "https://idp.acme.com/metadata.xml",
@@ -49,7 +50,7 @@ await auth.group.sso.saml.configure(ctx, {
 ### Configure with raw XML
 
 ```ts
-await auth.group.sso.saml.configure(ctx, {
+await auth.connection.saml.set(ctx, {
   connectionId,
   metadata: {
     xml: "<EntityDescriptor ...>...</EntityDescriptor>",
@@ -60,7 +61,7 @@ await auth.group.sso.saml.configure(ctx, {
 ### Optional security settings
 
 ```ts
-await auth.group.sso.saml.configure(ctx, {
+await auth.connection.saml.set(ctx, {
   connectionId,
   metadata: {
     url: "https://idp.acme.com/metadata.xml",
@@ -102,7 +103,7 @@ Supported security options:
 
 Use `profile.mapping` to normalize the core SAML attributes used for the
 built-in profile. `groups` and `roles` can feed into
-[`auth.group.sso.policy`](/sso/policy/) to map external values into membership
+[`auth.connection.policy`](/connection/policy/) to map external values into membership
 `roleIds`.
 
 The normalized SAML profile also flows through optional `sso.hooks`, so profile
@@ -113,14 +114,14 @@ extraction stays separate from provisioning behavior.
 Provide this to the customer's IdP admin so they can set up the trust:
 
 ```ts
-const spMetadata = await auth.group.sso.saml.metadata(ctx, { connectionId });
+const spMetadata = await auth.connection.saml.metadata(ctx, { connectionId });
 // Returns XML string — serve this at a public URL or provide for download
 ```
 
 ### Validate configuration
 
 ```ts
-const { checks } = await auth.group.sso.saml.validate(ctx, connectionId);
+const { checks } = await auth.connection.saml.validate(ctx, { connectionId });
 
 const failures = checks.filter((check) => !check.ok);
 if (failures.length > 0) {
@@ -131,7 +132,7 @@ if (failures.length > 0) {
 ### Status
 
 ```ts
-const status = await auth.group.sso.saml.status(ctx, connectionId);
+const status = await auth.connection.saml.status(ctx, { connectionId });
 
 status.configured;
 status.ready;
@@ -141,5 +142,5 @@ status.checks;
 ### Refresh metadata from `metadataUrl`
 
 ```ts
-await auth.group.sso.saml.refresh(ctx, { connectionId });
+await auth.connection.saml.refresh(ctx, { connectionId });
 ```

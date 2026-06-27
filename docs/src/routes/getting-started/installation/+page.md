@@ -92,7 +92,7 @@ The wizard handles everything:
     <code>signIn</code> + <code>signOut</code>; <code>store</code> is internal runtime plumbing.
   </Card>
   <Card title="Server helpers">
-    `auth.user.*`, `auth.group.sso.*`, and `auth.group.sso.scim.*` are server-side helpers for
+    `auth.user.*`, `auth.connection.*`, and `auth.connection.scim.*` are server-side helpers for
     Convex code. They are not automatically public RPC.
   </Card>
   <Card title="Optional group SSO RPC">
@@ -107,8 +107,9 @@ The wizard handles everything:
 // convex/convex.config.ts
 import { defineApp } from "convex/server";
 import auth from "@robelest/convex-auth/convex.config";
+import { authEnv } from "@robelest/convex-auth/server";
 
-const app = defineApp();
+const app = defineApp({ env: authEnv });
 app.use(auth);
 export default app;
 ```
@@ -117,15 +118,16 @@ export default app;
 
 ```ts
 // convex/auth.ts
-import { createAuth } from "@robelest/convex-auth/component";
+import { defineAuth } from "@robelest/convex-auth/server";
 import { components } from "./_generated/api";
+import { env } from "./_generated/server";
 import { github } from "@robelest/convex-auth/providers/github";
 
-const auth = createAuth(components.auth, {
+const auth = defineAuth(components.auth, {
   providers: [
     github({
-      clientId: process.env.AUTH_GITHUB_ID!,
-      clientSecret: process.env.AUTH_GITHUB_SECRET!,
+      clientId: env.AUTH_GITHUB_ID!,
+      clientSecret: env.AUTH_GITHUB_SECRET!,
     }),
   ],
 });
@@ -166,7 +168,9 @@ export default {
 ```
 
 `CONVEX_SITE_URL` is provided automatically by Convex. This file is what makes
-`ctx.auth.getUserIdentity()` work against tokens issued by Convex Auth.
+`ctx.auth.getUserIdentity()` work against tokens issued by Convex Auth. This
+specific Convex config file is still loaded from deployment environment; use the
+generated `env` import inside Convex functions and auth provider setup.
 
 ### 5. Auth HTTP routes
 

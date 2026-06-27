@@ -1,6 +1,6 @@
 ---
 title: auth.session
-description: Session management — read, list, and invalidate sessions.
+description: Session management — read, list, and revoke sessions.
 ---
 
 <svelte:head>
@@ -20,8 +20,8 @@ backed builders such as `authQuery`, `authMutation`, or `authAction`.
 | Method       | Signature                    | Returns                  | Description                                                                                         |
 | ------------ | ---------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------- |
 | `id`         | `(ctx)`                      | `Id<"Session"> \| null`  | Current session id, or `null` when unauthenticated. Pairs with `auth.user.id(ctx)`.                 |
-| `invalidate` | `(ctx, { userId, except? })` | `{ userId, except }`     | Invalidates all sessions for a user. Pass `except` as an array of session IDs to keep those active. |
-| `get`        | `(ctx, sessionId)`           | `Doc<"Session"> \| null` | Fetches a session document by ID.                                                                   |
+| `revoke`     | `(ctx, { userId, except? })` | `{ userId, except }`     | Revokes all sessions for a user. Pass `except` as an array of session IDs to keep those active.     |
+| `get`        | `(ctx, { id })`              | `Doc<"Session"> \| null` | Reads a session document by ID.                                                                     |
 | `list`       | `(ctx, { userId })`          | `Doc<"Session">[]`       | Lists all sessions for a user.                                                                      |
 
 ## Examples
@@ -40,7 +40,7 @@ const identity = await ctx.auth.getUserIdentity();
 const sessionId = identity?.sid;
 ```
 
-### Invalidate all other sessions
+### Revoke all other sessions
 
 This is useful for a "sign out everywhere else" feature:
 
@@ -51,7 +51,7 @@ if (!sessionId) {
   throw new Error("Current session missing");
 }
 
-await auth.session.invalidate(ctx, {
+await auth.session.revoke(ctx, {
   userId: ctx.auth.userId,
   except: [sessionId],
 });

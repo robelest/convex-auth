@@ -10,52 +10,66 @@ description: Identity, profile, and access control patterns.
 
 # Authorization Patterns
 
-Convex Auth keeps authorization simple. You define roles in
-`createAuth({ authorization: { roles } })`, assign those role ids to group
-memberships, and enforce access by checking grants with
-`auth.member.require(...)` or `auth.member.inspect(...)`.
+Convex Auth keeps authorization simple. In vNext, define a permission system
+with `definePermissions(...)`, pass it to `defineAuth({ permissions })`, assign
+role ids to group memberships, and enforce access by checking grants with
+`auth.member.assert(...)` or `auth.member.get(...)`.
 
-## Define roles
+Use the permissions vocabulary everywhere in new auth definitions.
 
-Use `defineRoles(...)` so your role ids and grants stay typed everywhere else in
-your app.
+## Define permissions
+
+Use `definePermissions(...)` so grant strings and role ids stay typed everywhere
+else in your app. Grants are the atomic permissions your code checks. Roles are
+named bundles of grants that you assign to memberships and invites.
 
 ```ts
-import { defineRoles } from "@robelest/convex-auth/authorization";
-import { createAuth } from "@robelest/convex-auth/component";
+import { defineAuth } from "@robelest/convex-auth/server";
+import { definePermissions } from "@robelest/convex-auth/permissions";
 
-export const roles = defineRoles({
-  orgAdmin: {
-    label: "Organization Admin",
-    grants: [
-      "members.create",
-      "members.update",
-      "members.delete",
-      "sso.connection.manage",
-      "scim.manage",
-    ],
-  },
-  support: {
-    label: "Support",
-    grants: ["members.read", "tickets.manage"],
-  },
-  member: {
-    label: "Member",
-    grants: [],
+export const permissions = definePermissions({
+  grants: [
+    "members.create",
+    "members.update",
+    "members.delete",
+    "members.read",
+    "tickets.manage",
+    "sso.connection.manage",
+    "scim.manage",
+  ],
+  roles: {
+    orgAdmin: {
+      label: "Organization Admin",
+      grants: [
+        "members.create",
+        "members.update",
+        "members.delete",
+        "members.read",
+        "sso.connection.manage",
+        "scim.manage",
+      ],
+    },
+    support: {
+      label: "Support",
+      grants: ["members.read", "tickets.manage"],
+    },
+    member: {
+      label: "Member",
+      grants: ["members.read"],
+    },
   },
 });
 
-export const auth = createAuth(components.auth, {
+export const auth = defineAuth(components.auth, {
   providers: [
     /* ... */
   ],
-  authorization: {
-    roles,
-  },
+  permissions,
 });
 ```
 
-Role names are labels for humans. Grants are what your code should trust.
+Role names are labels for humans. Grants are the contract your code should
+trust.
 
 ## Assign roles with memberships
 
@@ -65,17 +79,22 @@ tables.
 
 ```ts
 await auth.member.create(ctx, {
-  userId,
-  groupId: orgId,
-  roleIds: [roles.orgAdmin.id],
+  data: {
+    userId,
+    groupId: orgId,
+    roleIds: [permissions.roles.orgAdmin.id],
+  },
 });
 ```
 
 You update memberships the same way:
 
 ```ts
-await auth.member.update(ctx, memberId, {
-  roleIds: [roles.support.id],
+await auth.member.update(ctx, {
+  id: memberId,
+  patch: {
+    roleIds: [permissions.roles.support.id],
+  },
 });
 ```
 
@@ -83,9 +102,11 @@ Invites can pre-assign role ids before the user joins:
 
 ```ts
 await auth.invite.create(ctx, {
-  groupId: orgId,
-  email: "alice@example.com",
-  roleIds: [roles.member.id],
+  data: {
+    groupId: orgId,
+    email: "alice@example.com",
+    roleIds: [permissions.roles.member.id],
+  },
 });
 ```
 
@@ -151,7 +172,7 @@ import { auth } from "./auth";
 export const canAccessAdminTools = authQuery({
   args: {},
   handler: async (ctx) => {
-    const result = await auth.member.inspect(ctx, {
+    const result = await auth.member.get(ctx, {
       userId: ctx.auth.userId,
       groupId: "group_id_here",
     });
@@ -165,7 +186,7 @@ to it are the real contract.
 
 ```ts
 // Use this when the handler should fail instead of returning a boolean.
-await auth.member.require(ctx, {
+await auth.member.assert(ctx, {
   userId: ctx.auth.userId,
   groupId: orgId,
   grants: ["sso.connection.manage"],
@@ -174,12 +195,12 @@ await auth.member.require(ctx, {
 
 ## Membership traversal
 
-If your groups are nested, `auth.member.inspect(...)` can still resolve
+If your groups are nested, `auth.member.get(...)` can still resolve
 inherited membership, but access decisions should usually be expressed in
 grants.
 
 ```ts
-const result = await auth.member.inspect(ctx, {
+const result = await auth.member.get(ctx, {
   userId: ctx.auth.userId,
   groupId: teamId,
 });
@@ -191,17 +212,17 @@ if (result.grants.includes("members.read")) {
 
 ## Performance: derive permissions from resolved grants
 
-When you already have a user's resolved grants (e.g. from `member.inspect`), you
+When you already have a user's resolved grants (e.g. from `member.get`), you
 can derive permissions locally instead of making separate authorization calls:
 
 ```ts
-const { grants } = await auth.member.inspect(ctx, {
+const { grants } = await auth.member.get(ctx, {
   userId: ctx.auth.userId,
   groupId,
 });
 
 // Derive permissions from already-resolved grants (no extra DB reads)
-const permissions = {
+const abilities = {
   canCreate: grants.includes("items.create"),
   canEdit: grants.includes("items.edit"),
   canDelete: grants.includes("items.delete"),
@@ -211,31 +232,53 @@ const permissions = {
 This avoids redundant round trips when you need to check multiple grants for the
 same user and group.
 
-## Group Connection mounted RPC
+## Group connection admin RPC
 
-When you mount group SSO RPC, keep the access policy close to the mounted
-builder:
+Group connection admin is exposed exactly like every other namespace: write
+ordinary `authMutation` / `authQuery` / `authAction` functions that call the flat
+`auth.connection.*` facade and authorize with `auth.member.assert`. There is no
+special builder — the grant check lives directly in each handler.
 
 ```ts
-export const groupApi = createAuthGroupSso(auth, {
-  permissions: {
-    sso: { require: [roles.orgAdmin] },
-    scim: { require: [roles.orgAdmin] },
+// convex/auth/group.ts
+import { v } from "convex/values";
+import { auth } from "../auth";
+import { authMutation } from "../functions";
+
+export const createConnection = authMutation({
+  args: {
+    groupId: v.string(),
+    protocol: v.union(v.literal("oidc"), v.literal("saml")),
+    name: v.optional(v.string()),
   },
-  access: async (ctx, input, requiredRoles) => {
-    if (!input.groupId) {
-      throw new Error("Group scope required");
-    }
-    await auth.member.require(ctx, {
-      userId: input.userId,
-      groupId: input.groupId,
-      roleIds: requiredRoles.map((role) => role.id),
+  handler: async (ctx, args) => {
+    await auth.member.assert(ctx, {
+      userId: ctx.auth.userId,
+      groupId: args.groupId,
+      grants: ["connection.create"],
     });
+    return auth.connection.create(ctx, args);
+  },
+});
+
+export const setScim = authMutation({
+  args: { connectionId: v.string(), profile: v.optional(v.any()) },
+  handler: async (ctx, args) => {
+    const connection = await auth.connection.get(ctx, { id: args.connectionId });
+    await auth.member.assert(ctx, {
+      userId: ctx.auth.userId,
+      groupId: connection!.groupId,
+      grants: ["connection.protocol.manage"],
+    });
+    return auth.connection.scim.set(ctx, args);
   },
 });
 ```
 
-`access` decides whether the caller may perform the requested admin operation.
+The `auth.member.assert(...)` check decides whether the caller may perform the
+requested admin operation. Handlers use the same object args as the server
+facade: `{ id }` for primary IDs, `{ connectionId }` for foreign-key scoped
+operations, `{ data }` for payloads, and `paginationOpts` for unbounded lists.
 
 ## Account/User relationship
 
@@ -248,16 +291,16 @@ This is why authorization should be keyed on `userId`, not provider account IDs.
 ## Common patterns
 
 Use `auth.ctx()` when a handler should always receive `ctx.auth.userId` and
-`ctx.auth.user`. Use `auth.member.inspect(...)` when you need a boolean-style
-access check. Use `auth.member.require(...)` when the handler should throw on
+`ctx.auth.user`. Use `auth.member.get(...)` when you need a boolean-style
+access check. Use `auth.member.assert(...)` when the handler should throw on
 failure. Use `auth.ctx.optional()` when the same handler should work for
 both guests and signed-in users.
 
 ## Recommended pattern
 
-Define roles once in config. Assign `roleIds` per membership. Check grants in
-server functions. Treat role ids as labels and grants as the actual
+Define permissions once in config. Assign `roleIds` per membership. Check grants
+in server functions. Treat role ids as labels and grants as the actual
 authorization contract.
 
 See [`auth.member`](/api/member) for the API surface and
-[Group SSO RPC](/sso/rpc) for the mounted admin flow.
+[Group SSO RPC](/connection/rpc) for the app-owned admin flow.

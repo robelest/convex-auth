@@ -21,16 +21,17 @@ Your app registers the auth component and wires four files:
 
 <CardGrid>
   <Card title="convex.config.ts">
-    <code>app.use(auth)</code> — registers the auth component and its isolated
-    storage/functions.
+    <code>defineApp({'{'} env: authEnv {'}'})</code> and
+    <code>app.use(auth)</code> — registers typed env, the auth component, and
+    isolated storage/functions.
   </Card>
   <Card title="auth.ts">
-    <code>createAuth(components.auth, {'{'}providers{'}'})</code> — configures providers and
-    exports <code>signIn</code>, <code>signOut</code>, <code>store</code>, and <code>http</code>.
+    <code>defineAuth(components.auth, {'{'} providers, permissions {'}'})</code> — vNext preview setup for providers,
+    permissions, helper namespaces, and HTTP routes.
   </Card>
   <Card title="auth/core.ts">
-    <code>createAuthContext(components.auth)</code> — lightweight auth context for
-    queries and mutations. No providers or crypto loaded.
+    Lightweight context import for queries and mutations. No providers or crypto
+    loaded.
   </Card>
   <Card title="HTTP alias">
     <code>auth.http()</code> — mounts OAuth callbacks,
@@ -46,7 +47,7 @@ The component owns its own isolated tables:
 | `Account`          | Linked auth accounts (OAuth, password, etc.) |
 | `Session`          | Active sessions                              |
 | `Group`            | Organizations / teams                        |
-| `Member`           | Group memberships with roles                 |
+| `Member`           | Group memberships with role ids              |
 | `Invite`           | Pending invitations                          |
 | `ApiKey`           | API keys with scopes                         |
 | `Passkey`          | WebAuthn credentials                         |
@@ -55,22 +56,22 @@ The component owns its own isolated tables:
 
 The auth component also installs three Convex subcomponents internally:
 
-| Subcomponent                  | Role                                                                 |
-| ----------------------------- | -------------------------------------------------------------------- |
-| `@convex-dev/migrations`      | Versioned data migrations against the component's own tables         |
-| `@convex-dev/rate-limiter`    | Sign-in throttle (token-bucket; backs `auth.signIn` rate limiting)   |
-| `@convex-dev/workpool`        | Webhook delivery worker — drives retries with exponential backoff    |
+| Subcomponent               | Role                                                               |
+| -------------------------- | ------------------------------------------------------------------ |
+| `@convex-dev/migrations`   | Versioned data migrations against the component's own tables       |
+| `@convex-dev/rate-limiter` | Sign-in throttle (token-bucket; backs `auth.signIn` rate limiting) |
+| `@convex-dev/workpool`     | Webhook delivery worker — drives retries with exponential backoff  |
 
 These are mounted by `component.use(...)` inside `convex.config.ts`; the
 parent app doesn't install or configure them.
 
 ## Function visibility
 
-Every function exposed by the auth component is registered as
-`internalQuery` / `internalMutation` / `internalAction`. Clients of the
-parent app cannot reach component functions directly — all access goes
-through `ctx.runQuery` / `ctx.runMutation` from server-side wrappers (the
-`auth.*` helpers documented under API Reference).
+Component functions are private to the component boundary from the browser's
+point of view. The parent app reaches the component through typed component
+references and server-side wrappers, usually the `auth.*` helpers documented
+under API Reference. Client-callable Convex functions still live in the parent
+app, where you choose what to export.
 
 ## Scheduled cleanup
 
@@ -100,40 +101,62 @@ For subsequent requests:
 
 ## Key design constraints
 
-- Component functions are **always internal** from the parent's perspective.
-  Your app re-exports the public auth actions it wants to expose.
+- Component functions are not browser-callable through the parent app unless
+  your app exports wrappers. Your app chooses the public auth actions and SSO
+  admin RPC it wants to expose.
 - Components cannot access `ctx.auth` or `process.env`. Auth checks and env var
-  reads happen at the app layer.
+  reads happen at the app layer. In Convex 1.41+, prefer typed env with
+  `defineApp({ env: authEnv })` and generated `env` imports.
 - Component tables are isolated — they don't share the app's data model.
 
-## What `createAuth` returns
+## What `defineAuth` returns
 
-`createAuth(components.auth, config)` returns an object with:
+`defineAuth(components.auth, config)` is the vNext preview replacement for the
+old `defineAuth(...)` mental model. It returns one auth handle with:
 
 - **Actions**: `signIn`, `signOut` — the client-facing auth flow
 - **Internal runtime**: `store` — session token exchange used internally by the auth runtime
 - **Helpers**: `auth.user.*`, `auth.session.*`, `auth.group.*`, etc. —
   server-side primitives
 - **Request helpers**: `auth.request.context`, `auth.request.action`, and `auth.request.route` for your own app routes
-- **SSO** (conditional): `auth.group.sso.*` — only present when `sso()` is in
-  providers
-- **SCIM** (conditional): `auth.group.sso.scim.*` — provisioning helpers when
-  `sso()` is in providers
+- **Connection (SSO)** (conditional): `auth.connection.*` — only present when
+  `connection()` is in providers. Expose admin RPC by writing your own
+  `authMutation`/`authQuery` functions that call this facade.
 
 ## Entry point split: `server` vs `core`
 
-`createAuth` from `@robelest/convex-auth/server` loads provider implementations,
-OAuth, crypto, and HTTP route handling. Queries and mutations never use any of
-that. To keep your function bundles fast, use the split pattern:
+The full auth definition from `@robelest/convex-auth/server` loads provider
+implementations, OAuth, crypto, and HTTP route handling. Queries and mutations
+should not load that code unless they need it. To keep function bundles fast,
+use the split pattern:
+
+```ts
+// convex/permissions.ts — pure shared permission definition
+import { definePermissions } from "@robelest/convex-auth/permissions";
+
+export const permissions = definePermissions({
+  grants: ["members.read"],
+  roles: {
+    member: {
+      label: "Member",
+      grants: ["members.read"],
+    },
+  },
+});
+```
 
 ```ts
 // convex/auth.ts — heavyweight, only evaluated for signIn/signOut
-import { createAuth } from "@robelest/convex-auth/server";
+import { defineAuth } from "@robelest/convex-auth/server";
 import { google, password } from "@robelest/convex-auth/providers";
+import { permissions } from "./permissions";
 
-export const { signIn, signOut, store } = createAuth(components.auth, {
+export const auth = defineAuth(components.auth, {
   providers: [google({ clientId, clientSecret }), password()],
+  permissions,
 });
+
+export const { signIn, signOut, store } = auth;
 ```
 
 ```ts
@@ -152,9 +175,10 @@ export default {
 // convex/auth/core.ts — lightweight, imported by all queries
 import { createAuthContext } from "@robelest/convex-auth/core";
 import { components } from "../_generated/api";
+import { permissions } from "../permissions";
 
 export const auth = createAuthContext(components.auth, {
-  authorization: { roles },
+  permissions,
 });
 ```
 
@@ -168,10 +192,10 @@ export const authQuery = customQuery(query, auth.ctx());
 export const authMutation = customMutation(mutation, auth.ctx());
 ```
 
-`createAuthContext` returns the same `user`, `session`, `member`, `group`,
-`account`, `invite`, `key`, `context`, and `ctx` APIs as `createAuth` — but
-without `signIn`, `signOut`, `store`, `http`, or provider logic. Queries that
-import from `auth/core.ts` never load provider, OAuth, or crypto code.
+`createAuthContext` is the current lightweight context entry point. In vNext
+docs, keep its vocabulary aligned with `defineAuth`: pass `permissions`, use
+object args, and keep provider, OAuth, and crypto code out of query/mutation
+bundles.
 
 | Entry point                         | What it loads                               | Use for                                         |
 | ----------------------------------- | ------------------------------------------- | ----------------------------------------------- |
@@ -187,7 +211,7 @@ used by Convex Auth.
 
 ## Where `ctx.auth` comes from
 
-Neither `createAuth` nor `createAuthContext` mutate every Convex handler
+Neither `defineAuth` nor `createAuthContext` mutate every Convex handler
 automatically. App code wires `auth.ctx()` into custom builders once, then uses
 those builders everywhere auth is required.
 
@@ -208,17 +232,17 @@ rejected before your handler runs.
 
 ## API layers
 
-| Layer                 | What it is                                                        | Typical usage                                                                 |
-| --------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Auth-flow actions     | Required client-callable functions exported from `convex/auth.ts` | `api.auth.signIn`, `api.auth.signOut`                                         |
-| Internal auth action  | Internal runtime mutation exported from `convex/auth.ts`          | `internal.auth.store`                                                         |
-| Helper namespaces     | Server-side helper APIs returned by `createAuth(...)`             | `auth.member.require(ctx, ...)`, `auth.group.sso.connection.create(ctx, ...)` |
-| Mounted group SSO RPC | Optional app-owned public RPC for group SSO admin UI              | `api.auth.group.createConnection`, `api.auth.group.configureScim`             |
+| Layer                 | What it is                                                        | Typical usage                                                                    |
+| --------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Auth-flow actions     | Required client-callable functions exported from `convex/auth.ts` | `api.auth.signIn`, `api.auth.signOut`                                            |
+| Internal auth action  | Internal runtime mutation exported from `convex/auth.ts`          | `internal.auth.store`                                                            |
+| Helper namespaces     | Server-side helper APIs returned by `defineAuth(...)`             | `auth.member.assert(ctx, { ... })`, `auth.connection.create(ctx, { data })`     |
+| App-owned admin RPC   | Optional public RPC for group connection admin UI                | `authMutation`/`authQuery` functions calling `auth.connection.*`                 |
 
 Only the first layer is required for the frontend auth client. The third layer
-exists only if your app explicitly exposes app-owned group SSO wrappers or
-custom group SSO wrappers. For the app-facing RPC surface, see the
-[Group SSO RPC guide](/sso/rpc/).
+exists only if your app explicitly exposes app-owned group connection admin
+RPC by writing `authMutation`/`authQuery` functions over the `auth.connection.*`
+facade.
 
 `auth.oauth.*` is the planned provider-mode namespace and is intentionally not
 part of the current stable surface yet.

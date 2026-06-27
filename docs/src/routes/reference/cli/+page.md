@@ -44,24 +44,36 @@ Group SSO RPC is app-owned. Create a single file like `convex/auth/group.ts` and
 export only the helpers your app needs:
 
 ```ts
-import { createAuthGroupSso } from "@robelest/convex-auth/server";
+import { v } from "convex/values";
+import { authMutation } from "./functions";
 import { auth } from "../auth";
 import { roles } from "../roles";
 
-export const { createConnection, configureScim } = createAuthGroupSso(auth, {
-  permissions: {
-    sso: { require: [roles.orgAdmin] },
-    scim: { require: [roles.orgAdmin] },
+// Expose only the helpers your app needs — the same authMutation/authQuery
+// pattern as the rest of your app. Authorize with auth.member.assert, then
+// call the flat auth.connection.* facade.
+export const createConnection = authMutation({
+  args: {
+    groupId: v.string(),
+    protocol: v.union(v.literal("oidc"), v.literal("saml")),
+    name: v.optional(v.string()),
   },
-  access: async (ctx, input, requiredRoles) => {
-    if (!input.groupId) {
-      throw new Error("Group scope required");
-    }
-    await auth.member.require(ctx, {
-      userId: input.userId,
-      groupId: input.groupId,
-      roleIds: requiredRoles.map((role) => role.id),
+  handler: async (ctx, args) => {
+    await auth.member.assert(ctx, {
+      userId: ctx.auth.userId,
+      groupId: args.groupId,
+      roleIds: [roles.orgAdmin.id],
     });
+    return auth.connection.create(ctx, args);
+  },
+});
+
+export const setScim = authMutation({
+  args: { connectionId: v.string() },
+  handler: async (ctx, args) => {
+    const { groupId } = await auth.connection.get(ctx, { id: args.connectionId });
+    await auth.member.assert(ctx, { userId: ctx.auth.userId, groupId, roleIds: [roles.orgAdmin.id] });
+    return auth.connection.scim.set(ctx, args);
   },
 });
 ```
@@ -79,7 +91,7 @@ import { useAction } from "convex/react";
 import { api } from "../convex/_generated/api";
 
 const createConnection = useAction(api.auth.group.createConnection);
-const configureScim = useAction(api.auth.group.configureScim);
+const setScim = useAction(api.auth.group.setScim);
 ```
 
 Pass a concrete `groupId` when calling `createConnection(...)`.

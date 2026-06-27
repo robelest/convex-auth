@@ -15,13 +15,13 @@ lifecycle: `pending` -> `accepted` or `revoked`.
 
 ## Methods
 
-| Method   | Signature                                         | Returns                          | Description                                                                             |
-| -------- | ------------------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------- |
-| `create` | `(ctx, { groupId, email, roleIds?, expiresAt? })` | `{ inviteId, token }`            | Creates a pending invite. Throws `ConvexError` with code `INVALID_ROLE_IDS` on failure. |
-| `get`    | `(ctx, inviteId)`                                 | `Doc<"invites">`                 | Fetches an invite document by ID.                                                       |
-| `list`   | `(ctx, { groupId?, status?, limit?, cursor? })`   | `PaginationResult<Doc<"GroupInvite">>` — `{ page, isDone, continueCursor }` | Lists invites, optionally filtered by group and/or status. Convex-native shape; pass through to `usePaginatedQuery`. |
-| `accept` | `(ctx, inviteId)`                                 | `{ inviteId, acceptedByUserId }` | Accepts a pending invite and records acceptance metadata.                               |
-| `revoke` | `(ctx, inviteId)`                                 | `{ inviteId }`                   | Revokes a pending invite so it can no longer be accepted.                               |
+| Method   | Signature                                                                | Returns                                                                     | Description                                                                                                          |
+| -------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `create` | `(ctx, { data: { groupId?, email?, roleIds?, expiresTime?, extend? } })` | `{ id, token }`                                                             | Creates a pending invite. Throws `ConvexError` with code `INVALID_ROLE_IDS` on failure.                              |
+| `get`    | `(ctx, { id })`                                                          | `Doc<"GroupInvite">`                                                            | Reads an invite document by ID.                                                                                    |
+| `list`   | `(ctx, { where?, paginationOpts, orderBy?, order? })`                    | `PaginationResult<Doc<"GroupInvite">>` — `{ page, isDone, continueCursor }` | Lists invites, optionally filtered by group and/or status. Convex-native shape; pass through to `usePaginatedQuery`. |
+| `accept` | `(ctx, { id, acceptedByUserId? })`                                       | `{ inviteId, acceptedByUserId }`                                            | Accepts a pending invite and records acceptance metadata.                                                            |
+| `revoke` | `(ctx, { id })`                                                          | `null`                                                                      | Revokes a pending invite so it can no longer be accepted.                                                            |
 
 ## Examples
 
@@ -29,24 +29,28 @@ lifecycle: `pending` -> `accepted` or `revoked`.
 
 ```ts
 // Admin creates an invite
-const { inviteId, token } = await auth.invite.create(ctx, {
-  groupId: orgId,
-  email: "alice@example.com",
-  roleIds: ["member"],
+const { id, token } = await auth.invite.create(ctx, {
+  data: {
+    groupId: orgId,
+    email: "alice@example.com",
+    roleIds: ["member"],
+  },
 });
 
 // Later, when Alice signs in and accepts:
-await auth.invite.accept(ctx, inviteId);
+await auth.invite.accept(ctx, { id });
 ```
 
 ### Create an invite with expiration
 
 ```ts
-const { inviteId } = await auth.invite.create(ctx, {
-  groupId: orgId,
-  email: "bob@example.com",
-  roleIds: ["viewer"],
-  expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+const { id } = await auth.invite.create(ctx, {
+  data: {
+    groupId: orgId,
+    email: "bob@example.com",
+    roleIds: ["viewer"],
+    expiresTime: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
+  },
 });
 ```
 
@@ -54,13 +58,13 @@ const { inviteId } = await auth.invite.create(ctx, {
 
 ```ts
 const pending = await auth.invite.list(ctx, {
-  groupId: orgId,
-  status: "pending",
+  where: { groupId: orgId, status: "pending" },
+  paginationOpts: { numItems: 25, cursor: null },
 });
 ```
 
 ### Revoke an invite
 
 ```ts
-await auth.invite.revoke(ctx, inviteId);
+await auth.invite.revoke(ctx, { id });
 ```

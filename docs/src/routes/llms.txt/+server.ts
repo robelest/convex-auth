@@ -2,6 +2,7 @@ import { sidebar } from "$lib/config/sidebar";
 
 import type { RequestHandler } from "./$types";
 
+// fallow-ignore-next-line unused-export
 export const prerender = true;
 
 export const GET: RequestHandler = async () => {

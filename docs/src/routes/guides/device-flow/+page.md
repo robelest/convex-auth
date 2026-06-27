@@ -18,7 +18,7 @@ the user enters on a secondary device.
 ```ts
 import { device } from "@robelest/convex-auth/providers";
 
-createAuth(components.auth, {
+defineAuth(components.auth, {
   providers: [device({ verificationUri: "https://myapp.com/device" })],
 });
 ```

@@ -30,14 +30,14 @@ configured. Pair them with `auth.v.*` as your function `returns:` — see
 
 ## Methods
 
-| Method           | Signature                            | Returns               | Description                                                                                                                                                              |
-| ---------------- | ------------------------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `get`            | `(ctx, userId)`                      | `Doc<"User"> \| null` | Fetches a user document by ID.                                                                                                                                           |
-| `id`             | `(ctx)`                              | `Id<"User"> \| null`  | Current session user's id, or `null` when unauthenticated. Faster than `viewer` when you only need the id (no DB read).                                                  |
-| `list`           | `(ctx, { where?, limit?, cursor? })` | `PaginationResult<Doc<"User">>` — `{ page, isDone, continueCursor }` | Lists users with optional filtering and pagination. Convex-native shape; pass directly to `usePaginatedQuery`. |
-| `update`         | `(ctx, userId, data)`                | `{ userId }`          | Updates fields on a user document.                                                                                                                                       |
-| `viewer`         | `(ctx)`                              | `Doc<"User"> \| null` | Returns the current session user's full document, or `null` when unauthenticated.                                                                                        |
-| `delete`         | `(ctx, userId, { cascade? })`        | `{ userId }`          | Deletes a user. With `cascade: true`, also deletes all linked sessions, accounts, memberships, keys, and owned emails. Throws `ConvexError` with code `INVALID_PARAMETERS` on failure. |
+| Method   | Signature                                             | Returns                                                              | Description                                                                                                                                                                            |
+| -------- | ----------------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get`    | `(ctx, { id })`                                       | `Doc<"User"> \| null`                                                | Reads a user document by ID.                                                                                                                                                         |
+| `id`     | `(ctx)`                                               | `Id<"User"> \| null`                                                 | Current session user's id, or `null` when unauthenticated. Faster than `viewer` when you only need the id (no DB read).                                                                |
+| `list`   | `(ctx, { where?, paginationOpts, orderBy?, order? })` | `PaginationResult<Doc<"User">>` — `{ page, isDone, continueCursor }` | Lists users with optional filtering and pagination. Convex-native shape; pass directly to `usePaginatedQuery`.                                                                         |
+| `update` | `(ctx, { id, patch })`                                 | `{ userId }`                                                         | Updates fields on a user document.                                                                                                                                                     |
+| `viewer` | `(ctx)`                                               | `Doc<"User"> \| null`                                                | Returns the current session user's full document, or `null` when unauthenticated.                                                                                                      |
+| `remove` | `(ctx, { id, cascade? })`                             | `{ userId }`                                                         | Deletes a user. With `cascade: true`, also deletes all linked sessions, accounts, memberships, keys, and owned emails. Throws `ConvexError` with code `INVALID_PARAMETERS` on failure. |
 
 > Active-group selection lives on the dedicated `auth.group.active`
 > namespace (`get` / `set` / `clear`), not on `auth.user`.
@@ -48,13 +48,13 @@ Provider-agnostic management of every email a user owns (across OAuth, SSO,
 and SCIM). The collection is exposed via `.list`; `User.email` remains the
 single denormalized primary pointer.
 
-| Method      | Signature                       | Returns                  | Description                                                                                                   |
-| ----------- | ------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| `list`      | `(ctx, { userId? })`            | `Doc<"UserEmail">[]`     | Every email the user owns, with provenance (`source`, `connectionId`, `verificationTime`, `isPrimary`).       |
-| `add`       | `(ctx, email, { userId? })`     | `{ email }`              | Records an **unverified** address. Does not verify (verification stays proof-driven) and does not become primary. |
-| `remove`    | `(ctx, email, { userId? })`     | `{ email }`              | Deletes an address. Throws if it is the primary, the only verified email, or a connection-managed row.        |
-| `primary`   | `(ctx, { userId? })`            | `Doc<"UserEmail"> \| null` | Reads the current primary email.                                                                            |
-| `primary`   | `(ctx, email, { userId? })`     | `{ email }`              | Promotes a **verified** address to primary (syncs `User.email`).                                              |
+| Method    | Signature                   | Returns                    | Description                                                                                                       |
+| --------- | --------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `list`    | `(ctx, { userId? })`        | `Doc<"UserEmail">[]`       | Every email the user owns, with provenance (`source`, `connectionId`, `verificationTime`, `isPrimary`).           |
+| `add`     | `(ctx, email, { userId? })` | `{ email }`                | Records an **unverified** address. Does not verify (verification stays proof-driven) and does not become primary. |
+| `remove`  | `(ctx, email, { userId? })` | `{ email }`                | Deletes an address. Throws if it is the primary, the only verified email, or a connection-managed row.            |
+| `primary` | `(ctx, { userId? })`        | `Doc<"UserEmail"> \| null` | Reads the current primary email.                                                                                  |
+| `primary` | `(ctx, email, { userId? })` | `{ email }`                | Promotes a **verified** address to primary (syncs `User.email`).                                                  |
 
 `userId` defaults to the current session user everywhere.
 
@@ -80,13 +80,13 @@ const user = ctx.auth.user;
 ### Get any user by ID
 
 ```ts
-const user = await auth.user.get(ctx, userId);
+const user = await auth.user.get(ctx, { id: userId });
 ```
 
 ### Delete a user with cascade
 
 ```ts
-await auth.user.delete(ctx, userId, { cascade: true });
+await auth.user.remove(ctx, { id: userId, cascade: true });
 ```
 
 ### Active group

@@ -51,22 +51,24 @@ import { useAuth } from "@robelest/convex-auth/react";
 function SignInButton() {
   const { isLoading, isAuthenticated, signIn, signOut } = useAuth();
   if (isLoading) return <span>Loading…</span>;
-  return isAuthenticated
-    ? <button onClick={() => signOut()}>Sign out</button>
-    : <button onClick={() => signIn("google")}>Sign in with Google</button>;
+  return isAuthenticated ? (
+    <button onClick={() => signOut()}>Sign out</button>
+  ) : (
+    <button onClick={() => signIn("google")}>Sign in with Google</button>
+  );
 }
 ```
 
 Return shape:
 
-| Field              | Type                                     | Description |
-| ------------------ | ---------------------------------------- | ----------- |
-| `phase`            | `"loading" \| "handshake" \| "authenticated" \| "unauthenticated"` | High-level state for deterministic UI. |
-| `isLoading`        | `boolean`                                | True during initial hydration. |
-| `isAuthenticated`  | `boolean`                                | True after Convex confirms backend auth. |
-| `token`            | `string \| null`                         | Raw JWT, or `null`. |
-| `signIn`           | `(provider, params?) => Promise<...>`    | Start a provider sign-in flow. |
-| `signOut`          | `() => Promise<void>`                    | Sign out + clear local state. |
+| Field             | Type                                                               | Description                              |
+| ----------------- | ------------------------------------------------------------------ | ---------------------------------------- |
+| `phase`           | `"loading" \| "handshake" \| "authenticated" \| "unauthenticated"` | High-level state for deterministic UI.   |
+| `isLoading`       | `boolean`                                                          | True during initial hydration.           |
+| `isAuthenticated` | `boolean`                                                          | True after Convex confirms backend auth. |
+| `token`           | `string \| null`                                                   | Raw JWT, or `null`.                      |
+| `signIn`          | `(provider, params?) => Promise<...>`                              | Start a provider sign-in flow.           |
+| `signOut`         | `() => Promise<void>`                                              | Sign out + clear local state.            |
 
 `useAuth()` subscribes to client state via `useSyncExternalStore`, so it's
 SSR-safe — it returns a stable `loading` snapshot on the server.
@@ -82,10 +84,12 @@ import { useConvexAuthClient } from "@robelest/convex-auth/react";
 function TotpSetup() {
   const client = useConvexAuthClient();
   return (
-    <button onClick={async () => {
-      const setup = await client.totp?.setup();
-      // show QR code, etc.
-    }}>
+    <button
+      onClick={async () => {
+        const setup = await client.totp?.setup();
+        // show QR code, etc.
+      }}
+    >
       Enable TOTP
     </button>
   );

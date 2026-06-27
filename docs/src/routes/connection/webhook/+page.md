@@ -1,40 +1,41 @@
 ---
-title: auth.group.sso.webhook
+title: auth.connection.webhook
 description: SSO webhooks — manage group webhook endpoints.
 ---
 
 <svelte:head>
 
-  <title>auth.group.sso.webhook - convex-auth</title>
+  <title>auth.connection.webhook - convex-auth</title>
 </svelte:head>
 
-# auth.group.sso.webhook
+# auth.connection.webhook
 
-The `auth.group.sso.webhook` namespace manages group webhook endpoints for
+The `auth.connection.webhook` namespace manages group webhook endpoints for
 SSO-related events.
 
 > This page documents the **server-side helper API**:
-> [`auth.group.sso.webhook.*`](/sso/webhook/). Public RPC like
-> [`api.auth.group.createWebhookEndpoint`](/sso/rpc/) only exists after your app
-> exposes app-owned group SSO wrappers.
+> [`auth.connection.webhook.*`](/connection/webhook/). Client-callable admin RPC like
+> `api.auth.group.createWebhookEndpoint` only exists after you expose it
+> yourself — write an `authMutation` that authorizes with `auth.member.assert`
+> and forwards to this facade, the same pattern as the rest of your app.
 
 ## Endpoint methods
 
 | Method             | Signature                                                               | Returns          | Description                                                                               |
 | ------------------ | ----------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------- |
 | `endpoint.create`  | `(ctx, { connectionId, url, secret, subscriptions, createdByUserId? })` | `{ endpointId }` | Creates a webhook endpoint that listens for specific events.                              |
-| `endpoint.list`    | `(ctx, connectionId)`                                                   | Endpoint[]       | Lists all webhook endpoints for a connection.                                             |
-| `endpoint.disable` | `(ctx, endpointId)`                                                     | `{ endpointId }` | Disables a webhook endpoint (stops delivery). Throws `ConvexError` if endpoint not found. |
+| `endpoint.list`    | `(ctx, { connectionId })`                                               | Endpoint[]       | Lists all webhook endpoints for a connection.                                             |
+| `endpoint.disable` | `(ctx, { id })`                                                         | `{ endpointId }` | Disables a webhook endpoint (stops delivery). Throws `ConvexError` if endpoint not found. |
 
 ## Example
 
 ### Set up a webhook endpoint
 
 ```ts
-const { endpointId } = await auth.group.sso.webhook.endpoint.create(ctx, {
+const { endpointId } = await auth.connection.webhook.endpoint.create(ctx, {
   connectionId,
   url: "https://api.acme.com/webhooks/sso",
-  subscriptions: ["group.sso.oidc.registered", "group.sso.scim.configured"],
+  subscriptions: [authEvents.connection.oidcSet.id, authEvents.scim.set.id],
   secret: "whsec_...",
 });
 ```
@@ -42,7 +43,7 @@ const { endpointId } = await auth.group.sso.webhook.endpoint.create(ctx, {
 ### Disable an endpoint
 
 ```ts
-await auth.group.sso.webhook.endpoint.disable(ctx, endpointId);
+await auth.connection.webhook.endpoint.disable(ctx, { id: endpointId });
 ```
 
 ## Delivery worker
@@ -63,20 +64,22 @@ is enough.
 
 Outbound HTTP request:
 
-| Header              | Value                                                                 |
-| ------------------- | --------------------------------------------------------------------- |
-| `Content-Type`      | `application/json`                                                    |
-| `X-Auth-Event-Type` | The event type string (e.g. `group.sso.scim.configured`)              |
-| `X-Auth-Delivery-Id`| The `GroupWebhookDelivery` document id (correlate with retries/logs)  |
-| `X-Auth-Timestamp`  | Epoch milliseconds used in the signature pre-image                    |
-| `X-Auth-Signature`  | `sha256=<hex>` — HMAC-SHA256 of `${timestamp}.${body}` using the endpoint secret |
+| Header               | Value                                                                            |
+| -------------------- | -------------------------------------------------------------------------------- |
+| `Content-Type`       | `application/json`                                                               |
+| `X-Auth-Event-Type`  | The auth event kind string (e.g. `connection.scim.set`)                          |
+| `X-Auth-Delivery-Id` | The `GroupWebhookDelivery` document id (correlate with retries/logs)             |
+| `X-Auth-Timestamp`   | Epoch milliseconds used in the signature pre-image                               |
+| `X-Auth-Signature`   | `sha256=<hex>` — HMAC-SHA256 of `${timestamp}.${body}` using the endpoint secret |
 
 Body:
 
 ```json
 {
-  "eventType": "group.sso.scim.configured",
-  "payload": { /* event-specific */ }
+  "kind": "connection.scim.set",
+  "payload": {
+    /* event-specific */
+  }
 }
 ```
 

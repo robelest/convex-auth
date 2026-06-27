@@ -98,9 +98,9 @@ Use `convex/auth/core.ts` anywhere you only need auth context or helper
 lookups inside Convex functions.
 
 - Queries and mutations wrapped with `auth.ctx()`
-- Permission checks like `auth.member.require(ctx, ...)`
+- Permission checks like `auth.member.assert(ctx, ...)`
 - Helper lookups like `auth.user.get`, `auth.member.list`, `auth.group.get`
-- Account and key management like `auth.account.listPasskeys` and `auth.key.list`
+- Account and key management like `auth.account.passkey.list` and `auth.key.list`
 
 Use `convex/auth.ts` only for the full runtime surface.
 

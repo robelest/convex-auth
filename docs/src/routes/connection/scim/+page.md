@@ -1,27 +1,27 @@
 ---
-title: auth.group.sso.scim
+title: auth.connection.scim
 description: SCIM 2.0 provisioning — configure directory sync and manage provisioned
   identities.
 ---
 
 <svelte:head>
 
-  <title>auth.group.sso.scim - convex-auth</title>
+  <title>auth.connection.scim - convex-auth</title>
 </svelte:head>
 
-# auth.group.sso.scim
+# auth.connection.scim
 
-The `auth.group.sso.scim` namespace configures SCIM 2.0 provisioning for
+The `auth.connection.scim` namespace configures SCIM 2.0 provisioning for
 automatic user and group synchronization from an identity provider's directory.
 
 > This page documents the **server-side helper API**:
-> [`auth.group.sso.scim.*`](/sso/scim/). Public RPC like
-> [`api.auth.group.configureScim`](/sso/rpc/) only exists after your app exposes
-> app-owned group SSO wrappers.
+> [`auth.connection.scim.*`](/connection/scim/). Client-callable admin RPC like
+> `api.auth.group.setScim` only exists after you expose it yourself —
+> write an `authMutation` that authorizes with `auth.member.assert` and forwards
+> to this facade, the same pattern as the rest of your app.
 
 Use the `connectionId` returned by
-[`auth.group.sso.connection.create(...)`](/sso/connection/) when configuring
-SCIM.
+[`auth.connection.create(...)`](/connection/connection/) when configuring SCIM.
 
 The SCIM base URL is derived from your app's public site URL and the connection
 ID. It is not an app-managed override.
@@ -41,16 +41,16 @@ common interoperability subset:
 | Method      | Signature                                               | Returns                                       | Description                                                                                         |
 | ----------- | ------------------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `configure` | `(ctx, { connectionId, status?, security?, profile? })` | `{ connectionId, token, configId, basePath }` | Configures SCIM provisioning and returns the SCIM bearer token once.                                |
-| `get`       | `(ctx, connectionId)`                                   | SCIM config document                          | Returns the current SCIM configuration for a connection.                                            |
-| `status`    | `(ctx, connectionId)`                                   | `{ configured, ready, ... }`                  | Returns a lightweight readiness summary for a connection.                                           |
-| `validate`  | `(ctx, connectionId)`                                   | `{ checks: [...], capabilities }`             | Validates that the SCIM configuration is complete and returns the supported SCIM capability subset. |
+| `get`       | `(ctx, { connectionId })`                               | SCIM config document                          | Returns the current SCIM configuration for a connection.                                            |
+| `status`    | `(ctx, { connectionId })`                               | `{ configured, ready, ... }`                  | Returns a lightweight readiness summary for a connection.                                           |
+| `validate`  | `(ctx, { connectionId })`                               | `{ checks: [...], capabilities }`             | Validates that the SCIM configuration is complete and returns the supported SCIM capability subset. |
 
 ## Example
 
 ### Configure SCIM for a connection
 
 ```ts
-const { token } = await auth.group.sso.scim.configure(ctx, {
+const { token } = await auth.connection.scim.set(ctx, {
   connectionId,
   security: {
     maxRequestSize: 200_000,
@@ -68,7 +68,7 @@ const { token } = await auth.group.sso.scim.configure(ctx, {
   },
 });
 
-const config = await auth.group.sso.scim.get(ctx, connectionId);
+const config = await auth.connection.scim.get(ctx, { connectionId });
 
 // Provide these to the customer's IdP admin:
 // config?.basePath — the SCIM base URL to configure in their directory
@@ -76,7 +76,7 @@ const config = await auth.group.sso.scim.get(ctx, connectionId);
 ```
 
 The normalized SCIM profile then flows into
-[`auth.group.sso.policy`](/sso/policy/) and optional `sso.hooks`, so extraction
+[`auth.connection.policy`](/connection/policy/) and optional `sso.hooks`, so extraction
 stays separate from provisioning rules.
 
 When `profile.mapping.groups` or `profile.mapping.roles` are configured,
@@ -85,7 +85,7 @@ external values can map into membership `roleIds` through policy.
 ## Status
 
 ```ts
-const status = await auth.group.sso.scim.status(ctx, connectionId);
+const status = await auth.connection.scim.status(ctx, { connectionId });
 
 status.configured;
 status.ready;
@@ -94,5 +94,5 @@ status.checks;
 ```
 
 Provisioning behavior such as deprovision mode is configured through
-[`auth.group.sso.policy`](/sso/policy/), not
-[`auth.group.sso.scim.configure(...)`](/sso/scim/).
+[`auth.connection.policy`](/connection/policy/), not
+[`auth.connection.scim.set(...)`](/connection/scim/).

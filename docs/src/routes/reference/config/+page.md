@@ -1,6 +1,6 @@
 ---
 title: Configuration
-description: createAuth options reference.
+description: defineAuth options reference.
 ---
 
 <script>
@@ -15,20 +15,40 @@ description: createAuth options reference.
 
 # Configuration
 
-## `createAuth(component, config)`
+## `defineAuth(component, config)`
+
+`defineAuth` is the vNext preview setup surface. It is the preferred way to
+describe the app's auth primitive: providers, permissions, table extensions,
+and HTTP intent live on one typed definition.
+
+Current stable releases may still expose `defineAuth`. Treat `defineAuth` and
+`definePermissions` as the vNext target vocabulary while the implementation
+lands.
 
 ```ts
-import { createAuth } from "@robelest/convex-auth/component";
+import { authEvents, defineAuth } from "@robelest/convex-auth/server";
+import { definePermissions } from "@robelest/convex-auth/permissions";
+import { password } from "@robelest/convex-auth/providers";
 import { components } from "./_generated/api";
 import { v } from "convex/values";
 
-const auth = createAuth(components.auth, {
-  providers: [
-    /* ... */
-  ],
-  // All options below are optional
-  // Type the `extend` field of each table. Drives both the inferred
-  // type of `auth.v.*` and runtime validation of return shapes.
+const permissions = definePermissions({
+  grants: ["members.read", "sso.connection.manage"],
+  roles: {
+    member: {
+      label: "Member",
+      grants: ["members.read"],
+    },
+    admin: {
+      label: "Admin",
+      grants: ["members.read", "sso.connection.manage"],
+    },
+  },
+});
+
+const auth = defineAuth(components.auth, {
+  providers: [password()],
+  permissions,
   extend: {
     User: v.object({ stripeCustomerId: v.optional(v.string()) }),
   },
@@ -42,46 +62,37 @@ const auth = createAuth(components.auth, {
   signIn: {
     maxFailedAttemptsPerHour: 10,
   },
-  callbacks: {
-    async after(ctx, event) {
-      if (event.kind === "userCreated") {
-        // post-signup work, e.g. trigger an onboarding workflow
-      }
-      if (event.kind === "passwordChanged") {
-        // audit log, security email, etc.
-      }
-    },
-    async before(ctx, event) {
-      if (event.kind === "redirect") {
-        return safeRedirect(event.redirectTo);
-      }
-      // returning undefined falls back to the default behavior
-    },
-  },
-  authorization: {
-    roles: {
-      member: {
-        label: "Member",
-        grants: [],
+  events: authEvents.handlers({
+    user: {
+      created: async (ctx, event) => {
+        await enqueueOnboarding(ctx, { userId: event.subject.id });
       },
     },
+    password: {
+      changed: async (ctx, event) => {
+        await auditPasswordChange(ctx, { userId: event.subject.id });
+      },
+    },
+  }),
+  http: {
+    prefix: "/auth",
   },
 });
 ```
 
 ## Config options
 
-| Option                                | Type                   | Default  | Description                             |
-| ------------------------------------- | ---------------------- | -------- | --------------------------------------- |
-| `providers`                           | `AuthProviderConfig[]` | required | Auth methods to enable                  |
-| `extend`                              | `{ User?, Group?, GroupMember? }` Convex validators | `{}` | Validator for each table's `extend` field. Types `auth.v.*` (so `viewer.extend.<field>` is typed) and validates return shapes. |
-| `session.totalDurationMs`             | `number`               | 30 days  | Maximum session lifetime                |
-| `session.inactiveDurationMs`          | `number`               | varies   | Inactive session timeout                |
-| `jwt.durationMs`                      | `number`               | 60s      | JWT token lifetime                      |
-| `signIn.maxFailedAttemptsPerHour`     | `number`               | 10       | Failed sign-in throttle (backed by `@convex-dev/rate-limiter` token bucket; resets on successful sign-in) |
-| `callbacks.before`                    | `function`             | —        | Intercept `redirect` / `link`. Return `undefined` for default. |
-| `callbacks.after`                     | `function`             | —        | Notification for lifecycle events: `userCreated`, `signedIn`, `passwordChanged`, `passkeyAdded`, `totpEnrolled`, `emailVerified`, `phoneVerified`, `accountLinked`, `signedOut`, `sessionsInvalidated`, `userUpdated`. |
-| `authorization.roles`                 | `Record<string, Role>` | `{}`     | App-defined role definitions and grants |
+| Option                            | Type                                                | Default   | Description                                                                                                                    |
+| --------------------------------- | --------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `providers`                       | `AuthProviderConfig[]`                              | required  | Auth methods to enable                                                                                                         |
+| `permissions`                     | `PermissionsDefinition`                             | `{}`      | App-defined grants and role bundles from `definePermissions(...)`.                                                             |
+| `extend`                          | `{ User?, Group?, GroupMember? }` Convex validators | `{}`      | Validator for each table's `extend` field. Types `auth.v.*` (so `viewer.extend.<field>` is typed) and validates return shapes. |
+| `session.totalDurationMs`         | `number`                                            | 30 days   | Maximum session lifetime                                                                                                       |
+| `session.inactiveDurationMs`      | `number`                                            | varies    | Inactive session timeout                                                                                                       |
+| `jwt.durationMs`                  | `number`                                            | 60s       | JWT token lifetime                                                                                                             |
+| `signIn.maxFailedAttemptsPerHour` | `number`                                            | 10        | Failed sign-in throttle (backed by `@convex-dev/rate-limiter` token bucket; resets on successful sign-in)                      |
+| `events`                          | `AuthEventHandlerMap`                               | —         | Stream-backed lifecycle handlers from `authEvents.handlers(...)`.                                                              |
+| `http.prefix`                     | `string`                                            | `"/auth"` | vNext preview route prefix used by the app-owned auth HTTP routes.                                                             |
 
 > **Note:** Email transport is configured via `email({ from, send })` in the
 > providers array, not as a top-level config option.
@@ -91,7 +102,7 @@ authorization model.
 
 ## Return value
 
-`createAuth` returns an object with:
+`defineAuth` returns an object with:
 
 - `signIn` — Action for client sign-in
 - `signOut` — Action for client sign-out
@@ -104,13 +115,12 @@ authorization model.
 - `auth.invite.*` — Invite helpers
 - `auth.key.*` — API key helpers
 - `auth.request.*` — HTTP route helpers
+- `auth.http()` — app-owned HTTP router for OAuth callbacks, JWKS, and protocol
+  routes
 - `auth.v.*` — Convex `returns:` validators for the read surface
   (`user`, `group`, `member`, `invite`, `viewer`, `list`). See
   [Typed Returns](/reference/typed-returns).
-- `auth.group.sso.*` — inbound group SSO helpers (only when `sso()` is in
-  providers)
-- `auth.group.sso.scim.*` — SCIM provisioning helpers (only when `sso()` is in
-  providers)
+- `auth.connection.*` — group connection (SSO) admin facade when `connection()` is in providers
 - `InferClientApi<typeof auth>` — Type-level utility; use as the generic for
   `client()` on the frontend to get conditional passkey/totp/device helpers
 - `Doc`, `Viewer`, `Group`, `Membership` — exported document types
@@ -122,12 +132,12 @@ OAuth provider factories (`google`, `github`, `apple`, `microsoft`,
 `custom`) accept these common options in addition to provider-specific
 fields:
 
-| Option                  | Type                                  | Default | Description |
-| ----------------------- | ------------------------------------- | ------- | ----------- |
-| `redirectUri`           | `string`                              | derived | Callback URL override. Defaults to `${CONVEX_SITE_URL}/auth/callback/<provider>`. |
-| `scopes`                | `string[]`                            | provider-default | OAuth scopes requested at the authorize step. |
-| `accountLinking`        | `"verifiedEmail" \| "none"`           | `"verifiedEmail"` | On first sign-in, link to an existing user if the verified email matches. |
-| `updateProfileOnLogin`  | `boolean`                             | `true`  | On a returning sign-in, refresh `User.name`/`image`/`email` from the new profile. Set `false` if your app owns the canonical profile. Behavior matches Auth.js / Clerk. |
+| Option                 | Type                        | Default           | Description                                                                                                                                                             |
+| ---------------------- | --------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `redirectUri`          | `string`                    | derived           | Callback URL override. Defaults to `${CONVEX_SITE_URL}/auth/callback/<provider>`.                                                                                       |
+| `scopes`               | `string[]`                  | provider-default  | OAuth scopes requested at the authorize step.                                                                                                                           |
+| `accountLinking`       | `"verifiedEmail" \| "none"` | `"verifiedEmail"` | On first sign-in, link to an existing user if the verified email matches.                                                                                               |
+| `updateProfileOnLogin` | `boolean`                   | `true`            | On a returning sign-in, refresh `User.name`/`image`/`email` from the new profile. Set `false` if your app owns the canonical profile. Behavior matches Auth.js / Clerk. |
 
 For SSO connections, the equivalent of `updateProfileOnLogin` lives on the
 group connection policy under
@@ -141,22 +151,23 @@ group connection policy under
     client.
   </Card>
   <Card title="Helper namespaces">
-    <code>auth.*</code>, <code>auth.group.sso.*</code>, and <code>auth.group.sso.scim.*</code> are server-side helper APIs for
+    <code>auth.*</code>, <code>auth.connection.*</code>, and <code>auth.connection.scim.*</code> are server-side helper APIs for
     your Convex code.
   </Card>
-  <Card title="Mounted group SSO RPC">
-    <code>api.auth.group.*</code> only exists after your app mounts or
-    writes public group SSO wrappers.
+  <Card title="App-owned admin RPC">
+    Expose admin operations with your own <code>authMutation</code>/<code>authQuery</code> functions calling the <code>auth.connection.*</code> facade.
   </Card>
 </CardGrid>
 
-The `auth.group.sso.*` and `auth.group.sso.scim.*` namespaces are server-side
-helper APIs. They are not automatically exposed as client-callable Convex
-functions just because they exist on the returned object.
+The `auth.connection.*` namespace is a server-side helper API. It is not
+automatically exposed as client-callable Convex functions just because it
+exists on the returned object.
 
-If your app wants public group SSO admin RPC, mount it explicitly in your app:
+If your app wants public group connection admin RPC, expose it explicitly by
+writing `authMutation`/`authQuery` functions that authorize with
+`auth.member.assert` and call the `auth.connection.*` facade — for example in
+`convex/auth/group.ts`.
 
-- write your own Convex wrappers in a file such as `convex/auth/group.ts`.
-
-See the [Group SSO RPC guide](/sso/rpc/) for the recommended flat group SSO RPC
-shape.
+Use Convex-native args on those wrappers: `{ id }` for primary IDs,
+`{ connectionId }` for foreign-key scoped operations, `{ data }` for
+create/update payloads, and `paginationOpts` for unbounded lists.

@@ -15,14 +15,13 @@ teams, workspaces, etc.). Groups can be nested to form a hierarchy.
 
 ## Methods
 
-| Method      | Signature                                      | Returns              | Description                                                                 |
-| ----------- | ---------------------------------------------- | -------------------- | --------------------------------------------------------------------------- |
-| `create`    | `(ctx, { name, parentId?, tags?, metadata? })` | `{ groupId }`        | Creates a new group. Optionally nest under a parent group.                  |
-| `get`       | `(ctx, groupId)`                               | `Doc<"groups">`      | Fetches a group document by ID.                                             |
-| `list`      | `(ctx, { parentId?, limit?, cursor? })`        | `PaginationResult<Doc<"Group">>` — `{ page, isDone, continueCursor }` | Lists groups, optionally filtered by parent. Convex-native shape. |
-| `update`    | `(ctx, groupId, { name?, tags?, metadata? })`  | `{ groupId }`        | Updates a group's name, tags, or metadata.                                  |
-| `delete`    | `(ctx, groupId)`                               | `{ groupId }`        | Deletes a group and all its nested children, members, and invites.          |
-| `ancestors` | `(ctx, groupId)`                               | `Doc<"groups">[]`    | Returns the chain of ancestor groups from the immediate parent to the root. |
+| Method   | Signature                                                          | Returns                                                               | Description                                                        |
+| -------- | ------------------------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `create` | `(ctx, { data: { name, slug?, type?, parentGroupId?, extend? } })` | `Id<"Group">`                                                         | Creates a new group. Optionally nest under a parent group.         |
+| `get`    | `(ctx, { id })`                                                    | `Doc<"Group">`                                                       | Reads a group document by ID.                                    |
+| `list`   | `(ctx, { where?, paginationOpts, orderBy?, order? })`              | `PaginationResult<Doc<"Group">>` — `{ page, isDone, continueCursor }` | Lists groups, optionally filtered by parent. Convex-native shape.  |
+| `update` | `(ctx, { id, patch })`                                              | `null`                                                                | Updates a group's name, slug, type, parent, or extend metadata.    |
+| `remove` | `(ctx, { id })`                                                    | `null`                                                                | Deletes a group and all its nested children, members, and invites. |
 
 ## Examples
 
@@ -31,35 +30,43 @@ teams, workspaces, etc.). Groups can be nested to form a hierarchy.
 Tags are useful for categorizing groups (e.g. plan tier, region):
 
 ```ts
-const { groupId } = await auth.group.create(ctx, {
-  name: "Acme Corp",
-  tags: ["group-sso", "us-east"],
+const groupId = await auth.group.create(ctx, {
+  data: {
+    name: "Acme Corp",
+    type: "workspace",
+    extend: { plan: "pro" },
+  },
 });
 ```
 
 ### Create a nested group
 
 ```ts
-const { groupId: teamId } = await auth.group.create(ctx, {
-  name: "Engineering",
-  parentId: orgId,
-  tags: ["team"],
+const teamId = await auth.group.create(ctx, {
+  data: {
+    name: "Engineering",
+    parentGroupId: orgId,
+    type: "team",
+  },
 });
 ```
 
 ### Walk the hierarchy
 
 ```ts
-const ancestors = await auth.group.ancestors(ctx, teamId);
-// [{ _id: orgId, name: "Acme Corp", ... }]
+const tree = await auth.group.get(ctx, { id: teamId, tree: true });
+// tree?.ancestors => [{ _id: orgId, name: "Acme Corp", ... }]
 ```
 
 ### Update group metadata
 
 ```ts
-await auth.group.update(ctx, groupId, {
-  tags: ["group-sso", "us-west"],
-  metadata: { plan: "pro" },
+await auth.group.update(ctx, {
+  id: groupId,
+  patch: {
+    slug: "acme",
+    extend: { plan: "enterprise" },
+  },
 });
 ```
 
@@ -78,5 +85,6 @@ You can use them for efficient queries like listing all root groups:
 ```ts
 const workspaces = await auth.group.list(ctx, {
   where: { isRoot: true },
+  paginationOpts: { numItems: 25, cursor: null },
 });
 ```

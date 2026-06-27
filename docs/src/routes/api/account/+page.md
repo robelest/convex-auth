@@ -16,40 +16,40 @@ passkey credentials, and TOTP enrollments.
 
 ## Account methods
 
-| Method   | Signature                          | Returns             | Description                                                                                                     |
-| -------- | ---------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `create` | `(ctx, { userId, provider, ... })` | `{ account, user }` | Links a new authentication provider to a user and returns the created account plus resolved user.               |
+| Method   | Signature                          | Returns                                | Description                                                                                                                                                                                                                                                |
+| -------- | ---------------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `create` | `(ctx, { userId, provider, ... })` | `{ account, user }`                    | Links a new authentication provider to a user and returns the created account plus resolved user.                                                                                                                                                          |
 | `link`   | `(ctx, { provider, profile })`     | `{ accountId, userId, alreadyLinked }` | Attaches a provider account to the **currently authenticated user**. Idempotent on duplicate links to the same user. Also folds in the "upgrade anonymous" flow: when the current user is anonymous, flips `isAnonymous: false` and merges profile fields. |
-| `update` | `(ctx, accountId, data)`           | `{ accountId }`     | Updates an existing account record.                                                                             |
-| `delete` | `(ctx, accountId)`                 | `{ accountId }`     | Deletes an account link. Throws `ConvexError` with code `ACCOUNT_NOT_FOUND` or `INVALID_PARAMETERS` on failure. |
+| `update` | `(ctx, { provider, account })`     | `{ accountId }`                        | Updates provider credentials, such as a password secret.                                                                                                                                                                                                   |
+| `remove` | `(ctx, { id })`                    | `{ accountId }`                        | Deletes an account link. Throws `ConvexError` with code `ACCOUNT_NOT_FOUND` or `INVALID_PARAMETERS` on failure.                                                                                                                                            |
 
 ## Passkey methods
 
 Manage WebAuthn passkey credentials. Requires `passkey()` in providers.
 
-| Method          | Signature                | Returns             | Description                               |
-| --------------- | ------------------------ | ------------------- | ----------------------------------------- |
-| `listPasskeys`  | `(ctx, { userId })`      | `Doc<"passkeys">[]` | Lists all registered passkeys for a user. |
-| `renamePasskey` | `(ctx, passkeyId, name)` | `{ passkeyId }`     | Renames a passkey credential.             |
-| `deletePasskey` | `(ctx, passkeyId)`       | `{ passkeyId }`     | Deletes a passkey credential.             |
+| Method           | Signature             | Returns             | Description                               |
+| ---------------- | --------------------- | ------------------- | ----------------------------------------- |
+| `passkey.list`   | `(ctx, { userId })`   | `Doc<"passkeys">[]` | Lists all registered passkeys for a user. |
+| `passkey.update` | `(ctx, { id, patch })` | `{ passkeyId }`     | Renames a passkey credential.             |
+| `passkey.remove` | `(ctx, { id })`       | `{ passkeyId }`     | Deletes a passkey credential.             |
 
 ```ts
-const passkeys = await auth.account.listPasskeys(ctx, { userId });
-await auth.account.deletePasskey(ctx, passkeyId);
+const passkeys = await auth.account.passkey.list(ctx, { userId });
+await auth.account.passkey.remove(ctx, { id: passkeyId });
 ```
 
 ## TOTP methods
 
 Manage TOTP two-factor authentication. Requires `totp()` in providers.
 
-| Method       | Signature           | Returns          | Description                        |
-| ------------ | ------------------- | ---------------- | ---------------------------------- |
-| `listTotps`  | `(ctx, { userId })` | `Doc<"totps">[]` | Lists TOTP enrollments for a user. |
-| `deleteTotp` | `(ctx, totpId)`     | `{ totpId }`     | Deletes a TOTP enrollment.         |
+| Method        | Signature           | Returns          | Description                        |
+| ------------- | ------------------- | ---------------- | ---------------------------------- |
+| `totp.list`   | `(ctx, { userId })` | `Doc<"totps">[]` | Lists TOTP enrollments for a user. |
+| `totp.remove` | `(ctx, { id })`     | `{ totpId }`     | Deletes a TOTP enrollment.         |
 
 ```ts
-const totps = await auth.account.listTotps(ctx, { userId });
-await auth.account.deleteTotp(ctx, totpId);
+const totps = await auth.account.totp.list(ctx, { userId });
+await auth.account.totp.remove(ctx, { id: totpId });
 ```
 
 ## Examples
@@ -91,7 +91,7 @@ await auth.account.link(ctx, {
 import { ConvexError } from "convex/values";
 
 try {
-  const { accountId } = await auth.account.delete(ctx, accountId);
+  const { accountId } = await auth.account.remove(ctx, { id: accountId });
 } catch (error) {
   if (error instanceof ConvexError) {
     // error.data.code is "ACCOUNT_NOT_FOUND" or "INVALID_PARAMETERS"

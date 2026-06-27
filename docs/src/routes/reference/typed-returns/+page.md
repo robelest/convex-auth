@@ -12,7 +12,7 @@ description: Convex returns validators and extend-aware types for the auth read 
 
 Convex requires a `returns:` validator on every public function, and the
 client's `useQuery` type is inferred from that validator. To keep consumers
-from hand-rolling DTO validators and casting query results, `createAuth`
+from hand-rolling DTO validators and casting query results, `defineAuth`
 exposes ready-made validators on `auth.v`, and the package exports the
 matching document types.
 
@@ -24,13 +24,13 @@ casts required. The pagination shape matches what `usePaginatedQuery` from
 
 ## `auth.v.*`
 
-| Validator       | Shape                                  |
-| --------------- | -------------------------------------- |
-| `auth.v.user`   | Single `User` document (extend-aware)  |
-| `auth.v.group`  | Single `Group` document (extend-aware) |
-| `auth.v.member` | Single `GroupMember` (extend-aware)    |
-| `auth.v.invite` | Single `GroupInvite` document          |
-| `auth.v.viewer` | `User \| null` — current-user query    |
+| Validator           | Shape                                                                                   |
+| ------------------- | --------------------------------------------------------------------------------------- |
+| `auth.v.user`       | Single `User` document (extend-aware)                                                   |
+| `auth.v.group`      | Single `Group` document (extend-aware)                                                  |
+| `auth.v.member`     | Single `GroupMember` (extend-aware)                                                     |
+| `auth.v.invite`     | Single `GroupInvite` document                                                           |
+| `auth.v.viewer`     | `User \| null` — current-user query                                                     |
 | `auth.v.list(item)` | `PaginationResult<item>` — `{ page, isDone, continueCursor }` (matches `convex/server`) |
 
 ```ts
@@ -92,7 +92,7 @@ export const groups = authQuery({
 
 ## Extend-aware types
 
-When you pass `extend` validators to `createAuth` (see
+When you pass `extend` validators to `defineAuth` (see
 [Configuration](/reference/config)), `auth.v.*` and the exported types
 carry that shape — `viewer.extend.<field>` is typed instead of `any`.
 
@@ -100,13 +100,13 @@ carry that shape — `viewer.extend.<field>` is typed instead of `any`.
 import type { Viewer, Group, Membership, Doc } from "@robelest/convex-auth/server";
 ```
 
-| Export       | Description                                  |
-| ------------ | -------------------------------------------- |
-| `Doc<T>`     | A document from any auth table               |
-| `Viewer`     | `User` document type (extend-aware)          |
-| `Group`      | `Group` document type (extend-aware)         |
-| `Membership` | `GroupMember` document type (extend-aware)   |
+| Export       | Description                                |
+| ------------ | ------------------------------------------ |
+| `Doc<T>`     | A document from any auth table             |
+| `Viewer`     | `User` document type (extend-aware)        |
+| `Group`      | `Group` document type (extend-aware)       |
+| `Membership` | `GroupMember` document type (extend-aware) |
 
 The raw validators (`vUserDoc`, `vGroupDoc`, `vGroupMemberDoc`,
-`vGroupInviteDoc`, `vPaginated`) and `buildAuthValidators` are also exported
+`vGroupInviteDoc`, `vPaginated`) and `createAuthValidators` are also exported
 from `@robelest/convex-auth/server` for advanced composition.

@@ -15,8 +15,12 @@ description: Auth methods available in convex-auth.
 convex-auth currently ships first-party OAuth wrappers for Google, GitHub,
 Apple, and Microsoft. Each wrapper owns the provider defaults and automatically
 derives the callback URL from `CONVEX_SITE_URL` unless you override it.
+These examples assume `convex/convex.config.ts` uses `defineApp({ env:
+authEnv })` and provider setup imports generated `env` from
+`./_generated/server`.
 
 ```ts
+import { defineAuth } from "@robelest/convex-auth/server";
 import {
   anonymous,
   apple,
@@ -28,24 +32,26 @@ import {
   passkey,
   password,
   phone,
-  sso,
+  connection,
   totp,
 } from "@robelest/convex-auth/providers";
+import { components } from "./_generated/api";
+import { env } from "./_generated/server";
 
-createAuth(components.auth, {
+defineAuth(components.auth, {
   providers: [
     github({
-      clientId: process.env.AUTH_GITHUB_ID!,
-      clientSecret: process.env.AUTH_GITHUB_SECRET!,
+      clientId: env.AUTH_GITHUB_ID!,
+      clientSecret: env.AUTH_GITHUB_SECRET!,
     }),
     google({
-      clientId: process.env.AUTH_GOOGLE_ID!,
-      clientSecret: process.env.AUTH_GOOGLE_SECRET!,
+      clientId: env.AUTH_GOOGLE_ID!,
+      clientSecret: env.AUTH_GOOGLE_SECRET!,
     }),
     microsoft({
-      tenant: process.env.AUTH_MICROSOFT_TENANT_ID!,
-      clientId: process.env.AUTH_MICROSOFT_ID!,
-      clientSecret: process.env.AUTH_MICROSOFT_SECRET!,
+      tenant: env.AUTH_MICROSOFT_TENANT_ID!,
+      clientId: env.AUTH_MICROSOFT_ID!,
+      clientSecret: env.AUTH_MICROSOFT_SECRET!,
     }),
   ],
 });
@@ -65,8 +71,8 @@ Opt out per-provider if your app owns the canonical user profile:
 
 ```ts
 google({
-  clientId: process.env.AUTH_GOOGLE_ID!,
-  clientSecret: process.env.AUTH_GOOGLE_SECRET!,
+  clientId: env.AUTH_GOOGLE_ID!,
+  clientSecret: env.AUTH_GOOGLE_SECRET!,
   updateProfileOnLogin: false, // keep user fields user-edited
 });
 ```
@@ -86,11 +92,11 @@ The flag is available on `google`, `github`, `apple`, `microsoft`, and
 ```ts
 import { google } from "@robelest/convex-auth/providers";
 
-createAuth(components.auth, {
+defineAuth(components.auth, {
   providers: [
     google({
-      clientId: process.env.AUTH_GOOGLE_ID!,
-      clientSecret: process.env.AUTH_GOOGLE_SECRET!,
+      clientId: env.AUTH_GOOGLE_ID!,
+      clientSecret: env.AUTH_GOOGLE_SECRET!,
     }),
   ],
 });
@@ -109,11 +115,11 @@ Use `redirectUri` only when you need to override the default callback route.
 ```ts
 import { github } from "@robelest/convex-auth/providers";
 
-createAuth(components.auth, {
+defineAuth(components.auth, {
   providers: [
     github({
-      clientId: process.env.AUTH_GITHUB_ID!,
-      clientSecret: process.env.AUTH_GITHUB_SECRET!,
+      clientId: env.AUTH_GITHUB_ID!,
+      clientSecret: env.AUTH_GITHUB_SECRET!,
     }),
   ],
 });
@@ -133,13 +139,13 @@ The GitHub wrapper performs the profile and email fetch for you.
 ```ts
 import { apple } from "@robelest/convex-auth/providers";
 
-createAuth(components.auth, {
+defineAuth(components.auth, {
   providers: [
     apple({
-      clientId: process.env.AUTH_APPLE_ID!,
-      teamId: process.env.AUTH_APPLE_TEAM_ID!,
-      keyId: process.env.AUTH_APPLE_KEY_ID!,
-      privateKey: process.env.AUTH_APPLE_PRIVATE_KEY!,
+      clientId: env.AUTH_APPLE_ID!,
+      teamId: env.AUTH_APPLE_TEAM_ID!,
+      keyId: env.AUTH_APPLE_KEY_ID!,
+      privateKey: env.AUTH_APPLE_PRIVATE_KEY!,
     }),
   ],
 });
@@ -160,12 +166,12 @@ persist any extra profile fields you care about on first sign-in.
 ```ts
 import { microsoft } from "@robelest/convex-auth/providers";
 
-createAuth(components.auth, {
+defineAuth(components.auth, {
   providers: [
     microsoft({
-      tenant: process.env.AUTH_MICROSOFT_TENANT_ID!,
-      clientId: process.env.AUTH_MICROSOFT_ID!,
-      clientSecret: process.env.AUTH_MICROSOFT_SECRET!,
+      tenant: env.AUTH_MICROSOFT_TENANT_ID!,
+      clientId: env.AUTH_MICROSOFT_ID!,
+      clientSecret: env.AUTH_MICROSOFT_SECRET!,
     }),
   ],
 });
@@ -180,12 +186,12 @@ The Microsoft wrapper validates the ID token and nonce internally.
 ## Custom OAuth
 
 ```ts
-createAuth(components.auth, {
+defineAuth(components.auth, {
   providers: [
     custom({
       id: "discord",
-      clientId: process.env.AUTH_DISCORD_ID!,
-      clientSecret: process.env.AUTH_DISCORD_SECRET!,
+      clientId: env.AUTH_DISCORD_ID!,
+      clientSecret: env.AUTH_DISCORD_SECRET!,
       scopes: ["identify", "email"],
       authorization: {
         url: "https://discord.com/oauth2/authorize",
@@ -218,7 +224,7 @@ convex-auth so the public API does not depend on Arctic.
 ## Password
 
 ```ts
-createAuth(components.auth, {
+defineAuth(components.auth, {
   providers: [password()],
 });
 ```
@@ -226,13 +232,13 @@ createAuth(components.auth, {
 The password provider supports five flows, all single-word camelCase. Pass
 the flow name in `params.flow` when calling `signIn`:
 
-| Flow      | Authenticated? | Required params                         | Notes                                                    |
-| --------- | -------------- | --------------------------------------- | -------------------------------------------------------- |
-| `signUp`  | No             | `email`, `password`                     | Creates a new account                                    |
-| `signIn`  | No             | `email`, `password`                     | Authenticate existing user                               |
-| `reset`   | No             | `email`                                 | Sends an OTP via the configured `reset` email provider   |
-| `verify`  | No             | `email`, `code`, `newPassword?`         | Verifies an OTP. With `newPassword`, completes a `reset` |
-| `change`  | Yes            | `email`, `currentPassword`, `newPassword` | Authenticated change. Other sessions invalidated         |
+| Flow     | Authenticated? | Required params                           | Notes                                                    |
+| -------- | -------------- | ----------------------------------------- | -------------------------------------------------------- |
+| `signUp` | No             | `email`, `password`                       | Creates a new account                                    |
+| `signIn` | No             | `email`, `password`                       | Authenticate existing user                               |
+| `reset`  | No             | `email`                                   | Sends an OTP via the configured `reset` email provider   |
+| `verify` | No             | `email`, `code`, `newPassword?`           | Verifies an OTP. With `newPassword`, completes a `reset` |
+| `change` | Yes            | `email`, `currentPassword`, `newPassword` | Authenticated change. Other sessions invalidated         |
 
 `reset` and `verify` (with `newPassword`) require a `reset` email provider in
 the config; `verify` (without `newPassword`) requires a `verify` email provider.
@@ -261,12 +267,12 @@ password({ reset: emailProvider, verify: emailProvider });
 ## Magic Links (Email)
 
 ```ts
-createAuth(components.auth, {
+defineAuth(components.auth, {
   providers: [
     email({
       from: "My App <noreply@example.com>",
       send: async (ctx, { from, to, subject, html }) => {
-        const resend = new Resend(process.env.RESEND_API_KEY);
+        const resend = new Resend(env.RESEND_API_KEY);
         await resend.emails.send({ from, to, subject, html });
       },
     }),
@@ -277,7 +283,7 @@ createAuth(components.auth, {
 ## Passkeys / WebAuthn
 
 ```ts
-createAuth(components.auth, {
+defineAuth(components.auth, {
   providers: [passkey()],
 });
 ```
@@ -285,7 +291,7 @@ createAuth(components.auth, {
 ## TOTP (Authenticator Apps)
 
 ```ts
-createAuth(components.auth, {
+defineAuth(components.auth, {
   providers: [totp({ issuer: "My App" })],
 });
 ```
@@ -293,7 +299,7 @@ createAuth(components.auth, {
 ## Anonymous
 
 ```ts
-createAuth(components.auth, {
+defineAuth(components.auth, {
   providers: [anonymous()],
 });
 ```
@@ -301,7 +307,7 @@ createAuth(components.auth, {
 ## Phone / SMS
 
 ```ts
-createAuth(components.auth, {
+defineAuth(components.auth, {
   providers: [
     phone({
       send: async ({ identifier, token }) => {
@@ -315,10 +321,10 @@ createAuth(components.auth, {
 ## Group SSO
 
 ```ts
-createAuth(components.auth, {
-  providers: [sso()],
+defineAuth(components.auth, {
+  providers: [connection()],
 });
 ```
 
-Adding `sso()` enables the `auth.group.sso.*` namespace and registers OIDC,
-SAML, and SCIM HTTP routes. See the [SSO overview](/sso/overview/) for details.
+Adding `connection()` enables the `auth.connection.*` namespace and registers OIDC,
+SAML, and SCIM HTTP routes. See the [SSO overview](/connection/overview/) for details.

@@ -26,6 +26,7 @@ export const sidebar: SidebarGroup[] = [
       { title: "React Hooks", slug: "/client/react" },
       { title: "Fluent Convex", slug: "/integration/fluent-convex" },
       { title: "Device Flow (RFC 8628)", slug: "/guides/device-flow" },
+      { title: "MCP Server (OAuth 2.1)", slug: "/guides/mcp-server" },
       { title: "Native Apps", slug: "/guides/native-apps" },
       { title: "Production Deploy", slug: "/guides/production" },
     ],
@@ -33,15 +34,15 @@ export const sidebar: SidebarGroup[] = [
   {
     label: "Group SSO",
     items: [
-      { title: "SSO Overview", slug: "/sso/overview" },
-      { title: "Group SSO RPC", slug: "/sso/rpc" },
-      { title: "auth.group.sso.connection", slug: "/sso/connection" },
-      { title: "auth.group.sso.policy", slug: "/sso/policy" },
-      { title: "auth.group.sso.oidc", slug: "/sso/oidc" },
-      { title: "auth.group.sso.saml", slug: "/sso/saml" },
-      { title: "auth.group.sso.scim", slug: "/sso/scim" },
-      { title: "auth.group.sso.audit", slug: "/sso/audit" },
-      { title: "auth.group.sso.webhook", slug: "/sso/webhook" },
+      { title: "SSO Overview", slug: "/connection/overview" },
+      { title: "Group SSO RPC", slug: "/connection/rpc" },
+      { title: "auth.connection", slug: "/connection/connection" },
+      { title: "auth.connection.policy", slug: "/connection/policy" },
+      { title: "auth.connection.oidc", slug: "/connection/oidc" },
+      { title: "auth.connection.saml", slug: "/connection/saml" },
+      { title: "auth.connection.scim", slug: "/connection/scim" },
+      { title: "auth.event audit", slug: "/connection/audit" },
+      { title: "auth.connection.webhook", slug: "/connection/webhook" },
     ],
   },
   {
@@ -73,15 +74,3 @@ export const sidebar: SidebarGroup[] = [
     ],
   },
 ];
-
-/** Flat list of all items in sidebar order, for prev/next navigation */
-export const allPages = sidebar.flatMap((group) => group.items);
-
-export function getPrevNext(currentSlug: string) {
-  const normalized = currentSlug.replace(/\/$/, "");
-  const idx = allPages.findIndex((p) => p.slug === normalized);
-  return {
-    prev: idx > 0 ? allPages[idx - 1] : null,
-    next: idx < allPages.length - 1 ? allPages[idx + 1] : null,
-  };
-}
