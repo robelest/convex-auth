@@ -159,6 +159,6 @@ export const hasPassword = authUserQuery({
     const accounts = await ctx.runQuery(components.auth.account.list, {
       userId: ctx.auth.userId,
     });
-    return accounts.some((account) => account.provider === "password");
+    return accounts.some((account: any) => account.provider === "password");
   },
 });

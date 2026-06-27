@@ -68,10 +68,10 @@ type SamlServiceProvider = ReturnType<typeof createSamlServiceProvider> & {
   ): { context: string; entityEndpoint: string };
 };
 
-function formDataEntries(
-  formData: FormData,
-): IterableIterator<[string, string | { name: string }]> {
-  return formData.entries();
+type FormDataEntryLike = string | { name: string };
+
+function formDataEntries(formData: unknown): Iterable<[string, FormDataEntryLike]> {
+  return (formData as { entries(): Iterable<[string, FormDataEntryLike]> }).entries();
 }
 
 /**

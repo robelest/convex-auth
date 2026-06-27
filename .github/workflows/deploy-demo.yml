@@ -49,12 +49,5 @@ jobs:
       - name: Deploy demo backend and site
         run: vp exec convex deploy --cmd 'vp run build:demo' --cmd-url-env-var-name VITE_CONVEX_URL
 
-      - name: Deploy demo site to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: demos/svelte
-          packageManager: npm
-          wranglerVersion: 4.83.0
-          command: deploy
+      - name: Upload demo static assets
+        run: vp exec static-hosting upload --prod --dist demos/svelte/build

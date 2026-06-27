@@ -46,10 +46,7 @@ jobs:
         run: vp run build:docs
 
       - name: Deploy docs site to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: demos/svelte
-          wranglerVersion: 4.83.0
-          command: pages deploy ../../docs/build --project-name=convex-auth
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: vp run deploy:docs

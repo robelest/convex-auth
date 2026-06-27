@@ -245,9 +245,11 @@ test("refresh token theft revokes the entire session", async () => {
     });
   });
   expect(reuseEvents.page.length).toBeGreaterThan(0);
-  expect(reuseEvents.page.every((p) => p.kind === "session.refresh_reuse_detected")).toBe(true);
-  expect(reuseEvents.page.every((p) => p.outcome === "failure")).toBe(true);
-  expect(reuseEvents.page.some((p) => p.subjectType === "session")).toBe(true);
+  expect(reuseEvents.page.every((p: any) => p.kind === "session.refresh_reuse_detected")).toBe(
+    true,
+  );
+  expect(reuseEvents.page.every((p: any) => p.outcome === "failure")).toBe(true);
+  expect(reuseEvents.page.some((p: any) => p.subjectType === "session")).toBe(true);
 });
 
 test("session expiration", async () => {

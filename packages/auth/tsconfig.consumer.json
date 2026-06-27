@@ -22,5 +22,5 @@
       "@robelest/convex-auth/providers/*": ["./src/providers/*"]
     }
   },
-  "include": ["../../tests/types.ts"]
+  "include": ["consumer/**/*.ts"]
 }

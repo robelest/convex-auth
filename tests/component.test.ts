@@ -87,7 +87,7 @@ test("connection.list combines every supplied filter and supports name ordering"
     });
   });
 
-  expect(filtered.page.map((connection) => connection._id)).toEqual([targetId]);
+  expect(filtered.page.map((connection: any) => connection._id)).toEqual([targetId]);
 
   const ordered = await t.run(async (ctx) => {
     return await ctx.runQuery(components.auth.connection.list, {
@@ -98,7 +98,7 @@ test("connection.list combines every supplied filter and supports name ordering"
     });
   });
 
-  expect(ordered.page.map((connection) => connection.name)).toEqual([
+  expect(ordered.page.map((connection: any) => connection.name)).toEqual([
     "Alpha other slug",
     "Beta",
     "Charlie",
@@ -156,7 +156,7 @@ test("group.list combines parent, slug, root, and name ordering filters", async 
       paginationOpts: { numItems: 10, cursor: null },
     });
   });
-  expect(filtered.page.map((group) => group._id)).toEqual([targetChild]);
+  expect(filtered.page.map((group: any) => group._id)).toEqual([targetChild]);
 
   const impossible = await t.run(async (ctx) => {
     return await ctx.runQuery(components.auth.group.list, {
@@ -174,7 +174,7 @@ test("group.list combines parent, slug, root, and name ordering filters", async 
       paginationOpts: { numItems: 10, cursor: null },
     });
   });
-  expect(ordered.page.map((group) => group.name)).toEqual(["Alpha", "Bravo", "Charlie"]);
+  expect(ordered.page.map((group: any) => group.name)).toEqual(["Alpha", "Bravo", "Charlie"]);
 });
 
 test("list order indexes bind exact filtered fields before paginating", async () => {
@@ -234,7 +234,7 @@ test("list order indexes bind exact filtered fields before paginating", async ()
       paginationOpts: { numItems: 1, cursor: null },
     });
   });
-  expect(connectionPage.page.map((connection) => connection._id)).toEqual([activeConnection]);
+  expect(connectionPage.page.map((connection: any) => connection._id)).toEqual([activeConnection]);
 
   const groupPage = await t.run(async (ctx) => {
     return await ctx.runQuery(components.auth.group.list, {
@@ -244,7 +244,7 @@ test("list order indexes bind exact filtered fields before paginating", async ()
       paginationOpts: { numItems: 1, cursor: null },
     });
   });
-  expect(groupPage.page.map((group) => group._id)).toEqual([matchingChild]);
+  expect(groupPage.page.map((group: any) => group._id)).toEqual([matchingChild]);
 });
 
 test("refresh token exchange mismatch does not delete supplied session", async () => {

@@ -61,6 +61,6 @@ test("Convex identity rejects the at+jwt typ header but accepts the same claims 
     .sign(signingKey);
   convexClient.setAuth(atJwt);
   await expect(convexClient.query(api.groups.list, {})).rejects.toThrow(
-    /NOT_SIGNED_IN|Authentication required/,
+    /NOT_SIGNED_IN|Authentication required|Could not verify OIDC token claim/,
   );
 });

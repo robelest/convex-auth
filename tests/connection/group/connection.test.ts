@@ -1084,7 +1084,7 @@ test("group oidc.register merges config and client.signIn requires verified doma
   expect(connection?.config?.protocols?.oidc?.request?.loginHint).toBe("admin@oidc.example.com");
   expect(connection?.config?.protocols?.oidc?.client?.secret).toBeUndefined();
   expect(secret?.ciphertext).toBeDefined();
-  const oidcAuditEvent = auditEvents.find((event) => event.kind === "connection.oidc.set");
+  const oidcAuditEvent = auditEvents.find((event: any) => event.kind === "connection.oidc.set");
   expect(oidcAuditEvent?.kind).toBe("connection.oidc.set");
   const oidcAuditData = oidcAuditEvent?.data as { issuer?: string; jwksUri?: string } | undefined;
   expect(oidcAuditData?.issuer).toBe("https://issuer.example.com");
@@ -1799,7 +1799,7 @@ test("group connection scim.configure stores hashed token and enqueues subscribe
   );
   expect(policy.provisioning.deprovision.mode).toBe("soft");
   expect(lookedUpByToken?._id).toBe(scimConfig?._id);
-  expect(auditEvents.some((event) => event.kind === "connection.scim.set")).toBe(true);
+  expect(auditEvents.some((event: any) => event.kind === "connection.scim.set")).toBe(true);
   expect(deliveries).toHaveLength(1);
   expect(deliveries[0]?.connectionId).toBe(connectionId);
 });

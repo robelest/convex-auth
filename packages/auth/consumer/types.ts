@@ -1,10 +1,11 @@
-import { auth } from "@convex/auth";
 import { definePermissions } from "@robelest/convex-auth/permissions";
 // @ts-expect-error createAuth was hard-cut from the vNext public server API.
 import { createAuth } from "@robelest/convex-auth/server";
 import { authEnv, authEvents, defineAuth, type AuthEnv } from "@robelest/convex-auth/server";
 import { defineApp, type HttpRouter } from "convex/server";
 import { v, type GenericId } from "convex/values";
+
+import { auth } from "../../../convex/auth";
 
 declare const readCtx: Parameters<typeof auth.user.get>[0];
 declare const eventCtx: Parameters<typeof auth.event.list>[0];
@@ -144,7 +145,7 @@ void authEvents.target.user(authGroupId);
 declare const httpRouter: HttpRouter;
 
 // An MCP tool's `scope` is the permission grant union — a declared grant compiles.
-void auth.request.mcp(httpRouter, {
+auth.request.mcp(httpRouter, {
   read_projects: {
     description: "List projects.",
     scope: "projects.read",
@@ -153,7 +154,7 @@ void auth.request.mcp(httpRouter, {
   },
 });
 
-void auth.request.mcp(httpRouter, {
+auth.request.mcp(httpRouter, {
   bad: {
     description: "x",
     // @ts-expect-error the deleted `workspace:*` scope vocabulary is not a grant.
@@ -163,7 +164,7 @@ void auth.request.mcp(httpRouter, {
   },
 });
 
-void auth.request.mcp(httpRouter, {
+auth.request.mcp(httpRouter, {
   typo: {
     description: "x",
     // @ts-expect-error a typo'd grant is rejected by the configured permissions.

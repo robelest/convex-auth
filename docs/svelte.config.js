@@ -9,6 +9,7 @@ const highlighter = await createHighlighter({
     "javascript",
     "bash",
     "json",
+    "http",
     "html",
     "css",
     "svelte",
