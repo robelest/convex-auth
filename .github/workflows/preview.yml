@@ -53,6 +53,7 @@ jobs:
         run: vp run '@robelest/convex-auth#build'
 
       - name: Publish preview package
+        continue-on-error: true
         run: >
           vp exec pkg-pr-new publish ./packages/auth
           --pnpm
