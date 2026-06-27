@@ -57,6 +57,9 @@ jobs:
       - name: Prepare docs type config
         run: vp run check:docs
 
+      - name: Prepare demo type config
+        run: vp run check:demo
+
       - name: Run lint
         run: vp run lint
 
