@@ -22,6 +22,7 @@ export default defineConfig({
       "**/dist/**",
       "**/_generated/**",
       "**/node_modules/**",
+      ".github/**",
       "packages/auth/src/server/auth.ts",
       "packages/auth/src/server/index.ts",
       "packages/auth/src/server/implementation.ts",
