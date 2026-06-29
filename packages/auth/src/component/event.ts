@@ -268,7 +268,10 @@ function projectionQuery(ctx: any, where: AuthEventWhere) {
       );
     }
     return db.withIndex("target_time", (q) =>
-      applyTimeBounds(q.eq("targetKind", where.target!.kind).eq("targetId", where.target!.id), where),
+      applyTimeBounds(
+        q.eq("targetKind", where.target!.kind).eq("targetId", where.target!.id),
+        where,
+      ),
     );
   }
   if (where.kind !== undefined) {
@@ -314,7 +317,7 @@ export const get = query({
   args: { id: v.id("AuthEventProjection") },
   returns: v.union(vAuthEventProjectionDoc, v.null()),
   handler: async (ctx, { id }) => {
-    const doc = await ctx.db.get(id);
+    const doc = await ctx.db.get("AuthEventProjection", id);
     return doc === null ? null : publicProjection(doc);
   },
 });
@@ -379,7 +382,10 @@ export const append = mutation({
       const existing = await ctx.db
         .query("AuthEventProjection")
         .withIndex("event_id_target", (q) =>
-          q.eq("eventId", args.event.eventId).eq("targetKind", target.kind).eq("targetId", target.id),
+          q
+            .eq("eventId", args.event.eventId)
+            .eq("targetKind", target.kind)
+            .eq("targetId", target.id),
         )
         .unique();
       if (existing !== null) {
@@ -407,7 +413,7 @@ export const append = mutation({
         streamId: "",
         streamIndex: -1,
       });
-      const projection = await ctx.db.get(projectionId);
+      const projection = await ctx.db.get("AuthEventProjection", projectionId);
       if (projection !== null) projections.push(publicProjection(projection));
       createdTargets.push(target);
     }

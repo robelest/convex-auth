@@ -16,7 +16,7 @@ export const get = query({
   args: { id: v.id("GroupWebhookEndpoint") },
   returns: v.union(vGroupWebhookEndpointDoc, v.null()),
   handler: async (ctx, { id: endpointId }) => {
-    return await ctx.db.get(endpointId);
+    return await ctx.db.get("GroupWebhookEndpoint", endpointId);
   },
 });
 

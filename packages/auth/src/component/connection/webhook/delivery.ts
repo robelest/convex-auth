@@ -236,7 +236,7 @@ export const onDispatchComplete = internalMutation({
   returns: v.null(),
   handler: async (ctx, { context, result }) => {
     if (result.kind === "success") return null;
-    const delivery = await ctx.db.get(context.deliveryId);
+    const delivery = await ctx.db.get("GroupWebhookDelivery", context.deliveryId);
     if (delivery === null || delivery.status === "delivered" || delivery.status === "failed") {
       return null;
     }

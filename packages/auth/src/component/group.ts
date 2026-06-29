@@ -203,7 +203,7 @@ export const create = mutation({
     const isRoot = !args.parentGroupId;
     let rootGroupId: Id<"Group"> | undefined;
     if (!isRoot && args.parentGroupId) {
-      const parent = await ctx.db.get(args.parentGroupId);
+      const parent = await ctx.db.get("Group", args.parentGroupId);
       rootGroupId = parent?.rootGroupId ?? args.parentGroupId;
     }
     const groupId = await ctx.db.insert("Group", {

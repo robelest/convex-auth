@@ -8,7 +8,7 @@ const vOptionalBooleanString = v.optional(v.union(v.literal("true"), v.literal("
 /**
  * Convex app environment variables used by Convex Auth.
  *
- * Pass this to `defineApp({ env: authEnv })` to get Convex 1.41 deployment-time
+ * Pass this to `defineApp({ env: authEnv })` to get Convex deployment-time
  * validation and generated `env` typing in the parent app.
  */
 export const authEnv = {

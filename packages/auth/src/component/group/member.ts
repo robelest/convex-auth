@@ -223,7 +223,10 @@ export const resolve = query({
         };
       }
 
-      const groupDoc: { parentGroupId?: Id<"Group"> } | null = await ctx.db.get(currentGroupId);
+      const groupDoc: { parentGroupId?: Id<"Group"> } | null = await ctx.db.get(
+        "Group",
+        currentGroupId,
+      );
       if (!groupDoc?.parentGroupId) break;
       currentGroupId = groupDoc.parentGroupId;
       depth++;
