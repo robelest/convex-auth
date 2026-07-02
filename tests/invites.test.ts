@@ -147,7 +147,8 @@ test("proxy sign up can immediately accept invite", async () => {
   const signInResult = await signInPromise;
   expect(signInResult.kind).toBe("signedIn");
 
-  const claims = decodeJwt(auth.state.token!);
+  const snapshot = auth.getSnapshot();
+  const claims = decodeJwt(snapshot.status === "signedIn" ? snapshot.token : "");
   expect(typeof claims.sub).toBe("string");
   const acceptResult = await t.run(async (ctx) => {
     return await backendAuth.invite.token.accept(ctx as any, {

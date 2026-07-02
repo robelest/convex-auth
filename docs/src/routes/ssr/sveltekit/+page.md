@@ -74,34 +74,40 @@ sign-out calls are routed through this endpoint.
 
 ## Client setup
 
-In your root layout, create the auth client with `proxyPath` and `location`:
+In your root layout, create the browser auth client with `proxyPath`, `token`,
+and `location`, then bridge it into Svelte context:
 
 ```svelte
 <!-- src/routes/+layout.svelte -->
 <script lang="ts">
   import { page } from "$app/state";
   import { setupConvex, useConvexClient } from "convex-svelte";
-  import { setContext } from "svelte";
+  import { onDestroy } from "svelte";
   import { client as createAuthClient } from "@robelest/convex-auth/browser";
+  import { setupConvexAuth } from "@robelest/convex-auth/svelte";
 
   let { data, children } = $props();
 
   setupConvex(data.convexUrl);
   const convexClient = useConvexClient();
 
-  const auth = createAuthClient({
+  const authClient = createAuthClient({
     convex: convexClient,
     proxyPath: "/api/auth",
-    tokenSeed: data.auth.token ?? null,
+    token: data.auth.token ?? null, // seeds the synchronous boot
     location: () => page.url, // SSR-safe URL reading
   });
-
-  setContext("auth", auth);
+  const auth = setupConvexAuth(authClient);
+  onDestroy(() => authClient.destroy());
 </script>
 ```
 
-Use `auth.param()` for SSR-safe URL parameter reading and `auth.invite` for
-invite token handling. See [SSR Overview](/ssr/overview/) for the full client
+`setupConvexAuth` shares the reactive auth via context. A non-empty `token`
+renders `auth.signedIn` / `auth.token` on the first paint; `null` renders
+signed out without a loading flash. Call `useConvexAuth()` in any child to read
+the same state or gate with `<SignedIn>` / `<SignedOut>`. For SSR-safe URL
+parameters and invite handling use `auth.client.param()` and
+`auth.client.invite`. See [SSR Overview](/ssr/overview/) for the full client
 API.
 
 ## Accessing the token

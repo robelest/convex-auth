@@ -1,98 +1,105 @@
 ---
-title: React Hooks
-description: useAuth() and ConvexAuthProvider for React apps.
+title: React
+description: Gate components and useAuthActions for React apps.
 ---
 
 <svelte:head>
 
-  <title>React Hooks - convex-auth</title>
+  <title>React - convex-auth</title>
 </svelte:head>
 
-# React Hooks
+# React
 
-`@robelest/convex-auth/react` wraps the imperative browser client with React
-context and a single composite hook. Use it in React, Next.js, Vite, and
+`@robelest/convex-auth/react` exposes React context, gate components, and hooks
+for an app-owned browser auth client. Use it in React, Next.js, Vite, and
 similar apps; it works in any React 18+ codebase.
 
-`react` is **not** a declared peer dependency — if your app uses this
-subpath, you already have React installed. Apps that only consume the
-server entrypoints don't pay for React.
+`react` is **not** a declared peer dependency — if your app uses this subpath,
+you already have React installed. Apps that only consume the server entrypoints
+don't pay for React.
 
 ## Setup
 
+Create the Convex client and auth client together, then pass the auth client to
+`<ConvexAuthProvider>`.
+
 ```tsx
 // app.tsx
-import { ConvexReactClient } from "convex/react";
+import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { client as createAuthClient } from "@robelest/convex-auth/browser";
 import { ConvexAuthProvider } from "@robelest/convex-auth/react";
+import { api } from "../convex/_generated/api";
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
-const auth = createAuthClient({ convex, url: convex.url });
+const convexUrl = import.meta.env.VITE_CONVEX_URL;
+const convex = new ConvexReactClient(convexUrl);
+const auth = createAuthClient({ convex, url: convexUrl, api: api.auth });
 
 export function Root() {
   return (
-    <ConvexAuthProvider client={auth}>
-      <App />
-    </ConvexAuthProvider>
+    <ConvexProvider client={convex}>
+      <ConvexAuthProvider auth={auth}>
+        <App />
+      </ConvexAuthProvider>
+    </ConvexProvider>
   );
 }
 ```
 
-Create the auth client at module scope so React's `StrictMode` double-mount
-in development doesn't tear it down.
+## Gate components
 
-## `useAuth()`
-
-Composite hook that returns everything you typically need:
+Render UI per auth state. `<SignedIn>` accepts a render prop that receives the
+JWT (typed `string`). `<AuthLoading>` renders while auth is resolving or while a
+new token is waiting for Convex confirmation.
 
 ```tsx
-import { useAuth } from "@robelest/convex-auth/react";
+import { SignedIn, SignedOut, AuthLoading, useAuthActions } from "@robelest/convex-auth/react";
 
-function SignInButton() {
-  const { isLoading, isAuthenticated, signIn, signOut } = useAuth();
-  if (isLoading) return <span>Loading…</span>;
-  return isAuthenticated ? (
-    <button onClick={() => signOut()}>Sign out</button>
-  ) : (
-    <button onClick={() => signIn("google")}>Sign in with Google</button>
+function App() {
+  const { signIn } = useAuthActions();
+  return (
+    <>
+      <AuthLoading>
+        <span>Loading…</span>
+      </AuthLoading>
+      <SignedOut>
+        <button onClick={() => signIn?.("google")}>Sign in with Google</button>
+      </SignedOut>
+      <SignedIn>{(token) => <Dashboard token={token} />}</SignedIn>
+    </>
   );
 }
 ```
 
-Return shape:
+Because the browser client boots synchronously from persisted storage, a
+returning user can render `<SignedIn>` on the first paint. Fresh sign-in and
+refresh tokens render `<AuthLoading>` until Convex confirms them.
 
-| Field             | Type                                                               | Description                              |
-| ----------------- | ------------------------------------------------------------------ | ---------------------------------------- |
-| `phase`           | `"loading" \| "handshake" \| "authenticated" \| "unauthenticated"` | High-level state for deterministic UI.   |
-| `isLoading`       | `boolean`                                                          | True during initial hydration.           |
-| `isAuthenticated` | `boolean`                                                          | True after Convex confirms backend auth. |
-| `token`           | `string \| null`                                                   | Raw JWT, or `null`.                      |
-| `signIn`          | `(provider, params?) => Promise<...>`                              | Start a provider sign-in flow.           |
-| `signOut`         | `() => Promise<void>`                                              | Sign out + clear local state.            |
+## `useAuthActions()`
 
-`useAuth()` subscribes to client state via `useSyncExternalStore`, so it's
-SSR-safe — it returns a stable `loading` snapshot on the server.
+Returns `{ signIn, signOut }`. Members are `undefined` only when no auth client
+has been provided.
+
+```tsx
+import { useAuthActions } from "@robelest/convex-auth/react";
+
+function SignOutButton() {
+  const { signOut } = useAuthActions();
+  return <button onClick={() => signOut?.()}>Sign out</button>;
+}
+```
 
 ## `useConvexAuthClient()`
 
-Escape hatch when you need factor flows (`totp`, `passkey`, `device`) or
-low-level methods (`completeOAuth`, `param`, `initialize`):
+The underlying imperative client, for factor flows (`totp`, `passkey`,
+`device`) and low-level methods (`completeOAuth`, `param`, `initialize`).
+Returns `null` when no auth client has been provided.
 
 ```tsx
 import { useConvexAuthClient } from "@robelest/convex-auth/react";
 
 function TotpSetup() {
   const client = useConvexAuthClient();
-  return (
-    <button
-      onClick={async () => {
-        const setup = await client.totp?.setup();
-        // show QR code, etc.
-      }}
-    >
-      Enable TOTP
-    </button>
-  );
+  return <button onClick={() => client?.totp?.setup()}>Enable TOTP</button>;
 }
 ```
 
@@ -101,7 +108,6 @@ underlying providers are configured server-side.
 
 ## SSR
 
-`useAuth()` returns a fixed loading snapshot during SSR, so it never throws
-on first render. The actual auth state hydrates on the client after
-`ConvexAuthProvider` mounts. For framework-specific token-prefetch helpers,
-see [SSR overview](/ssr/overview).
+Create the auth client with the server-known `token`, then pass it to
+`<ConvexAuthProvider auth={auth}>`. For framework-specific token-prefetch
+helpers, see [SSR overview](/ssr/overview).

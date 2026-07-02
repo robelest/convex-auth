@@ -2,7 +2,7 @@
  * Framework-agnostic auth client for `@robelest/convex-auth/client`.
  *
  * Exposes the {@link client} factory, which wires auth tokens into a Convex
- * transport and returns `signIn`, `signOut`, `onChange`, `state`, and the
+ * transport and returns `signIn`, `signOut`, `subscribe`, `getSnapshot`, and the
  * factor helpers enabled by the configured providers. Platform entrypoints
  * (`browser`, `expo`) layer concrete runtime defaults on top of this.
  *
@@ -19,6 +19,8 @@ import {
   type AuthClient,
   type AuthFlowContext,
   type AuthState,
+  type AuthSnapshot,
+  type AuthSubscriber,
   type OAuthCompletionResult,
   type ClientAdapterDeps,
   type ActionTransport,
@@ -162,10 +164,24 @@ function formDataEntries(formData: unknown): Iterable<[string, string | { name: 
   return formData as Iterable<[string, string | { name: string }]>;
 }
 
+function resolveExplicitToken(value: string | null | undefined): AccessToken | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (value.length === 0) {
+    throw new Error(
+      "The `token` option must be a non-empty JWT string or null. Omit `token` to discover persisted auth.",
+    );
+  }
+  if (value.trim() !== value) {
+    throw new Error("The `token` option must not include leading or trailing whitespace.");
+  }
+  return value as AccessToken;
+}
+
 /**
  * Create a framework-agnostic auth client.
  *
- * Returns an object with `signIn`, `signOut`, `onChange`, `state`, and any
+ * Returns an object with `signIn`, `signOut`, `subscribe`, `getSnapshot`, and any
  * factor helpers enabled by your configured providers. Platform-specific
  * passkey support is added by higher-level entrypoints such as
  * `@robelest/convex-auth/browser`.
@@ -187,7 +203,6 @@ function formDataEntries(formData: unknown): Iterable<[string, string | { name: 
  * const auth = client({
  *   convex,
  *   proxyPath: '/api/auth',
- *   tokenSeed: tokenFromServer, // JWT read from httpOnly cookie during SSR
  *   runtime: myRuntime,
  * });
  * ```
@@ -196,9 +211,9 @@ function formDataEntries(formData: unknown): Iterable<[string, string | { name: 
  * Tokens are stored in httpOnly cookies server-side — the client
  * holds the JWT in memory only.
  *
- * When a `tokenSeed` is supplied (SSR hydration), the client treats it as
- * immediately authenticated, avoiding a handshake-only loading screen on the
- * first client render. The returned client also auto-wires its tokens into the
+ * The client resolves auth through a Convex confirmation handshake. For SSR,
+ * pass the server-known token via `token` so hydration starts from the same
+ * resolved state. The returned client also auto-wires its tokens into the
  * passed Convex client via `setAuth`, so queries and mutations are
  * authenticated without further configuration.
  *
@@ -213,6 +228,7 @@ function formDataEntries(formData: unknown): Iterable<[string, string | { name: 
  * @throws {Error} When the Convex deployment URL cannot be determined and `url` is not passed explicitly.
  * @throws {Error} When `proxyPath` is not set and the `api` option is missing.
  * @throws {Error} When `proxyPath` is set and `runtime.proxy` is missing.
+ * @throws {Error} When `token` is an empty string or includes leading/trailing whitespace.
  */
 export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = AuthApiRefs>(
   options: ClientOptions<Api>,
@@ -355,10 +371,18 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
 
   const httpClient: ActionTransport | null = services.httpClient;
 
-  const serverToken: AccessToken | null =
-    typeof options.tokenSeed === "string" && options.tokenSeed.trim().length > 0
-      ? (options.tokenSeed as AccessToken)
-      : null;
+  const readInitialToken = (): AccessToken | null => {
+    if (!storage) return null;
+    try {
+      const raw = storage.getItem(key(JWT_STORAGE_KEY));
+      return typeof raw === "string" && raw.length > 0 ? (raw as AccessToken) : null;
+    } catch {
+      return null;
+    }
+  };
+  const explicitToken = resolveExplicitToken(options.token);
+  const tokenProvided = explicitToken !== undefined;
+  const serverToken: AccessToken | null = tokenProvided ? explicitToken : readInitialToken();
   const hasServerToken = serverToken !== null;
 
   const handshakeTimeoutMs =
@@ -367,7 +391,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
       : DEFAULT_AUTH_HANDSHAKE_TIMEOUT_MS;
 
   let token: AccessToken | null = serverToken;
-  let isLoading = !hasServerToken;
+  let isLoading = !hasServerToken && !tokenProvided;
   let authConfirmed = hasServerToken;
   let handshakePending = false;
   let authEpoch = 0;
@@ -378,11 +402,32 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
   } | null = null;
   let initializePromise: Promise<void> | null = null;
   const handshakeWaiters = new Set<HandshakeWaiter>();
-  let snapshot: AuthState = {
+  let snapshot: AuthSnapshot = {
     phase: hasServerToken ? "authenticated" : isLoading ? "loading" : "unauthenticated",
     isLoading,
     isAuthenticated: hasServerToken,
     token,
+  };
+
+  const computePublic = (): AuthState => {
+    if (snapshot.token !== null && snapshot.phase === "authenticated") {
+      return { status: "signedIn", token: snapshot.token };
+    }
+    if (snapshot.phase === "loading" || snapshot.phase === "handshake") {
+      return { status: "loading", token: null };
+    }
+    return { status: "signedOut", token: null };
+  };
+  let publicSnapshot: AuthState = computePublic();
+  const authStatesEqual = (left: AuthState, right: AuthState) =>
+    left.status === right.status && left.token === right.token;
+  const refreshPublic = (): boolean => {
+    const next = computePublic();
+    if (authStatesEqual(publicSnapshot, next)) {
+      return false;
+    }
+    publicSnapshot = next;
+    return true;
   };
 
   const settleHandshakeWaiters = (
@@ -477,6 +522,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
   };
 
   const notify = () => {
+    refreshPublic();
     for (const cb of subscribers) cb();
   };
 
@@ -490,9 +536,9 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
             ? "authenticated"
             : "unauthenticated";
 
-    const phase = tag as AuthState["phase"];
+    const phase = tag as AuthSnapshot["phase"];
 
-    const next: AuthState = {
+    const next: AuthSnapshot = {
       phase,
       isLoading: phase === "loading" || phase === "handshake",
       isAuthenticated: phase === "authenticated",
@@ -568,7 +614,9 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
       }
     }
 
-    if (token !== previousToken) {
+    const tokenChanged = token !== previousToken;
+
+    if (tokenChanged) {
       authEpoch += 1;
       rejectObsoleteHandshakeWaiters(authEpoch);
     }
@@ -583,7 +631,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
         }),
       });
     } else {
-      const shouldEnterHandshake = args.requireHandshake === true || !authConfirmed;
+      const shouldEnterHandshake = args.requireHandshake === true || tokenChanged || !authConfirmed;
       if (shouldEnterHandshake) {
         authConfirmed = false;
         handshakePending = true;
@@ -1035,7 +1083,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
 
     initializePromise = (async () => {
       if (proxy) {
-        if (!hasServerToken && runtime.environment !== "server") {
+        if (!tokenProvided && !hasServerToken && runtime.environment !== "server") {
           try {
             await fetchAccessToken({ forceRefreshToken: true });
           } catch (error) {
@@ -1048,14 +1096,29 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
         return;
       }
 
-      try {
-        await hydrateFromStorage();
-      } catch {
+      if (!tokenProvided) {
         try {
-          await setToken({ shouldStore: false, tokens: null, resyncConvexAuth: false });
+          await hydrateFromStorage();
         } catch {
-          /* empty */
+          try {
+            await setToken({ shouldStore: false, tokens: null, resyncConvexAuth: false });
+          } catch {
+            /* empty */
+          }
         }
+      }
+
+      try {
+        const loc = runtime.location?.get() ?? null;
+        if (loc && loc.searchParams.has("code")) {
+          const result = await completeOAuth(loc);
+          if (result.handled) cleanUrlParams(["code"]);
+        }
+      } catch (error) {
+        logMessage("convex-auth/client", LOG_LEVELS.ERROR, [
+          "[convex-auth] OAuth completion failed:",
+          error,
+        ]);
       }
     })();
 
@@ -1066,23 +1129,20 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     }
   };
 
-  /**
-   * Subscribe to auth state changes. Invokes the callback immediately
-   * with the current state, then again on every state transition.
-   *
-   * ```ts
-   * const unsub = auth.onChange(setState);
-   * ```
-   *
-   * @param cb - Callback receiving the latest {@link AuthState}.
-   * @returns An unsubscribe function.
-   */
-  const onChange = (cb: (state: AuthState) => void): (() => void) => {
-    cb(snapshot);
-    const wrapped = () => cb(snapshot);
-    subscribers.add(wrapped);
+  const subscribe = (handler: AuthSubscriber): (() => void) => {
+    let last: AuthState | null = null;
+    const emit = () => {
+      const state = publicSnapshot;
+      if (last !== null && authStatesEqual(last, state)) {
+        return;
+      }
+      last = state;
+      handler(state);
+    };
+    emit();
+    subscribers.add(emit);
     return () => {
-      subscribers.delete(wrapped);
+      subscribers.delete(emit);
     };
   };
 
@@ -1133,10 +1193,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     });
 
   return {
-    /** Current auth state snapshot. */
-    get state(): AuthState {
-      return snapshot;
-    },
     /** Restore persisted auth state for the current runtime. */
     initialize,
     /** SSR-safe URL param reader. */
@@ -1157,8 +1213,8 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     signIn,
     /** Sign out and clear all token state. */
     signOut,
-    /** Subscribe to auth state changes. Returns an unsubscribe function. */
-    onChange,
+    subscribe,
+    getSnapshot: () => publicSnapshot,
     /** TOTP two-factor authentication helpers. */
     totp,
     /** Device authorization (RFC 8628) helpers. */
@@ -1167,7 +1223,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
      * Tear down this auth client instance.
      *
      * Removes the cross-tab `storage` event listener, clears all
-     * `onChange` subscribers, and rejects any in-flight handshake
+     * `subscribe` subscribers, and rejects any in-flight handshake
      * waiters. Call this when the client is no longer needed
      * (e.g. on SPA unmount or hot-module replacement) to prevent
      * memory leaks and stale callbacks.
@@ -1182,7 +1238,7 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
      *
      * @example
      * ```ts
-     * const unsubscribe = auth.onChange((state) => console.log(state.phase));
+     * const unsubscribe = auth.subscribe((state) => console.log(state.status));
      *
      * // Later, during cleanup:
      * unsubscribe();

@@ -202,7 +202,8 @@ bundles.
 | `@robelest/convex-auth/server`      | Everything (providers, OAuth, crypto, HTTP) | `convex/auth.ts` — signIn/signOut exports       |
 | `@robelest/convex-auth/core`        | Context resolution only (~2KB)              | `convex/functions.ts` — query/mutation wrappers |
 | `@robelest/convex-auth/browser`     | Browser client defaults                     | Web apps and SSR client hydration               |
-| `@robelest/convex-auth/react`       | React `useAuth()` + `ConvexAuthProvider`    | React apps wrapping the browser client          |
+| `@robelest/convex-auth/react`       | React gates + app-owned auth client context | React apps wrapping the browser client          |
+| `@robelest/convex-auth/svelte`      | Svelte runes bridge + gate components       | Svelte 5 apps wrapping the browser client       |
 | `@robelest/convex-auth/expo`        | Expo SecureStore, AuthSession, passkeys     | Expo / React Native apps                        |
 | `@robelest/convex-auth/providers/*` | Individual provider                         | Only in `convex/auth.ts`                        |
 
@@ -232,12 +233,12 @@ rejected before your handler runs.
 
 ## API layers
 
-| Layer                 | What it is                                                        | Typical usage                                                                    |
-| --------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Auth-flow actions     | Required client-callable functions exported from `convex/auth.ts` | `api.auth.signIn`, `api.auth.signOut`                                            |
-| Internal auth action  | Internal runtime mutation exported from `convex/auth.ts`          | `internal.auth.store`                                                            |
-| Helper namespaces     | Server-side helper APIs returned by `defineAuth(...)`             | `auth.member.assert(ctx, { ... })`, `auth.connection.create(ctx, { data })`     |
-| App-owned admin RPC   | Optional public RPC for group connection admin UI                | `authMutation`/`authQuery` functions calling `auth.connection.*`                 |
+| Layer                | What it is                                                        | Typical usage                                                               |
+| -------------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Auth-flow actions    | Required client-callable functions exported from `convex/auth.ts` | `api.auth.signIn`, `api.auth.signOut`                                       |
+| Internal auth action | Internal runtime mutation exported from `convex/auth.ts`          | `internal.auth.store`                                                       |
+| Helper namespaces    | Server-side helper APIs returned by `defineAuth(...)`             | `auth.member.assert(ctx, { ... })`, `auth.connection.create(ctx, { data })` |
+| App-owned admin RPC  | Optional public RPC for group connection admin UI                 | `authMutation`/`authQuery` functions calling `auth.connection.*`            |
 
 Only the first layer is required for the frontend auth client. The third layer
 exists only if your app explicitly exposes app-owned group connection admin

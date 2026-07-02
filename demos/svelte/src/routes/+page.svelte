@@ -4,6 +4,7 @@
   import { goto } from "$app/navigation";
   import { api } from "$convex/_generated/api.js";
   import type { AppContext } from "$lib/app";
+  import AppLoading from "$lib/components/AppLoading.svelte";
   import AuthModal from "$lib/components/AuthModal.svelte";
   import OnboardingModal from "$lib/components/OnboardingModal.svelte";
 
@@ -20,10 +21,12 @@
   });
 </script>
 
-{#if !app.isAuthenticated}
+{#if app.isLoading}
+  <AppLoading />
+{:else if !app.isAuthenticated}
   <AuthModal authProviders={app.authProviders} />
 {:else if dashboard.data && dashboard.data.groups.length === 0}
   <OnboardingModal {client} />
 {:else}
-  <p class="muted">Loading…</p>
+  <AppLoading shell />
 {/if}

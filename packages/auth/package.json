@@ -51,6 +51,11 @@
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js"
     },
+    "./svelte": {
+      "types": "./dist/svelte/index.d.ts",
+      "svelte": "./dist/svelte/index.js",
+      "import": "./dist/svelte/index.js"
+    },
     "./expo": {
       "types": "./dist/expo/index.d.ts",
       "import": "./dist/expo/index.js"
@@ -99,10 +104,11 @@
   },
   "scripts": {
     "build:lib": "vp exec tsdown",
-    "build": "rm -rf dist && vp run build:lib",
+    "build:svelte": "vp exec svelte-package --input src/svelte --output dist/svelte",
+    "build": "rm -rf dist && vp run build:lib && vp run build:svelte",
     "typecheck": "vp exec tsc --project tsconfig.server.json --noEmit && vp exec tsc --project tsconfig.client.json --noEmit && vp exec tsc --project tsconfig.component.json --noEmit",
     "typecheck:consumer": "vp exec tsc --project tsconfig.consumer.json --noEmit",
-    "check:attw": "vp exec attw --pack . --profile esm-only --exclude-entrypoints ./test ./_generated/component.js",
+    "check:attw": "vp exec attw --pack . --profile esm-only --exclude-entrypoints ./test ./_generated/component.js ./svelte",
     "check:publint": "vp exec publint --strict",
     "check:packaging": "vp run check:attw && vp run check:publint",
     "check:component-paginate": "node ../../scripts/check-component-paginate.mjs",
@@ -151,6 +157,9 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",
     "@clack/prompts": "^1.2.0",
+    "@sveltejs/package": "^2.5.8",
+    "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "svelte": "^5.55.9",
     "@types/figlet": "^1.7.0",
     "@types/node": "25.2.2",
     "@types/react": "^19.0.0",
@@ -179,9 +188,13 @@
     "expo-secure-store": "*",
     "expo-web-browser": "*",
     "react-native": "*",
-    "react-native-passkey": "*"
+    "react-native-passkey": "*",
+    "svelte": "^5.0.0"
   },
   "peerDependenciesMeta": {
+    "svelte": {
+      "optional": true
+    },
     "expo-auth-session": {
       "optional": true
     },

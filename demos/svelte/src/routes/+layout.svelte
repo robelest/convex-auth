@@ -5,9 +5,11 @@
 	import { onNavigate } from "$app/navigation";
 	import { Toaster } from "svelte-sonner";
 	import { setupConvex, useQuery } from "convex-svelte";
-	import { onMount, setContext } from "svelte";
+	import { onDestroy, setContext } from "svelte";
 	import { client as createAuthClient } from "@robelest/convex-auth/browser";
+	import { setupConvexAuth } from "@robelest/convex-auth/svelte";
 	import { api } from "$convex/_generated/api.js";
+	import AppLoading from "$lib/components/AppLoading.svelte";
 
 	let { children } = $props();
 
@@ -22,30 +24,24 @@
 
 	const convexClient = setupConvex(convexUrl);
 
-	const auth = createAuthClient({
+	const authClient = createAuthClient({
 		convex: convexClient,
 		api: api.auth,
 		location: () => page.url,
 	});
+	const auth = setupConvexAuth(authClient);
+	onDestroy(() => authClient.destroy());
 
-	setContext("auth", auth);
-
-	let authState = $state(auth.state);
-	onMount(() => {
-		void auth.initialize();
-		return auth.onChange(() => {
-			authState = auth.state;
-		});
-	});
+	setContext("auth", auth.client);
 
 	const authProvidersQuery = useQuery(api.groups.authProviders, () => ({}));
 
 	setContext("app", {
 		get isAuthenticated() {
-			return authState.isAuthenticated;
+			return auth.signedIn;
 		},
 		get isLoading() {
-			return authState.isLoading;
+			return auth.loading;
 		},
 		get authProviders() {
 			return authProvidersQuery.data ?? { google: false };
@@ -72,10 +68,12 @@
 	<title>convex-auth demo</title>
 </svelte:head>
 
-{#if authState.isAuthenticated}
+{#if auth.signedIn}
 	<div class="grid min-h-dvh grid-cols-[12rem_minmax(0,1fr)] bg-background-primary max-md:grid-cols-1 max-md:grid-rows-[auto_1fr]" data-theme="dark">
 		{@render children()}
 	</div>
+{:else if auth.loading}
+	<AppLoading />
 {:else}
 	<div class="min-h-dvh bg-background-primary" data-theme="dark">
 		<div class="fixed inset-0 grid place-items-center bg-black/50 p-6 px-4">

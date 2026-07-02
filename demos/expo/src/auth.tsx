@@ -32,15 +32,9 @@ function getAuthClient(): DemoAuthClient {
 
 export function DemoAuthProvider({ children }: { children: React.ReactNode }) {
   const auth = React.useMemo(() => getAuthClient(), []);
-  const [state, setState] = React.useState<AuthState>(auth.state);
+  const [state, setState] = React.useState<AuthState>({ status: "loading", token: null });
 
-  React.useEffect(() => {
-    const unsubscribe = auth.onChange((next) => {
-      setState({ ...next });
-    });
-    void auth.initialize();
-    return unsubscribe;
-  }, [auth]);
+  React.useEffect(() => auth.subscribe(setState), [auth]);
 
   const value = React.useMemo<DemoAuthContextValue>(
     () => ({

@@ -3,17 +3,17 @@ import { BrowserLocksLive } from "./locks";
 import { BrowserNavigationLive } from "./navigation";
 
 const browserStorage = {
-  async getItem(key: string): Promise<string | null> {
+  getItem(key: string): string | null {
     try {
       return localStorage.getItem(key);
     } catch {
       return null;
     }
   },
-  async setItem(key: string, value: string): Promise<void> {
+  setItem(key: string, value: string): void {
     localStorage.setItem(key, value);
   },
-  async removeItem(key: string): Promise<void> {
+  removeItem(key: string): void {
     localStorage.removeItem(key);
   },
 };

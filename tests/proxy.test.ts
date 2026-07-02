@@ -93,7 +93,7 @@ test("proxy mode re-syncs convex auth after sign in", async () => {
   const auth = client({
     convex,
     proxyPath: "/api/auth",
-    tokenSeed: "server-token",
+    token: "server-token",
     runtime: { proxy: createProxyRuntime(fetchMock) },
   });
 
@@ -131,7 +131,7 @@ test("server token starts authenticated without loading handshake", () => {
   const auth = client({
     convex,
     proxyPath: "/api/auth",
-    tokenSeed: "server-token",
+    token: "server-token",
     runtime: {
       proxy: createProxyRuntime(async () => {
         throw new Error("should not fetch with seeded token");
@@ -139,10 +139,7 @@ test("server token starts authenticated without loading handshake", () => {
     },
   });
 
-  expect(auth.state.phase).toBe("authenticated");
-  expect(auth.state.isLoading).toBe(false);
-  expect(auth.state.isAuthenticated).toBe(true);
-  expect(auth.state.token).toBe("server-token");
+  expect(auth.getSnapshot()).toEqual({ status: "signedIn", token: "server-token" });
 
   auth.destroy();
 });
@@ -152,7 +149,7 @@ test("proxy signIn waits for Convex auth confirmation", async () => {
   const auth = client({
     convex,
     proxyPath: "/api/auth",
-    tokenSeed: "existing-token",
+    token: "existing-token",
     runtime: {
       proxy: createProxyRuntime(
         async () =>
@@ -187,6 +184,7 @@ test("proxy signIn waits for Convex auth confirmation", async () => {
 
   await waitForSetAuthCalls(convex, 2);
   expect(resolved).toBe(false);
+  expect(auth.getSnapshot()).toEqual({ status: "loading", token: null });
 
   convex.triggerAuthChange(true);
   const result = await signInPromise;
@@ -200,7 +198,7 @@ test("proxy signIn tolerates transient auth false before confirmation", async ()
   const auth = client({
     convex,
     proxyPath: "/api/auth",
-    tokenSeed: "existing-token",
+    token: "existing-token",
     runtime: {
       proxy: createProxyRuntime(
         async () =>
@@ -251,7 +249,7 @@ test("proxy signIn times out after rejection signal with no later confirmation",
   const auth = client({
     convex,
     proxyPath: "/api/auth",
-    tokenSeed: "existing-token",
+    token: "existing-token",
     runtime: {
       proxy: createProxyRuntime(
         async () =>
@@ -299,7 +297,7 @@ test("proxy signIn times out when auth confirmation never arrives", async () => 
   const auth = client({
     convex,
     proxyPath: "/api/auth",
-    tokenSeed: "existing-token",
+    token: "existing-token",
     runtime: {
       proxy: createProxyRuntime(
         async () =>
@@ -342,7 +340,7 @@ test("proxy refresh does not re-register Convex auth", async () => {
   const auth = client({
     convex,
     proxyPath: "/api/auth",
-    tokenSeed: "existing-token",
+    token: "existing-token",
     runtime: {
       proxy: createProxyRuntime(
         async () =>
@@ -370,6 +368,9 @@ test("proxy refresh does not re-register Convex auth", async () => {
 
   const refreshedToken = await fetchAccessToken!({ forceRefreshToken: true });
   expect(refreshedToken).toBe("fresh-token");
+  expect(auth.getSnapshot()).toEqual({ status: "loading", token: null });
+  convex.triggerAuthChange(true);
+  expect(auth.getSnapshot()).toEqual({ status: "signedIn", token: "fresh-token" });
   expect(convex.setAuth).toHaveBeenCalledTimes(1);
 
   auth.destroy();
@@ -400,7 +401,7 @@ test("proxy refresh retries transient failures before succeeding", async () => {
   const auth = client({
     convex,
     proxyPath: "/api/auth",
-    tokenSeed: "existing-token",
+    token: "existing-token",
     runtime: { proxy: createProxyRuntime(fetchMock) },
   });
 
@@ -421,7 +422,7 @@ test("proxy client can call protected mutation immediately after signIn", async 
   const auth = client({
     convex,
     proxyPath: "/api/auth",
-    tokenSeed: "existing-token",
+    token: "existing-token",
     runtime: {
       proxy: createProxyRuntime(
         async () =>
@@ -500,7 +501,7 @@ test("browser client preserves proxy defaults when runtime is partially overridd
   const auth = browserClient({
     convex,
     proxyPath: "/api/auth",
-    tokenSeed: "server-token",
+    token: "server-token",
     runtime: {
       location: {
         get: () => null,
@@ -610,25 +611,50 @@ test("browser client opens OAuth redirects via runtime oauth launcher", async ()
   auth.destroy();
 });
 
-test("empty SSR token is treated as signed out", () => {
+test("invalid explicit SSR tokens are rejected", () => {
+  for (const [token, message] of [
+    ["", "The `token` option must be a non-empty JWT string or null."],
+    [" server-token", "The `token` option must not include leading or trailing whitespace."],
+    ["server-token ", "The `token` option must not include leading or trailing whitespace."],
+  ] as const) {
+    const convex = createConvexMock();
+    expect(() =>
+      client({
+        convex,
+        proxyPath: "/api/auth",
+        token,
+        runtime: {
+          proxy: createProxyRuntime(async () => {
+            throw new Error("should not fetch with invalid token");
+          }),
+        },
+      }),
+    ).toThrow(message);
+    expect(convex.setAuth).not.toHaveBeenCalled();
+  }
+});
+
+test("null SSR token is treated as signed out and skips storage hydration", async () => {
   const convex = createConvexMock();
+  const storage = {
+    getItem: vi.fn(async (key: string) =>
+      key.startsWith("__convexAuthJWT") ? "stored-token" : null,
+    ),
+    setItem: vi.fn(async () => {}),
+    removeItem: vi.fn(async () => {}),
+  };
   const auth = client({
     convex,
-    proxyPath: "/api/auth",
-    tokenSeed: "",
-    runtime: {
-      proxy: createProxyRuntime(
-        async () =>
-          new Response(JSON.stringify({ kind: "signedIn", session: null }), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }),
-      ),
-    },
+    api: { signIn: {} as never, signOut: {} as never },
+    url: "https://example.convex.cloud",
+    token: null,
+    storage,
   });
 
-  expect(auth.state.token).toBeNull();
-  expect(auth.state.isAuthenticated).toBe(false);
+  expect(auth.getSnapshot()).toEqual({ status: "signedOut", token: null });
+  await auth.initialize();
+  expect(auth.getSnapshot()).toEqual({ status: "signedOut", token: null });
+  expect(storage.getItem).not.toHaveBeenCalledWith(expect.stringContaining("__convexAuthJWT"));
 
   auth.destroy();
 });

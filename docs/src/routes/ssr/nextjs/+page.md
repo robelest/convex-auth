@@ -104,6 +104,45 @@ export default async function RootLayout({
 }
 ```
 
-`AuthProvider` is your client component that creates the auth client with
-`client({ convex, proxyPath: "/api/auth", tokenSeed: token })` from
-`@robelest/convex-auth/browser` and exposes it to the rest of your React tree.
+`AuthProvider` is your client component that owns the Convex and auth clients:
+
+```tsx
+// app/auth-provider.tsx
+"use client";
+
+import { useEffect, useMemo } from "react";
+import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { client as createAuthClient } from "@robelest/convex-auth/browser";
+import { ConvexAuthProvider } from "@robelest/convex-auth/react";
+
+export function AuthProvider({
+  token,
+  children,
+}: {
+  token: string | null;
+  children: React.ReactNode;
+}) {
+  const { convex, auth } = useMemo(() => {
+    const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL!;
+    const convexClient = new ConvexReactClient(convexUrl);
+    const authClient = createAuthClient({
+      convex: convexClient,
+      proxyPath: "/api/auth",
+      token,
+    });
+    return { convex: convexClient, auth: authClient };
+  }, [token]);
+
+  useEffect(() => () => auth.destroy(), [auth]);
+
+  return (
+    <ConvexProvider client={convex}>
+      <ConvexAuthProvider auth={auth}>{children}</ConvexAuthProvider>
+    </ConvexProvider>
+  );
+}
+```
+
+The `token` option seeds the synchronous boot: a non-empty token renders signed
+in on hydration, and `null` renders signed out without a loading flash. See
+[SSR overview](/ssr/overview).

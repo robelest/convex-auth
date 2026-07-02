@@ -102,9 +102,6 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
   };
 
   const browserClient = {
-    get state() {
-      return baseClient.state;
-    },
     initialize,
     param: baseClient.param,
     get invite() {
@@ -113,7 +110,8 @@ export function client<Api extends AuthApiRefs<boolean, boolean, boolean> = Auth
     completeOAuth,
     signIn,
     signOut: baseClient.signOut,
-    onChange: baseClient.onChange,
+    subscribe: baseClient.subscribe,
+    getSnapshot: baseClient.getSnapshot,
     destroy: baseClient.destroy,
     ...("totp" in baseClient ? { totp: baseClient.totp } : {}),
     ...("device" in baseClient ? { device: baseClient.device } : {}),

@@ -3,11 +3,14 @@
   import { getContext } from "svelte";
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
+  import { useConvexAuth } from "@robelest/convex-auth/svelte";
   import { api } from "$convex/_generated/api.js";
   import type { AppContext } from "$lib/app";
+  import AppLoading from "$lib/components/AppLoading.svelte";
 
   let { children } = $props();
   const app = getContext<AppContext>("app");
+  const auth = useConvexAuth();
   const groupId = $derived(page.params.groupId!);
 
   const dashboard = useQuery(api.groups.get, () => (app.isAuthenticated ? { groupId } : "skip"));
@@ -17,7 +20,8 @@
   );
 
   $effect(() => {
-    if (!app.isAuthenticated && !app.isLoading) {
+    if (auth.loading) return;
+    if (!auth.signedIn) {
       void goto("/");
       return;
     }
@@ -30,7 +34,7 @@
 {#if app.isAuthenticated && canManage}
   {@render children()}
 {:else}
-  <div class="col-span-full grid place-items-center py-20">
-    <p class="muted">Loading…</p>
+  <div class="col-span-full">
+    <AppLoading />
   </div>
 {/if}

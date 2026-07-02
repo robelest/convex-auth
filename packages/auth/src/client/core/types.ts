@@ -158,21 +158,22 @@ export type SignInResult =
   | { kind: "deviceCode"; deviceCode: DeviceCodeResult }
   | { kind: "started" };
 
-/**
- * Reactive auth state snapshot returned by `auth.state` and `auth.onChange`.
- *
- * @see {@link SignInResult}
- */
-export type AuthState = {
-  /** High-level auth phase for deterministic UI state handling. */
+/** @internal */
+export type AuthSnapshot = {
   phase: "loading" | "handshake" | "authenticated" | "unauthenticated";
-  /** `true` during initial hydration before the first token is resolved. */
   isLoading: boolean;
-  /** `true` only after Convex confirms authentication with the backend. */
   isAuthenticated: boolean;
-  /** The raw JWT string, or `null` when not authenticated. */
   token: string | null;
 };
+
+/** Reactive auth state. `token` is non-null only after Convex confirms auth. */
+export type AuthState =
+  | { status: "loading"; token: null }
+  | { status: "signedOut"; token: null }
+  | { status: "signedIn"; token: string };
+
+/** Handler for `auth.subscribe`. */
+export type AuthSubscriber = (state: AuthState) => void;
 
 /**
  * Typed Convex API references for the auth functions.
@@ -595,11 +596,6 @@ export type SignInImpl = (
 
 /** Base auth client — always present. */
 interface AuthClientBase {
-  /**
-   * Reactive auth state snapshot.
-   * @readonly
-   */
-  readonly state: AuthState;
   /** Restore initial auth state for the current runtime. */
   initialize: () => Promise<void>;
   /** SSR-safe query-param reader. */
@@ -615,8 +611,10 @@ interface AuthClientBase {
   signIn: SignInOverloads;
   /** Sign out and clear local auth state. */
   signOut: () => Promise<void>;
-  /** Subscribe to auth state changes. Returns an unsubscribe function. */
-  onChange: (callback: (state: AuthState) => void) => () => void;
+  /** Subscribe to auth state changes; returns an unsubscribe. */
+  subscribe: (handler: AuthSubscriber) => () => void;
+  /** Read the current auth state synchronously, e.g. for `useSyncExternalStore`. */
+  getSnapshot: () => AuthState;
   /** Tear down listeners and reject in-flight handshakes. */
   destroy: () => void;
 }
@@ -683,13 +681,20 @@ export type ClientOptions<Api extends AuthApiRefs<boolean, boolean, boolean> = A
    */
   storage?: Storage | null;
   /**
+   * Server-known auth used to seed the synchronous boot so SSR and hydration
+   * render the resolved state on first paint. A non-empty JWT boots signed in;
+   * `null` boots signed out. Providing this at all marks auth as resolved, so
+   * the client skips the loading phase. Omit it (leave `undefined`) to read the
+   * persisted value from `storage` instead. Ongoing persistence always uses
+   * `storage`.
+   */
+  token?: string | null;
+  /**
    * Proxy endpoint used instead of direct Convex auth calls.
    * When set, provide `runtime.proxy` and omit direct `api`/`httpClient`
    * transport requirements.
    */
   proxyPath?: string;
-  /** Server-provided JWT seed used for flash-free SSR hydration. */
-  tokenSeed?: string | null;
   /** SSR-safe URL source for reading query parameters. */
   location?: URL | (() => URL | null);
   /**

@@ -110,16 +110,25 @@ support. Use `@robelest/convex-auth/client` only when you need the
 framework-agnostic client in a non-browser runtime or want to provide those
 runtime pieces yourself.
 
+The client boots by reading its `storage` synchronously at construction, so a
+returning SPA session can render authenticated on the first paint. For SSR, pass
+the server-known token via the `token` option so hydration starts from the same
+resolved state — no synthetic storage required:
+
 ```ts
 import { client as createAuthClient } from "@robelest/convex-auth/browser";
 
 const auth = createAuthClient({
   convex: convexClient,
   proxyPath: "/api/auth",
-  tokenSeed: serverToken,
+  token: serverToken, // seeds the synchronous boot; may be null
   location: () => currentUrl, // SSR-safe URL source
 });
 ```
+
+A non-empty `token` starts signed in. `token: null` starts signed out and skips
+storage/proxy discovery. Omit `token` entirely for the normal SPA path that
+discovers persisted auth from storage.
 
 ### `location` option
 
