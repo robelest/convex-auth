@@ -20,7 +20,6 @@
  */
 
 import { ActionCache } from "@convex-dev/action-cache";
-import type { GenericActionCtx, GenericDataModel } from "convex/server";
 import { v } from "convex/values";
 
 import { components, internal } from "../_generated/api";
@@ -147,14 +146,12 @@ const ONE_HOUR = 60 * 60 * 1000;
 const TWO_HOURS = 2 * ONE_HOUR;
 const ONE_DAY = 24 * ONE_HOUR;
 
-const oidcDiscoveryCache: ActionCache<typeof internal.connection.cache.requestJson> = new ActionCache(
-  components.connectionFetchCache,
-  {
+const oidcDiscoveryCache: ActionCache<typeof internal.connection.cache.requestJson> =
+  new ActionCache(components.connectionFetchCache, {
     action: internal.connection.cache.requestJson,
     name: "oidcDiscovery",
     ttl: ONE_HOUR,
-  },
-);
+  });
 
 const oidcStatusDiscoveryCache: ActionCache<typeof internal.connection.cache.requestJson> =
   new ActionCache(components.connectionFetchCache, {
@@ -163,14 +160,12 @@ const oidcStatusDiscoveryCache: ActionCache<typeof internal.connection.cache.req
     ttl: TWO_HOURS,
   });
 
-const samlMetadataCache: ActionCache<typeof internal.connection.cache.requestText> = new ActionCache(
-  components.connectionFetchCache,
-  {
+const samlMetadataCache: ActionCache<typeof internal.connection.cache.requestText> =
+  new ActionCache(components.connectionFetchCache, {
     action: internal.connection.cache.requestText,
     name: "samlMetadata",
     ttl: ONE_DAY,
-  },
-);
+  });
 
 /**
  * Read-through fetch for OIDC discovery JSON. Cached 1h per URL.

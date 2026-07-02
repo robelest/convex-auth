@@ -260,7 +260,7 @@
     try {
       validationResult =
         protocol === "oidc"
-          ? await client.query(api.auth.group.validateOidc, { connectionId })
+          ? await client.action(api.auth.group.validateOidc, { connectionId })
           : await client.query(api.auth.group.validateSaml, { connectionId });
     } catch (error) {
       setMessage("error", errorText(error, "Validation failed."));
@@ -315,7 +315,7 @@
   async function handleDelete() {
     isDeleting = true;
     try {
-      await client.mutation(api.auth.group.deleteConnection, { id: connectionId });
+      await client.mutation(api.auth.group.removeConnection, { id: connectionId });
       window.location.href = `/${groupId}/connection`;
     } catch (error) {
       setMessage("error", errorText(error, "Delete failed."));

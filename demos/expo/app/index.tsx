@@ -88,7 +88,7 @@ export default function IssuesScreen() {
   );
 
   const issuesData = useQuery(
-    api.issues.forProject,
+    api.issues.list,
     readyForSync && selectedProject ? { projectId: selectedProject._id } : "skip",
   );
 

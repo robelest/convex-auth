@@ -7,7 +7,7 @@ import {
   internalMutationGeneric,
 } from "convex/server";
 import { ConvexError, type GenericId } from "convex/values";
-import type { GenericValidator, Value } from "convex/values";
+import type { Value } from "convex/values";
 import { v } from "convex/values";
 import { serialize as serializeCookie } from "cookie";
 
@@ -593,7 +593,6 @@ export function Auth(config_: ConvexAuthConfig) {
             registrationClientUri: (clientId) => `${authSiteUrl()}/oauth2/register/${clientId}`,
           }),
         });
-
       }
 
       if (hasOAuth) {
@@ -646,7 +645,9 @@ export function Auth(config_: ConvexAuthConfig) {
      * });
      * ```
      */
-    context: createHttpContext(bridgeRuntimeType<Parameters<typeof createHttpContext>[0]>(authBase)),
+    context: createHttpContext(
+      bridgeRuntimeType<Parameters<typeof createHttpContext>[0]>(authBase),
+    ),
 
     /**
      * Wrap an HTTP action handler with Bearer token authentication.
@@ -704,10 +705,7 @@ export function Auth(config_: ConvexAuthConfig) {
      * @param routeConfig.cors - CORS config; defaults to site URLs from environment.
      */
     route: createHttpRoute(
-      createHttpAction(
-        authBase as Parameters<typeof createHttpAction>[0],
-        getDefaultCorsOrigins,
-      ),
+      createHttpAction(authBase as Parameters<typeof createHttpAction>[0], getDefaultCorsOrigins),
       getDefaultCorsOrigins,
     ),
 
@@ -921,7 +919,9 @@ export function Auth(config_: ConvexAuthConfig) {
         }
         const provider = args.provider !== undefined ? getProviderOrThrow(args.provider) : null;
         const authSiteUrl =
-          provider?.type === "oauth" || provider?.type === "connection" ? getAuthSiteUrl(ctx) : undefined;
+          provider?.type === "oauth" || provider?.type === "connection"
+            ? getAuthSiteUrl(ctx)
+            : undefined;
         const result = await services.signIn.signIn(
           bridgeRuntimeType<Parameters<typeof services.signIn.signIn>[0]>(enrichCtx(ctx)),
           provider,

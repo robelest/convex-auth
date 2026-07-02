@@ -83,7 +83,7 @@ type ScimConfigRecord = {
   _creationTime: number;
   connectionId: string;
   groupId: string;
-  status: string;
+  status: "draft" | "active" | "disabled";
   basePath: string;
   tokenHash: string;
   lastRotatedAt?: number;
@@ -100,7 +100,7 @@ type WebhookEndpointRecord = {
   connectionId: string;
   groupId: string;
   url: string;
-  status: string;
+  status: "active" | "disabled";
   secretCiphertext: string;
   subscriptions: AuthEventKind[];
   createdByUserId?: string;
@@ -117,7 +117,7 @@ type WebhookDeliveryRecord = {
   endpointId: string;
   eventId: string;
   kind: AuthEventKind;
-  status: string;
+  status: "pending" | "processing" | "delivered" | "failed";
   attemptCount: number;
   nextAttemptAt: number;
   lastAttemptAt?: number;
@@ -235,13 +235,9 @@ export const deleteGroupConnection = async (
   componentConnection: ComponentConnection,
   connectionId: string,
 ) => {
-  const result = await componentMutation<{ id: string }, null>(
-    ctx,
-    componentConnection.remove,
-    {
-      id: connectionId,
-    },
-  );
+  const result = await componentMutation<{ id: string }, null>(ctx, componentConnection.remove, {
+    id: connectionId,
+  });
   invalidateCtxCache(ctx, `group-connection:${connectionId}`);
   invalidateCtxCache(ctx, "group-connection-domain");
   invalidateCtxCache(ctx, `connection-domains:${connectionId}`);
@@ -271,7 +267,7 @@ export const listConnectionDomains = (
     ),
   );
 
-export const addConnectionDomain = async (
+export const createConnectionDomain = async (
   ctx: ComponentWriteCtx,
   componentConnection: ComponentConnection,
   args: {
@@ -291,7 +287,7 @@ export const addConnectionDomain = async (
   return result;
 };
 
-export const deleteConnectionDomain = async (
+export const removeConnectionDomain = async (
   ctx: ComponentWriteCtx,
   componentConnection: ComponentConnection,
   domainId: string,
@@ -380,13 +376,9 @@ export const upsertConnectionDomainVerification = (
     expiresAt: number;
   },
 ) =>
-  componentMutation<typeof args, null>(
-    ctx,
-    componentConnection.domain.verification.upsert,
-    args,
-  );
+  componentMutation<typeof args, null>(ctx, componentConnection.domain.verification.upsert, args);
 
-export const deleteConnectionDomainVerification = (
+export const removeConnectionDomainVerification = (
   ctx: ComponentWriteCtx,
   componentConnection: ComponentConnection,
   domainId: string,
@@ -532,8 +524,7 @@ export const upsertScimIdentity = (
     raw?: Record<string, unknown>;
     lastProvisionedAt?: number;
   },
-) =>
-  componentMutation<typeof args, string>(ctx, componentConnection.scim.identity.upsert, args);
+) => componentMutation<typeof args, string>(ctx, componentConnection.scim.identity.upsert, args);
 
 export const deleteScimIdentity = (
   ctx: ComponentWriteCtx,

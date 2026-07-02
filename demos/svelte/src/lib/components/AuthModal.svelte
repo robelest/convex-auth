@@ -103,19 +103,11 @@
 		let shouldFallbackToPassword = false;
 
 		try {
-			console.log('[group-sso] lookup:start', { email });
 			const ssoInfo = await convexClient.query(api.auth.group.signInLookup, { email });
 			if (!ssoInfo) {
 				shouldFallbackToPassword = true;
 			} else {
-				console.log('[group-sso] lookup:result', ssoInfo);
-				console.log('[group-sso] signin:start', {
-					connectionId: ssoInfo.connectionId,
-					protocol: ssoInfo.protocol,
-					signInPath: ssoInfo.signInPath,
-				});
 				const result = await auth.signIn('connection', { connectionId: ssoInfo.connectionId });
-				console.log('[group-sso] signin:result', result);
 				if (result.kind === 'redirect' && result.redirect) {
 					window.location.href = result.redirect.toString();
 					return;
@@ -124,7 +116,6 @@
 				return;
 			}
 		} catch (error) {
-			console.error('[group-sso] flow:failed', error);
 			if (!isNoMatchingSsoError(error)) {
 				toast.error(getErrorMessage(error));
 				isSubmitting = false;

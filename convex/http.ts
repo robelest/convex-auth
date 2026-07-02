@@ -3,6 +3,7 @@ import { v } from "convex/values";
 
 import { api, components, internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
+import type { ActionCtx } from "./_generated/server";
 import { auth } from "./auth";
 
 const status = v.union(
@@ -45,14 +46,14 @@ auth.request.mcp(
     list_issues: {
       description: "List the issues in a project.",
       scope: "projects.read",
-      args: v.object({ projectId: v.string() }),
-      handler: (ctx, a) => ctx.runQuery(api.issues.forProject, { projectId: a.projectId }),
+      args: v.object({ projectId: v.id("projects") }),
+      handler: (ctx, a) => ctx.runQuery(api.issues.list, { projectId: a.projectId }),
     },
     get_issue: {
       description: "Get a single issue by id.",
       scope: "projects.read",
-      args: v.object({ issueId: v.string() }),
-      handler: (ctx, a) => ctx.runQuery(api.issues.detail, { issueId: a.issueId }),
+      args: v.object({ issueId: v.id("issues") }),
+      handler: (ctx, a) => ctx.runQuery(api.issues.get, { issueId: a.issueId }),
     },
     list_invites: {
       description: "List the pending member invites for a workspace.",
@@ -64,19 +65,21 @@ auth.request.mcp(
       description: "Create a project in a workspace. The identifier is derived from the name.",
       scope: "projects.create",
       args: v.object({ groupId: v.string(), name: v.string() }),
-      handler: (ctx, a) => ctx.runMutation(api.projects.create, { groupId: a.groupId, name: a.name }),
+      handler: (ctx, a) =>
+        ctx.runMutation(api.projects.create, { groupId: a.groupId, name: a.name }),
     },
     create_issue: {
       description: "Create an issue in a project.",
       scope: "issues.create",
-      args: v.object({ projectId: v.string(), title: v.string() }),
-      handler: (ctx, a) => ctx.runMutation(api.issues.create, { projectId: a.projectId, title: a.title }),
+      args: v.object({ projectId: v.id("projects"), title: v.string() }),
+      handler: (ctx, a) =>
+        ctx.runMutation(api.issues.create, { projectId: a.projectId, title: a.title }),
     },
     update_issue: {
       description: "Update an issue's title, status, priority, or assignee.",
       scope: "issues.edit",
       args: v.object({
-        issueId: v.string(),
+        issueId: v.id("issues"),
         title: v.optional(v.string()),
         status: v.optional(status),
         priority: v.optional(priority),
@@ -85,36 +88,44 @@ auth.request.mcp(
       handler: (ctx, a) =>
         ctx.runMutation(api.issues.update, {
           issueId: a.issueId,
-          title: a.title,
-          status: a.status,
-          priority: a.priority,
-          assigneeUserId: a.assigneeUserId,
+          patch: {
+            title: a.title,
+            status: a.status,
+            priority: a.priority,
+            assigneeUserId: a.assigneeUserId,
+          },
         }),
     },
-    delete_issue: {
-      description: "Delete an issue by id.",
+    remove_issue: {
+      description: "Remove an issue by id.",
       scope: "issues.delete",
-      args: v.object({ issueId: v.string() }),
+      args: v.object({ issueId: v.id("issues") }),
       handler: (ctx, a) => ctx.runMutation(api.issues.remove, { issueId: a.issueId }),
     },
-    add_comment: {
-      description: "Add a comment to an issue.",
+    create_comment: {
+      description: "Create a comment on an issue.",
       scope: "comments.create",
-      args: v.object({ issueId: v.string(), body: v.string() }),
-      handler: (ctx, a) => ctx.runMutation(api.comments.create, { issueId: a.issueId, body: a.body }),
+      args: v.object({ issueId: v.id("issues"), body: v.string() }),
+      handler: (ctx, a) =>
+        ctx.runMutation(api.comments.create, { issueId: a.issueId, body: a.body }),
     },
-    delete_comment: {
-      description: "Delete a comment by id.",
+    remove_comment: {
+      description: "Remove a comment by id.",
       scope: "comments.delete",
-      args: v.object({ commentId: v.string() }),
+      args: v.object({ commentId: v.id("comments") }),
       handler: (ctx, a) => ctx.runMutation(api.comments.remove, { commentId: a.commentId }),
     },
     invite_member: {
-      description: "Invite a member to a workspace by email with a role (orgAdmin, member, viewer).",
+      description:
+        "Invite a member to a workspace by email with a role (orgAdmin, member, viewer).",
       scope: "members.manage",
       args: v.object({ groupId: v.string(), email: v.string(), roleId: v.string() }),
       handler: (ctx, a) =>
-        ctx.runAction(api.groups.inviteMember, { groupId: a.groupId, email: a.email, roleId: a.roleId }),
+        ctx.runAction(api.groups.inviteMember, {
+          groupId: a.groupId,
+          email: a.email,
+          roleId: a.roleId,
+        }),
     },
     update_member_role: {
       description: "Change a member's role (orgAdmin, member, viewer) in a workspace.",
@@ -131,8 +142,8 @@ auth.request.mcp(
   { name: "convex-auth-workspace" },
 );
 
-async function requireProject(ctx: any, projectId: string) {
-  const project = await ctx.runQuery(internal.issues.getProjectForApi, {
+async function loadProject(ctx: ActionCtx, projectId: string) {
+  const project = await ctx.runQuery(internal.issues.http.getProject, {
     projectId,
   });
   if (!project) {
@@ -142,6 +153,19 @@ async function requireProject(ctx: any, projectId: string) {
     });
   }
   return project;
+}
+
+async function parseIssueCreateBody(request: Request) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON request body." }, { status: 400 });
+  }
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return Response.json({ error: "Expected a JSON object request body." }, { status: 400 });
+  }
+  return body as { projectId?: unknown; title?: unknown };
 }
 
 http.route({
@@ -173,7 +197,7 @@ http.route({
         { status: 400 },
       );
     }
-    const project = await requireProject(ctx, projectId);
+    const project = await loadProject(ctx, projectId);
     if (project instanceof Response) {
       return project;
     }
@@ -188,7 +212,7 @@ http.route({
         { status: 403 },
       );
     }
-    const issues = await ctx.runQuery(internal.issues.listIssuesForApi, {
+    const issues = await ctx.runQuery(internal.issues.http.list, {
       projectId,
     });
     return Response.json({
@@ -197,7 +221,7 @@ http.route({
         name: project.name,
         identifier: project.identifier,
       },
-      issues: issues.map((issue: any) => ({
+      issues: issues.map((issue) => ({
         issueId: issue.issueId,
         identifier: `${project.identifier}-${issue.number}`,
         title: issue.title,
@@ -214,17 +238,21 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const authContext = await auth.request.context(ctx, request);
-    const body = (await request.json()) as {
-      projectId?: string;
-      title?: string;
-    };
-    if (!body.projectId || !body.title?.trim()) {
+    const body = await parseIssueCreateBody(request);
+    if (body instanceof Response) {
+      return body;
+    }
+    if (
+      typeof body.projectId !== "string" ||
+      typeof body.title !== "string" ||
+      !body.title.trim()
+    ) {
       return Response.json(
         { error: "Expected `projectId` and `title` in the request body." },
         { status: 400 },
       );
     }
-    const project = await requireProject(ctx, body.projectId);
+    const project = await loadProject(ctx, body.projectId);
     if (project instanceof Response) {
       return project;
     }
@@ -239,10 +267,10 @@ http.route({
         { status: 403 },
       );
     }
-    const created = await ctx.runMutation(internal.issues.createIssueForApi, {
+    const created = await ctx.runMutation(internal.issues.http.create, {
       projectId: body.projectId,
       userId: authContext.userId,
-      title: body.title,
+      title: body.title.trim(),
     });
     return Response.json({
       issueId: created.issueId,

@@ -21,11 +21,58 @@
  */
 
 import { makeFunctionReference } from "convex/server";
+import type { Infer } from "convex/values";
 import { v } from "convex/values";
 
 import { action } from "./_generated/server";
 
-const signInResultValidator = v.any();
+const authTokensValidator = v.object({
+  token: v.string(),
+  refreshToken: v.string(),
+});
+
+const signInResultValidator = v.union(
+  v.object({
+    kind: v.literal("signedIn"),
+    session: v.union(authTokensValidator, v.null()),
+  }),
+  v.object({
+    kind: v.literal("redirect"),
+    redirect: v.string(),
+    verifier: v.string(),
+  }),
+  v.object({ kind: v.literal("started") }),
+  v.object({
+    kind: v.literal("passkeyOptions"),
+    options: v.record(v.string(), v.any()),
+    verifier: v.string(),
+  }),
+  v.object({
+    kind: v.literal("totpRequired"),
+    verifier: v.string(),
+  }),
+  v.object({
+    kind: v.literal("totpSetup"),
+    totpSetup: v.object({
+      uri: v.string(),
+      secret: v.string(),
+      totpId: v.string(),
+    }),
+    verifier: v.string(),
+  }),
+  v.object({
+    kind: v.literal("deviceCode"),
+    deviceCode: v.object({
+      deviceCode: v.string(),
+      userCode: v.string(),
+      verificationUri: v.string(),
+      verificationUriComplete: v.string(),
+      expiresIn: v.number(),
+      interval: v.number(),
+    }),
+  }),
+);
+type SignInResult = Infer<typeof signInResultValidator>;
 
 type SignInArgs =
   | { provider: "anonymous" }
@@ -36,7 +83,7 @@ type SignInArgs =
 const authSignIn = makeFunctionReference<
   "action",
   SignInArgs,
-  { kind: string; session?: unknown; verifier?: string }
+  SignInResult
 >("auth:signIn");
 
 /**

@@ -3,8 +3,8 @@ import { ConvexError, v } from "convex/values";
 import { auth } from "./auth/core";
 import { authMutation, authQuery } from "./functions";
 
-export const forIssue = authQuery({
-  args: { issueId: v.string() },
+export const list = authQuery({
+  args: { issueId: v.id("issues") },
   returns: v.array(
     v.object({
       _id: v.id("comments"),
@@ -15,9 +15,7 @@ export const forIssue = authQuery({
     }),
   ),
   handler: async (ctx, args) => {
-    const issueId = ctx.db.normalizeId("issues", args.issueId);
-    if (!issueId) return [];
-    const issue = await ctx.db.get(issueId);
+    const issue = await ctx.db.get(args.issueId);
     if (!issue) return [];
     const userId = ctx.auth.userId;
 
@@ -47,14 +45,10 @@ export const forIssue = authQuery({
 });
 
 export const create = authMutation({
-  args: { issueId: v.string(), body: v.string() },
+  args: { issueId: v.id("issues"), body: v.string() },
   returns: v.object({ commentId: v.id("comments") }),
   handler: async (ctx, args) => {
-    const issueId = ctx.db.normalizeId("issues", args.issueId);
-    if (!issueId) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Issue not found." });
-    }
-    const issue = await ctx.db.get(issueId);
+    const issue = await ctx.db.get(args.issueId);
     if (!issue) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Issue not found." });
     }
@@ -83,13 +77,10 @@ export const create = authMutation({
 });
 
 export const remove = authMutation({
-  args: { commentId: v.string() },
+  args: { commentId: v.id("comments") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const commentId = ctx.db.normalizeId("comments", args.commentId);
-    if (!commentId) return null;
-
-    const comment = await ctx.db.get(commentId);
+    const comment = await ctx.db.get(args.commentId);
     if (!comment) return null;
     const userId = ctx.auth.userId;
 
@@ -105,7 +96,7 @@ export const remove = authMutation({
       });
     }
 
-    await ctx.db.delete(commentId);
+    await ctx.db.delete(args.commentId);
     return null;
   },
 });

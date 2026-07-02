@@ -160,6 +160,7 @@ export type AuthApiBase<
    * - `v.user` / `v.group` / `v.member` — single documents (extend-aware).
    * - `v.invite` — a single group invite document.
    * - `v.viewer` — `User | null`, for a current-user query.
+   * - `v.connection.*` — group connection admin facade results.
    * - `v.list(item)` — wraps an item validator in Convex's
    *   `{ page, isDone, continueCursor }` pagination result shape.
    *
@@ -310,7 +311,7 @@ type InternalConnectionApi = ReturnType<typeof AuthFactory>["auth"]["connection"
 
 type PublicGroupConnectionApi = InternalConnectionApi["connection"] & {
   signIn: (
-    ctx: Parameters<InternalConnectionApi["connection"]["create"]>[0],
+    ctx: Parameters<InternalConnectionApi["oidc"]["signIn"]>[0],
     data: {
       connectionId?: string;
       email?: string;
@@ -328,54 +329,54 @@ type PublicGroupConnectionApi = InternalConnectionApi["connection"] & {
   }>;
   metadata: InternalConnectionApi["saml"]["metadata"];
   domain: {
-      list: InternalConnectionApi["domain"]["list"];
-      validate: InternalConnectionApi["domain"]["validate"];
-      status: InternalConnectionApi["domain"]["status"];
-      set: (
-        ctx: Parameters<InternalConnectionApi["connection"]["create"]>[0],
-        args: {
-          connectionId: string;
-          domains: Array<{
-            domain: string;
-            isPrimary?: boolean;
-          }>;
-        },
-      ) => Promise<{
+    list: InternalConnectionApi["domain"]["list"];
+    validate: InternalConnectionApi["domain"]["validate"];
+    status: InternalConnectionApi["domain"]["status"];
+    set: (
+      ctx: Parameters<InternalConnectionApi["connection"]["create"]>[0],
+      args: {
         connectionId: string;
         domains: Array<{
-          domainId: string;
           domain: string;
-          isPrimary: boolean;
-          verified: boolean;
-          verifiedAt: number | null;
+          isPrimary?: boolean;
         }>;
+      },
+    ) => Promise<{
+      connectionId: string;
+      domains: Array<{
+        domainId: string;
+        domain: string;
+        isPrimary: boolean;
+        verified: boolean;
+        verifiedAt: number | null;
       }>;
-      verification: {
-        request: (
-          ctx: Parameters<InternalConnectionApi["connection"]["create"]>[0],
-          args: { connectionId: string; domain: string },
-        ) => Promise<{
-          connectionId: string;
-          domain: string;
-          requestedAt: number;
-          expiresAt: number;
-          challenge: {
-            recordType: "TXT";
-            recordName: string;
-            recordValue: string;
-          };
-        }>;
-        confirm: (
-          ctx: Parameters<InternalConnectionApi["connection"]["create"]>[0],
-          args: { connectionId: string; domain: string },
-        ) => Promise<{
-          connectionId: string;
-          domain: string;
-          verifiedAt?: number;
-          checks: Array<{ name: string; ok: boolean; message?: string }>;
-        }>;
-      };
+    }>;
+    verification: {
+      request: (
+        ctx: Parameters<InternalConnectionApi["connection"]["create"]>[0],
+        args: { connectionId: string; domain: string },
+      ) => Promise<{
+        connectionId: string;
+        domain: string;
+        requestedAt: number;
+        expiresAt: number;
+        challenge: {
+          recordType: "TXT";
+          recordName: string;
+          recordValue: string;
+        };
+      }>;
+      confirm: (
+        ctx: Parameters<InternalConnectionApi["connection"]["create"]>[0],
+        args: { connectionId: string; domain: string },
+      ) => Promise<{
+        connectionId: string;
+        domain: string;
+        verifiedAt?: number;
+        checks: Array<{ name: string; ok: boolean; message?: string }>;
+      }>;
     };
+  };
   oidc: Omit<InternalConnectionApi["oidc"], "signIn">;
   saml: InternalConnectionApi["saml"];
   policy: InternalConnectionApi["policy"];

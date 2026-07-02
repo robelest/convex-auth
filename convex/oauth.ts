@@ -5,6 +5,11 @@ import { auth } from "./auth";
 import { permissions } from "./roles";
 
 const requestedScopes = v.optional(v.array(v.string()));
+const tokenEndpointAuthMethod = v.union(
+  v.literal("client_secret_basic"),
+  v.literal("client_secret_post"),
+  v.literal("none"),
+);
 
 function dedupe(scopes: readonly string[]) {
   return [...new Set(scopes)];
@@ -21,6 +26,12 @@ export const registerClient = mutation({
     redirectUris: v.array(v.string()),
     scopes: requestedScopes,
   },
+  returns: v.object({
+    clientId: v.string(),
+    clientSecret: v.optional(v.string()),
+    registrationAccessToken: v.string(),
+    tokenEndpointAuthMethod,
+  }),
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (identity === null) {
@@ -59,6 +70,7 @@ export const authorize = mutation({
     codeChallenge: v.string(),
     resource: v.optional(v.string()),
   },
+  returns: v.object({ redirect: v.string() }),
   handler: async (ctx, args) => {
     const user = await auth.user.viewer(ctx);
     if (user === null) {

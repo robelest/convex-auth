@@ -227,7 +227,7 @@ Your app chooses the public names. A common set of verb-first functions:
 - `getConnectionByDomain`
 - `listConnections`
 - `updateConnection`
-- `deleteConnection`
+- `removeConnection`
 - `getConnectionStatus`
 
 ### Domains

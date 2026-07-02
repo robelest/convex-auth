@@ -51,7 +51,7 @@ function useAuthForm() {
     setError(null);
     try {
       try {
-        const ssoInfo = await client.query((api as any).auth.group.signInLookup, {
+        const ssoInfo = await client.query(api.auth.group.signInLookup, {
           email: normalized,
         });
         if (!ssoInfo) throw new Error("No group connection matched the provided input.");
@@ -118,7 +118,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const authProviders = useQuery(api.groups.authProviders, {});
   const form = useAuthForm();
 
-  if (state.isLoading || authProviders === undefined) {
+  if (state.status === "loading" || authProviders === undefined) {
     return (
       <View
         style={{
@@ -133,7 +133,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (state.isAuthenticated) return <>{children}</>;
+  if (state.status === "signedIn") return <>{children}</>;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.warm[50] }}>

@@ -18,6 +18,7 @@ import type * as functions from "../functions.js";
 import type * as groups from "../groups.js";
 import type * as http from "../http.js";
 import type * as issues from "../issues.js";
+import type * as issues_http from "../issues/http.js";
 import type * as oauth from "../oauth.js";
 import type * as projects from "../projects.js";
 import type * as roles from "../roles.js";
@@ -40,6 +41,7 @@ declare const fullApi: ApiFromModules<{
   groups: typeof groups;
   http: typeof http;
   issues: typeof issues;
+  "issues/http": typeof issues_http;
   oauth: typeof oauth;
   projects: typeof projects;
   roles: typeof roles;

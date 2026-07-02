@@ -4,6 +4,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import * as p from "@clack/prompts";
+import type { DeviceCodeResult } from "@robelest/convex-auth/client";
 import { ConvexHttpClient } from "convex/browser";
 import { config as loadEnvFile } from "dotenv";
 import figlet from "figlet";
@@ -11,7 +12,9 @@ import ansiShadow from "figlet/importable-fonts/ANSI Shadow.js";
 import gradientString from "gradient-string";
 
 import { api } from "../../../convex/_generated/api.js";
+import type { Id } from "../../../convex/_generated/dataModel.js";
 import { clearStoredSession, readStoredSession, writeStoredSession } from "./storage";
+import type { SessionShape } from "./storage";
 
 figlet.parseFont("ANSI Shadow", ansiShadow);
 
@@ -23,25 +26,46 @@ function printBanner() {
     horizontalLayout: "default",
   });
   console.log("\n" + gradient(banner));
-  console.log("  \x1b[38;2;185;177;170m✦  cli demo — device login & direct convex calls  ✦\x1b[0m\n");
+  console.log(
+    "  \x1b[38;2;185;177;170m✦  cli demo — device login & direct convex calls  ✦\x1b[0m\n",
+  );
 }
 
-type DeviceCodeResult = {
-  deviceCode: string;
-  userCode: string;
-  verificationUri: string;
-  verificationUriComplete: string;
-  expiresIn: number;
-  interval: number;
+type StoredSessionSignInResult = {
+  kind: "signedIn";
+  session: SessionShape | null;
 };
 
-type SignInSessionResult = {
-  kind: "signedIn";
-  session: {
-    token: string;
-    refreshToken?: string;
-  } | null;
-};
+class CliExit extends Error {
+  constructor(readonly code: number = 0) {
+    super("CLI exited.");
+  }
+}
+
+function exitCli(code = 0): never {
+  throw new CliExit(code);
+}
+
+function cancelCli(message = "Cancelled."): never {
+  p.cancel(message);
+  exitCli(0);
+}
+
+function unwrapPrompt<T>(value: T | symbol, message?: string): T {
+  if (p.isCancel(value)) {
+    cancelCli(message);
+  }
+  return value;
+}
+
+function parseProjectId(value: string): Id<"projects"> {
+  const projectId = value.trim();
+  if (projectId.length === 0) {
+    p.log.error("Project ID is required.");
+    exitCli(1);
+  }
+  return projectId as Id<"projects">;
+}
 
 function loadCliEnv() {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -67,7 +91,7 @@ function requireConvexUrl() {
   const url = process.env.VITE_CONVEX_URL ?? process.env.CONVEX_URL;
   if (!url) {
     p.log.error("Set VITE_CONVEX_URL or CONVEX_URL before running the CLI demo.");
-    process.exit(1);
+    exitCli(1);
   }
   return url;
 }
@@ -88,11 +112,19 @@ function isDeviceCodeResult(value: unknown): value is DeviceCodeResult {
   );
 }
 
-function isSignedInResult(value: unknown): value is SignInSessionResult {
+function isStoredSession(value: unknown): value is SessionShape {
+  return (
+    isRecord(value) &&
+    typeof value.token === "string" &&
+    (!("refreshToken" in value) || typeof value.refreshToken === "string")
+  );
+}
+
+function isSignedInResult(value: unknown): value is StoredSessionSignInResult {
   return (
     isRecord(value) &&
     value.kind === "signedIn" &&
-    (value.session === null || isRecord(value.session))
+    (value.session === null || isStoredSession(value.session))
   );
 }
 
@@ -116,7 +148,7 @@ async function refreshSessionIfNeeded(client: ConvexHttpClient) {
   const session = await readStoredSession();
   if (!session) {
     p.log.error("Not signed in. Run the login command first.");
-    process.exit(1);
+    exitCli(1);
   }
   client.setAuth(session.token);
   if (!session.refreshToken) {
@@ -151,7 +183,7 @@ async function doAuthLogin() {
   if (!isRecord(result) || result.kind !== "deviceCode" || !isDeviceCodeResult(result.deviceCode)) {
     s.stop("Failed.");
     p.log.error("Device sign-in did not return a device code.");
-    process.exit(1);
+    exitCli(1);
   }
   const code = result.deviceCode;
   s.stop("Device code received.");
@@ -198,7 +230,7 @@ async function doAuthLogin() {
   }
   s2.stop("Expired.");
   p.log.error("Device code expired before approval completed.");
-  process.exit(1);
+  exitCli(1);
 }
 
 async function doAuthStatus() {
@@ -227,20 +259,24 @@ async function doProjectsList() {
     message: "Group ID",
     placeholder: "paste group ID here",
   });
-  if (p.isCancel(groupId)) process.exit(0);
-  const result = await client.query(api.projects.list, { groupId });
+  const selectedGroupId = unwrapPrompt(groupId);
+  const result = await client.query(api.projects.list, { groupId: selectedGroupId });
   console.log(JSON.stringify(result, null, 2));
 }
 
 async function doProjectsCreate() {
   const client = await authedClient();
-  const group = await p.group({
-    groupId: () => p.text({ message: "Group ID" }),
-    name: () => p.text({ message: "Project name" }),
-    identifier: () => p.text({ message: "Project identifier" }),
-    description: () => p.text({ message: "Description (optional)", defaultValue: "" }),
-  });
-  if (p.isCancel(group)) process.exit(0);
+  const group = await p.group(
+    {
+      groupId: () => p.text({ message: "Group ID" }),
+      name: () => p.text({ message: "Project name" }),
+      identifier: () => p.text({ message: "Project identifier" }),
+      description: () => p.text({ message: "Description (optional)", defaultValue: "" }),
+    },
+    {
+      onCancel: () => cancelCli(),
+    },
+  );
   const result = await client.mutation(api.projects.create, {
     groupId: group.groupId,
     name: group.name,
@@ -257,25 +293,27 @@ async function doIssuesList() {
     message: "Project ID",
     placeholder: "paste project ID here",
   });
-  if (p.isCancel(projectId)) process.exit(0);
-  const result = await client.query(api.issues.forProject, {
-    projectId,
+  const selectedProjectId = unwrapPrompt(projectId);
+  const result = await client.query(api.issues.list, {
+    projectId: parseProjectId(selectedProjectId),
   });
   console.log(JSON.stringify(result, null, 2));
 }
 
 async function doIssuesCreate() {
   const client = await authedClient();
-  const issue = await p.group({
-    projectId: () => p.text({ message: "Project ID" }),
-    title: () => p.text({ message: "Issue title" }),
-    description: () => p.text({ message: "Description (optional)", defaultValue: "" }),
-  });
-  if (p.isCancel(issue)) process.exit(0);
+  const issue = await p.group(
+    {
+      projectId: () => p.text({ message: "Project ID" }),
+      title: () => p.text({ message: "Issue title" }),
+    },
+    {
+      onCancel: () => cancelCli(),
+    },
+  );
   const result = await client.mutation(api.issues.create, {
-    projectId: issue.projectId,
+    projectId: parseProjectId(issue.projectId),
     title: issue.title,
-    ...(issue.description ? { description: issue.description } : {}),
   });
   p.log.success("Issue created.");
   console.log(JSON.stringify(result, null, 2));
@@ -300,8 +338,7 @@ async function run() {
   });
 
   if (p.isCancel(action)) {
-    p.cancel("Bye!");
-    process.exit(0);
+    cancelCli("Bye!");
   }
 
   const handlers = new Map<string, () => Promise<void>>([
@@ -318,7 +355,7 @@ async function run() {
   const handler = handlers.get(action);
   if (!handler) {
     p.log.error(`Unknown action: ${action}`);
-    process.exit(1);
+    exitCli(1);
   }
   await handler();
 
@@ -327,6 +364,9 @@ async function run() {
 
 export function runCliMain() {
   run().catch((err) => {
+    if (err instanceof CliExit) {
+      process.exit(err.code);
+    }
     p.log.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   });

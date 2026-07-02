@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 
 import { auth } from "./auth/core";
 import { authMutation, authQuery } from "./functions";
+import { projectStatus as projectStatusValidator } from "./schema";
 
 export const list = authQuery({
   args: { groupId: v.string() },
@@ -13,7 +14,7 @@ export const list = authQuery({
       identifier: v.string(),
       slug: v.string(),
       description: v.string(),
-      status: v.string(),
+      status: projectStatusValidator,
       issueCounter: v.number(),
       openIssueCount: v.number(),
     }),
@@ -119,8 +120,8 @@ export const create = authMutation({
   },
 });
 
-export const detail = authQuery({
-  args: { projectId: v.string() },
+export const get = authQuery({
+  args: { projectId: v.id("projects") },
   returns: v.union(
     v.object({
       _id: v.id("projects"),
@@ -129,17 +130,14 @@ export const detail = authQuery({
       identifier: v.string(),
       slug: v.string(),
       description: v.string(),
-      status: v.string(),
+      status: projectStatusValidator,
       issueCounter: v.number(),
       openIssueCount: v.number(),
     }),
     v.null(),
   ),
   handler: async (ctx, args) => {
-    const projectId = ctx.db.normalizeId("projects", args.projectId);
-    if (!projectId) return null;
-
-    const project = await ctx.db.get(projectId);
+    const project = await ctx.db.get(args.projectId);
     if (!project) return null;
     const userId = ctx.auth.userId;
 
@@ -165,16 +163,14 @@ export const detail = authQuery({
 
 export const update = authMutation({
   args: {
-    projectId: v.string(),
-    description: v.optional(v.string()),
+    projectId: v.id("projects"),
+    patch: v.object({
+      description: v.optional(v.string()),
+    }),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const projectId = ctx.db.normalizeId("projects", args.projectId);
-    if (!projectId) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Project not found." });
-    }
-    const project = await ctx.db.get(projectId);
+    const project = await ctx.db.get(args.projectId);
     if (!project) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Project not found." });
     }
@@ -186,8 +182,8 @@ export const update = authMutation({
       grants: ["projects.manage"],
     });
 
-    if (args.description !== undefined) {
-      await ctx.db.patch(project._id, { description: args.description.trim() });
+    if (args.patch.description !== undefined) {
+      await ctx.db.patch(project._id, { description: args.patch.description.trim() });
     }
     return null;
   },

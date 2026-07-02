@@ -52,7 +52,9 @@ const PROTOCOL_VERSION = "2025-06-18";
  * entry's `validator` to its exact variant (`.fields`, `.element`, `.members`).
  */
 const SCHEMA_BY_KIND: {
-  [K in GenericValidator["kind"]]: (validator: Extract<GenericValidator, { kind: K }>) => Record<string, unknown>;
+  [K in GenericValidator["kind"]]: (
+    validator: Extract<GenericValidator, { kind: K }>,
+  ) => Record<string, unknown>;
 } = {
   id: () => ({ type: "string" }),
   string: () => ({ type: "string" }),
@@ -64,10 +66,17 @@ const SCHEMA_BY_KIND: {
   any: () => ({}),
   literal: (validator) => ({ const: validator.value }),
   array: (validator) => ({ type: "array", items: validatorToSchema(validator.element) }),
-  record: (validator) => ({ type: "object", additionalProperties: validatorToSchema(validator.value) }),
+  record: (validator) => ({
+    type: "object",
+    additionalProperties: validatorToSchema(validator.value),
+  }),
   union: (validator) =>
     validator.members.every((member) => member.kind === "literal")
-      ? { enum: validator.members.map((member) => (member.kind === "literal" ? member.value : null)) }
+      ? {
+          enum: validator.members.map((member) =>
+            member.kind === "literal" ? member.value : null,
+          ),
+        }
       : { anyOf: validator.members.map(validatorToSchema) },
   object: (validator) => {
     const properties: Record<string, unknown> = {};
@@ -82,14 +91,18 @@ const SCHEMA_BY_KIND: {
 
 /** Derive the JSON Schema for a Convex validator, the MCP tool `inputSchema`. */
 function validatorToSchema(validator: GenericValidator): Record<string, unknown> {
-  const toSchema = SCHEMA_BY_KIND[validator.kind] as (v: GenericValidator) => Record<string, unknown>;
+  const toSchema = SCHEMA_BY_KIND[validator.kind] as (
+    v: GenericValidator,
+  ) => Record<string, unknown>;
   return toSchema(validator);
 }
 
 function json(data: unknown, init?: ResponseInit): Response {
+  const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
   return new Response(JSON.stringify(data), {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers,
   });
 }
 
@@ -101,6 +114,10 @@ function withMcpProtocol(response: Response): Response {
 
 function rpcError(id: unknown, code: number, message: string, init?: ResponseInit): Response {
   return json({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }, init);
+}
+
+function headerIdPart(id: unknown): string {
+  return typeof id === "string" || typeof id === "number" ? String(id) : "0";
 }
 
 /** Resolves the OAuth scopes for a request, or `null` if it isn't an OAuth bearer. */
@@ -196,7 +213,7 @@ async function handleMcp(
     return rpcError(null, -32700, "Parse error.", { status: 400 });
   }
   const id = body.id ?? null;
-  const sessionHeader = { "Mcp-Session-Id": `${PROTOCOL_VERSION}-${id ?? "0"}` };
+  const sessionHeader = { "Mcp-Session-Id": `${PROTOCOL_VERSION}-${headerIdPart(id)}` };
 
   const methods: Record<string, () => Response | Promise<Response>> = {
     initialize: () =>
@@ -207,7 +224,10 @@ async function handleMcp(
           result: {
             protocolVersion: PROTOCOL_VERSION,
             capabilities: { tools: {} },
-            serverInfo: { name: server.name ?? "convex-auth-mcp", version: server.version ?? "0.0.0" },
+            serverInfo: {
+              name: server.name ?? "convex-auth-mcp",
+              version: server.version ?? "0.0.0",
+            },
           },
         },
         { headers: sessionHeader },

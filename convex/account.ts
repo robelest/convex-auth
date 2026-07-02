@@ -28,9 +28,13 @@ const apiKeySummary = v.object({
   scopes: v.array(apiKeyScope),
 });
 
-async function requireOwnedPasskey(ctx: any, userId: string, passkeyId: string) {
+type PasskeyListCtx = Parameters<typeof auth.account.passkey.list>[0];
+type ApiKeyGetCtx = Parameters<typeof auth.key.get>[0];
+type AccountDoc = { provider: string };
+
+async function requireOwnedPasskey(ctx: PasskeyListCtx, userId: string, passkeyId: string) {
   const passkeys = await auth.account.passkey.list(ctx, { userId });
-  const passkey = passkeys.find((item: any) => item._id === passkeyId);
+  const passkey = passkeys.find((item) => item._id === passkeyId);
   if (!passkey) {
     throw new ConvexError({
       code: "NOT_FOUND",
@@ -40,7 +44,7 @@ async function requireOwnedPasskey(ctx: any, userId: string, passkeyId: string) 
   return passkey;
 }
 
-async function requireOwnedApiKey(ctx: any, userId: string, keyId: string) {
+async function requireOwnedApiKey(ctx: ApiKeyGetCtx, userId: string, keyId: string) {
   const key = await auth.key.get(ctx, { id: keyId });
   if (!key || key.userId !== userId) {
     throw new ConvexError({
@@ -59,7 +63,7 @@ export const listPasskeys = authUserQuery({
     const passkeys = await auth.account.passkey.list(ctx, {
       userId,
     });
-    return passkeys.map((passkey: any) => ({
+    return passkeys.map((passkey) => ({
       passkeyId: passkey._id,
       name: passkey.name ?? null,
       deviceType: passkey.deviceType,
@@ -104,7 +108,7 @@ export const listApiKeys = authUserQuery({
       orderBy: "lastUsedAt",
       order: "desc",
     });
-    return result.page.map((key: any) => ({
+    return result.page.map((key) => ({
       keyId: key._id,
       prefix: key.prefix,
       name: key.name,
@@ -156,9 +160,9 @@ export const hasPassword = authUserQuery({
   args: {},
   returns: v.boolean(),
   handler: async (ctx) => {
-    const accounts = await ctx.runQuery(components.auth.account.list, {
+    const accounts: AccountDoc[] = await ctx.runQuery(components.auth.account.list, {
       userId: ctx.auth.userId,
     });
-    return accounts.some((account: any) => account.provider === "password");
+    return accounts.some((account) => account.provider === "password");
   },
 });

@@ -136,7 +136,8 @@
       });
       await applyDomains();
       await client.mutation(api.auth.group.updateConnection, {
-        id: connectionId, data: { status: "active" },
+        id: connectionId,
+        patch: { status: "active" },
       });
       ondone(connectionId);
     } catch (e: unknown) {
@@ -181,7 +182,7 @@
   async function handleCancel() {
     if (connectionId) {
       try {
-        await client.mutation(api.auth.group.deleteConnection, { id: connectionId });
+        await client.mutation(api.auth.group.removeConnection, { id: connectionId });
       } catch (e: unknown) {
         toast.error(errorText(e, "Failed to cancel setup"));
         return;

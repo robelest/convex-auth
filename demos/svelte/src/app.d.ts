@@ -7,19 +7,10 @@ declare global {
       cf?: IncomingRequestCfProperties;
     }
 
-    interface Locals {
-      authToken: string | null;
-      isAuthenticated: boolean;
-    }
-
     interface PageData {
       convexUrl: string | undefined;
       authProviders: {
         google: boolean;
-      };
-      auth: {
-        token: string | null;
-        isAuthenticated: boolean;
       };
     }
   }

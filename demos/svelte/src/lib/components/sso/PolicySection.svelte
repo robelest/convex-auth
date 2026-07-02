@@ -77,7 +77,7 @@
       const roleMapping = parseRoleMapping();
       await client.mutation(api.auth.group.updatePolicy, {
         groupId,
-        data: {
+        patch: {
           identity: { accountLinking: { oidc: oidcLinking, saml: samlLinking } },
           provisioning: {
             jit: {

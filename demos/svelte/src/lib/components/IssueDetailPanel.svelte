@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ConvexClient } from "convex/browser";
+  import type { Attachment } from "svelte/attachments";
   import { api } from "$convex/_generated/api.js";
   import { useQuery } from "convex-svelte";
   import { toast } from "svelte-sonner";
@@ -45,9 +46,9 @@
   }>();
 
   const commentsQuery = useQuery(
-    api.comments.forIssue,
+    api.comments.list,
     () => ({
-			issueId: issue._id,
+      issueId: issue._id,
     }),
   );
 
@@ -97,10 +98,10 @@
     isEditing = true;
   }
 
-  function focusOnMount(node: HTMLInputElement) {
+  const focusOnMount: Attachment<HTMLInputElement> = (node) => {
     node.focus();
     node.select();
-  }
+  };
 
   async function saveEdit() {
     const next = editTitle.trim();
@@ -108,8 +109,8 @@
     if (next.length === 0 || next === issue.title) return;
     try {
       await client.mutation(api.issues.update, {
-			issueId: issue._id,
-        title: next,
+        issueId: issue._id,
+        patch: { title: next },
       });
     } catch (e: unknown) {
       toast.error(errorText(e));
@@ -120,8 +121,8 @@
     if (!canMove) return;
     try {
       await client.mutation(api.issues.update, {
-			issueId: issue._id,
-        status: newStatus,
+        issueId: issue._id,
+        patch: { status: newStatus },
       });
     } catch (e: unknown) {
       toast.error(errorText(e));
@@ -132,8 +133,8 @@
     if (!canEdit) return;
     try {
       await client.mutation(api.issues.update, {
-			issueId: issue._id,
-        priority: newPriority,
+        issueId: issue._id,
+        patch: { priority: newPriority },
       });
     } catch (e: unknown) {
       toast.error(errorText(e));
@@ -142,13 +143,10 @@
 
   async function handleAssigneeChange(newAssigneeUserId: string) {
     try {
-      const result = await client.mutation(api.issues.update, {
-			issueId: issue._id,
-        assigneeUserId: newAssigneeUserId || null,
+      await client.mutation(api.issues.update, {
+        issueId: issue._id,
+        patch: { assigneeUserId: newAssigneeUserId || null },
       });
-      if ("ok" in result && !result.ok && "message" in result) {
-        toast.error(typeof result.message === "string" ? result.message : "Failed to assign");
-      }
     } catch (e: unknown) {
       toast.error(errorText(e));
     }
@@ -159,7 +157,7 @@
     isSubmittingComment = true;
     try {
       await client.mutation(api.comments.create, {
-			issueId: issue._id,
+        issueId: issue._id,
         body: newComment,
       });
       newComment = "";
@@ -221,7 +219,7 @@
       {#if isEditing}
         <input
           bind:value={editTitle}
-          use:focusOnMount
+          {@attach focusOnMount}
           class="input w-full text-base font-semibold"
           type="text"
           maxlength="120"

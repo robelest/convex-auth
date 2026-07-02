@@ -53,15 +53,15 @@ against `definePermissions`.
 | `list_groups` | `projects.read` | `api.groups.list` |
 | `get_workspace` | `members.read` | `api.groups.get` |
 | `list_projects` | `projects.read` | `api.projects.list` |
-| `list_issues` | `projects.read` | `api.issues.forProject` |
-| `get_issue` | `projects.read` | `api.issues.detail` |
+| `list_issues` | `projects.read` | `api.issues.list` |
+| `get_issue` | `projects.read` | `api.issues.get` |
 | `list_invites` | `members.read` | `api.groups.listInvites` |
 | `create_project` | `projects.create` | `api.projects.create` |
 | `create_issue` | `issues.create` | `api.issues.create` |
 | `update_issue` | `issues.edit` | `api.issues.update` |
-| `delete_issue` | `issues.delete` | `api.issues.remove` |
-| `add_comment` | `comments.create` | `api.comments.create` |
-| `delete_comment` | `comments.delete` | `api.comments.remove` |
+| `remove_issue` | `issues.delete` | `api.issues.remove` |
+| `create_comment` | `comments.create` | `api.comments.create` |
+| `remove_comment` | `comments.delete` | `api.comments.remove` |
 | `invite_member` | `members.manage` | `api.groups.inviteMember` |
 | `update_member_role` | `members.manage` | `api.groups.updateMemberRole` |
 

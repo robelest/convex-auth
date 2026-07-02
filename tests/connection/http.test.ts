@@ -205,7 +205,7 @@ test("group management RPC is available when group Connection helpers are mounte
     }),
   );
 
-  await asAdmin.mutation(api.auth.group.deleteConnection, {
+  await asAdmin.mutation(api.auth.group.removeConnection, {
     id: created.connectionId,
   });
 

@@ -51,12 +51,12 @@ export default function IssueDetail() {
   const selectedProject = projects.find((project) => project._id === selectedProjectId) ?? null;
   const members = group?.selectedGroup?.members ?? [];
   const issue = useQuery(
-    api.issues.detail,
+    api.issues.get,
     typeof id === "string" ? { issueId: id as Id<"issues"> } : "skip",
   );
 
   const commentsData = useQuery(
-    api.comments.forIssue,
+    api.comments.list,
     readyForComments && issue ? { issueId: issue._id } : "skip",
   );
 
@@ -64,9 +64,9 @@ export default function IssueDetail() {
   const comments = commentsData ?? [];
 
   const updateIssue = useCallback(
-    (fields: Record<string, unknown>) => {
+    (patch: Record<string, unknown>) => {
       if (!issue) return;
-      void client.mutation(api.issues.update, { issueId: issue._id, ...fields });
+      void client.mutation(api.issues.update, { issueId: issue._id, patch });
     },
     [client, issue],
   );

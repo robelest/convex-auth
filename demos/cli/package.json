@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vp exec tsx src/main.ts",
-    "build": "vp exec tsdown src/main.ts --format esm --out-dir dist"
+    "build": "vp exec tsdown src/main.ts --format esm --out-dir dist",
+    "typecheck": "vp exec tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
     "@clack/prompts": "^1.2.0",

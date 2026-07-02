@@ -1,10 +1,10 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 
-import { internalMutation, internalQuery } from "./_generated/server";
 import { auth } from "./auth/core";
 import { authMutation, authQuery } from "./functions";
 import {
+  projectStatus as projectStatusValidator,
   issuePriority as issuePriorityValidator,
   issueStatus as issueStatusValidator,
 } from "./schema";
@@ -40,8 +40,8 @@ const issueViewValidator = v.object({
   identifier: v.string(),
   number: v.number(),
   title: v.string(),
-  status: v.string(),
-  priority: v.string(),
+  status: issueStatusValidator,
+  priority: issuePriorityValidator,
   labels: v.array(v.string()),
   assigneeName: v.union(v.string(), v.null()),
   assigneeUserId: v.union(v.string(), v.null()),
@@ -51,8 +51,8 @@ const issueViewValidator = v.object({
   groupId: v.string(),
 });
 
-export const forProject = authQuery({
-  args: { projectId: v.string() },
+export const list = authQuery({
+  args: { projectId: v.id("projects") },
   returns: v.object({
     project: v.union(
       v.object({
@@ -62,7 +62,7 @@ export const forProject = authQuery({
         identifier: v.string(),
         slug: v.string(),
         description: v.string(),
-        status: v.string(),
+        status: projectStatusValidator,
         issueCounter: v.number(),
         openIssueCount: v.number(),
       }),
@@ -71,9 +71,7 @@ export const forProject = authQuery({
     issues: v.array(issueViewValidator),
   }),
   handler: async (ctx, args) => {
-    const projectId = ctx.db.normalizeId("projects", args.projectId);
-    if (!projectId) return { project: null, issues: [] };
-    const project = await ctx.db.get(projectId);
+    const project = await ctx.db.get(args.projectId);
     if (!project) return { project: null, issues: [] };
     const userId = ctx.auth.userId;
 
@@ -115,14 +113,11 @@ export const forProject = authQuery({
   },
 });
 
-export const detail = authQuery({
-  args: { issueId: v.string() },
+export const get = authQuery({
+  args: { issueId: v.id("issues") },
   returns: v.union(issueViewValidator, v.null()),
   handler: async (ctx, args) => {
-    const issueId = ctx.db.normalizeId("issues", args.issueId);
-    if (!issueId) return null;
-
-    const issue = await ctx.db.get(issueId);
+    const issue = await ctx.db.get(args.issueId);
     if (!issue) return null;
     const userId = ctx.auth.userId;
 
@@ -145,18 +140,14 @@ export const detail = authQuery({
 
 export const create = authMutation({
   args: {
-    projectId: v.string(),
+    projectId: v.id("projects"),
     title: v.string(),
     priority: v.optional(issuePriorityValidator),
     labels: v.optional(v.array(v.string())),
   },
   returns: v.object({ issueId: v.id("issues") }),
   handler: async (ctx, args) => {
-    const projectId = ctx.db.normalizeId("projects", args.projectId);
-    if (!projectId) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Project not found." });
-    }
-    const project = await ctx.db.get(projectId);
+    const project = await ctx.db.get(args.projectId);
     if (!project) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Project not found." });
     }
@@ -169,7 +160,7 @@ export const create = authMutation({
     });
 
     const nextNumber = project.issueCounter + 1;
-    await ctx.db.patch(projectId, {
+    await ctx.db.patch(args.projectId, {
       issueCounter: nextNumber,
       openIssueCount: (project.openIssueCount ?? 0) + 1,
     });
@@ -193,31 +184,29 @@ export const create = authMutation({
 
 export const update = authMutation({
   args: {
-    issueId: v.string(),
-    title: v.optional(v.string()),
-    status: v.optional(issueStatusValidator),
-    priority: v.optional(issuePriorityValidator),
-    assigneeUserId: v.optional(v.union(v.string(), v.null())),
-    labels: v.optional(v.array(v.string())),
+    issueId: v.id("issues"),
+    patch: v.object({
+      title: v.optional(v.string()),
+      status: v.optional(issueStatusValidator),
+      priority: v.optional(issuePriorityValidator),
+      assigneeUserId: v.optional(v.union(v.string(), v.null())),
+      labels: v.optional(v.array(v.string())),
+    }),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const userId = ctx.auth.userId;
-    const issueId = ctx.db.normalizeId("issues", args.issueId);
-    if (!issueId) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Issue not found." });
-    }
-    const issue = await ctx.db.get(issueId);
+    const issue = await ctx.db.get(args.issueId);
     if (!issue) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Issue not found." });
     }
 
     const needsEdit =
-      args.title !== undefined ||
-      args.priority !== undefined ||
-      args.labels !== undefined;
-    const needsMove = args.status !== undefined;
-    const needsAssign = args.assigneeUserId !== undefined;
+      args.patch.title !== undefined ||
+      args.patch.priority !== undefined ||
+      args.patch.labels !== undefined;
+    const needsMove = args.patch.status !== undefined;
+    const needsAssign = args.patch.assigneeUserId !== undefined;
 
     if (needsEdit) {
       await auth.member.assert(ctx, { userId, groupId: issue.groupId, grants: ["issues.edit"] });
@@ -239,22 +228,25 @@ export const update = authMutation({
       await auth.member.assert(ctx, { userId, groupId: issue.groupId, grants: ["issues.move"] });
     }
     if (needsAssign) {
-      const grant = args.assigneeUserId !== userId ? "issues.assign" : "issues.move";
+      const grant = args.patch.assigneeUserId !== userId ? "issues.assign" : "issues.move";
       await auth.member.assert(ctx, { userId, groupId: issue.groupId, grants: [grant] });
     }
 
-    const patch: Record<string, unknown> = {};
-    if (args.title !== undefined) patch.title = args.title.trim();
-    if (args.status !== undefined) patch.status = args.status;
-    if (args.priority !== undefined) patch.priority = args.priority;
-    if (args.assigneeUserId !== undefined) {
-      patch.assigneeUserId = args.assigneeUserId === null ? undefined : args.assigneeUserId;
+    const patch: Partial<
+      Pick<Doc<"issues">, "title" | "status" | "priority" | "assigneeUserId" | "labels">
+    > = {};
+    if (args.patch.title !== undefined) patch.title = args.patch.title.trim();
+    if (args.patch.status !== undefined) patch.status = args.patch.status;
+    if (args.patch.priority !== undefined) patch.priority = args.patch.priority;
+    if (args.patch.assigneeUserId !== undefined) {
+      patch.assigneeUserId =
+        args.patch.assigneeUserId === null ? undefined : args.patch.assigneeUserId;
     }
-    if (args.labels !== undefined) patch.labels = args.labels;
+    if (args.patch.labels !== undefined) patch.labels = args.patch.labels;
 
-    if (args.status !== undefined && args.status !== issue.status) {
+    if (args.patch.status !== undefined && args.patch.status !== issue.status) {
       const wasOpen = issue.status !== "done" && issue.status !== "cancelled";
-      const isNowOpen = args.status !== "done" && args.status !== "cancelled";
+      const isNowOpen = args.patch.status !== "done" && args.patch.status !== "cancelled";
       if (wasOpen !== isNowOpen) {
         const project = await ctx.db.get(issue.projectId);
         if (project) {
@@ -265,19 +257,16 @@ export const update = authMutation({
       }
     }
 
-    await ctx.db.patch(issueId, patch);
+    await ctx.db.patch(args.issueId, patch);
     return null;
   },
 });
 
 export const remove = authMutation({
-  args: { issueId: v.string() },
+  args: { issueId: v.id("issues") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const issueId = ctx.db.normalizeId("issues", args.issueId);
-    if (!issueId) return null;
-
-    const issue = await ctx.db.get(issueId);
+    const issue = await ctx.db.get(args.issueId);
     if (!issue) return null;
     const userId = ctx.auth.userId;
 
@@ -310,104 +299,7 @@ export const remove = authMutation({
       }
     }
 
-    await ctx.db.delete(issueId);
+    await ctx.db.delete(args.issueId);
     return null;
-  },
-});
-
-export const getProjectForApi = internalQuery({
-  args: { projectId: v.string() },
-  returns: v.union(
-    v.object({
-      projectId: v.id("projects"),
-      groupId: v.string(),
-      name: v.string(),
-      identifier: v.string(),
-      openIssueCount: v.number(),
-      issueCounter: v.number(),
-    }),
-    v.null(),
-  ),
-  handler: async (ctx, args) => {
-    const projectId = ctx.db.normalizeId("projects", args.projectId);
-    if (!projectId) return null;
-    const project = await ctx.db.get(projectId);
-    if (!project) return null;
-    return {
-      projectId: project._id,
-      groupId: project.groupId,
-      name: project.name,
-      identifier: project.identifier,
-      openIssueCount: project.openIssueCount ?? 0,
-      issueCounter: project.issueCounter,
-    };
-  },
-});
-
-export const listIssuesForApi = internalQuery({
-  args: { projectId: v.string() },
-  returns: v.array(
-    v.object({
-      issueId: v.id("issues"),
-      number: v.number(),
-      title: v.string(),
-      status: issueStatusValidator,
-      priority: issuePriorityValidator,
-      labels: v.array(v.string()),
-    }),
-  ),
-  handler: async (ctx, args) => {
-    const projectId = ctx.db.normalizeId("projects", args.projectId);
-    if (!projectId) return [];
-    const issues = await ctx.db
-      .query("issues")
-      .withIndex("by_projectId", (q) => q.eq("projectId", projectId))
-      .order("asc")
-      .take(100);
-    return issues.map((issue) => ({
-      issueId: issue._id,
-      number: issue.number,
-      title: issue.title,
-      status: issue.status,
-      priority: issue.priority,
-      labels: issue.labels ?? [],
-    }));
-  },
-});
-
-export const createIssueForApi = internalMutation({
-  args: {
-    projectId: v.string(),
-    userId: v.string(),
-    title: v.string(),
-  },
-  returns: v.object({ issueId: v.id("issues"), number: v.number() }),
-  handler: async (ctx, args) => {
-    const projectId = ctx.db.normalizeId("projects", args.projectId);
-    if (!projectId) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Project not found." });
-    }
-    const project = await ctx.db.get(projectId);
-    if (!project) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Project not found." });
-    }
-    const number = project.issueCounter + 1;
-    await ctx.db.patch(projectId, {
-      issueCounter: number,
-      openIssueCount: (project.openIssueCount ?? 0) + 1,
-    });
-    const issueId = await ctx.db.insert("issues", {
-      projectId,
-      groupId: project.groupId,
-      scopeGroupId: project.groupId,
-      number,
-      title: args.title.trim(),
-      status: "backlog",
-      priority: "medium",
-      createdByUserId: args.userId,
-      labels: [],
-      position: Date.now(),
-    });
-    return { issueId, number };
   },
 });

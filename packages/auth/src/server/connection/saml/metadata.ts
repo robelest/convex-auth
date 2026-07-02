@@ -13,12 +13,7 @@ import { BINDING_URI, SamlNamespace, NameIdFormat, ElementsOrder } from "./const
 import { createKeySection } from "./signature";
 import { buildXml } from "./xml/builder";
 import type { XmlNode, XmlObject } from "./xml/builder";
-import type {
-  MetadataIdpConstructor,
-  MetadataIdpOptions,
-  MetadataSpConstructor,
-  MetadataSpOptions,
-} from "./types";
+import type { MetadataIdpConstructor, MetadataSpConstructor } from "./types";
 
 /** Open dictionary of parsed metadata fields as produced by {@link extract}. */
 type ParsedMeta = Record<string, unknown>;
@@ -157,10 +152,7 @@ function getNameIDFormat(meta: ParsedMeta): string[] {
   return (meta.nameIDFormat as string[] | undefined) ?? [];
 }
 
-function getSingleLogoutService(
-  meta: ParsedMeta,
-  binding: string | undefined,
-): string | object {
+function getSingleLogoutService(meta: ParsedMeta, binding: string | undefined): string | object {
   if (binding && isString(binding)) {
     const bindType = (BINDING_URI as Record<string, string>)[binding];
     const raw = meta.singleLogoutService;
@@ -408,10 +400,8 @@ export function parseSpMetadata(input: MetadataSpConstructor): SpMetadata {
     getX509Certificate: (use) => getX509Certificate(meta, use),
     getNameIDFormat: () => getNameIDFormat(meta),
     getSingleLogoutService: (binding) => getSingleLogoutService(meta, binding),
-    isWantAssertionsSigned: () =>
-      readRecord(meta.spSSODescriptor)?.wantAssertionsSigned === "true",
-    isAuthnRequestSigned: () =>
-      readRecord(meta.spSSODescriptor)?.authnRequestsSigned === "true",
+    isWantAssertionsSigned: () => readRecord(meta.spSSODescriptor)?.wantAssertionsSigned === "true",
+    isAuthnRequestSigned: () => readRecord(meta.spSSODescriptor)?.authnRequestsSigned === "true",
     getAssertionConsumerService: (binding) => {
       if (isString(binding)) {
         const bindName = (BINDING_URI as Record<string, string>)[binding];

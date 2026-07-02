@@ -233,8 +233,16 @@ export type AuthEventDataByKind<TExtend = {}> = {
   "connection.created": { connectionId: string; protocol?: "oidc" | "saml"; domain?: string };
   "connection.updated": { connectionId: string; changed?: string[] };
   "connection.deleted": { connectionId: string };
-  "connection.login.succeeded": { connectionId: string; protocol: "oidc" | "saml"; userId?: string };
-  "connection.login.failed": { connectionId?: string; protocol?: "oidc" | "saml"; errorCode?: string };
+  "connection.login.succeeded": {
+    connectionId: string;
+    protocol: "oidc" | "saml";
+    userId?: string;
+  };
+  "connection.login.failed": {
+    connectionId?: string;
+    protocol?: "oidc" | "saml";
+    errorCode?: string;
+  };
   "connection.domain.verification_requested": {
     connectionId: string;
     domain: string;
@@ -254,7 +262,11 @@ export type AuthEventDataByKind<TExtend = {}> = {
     tokenEndpointAuthMethod?: string;
   };
   "connection.scim.set": { scimConfigId: string };
-  "connection.scim.read": { resourceType?: "user" | "group"; resourceId?: string; operation?: string };
+  "connection.scim.read": {
+    resourceType?: "user" | "group";
+    resourceId?: string;
+    operation?: string;
+  };
   "connection.scim.user.provisioned": { userId?: string; externalId?: string; active?: boolean };
   "connection.scim.user.updated": { userId?: string; externalId?: string; active?: boolean };
   "connection.scim.user.deactivated": { userId?: string; externalId?: string };
@@ -339,7 +351,6 @@ type AuthEventHandler<K extends AuthEventKind, TExtend = {}> = (
   ctx: AuthEventCtx,
   event: AuthEvent<K, TExtend>,
 ) => Awaitable<void>;
-type AnyAuthEventHandler = (ctx: AuthEventCtx, event: AuthEvent) => Awaitable<void>;
 
 export type AuthEventHandlerMap<TExtend = {}> = {
   user?: {
@@ -393,7 +404,10 @@ export type AuthEventHandlerMap<TExtend = {}> = {
     connectionDeleted?: AuthEventHandler<"connection.deleted", TExtend>;
     loginSucceeded?: AuthEventHandler<"connection.login.succeeded", TExtend>;
     loginFailed?: AuthEventHandler<"connection.login.failed", TExtend>;
-    domainVerificationRequested?: AuthEventHandler<"connection.domain.verification_requested", TExtend>;
+    domainVerificationRequested?: AuthEventHandler<
+      "connection.domain.verification_requested",
+      TExtend
+    >;
     domainVerified?: AuthEventHandler<"connection.domain.verified", TExtend>;
     policyUpdated?: AuthEventHandler<"connection.policy.updated", TExtend>;
     samlSet?: AuthEventHandler<"connection.saml.set", TExtend>;

@@ -342,7 +342,7 @@ test("SCIM + OIDC reuses provisioned userId", async () => {
 
   await convexClient.mutation(api.auth.group.updatePolicy, {
     groupId,
-    data: {
+    patch: {
       provisioning: {
         groups: {
           mode: "sync",
@@ -529,7 +529,7 @@ test("SCIM + SAML reuses provisioned userId", async () => {
 
   await convexClient.mutation(api.auth.group.updatePolicy, {
     groupId,
-    data: {
+    patch: {
       provisioning: {
         roles: {
           mode: "map",

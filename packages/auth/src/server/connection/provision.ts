@@ -46,6 +46,12 @@ function getScimConfigShape(scimConfig: { extend?: unknown } | null | undefined)
  * discipline of `getPublicSamlConfig`/`getPublicConnectionConfig`.
  */
 function getPublicScimConfig<T extends { tokenHash?: string }>(
+  scimConfig: T,
+): Omit<T, "tokenHash"> & { hasToken: boolean };
+function getPublicScimConfig<T extends { tokenHash?: string }>(
+  scimConfig: T | null | undefined,
+): (Omit<T, "tokenHash"> & { hasToken: boolean }) | null;
+function getPublicScimConfig<T extends { tokenHash?: string }>(
   scimConfig: T | null | undefined,
 ): (Omit<T, "tokenHash"> & { hasToken: boolean }) | null {
   if (!scimConfig) {
@@ -54,7 +60,6 @@ function getPublicScimConfig<T extends { tokenHash?: string }>(
   const { tokenHash, ...rest } = scimConfig;
   return { ...rest, hasToken: typeof tokenHash === "string" && tokenHash.length > 0 };
 }
-
 
 type ScimDeps = {
   config: ConvexAuthMaterializedConfig;
@@ -107,7 +112,11 @@ export function createGroupScimDomain(deps: ScimDeps) {
     }
 
     const policy = await loadGroupPolicyOrThrow(ctx, connection.groupId);
-    const scimConfig = await getScimConfigByConnection(ctx, config.component.connection, connectionId);
+    const scimConfig = await getScimConfigByConnection(
+      ctx,
+      config.component.connection,
+      connectionId,
+    );
 
     const hasConfig = scimConfig !== null && scimConfig !== undefined;
     checks.push({
@@ -205,7 +214,11 @@ export function createGroupScimDomain(deps: ScimDeps) {
         };
       },
     ) => {
-      const connection = await getGroupConnection(ctx, config.component.connection, data.connectionId);
+      const connection = await getGroupConnection(
+        ctx,
+        config.component.connection,
+        data.connectionId,
+      );
       if (connection === null) {
         throw convexError(ErrorCode.INVALID_PARAMETERS, "Connection not found.");
       }
@@ -274,7 +287,11 @@ export function createGroupScimDomain(deps: ScimDeps) {
       };
     },
     getConfigByToken: async (ctx: ComponentReadCtx, args: { token: string }) => {
-      return await getScimConfigByTokenHash(ctx, config.component.connection, await sha256(args.token));
+      return await getScimConfigByTokenHash(
+        ctx,
+        config.component.connection,
+        await sha256(args.token),
+      );
     },
     validate: async (ctx: ComponentReadCtx, args: { connectionId: string }) => {
       return await validateScim(ctx, args.connectionId);

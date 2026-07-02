@@ -7,10 +7,10 @@ import type { ComponentActionCtx, ComponentCtx, ComponentReadCtx } from "../comp
 import { retryWithBackoff } from "../utils/retry";
 
 import {
-  addConnectionDomain,
+  createConnectionDomain,
   createGroupConnection,
-  deleteConnectionDomain,
-  deleteConnectionDomainVerification,
+  removeConnectionDomain,
+  removeConnectionDomainVerification,
   deleteGroupConnection,
   getConnectionDomainVerification,
   getGroupConnection,
@@ -420,7 +420,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
           isPrimary?: boolean;
         },
       ): Promise<string> => {
-        return await addConnectionDomain(ctx, config.component.connection, {
+        return await createConnectionDomain(ctx, config.component.connection, {
           ...data,
           domain: normalizeDomain(data.domain),
         });
@@ -576,7 +576,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
         };
       },
       remove: async (ctx: ComponentCtx, args: { id: string }) => {
-        await deleteConnectionDomain(ctx, config.component.connection, args.id);
+        await removeConnectionDomain(ctx, config.component.connection, args.id);
       },
       verification: {
         request: async (ctx: ComponentCtx, args: { connectionId: string; domain: string }) => {
@@ -696,7 +696,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
           checks.push({ name: "verification_requested", ok: true });
 
           if (verification.expiresAt < Date.now()) {
-            await deleteConnectionDomainVerification(ctx, config.component.connection, domain._id);
+            await removeConnectionDomainVerification(ctx, config.component.connection, domain._id);
             checks.push({
               name: "challenge_active",
               ok: false,
@@ -936,7 +936,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
         if (normalizedDomains) {
           for (const [index, domain] of normalizedDomains.entries()) {
             try {
-              await addConnectionDomain(ctx, config.component.connection, {
+              await createConnectionDomain(ctx, config.component.connection, {
                 connectionId: connection._id,
                 groupId: connection.groupId,
                 domain,
@@ -1111,8 +1111,8 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
           },
         );
       },
-      metadata: async <DataModel extends GenericDataModel>(
-        ctx: GenericActionCtx<DataModel>,
+      metadata: async (
+        ctx: ComponentReadCtx,
         opts: {
           connectionId: string;
           entityId?: string;
@@ -1149,10 +1149,7 @@ export function createGroupConnectionDomain<TDeps extends DomainDeps>(deps: TDep
        * SP metadata can be generated. Returns a structured result with
        * per-check details rather than throwing on first failure.
        */
-      validate: async <DataModel extends GenericDataModel>(
-        ctx: GenericActionCtx<DataModel>,
-        args: { connectionId: string },
-      ) => {
+      validate: async (ctx: ComponentReadCtx, args: { connectionId: string }) => {
         const { connectionId } = args;
         const checks: Array<{
           name: string;

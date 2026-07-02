@@ -5,17 +5,30 @@ import path from "node:path";
 const CONFIG_DIR = path.join(homedir(), ".config", "convex-auth-demo");
 const STORAGE_PATH = path.join(CONFIG_DIR, "auth.json");
 
-type StorageShape = Record<string, string>;
+type StorageShape = {
+  token?: string;
+  refreshToken?: string;
+};
 export type SessionShape = {
   token: string;
   refreshToken?: string;
 };
 
+function isStorageShape(value: unknown): value is StorageShape {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    (!("token" in value) || typeof value.token === "string") &&
+    (!("refreshToken" in value) || typeof value.refreshToken === "string")
+  );
+}
+
 async function readStorage(): Promise<StorageShape> {
   try {
     const raw = await readFile(STORAGE_PATH, "utf8");
     const parsed = JSON.parse(raw) as unknown;
-    return typeof parsed === "object" && parsed !== null ? (parsed as StorageShape) : {};
+    return isStorageShape(parsed) ? parsed : {};
   } catch {
     return {};
   }
@@ -32,7 +45,7 @@ export async function clearStoredSession() {
 
 export async function readStoredSession(): Promise<SessionShape | null> {
   const data = await readStorage();
-  if (!data.token) {
+  if (typeof data.token !== "string" || data.token.length === 0) {
     return null;
   }
   return {

@@ -3,22 +3,28 @@
 	import { toast } from "svelte-sonner";
 	import { page } from "$app/state";
 	import { api } from "$convex/_generated/api.js";
+	import type { FunctionReturnType } from "convex/server";
 	import { getContext } from "svelte";
 	import type { AppContext } from "$lib/app";
+	import AppLoading from "$lib/components/AppLoading.svelte";
 	import AuthModal from "$lib/components/AuthModal.svelte";
 	import OnboardingModal from "$lib/components/OnboardingModal.svelte";
 	import AppSidebar from "$lib/components/AppSidebar.svelte";
 	import IssueListPanel from "$lib/components/IssueListPanel.svelte";
 	import SettingsPanel from "$lib/components/SettingsPanel.svelte";
+	import { errorText } from "$lib/errors";
 
 	const app = getContext<AppContext>("app");
 	const client = getConvexClient();
 	type AuthContext = {
 		invite?: {
-			accept: () => Promise<{ ok: boolean; token?: string }>;
+			accept: () => Promise<{ token: string }>;
 		} | null;
 	};
 	const auth = getContext<AuthContext>("auth");
+	type DashboardData = FunctionReturnType<typeof api.groups.get>;
+	type Workspace = NonNullable<DashboardData["selectedGroup"]>;
+	type User = NonNullable<DashboardData["user"]>;
 
 	const groupId = $derived(page.params.groupId!);
 	let activeTab = $state<"issues" | "settings">("issues");
@@ -26,13 +32,13 @@
 
 	const dashboard = useQuery(api.groups.get, () => ({ groupId }));
 
-	const workspace = $derived(dashboard.data?.selectedGroup ?? null);
-	const user = $derived(dashboard.data?.user ?? null);
+	const workspace: Workspace | null = $derived(dashboard.data?.selectedGroup ?? null);
+	const user: User | null = $derived(dashboard.data?.user ?? null);
 
 	const selectedProject = $derived.by(() => {
 		if (!workspace) return null;
 		if (selectedProjectSlug) {
-			return workspace.projects.find((p: any) => p.slug === selectedProjectSlug) ?? workspace.projects[0] ?? null;
+			return workspace.projects.find((project) => project.slug === selectedProjectSlug) ?? workspace.projects[0] ?? null;
 		}
 		return workspace.projects[0] ?? null;
 	});
@@ -43,30 +49,31 @@
 		}
 	});
 
-	let inviteHandled = $state(false);
+	let inviteHandled = false;
+
+	async function acceptPendingInvite(invite: NonNullable<AuthContext["invite"]>) {
+		try {
+			const { token } = await invite.accept();
+			await client.mutation(api.groups.acceptInvite, { token });
+			toast.success("Invite accepted! You've been added to the organization.");
+		} catch (e: unknown) {
+			toast.error(errorText(e, "Invalid or expired invite."));
+		}
+	}
+
 	$effect(() => {
 		if (inviteHandled || !user || !auth.invite) return;
 		inviteHandled = true;
-			auth.invite.accept().then((result: { ok: boolean; token?: string }) => {
-				if (result.ok && result.token) {
-						client.mutation(api.groups.acceptInvite, { token: result.token }).then((acceptResult: any) => {
-					if (acceptResult.ok) {
-						toast.success("Invite accepted! You've been added to the organization.");
-					} else {
-						toast.error(typeof acceptResult.message === "string" ? acceptResult.message : "Invalid or expired invite.");
-					}
-				});
-			}
-		});
+		void acceptPendingInvite(auth.invite);
 	});
 </script>
 
-{#if !app.isAuthenticated}
+{#if app.isLoading}
+	<AppLoading />
+{:else if !app.isAuthenticated}
 	<AuthModal authProviders={app.authProviders} />
 {:else if dashboard.isLoading && !dashboard.data}
-	<main class="p-5 px-6 overflow-y-auto bg-background-primary max-md:p-4">
-		<p class="muted">Loading...</p>
-	</main>
+	<AppLoading shell />
 {:else if !workspace || !user}
 	<div class="fixed inset-0 z-50 grid place-items-center bg-black/50 p-6 px-4">
 		<OnboardingModal {client} />
@@ -105,7 +112,7 @@
 							canCreateComments: workspace.permissions.canCreateComments,
 							canDeleteComments: workspace.permissions.canDeleteComments,
 						}}
-						members={workspace.members.map((m: any) => ({ userId: m.userId, name: m.name }))}
+						members={workspace.members.map((member) => ({ userId: member.userId, name: member.name }))}
 						currentUserId={user.userId}
 						groupId={workspace.groupId}
 						{client}

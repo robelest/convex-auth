@@ -29,11 +29,11 @@
     client: ConvexClient;
   }>();
 
-	const issuesQuery = useQuery(
-		api.issues.forProject,
-		() => ({
-			projectId: project.projectId,
-		}),
+  const issuesQuery = useQuery(
+    api.issues.list,
+    () => ({
+      projectId: project.projectId,
+    }),
   );
 
   const issues = $derived(issuesQuery.data?.issues ?? []);
@@ -116,10 +116,10 @@
     if (newTitle.trim().length === 0) return;
     isCreating = true;
     try {
-		const result = await client.mutation(api.issues.create, {
-			projectId: project.projectId,
-			title: newTitle,
-		});
+      const result = await client.mutation(api.issues.create, {
+        projectId: project.projectId,
+        title: newTitle,
+      });
       if ("ok" in result && !result.ok && "message" in result) {
         toast.error(typeof result.message === "string" ? result.message : "Failed to create issue");
       } else {
@@ -178,12 +178,12 @@
           <span class="font-label text-[0.6rem] text-content-tertiary">{group.issues.length}</span>
         </div>
 
-						{#each group.issues as issue (issue._id)}
+        {#each group.issues as issue (issue._id)}
           <!-- Issue row -->
           <div
-							class="row cursor-pointer text-left w-full {expandedIssueId === issue._id ? 'row--active' : ''}"
-							onclick={() => toggleIssue(issue._id)}
-							onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleIssue(issue._id); } }}
+            class="row cursor-pointer text-left w-full {expandedIssueId === issue._id ? 'row--active' : ''}"
+            onclick={() => toggleIssue(issue._id)}
+            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleIssue(issue._id); } }}
             role="button"
             tabindex="0"
           >
@@ -199,7 +199,7 @@
             {/if}
 
             <!-- Labels -->
-							{#each issue.labels.slice(0, 2) as label (`${issue._id}-${label}`)}
+            {#each issue.labels.slice(0, 2) as label (`${issue._id}-${label}`)}
               <span class="chip chip--grant shrink-0">{label}</span>
             {/each}
 

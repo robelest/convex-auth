@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 
 import { api } from "../_generated/api";
@@ -8,6 +9,60 @@ import { authAction, authMutation, authQuery } from "../functions";
 import { roles } from "../roles";
 
 const vConnectionStatus = v.union(v.literal("draft"), v.literal("active"), v.literal("disabled"));
+const vAuthEventKind = v.union(
+  v.literal("user.created"),
+  v.literal("user.updated"),
+  v.literal("session.signed_in"),
+  v.literal("session.signed_out"),
+  v.literal("session.invalidated"),
+  v.literal("session.refresh_exchanged"),
+  v.literal("session.refresh_reuse_detected"),
+  v.literal("account.linked"),
+  v.literal("account.unlinked"),
+  v.literal("password.changed"),
+  v.literal("passkey.added"),
+  v.literal("passkey.removed"),
+  v.literal("totp.enrolled"),
+  v.literal("totp.removed"),
+  v.literal("email.verified"),
+  v.literal("phone.verified"),
+  v.literal("api_key.issued"),
+  v.literal("api_key.revoked"),
+  v.literal("oauth.client.created"),
+  v.literal("oauth.client.revoked"),
+  v.literal("oauth.code.issued"),
+  v.literal("oauth.token.issued"),
+  v.literal("oauth.token.exchanged"),
+  v.literal("oauth.refresh.reuse_detected"),
+  v.literal("oauth.refresh.revoked"),
+  v.literal("connection.created"),
+  v.literal("connection.updated"),
+  v.literal("connection.deleted"),
+  v.literal("connection.login.succeeded"),
+  v.literal("connection.login.failed"),
+  v.literal("connection.domain.verification_requested"),
+  v.literal("connection.domain.verified"),
+  v.literal("connection.policy.updated"),
+  v.literal("connection.saml.set"),
+  v.literal("connection.saml.refreshed"),
+  v.literal("connection.oidc.set"),
+  v.literal("connection.scim.set"),
+  v.literal("connection.scim.read"),
+  v.literal("connection.scim.user.provisioned"),
+  v.literal("connection.scim.user.updated"),
+  v.literal("connection.scim.user.deactivated"),
+  v.literal("connection.scim.user.reactivated"),
+  v.literal("connection.scim.group.provisioned"),
+  v.literal("connection.scim.group.updated"),
+  v.literal("connection.scim.group.deactivated"),
+  v.literal("connection.scim.group.reactivated"),
+  v.literal("webhook.endpoint.created"),
+  v.literal("webhook.endpoint.disabled"),
+  v.literal("webhook.delivery.created"),
+  v.literal("webhook.delivery.attempted"),
+  v.literal("webhook.delivery.succeeded"),
+  v.literal("webhook.delivery.failed"),
+);
 
 const vConnectionWhere = v.object({
   groupId: v.optional(v.string()),
@@ -229,10 +284,10 @@ const vScimConfigure = {
 };
 
 async function requireGroupAdmin(
-  ctx: { auth: { userId: string } },
+  ctx: Parameters<typeof authCore.member.assert>[0] & { auth: { userId: string } },
   groupId: string,
 ) {
-  await authCore.member.assert(ctx as never, {
+  await authCore.member.assert(ctx, {
     userId: ctx.auth.userId,
     groupId,
     roleIds: [roles.orgAdmin.id],
@@ -259,6 +314,7 @@ export const createConnection = authMutation({
     status: v.optional(vConnectionStatus),
     domain: v.optional(v.string()),
   },
+  returns: auth.v.connection.created,
   handler: async (ctx, args) => {
     await requireGroupAdmin(ctx, args.groupId);
     const created = await auth.connection.create(ctx, {
@@ -280,6 +336,7 @@ export const createConnection = authMutation({
 
 export const getConnection = authQuery({
   args: { id: v.string() },
+  returns: v.union(auth.v.connection.doc, v.null()),
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.id);
     await requireGroupAdmin(ctx, groupId);
@@ -289,6 +346,7 @@ export const getConnection = authQuery({
 
 export const getConnectionByDomain = authQuery({
   args: { domain: v.string() },
+  returns: auth.v.connection.lookup,
   handler: async (ctx, args) => {
     const resolved = await auth.connection.get(ctx, { domain: args.domain });
     if (resolved?.connection == null) {
@@ -302,10 +360,7 @@ export const getConnectionByDomain = authQuery({
 export const listConnections = authQuery({
   args: {
     where: v.optional(vConnectionWhere),
-    paginationOpts: v.object({
-      numItems: v.number(),
-      cursor: v.union(v.string(), v.null()),
-    }),
+    paginationOpts: paginationOptsValidator,
     orderBy: v.optional(
       v.union(
         v.literal("_creationTime"),
@@ -316,6 +371,7 @@ export const listConnections = authQuery({
     ),
     order: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
   },
+  returns: auth.v.list(auth.v.connection.doc),
   handler: async (ctx, args) => {
     if (!args.where?.groupId) {
       throw new ConvexError({ code: "INVALID_PARAMETERS", message: "Group scope required." });
@@ -333,21 +389,23 @@ export const listConnections = authQuery({
 export const updateConnection = authMutation({
   args: {
     id: v.string(),
-    data: v.object({
+    patch: v.object({
       name: v.optional(v.string()),
       slug: v.optional(v.string()),
       status: v.optional(vConnectionStatus),
     }),
   },
+  returns: auth.v.connection.id,
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.id);
     await requireGroupAdmin(ctx, groupId);
-    return auth.connection.update(ctx, { id: args.id, patch: args.data });
+    return auth.connection.update(ctx, { id: args.id, patch: args.patch });
   },
 });
 
-export const deleteConnection = authMutation({
+export const removeConnection = authMutation({
   args: { id: v.string() },
+  returns: auth.v.connection.id,
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.id);
     await requireGroupAdmin(ctx, groupId);
@@ -357,6 +415,7 @@ export const deleteConnection = authMutation({
 
 export const getConnectionStatus = authQuery({
   args: { id: v.string() },
+  returns: auth.v.connection.status,
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.id);
     await requireGroupAdmin(ctx, groupId);
@@ -366,6 +425,7 @@ export const getConnectionStatus = authQuery({
 
 export const listDomains = authQuery({
   args: { connectionId: v.string() },
+  returns: v.array(auth.v.connection.domain.doc),
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
@@ -375,6 +435,7 @@ export const listDomains = authQuery({
 
 export const validateDomains = authQuery({
   args: { connectionId: v.string() },
+  returns: auth.v.connection.domain.validation,
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
@@ -387,6 +448,7 @@ export const setDomains = authMutation({
     connectionId: v.string(),
     domains: v.array(vDomainInput),
   },
+  returns: auth.v.connection.domain.set,
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
@@ -399,6 +461,7 @@ export const setDomains = authMutation({
 
 export const requestDomainVerification = authMutation({
   args: vDomainVerificationInput,
+  returns: auth.v.connection.domain.verificationRequest,
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
@@ -408,6 +471,7 @@ export const requestDomainVerification = authMutation({
 
 export const confirmDomainVerification = authAction({
   args: vDomainVerificationInput,
+  returns: auth.v.connection.domain.verificationConfirm,
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
@@ -417,6 +481,7 @@ export const confirmDomainVerification = authAction({
 
 export const setOidc = authMutation({
   args: vOidcConfigure,
+  returns: auth.v.connection.oidc.config,
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
@@ -426,6 +491,7 @@ export const setOidc = authMutation({
 
 export const getOidc = authQuery({
   args: { connectionId: v.string() },
+  returns: auth.v.connection.oidc.config,
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
@@ -435,6 +501,7 @@ export const getOidc = authQuery({
 
 export const validateOidc = authAction({
   args: { connectionId: v.string() },
+  returns: auth.v.connection.oidc.validation,
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
@@ -444,6 +511,7 @@ export const validateOidc = authAction({
 
 export const setSaml = authAction({
   args: vSamlConfigure,
+  returns: auth.v.connection.created,
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
@@ -453,15 +521,17 @@ export const setSaml = authAction({
 
 export const validateSaml = authQuery({
   args: { connectionId: v.string() },
+  returns: auth.v.connection.saml.validation,
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
-    return auth.connection.saml.validate(ctx as never, { connectionId: args.connectionId });
+    return auth.connection.saml.validate(ctx, { connectionId: args.connectionId });
   },
 });
 
 export const getPolicy = authQuery({
   args: { groupId: v.string() },
+  returns: auth.v.connection.policy.config,
   handler: async (ctx, args) => {
     await requireGroupAdmin(ctx, args.groupId);
     return auth.connection.policy.get(ctx, { groupId: args.groupId });
@@ -471,16 +541,18 @@ export const getPolicy = authQuery({
 export const updatePolicy = authMutation({
   args: {
     groupId: v.string(),
-    data: vPolicyPatch,
+    patch: vPolicyPatch,
   },
+  returns: auth.v.connection.policy.config,
   handler: async (ctx, args) => {
     await requireGroupAdmin(ctx, args.groupId);
-    return auth.connection.policy.update(ctx, { groupId: args.groupId, patch: args.data });
+    return auth.connection.policy.update(ctx, { groupId: args.groupId, patch: args.patch });
   },
 });
 
 export const validatePolicy = authQuery({
   args: { groupId: v.string() },
+  returns: auth.v.connection.policy.validation,
   handler: async (ctx, args) => {
     await requireGroupAdmin(ctx, args.groupId);
     return auth.connection.policy.validate(ctx, { groupId: args.groupId });
@@ -491,11 +563,9 @@ export const listAudit = authQuery({
   args: {
     groupId: v.optional(v.string()),
     connectionId: v.optional(v.string()),
-    paginationOpts: v.object({
-      numItems: v.number(),
-      cursor: v.union(v.string(), v.null()),
-    }),
+    paginationOpts: paginationOptsValidator,
   },
+  returns: auth.v.list(auth.v.connection.audit.event),
   handler: async (ctx, args) => {
     const groupId =
       args.groupId ??
@@ -517,9 +587,9 @@ export const createWebhookEndpoint = authMutation({
     connectionId: v.string(),
     url: v.string(),
     secret: v.string(),
-    subscriptions: v.array(v.string()),
-    createdByUserId: v.optional(v.string()),
+    subscriptions: v.array(vAuthEventKind),
   },
+  returns: auth.v.connection.webhook.endpoint,
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
@@ -528,23 +598,25 @@ export const createWebhookEndpoint = authMutation({
       connectionId: args.connectionId,
       url: args.url,
       secret: args.secret,
-      subscriptions: args.subscriptions as never,
-      createdByUserId: args.createdByUserId ?? userId,
-    });
-    return {
-      _id: result.endpointId,
-      connectionId: args.connectionId,
-      url: args.url,
       subscriptions: args.subscriptions,
-      createdByUserId: args.createdByUserId ?? userId,
-      status: "active",
-      failureCount: 0,
-    };
+      createdByUserId: userId,
+    });
+    const endpoint = await auth.connection.webhook.endpoint.get(ctx, {
+      id: result.endpointId,
+    });
+    if (endpoint === null) {
+      throw new ConvexError({
+        code: "INTERNAL_ERROR",
+        message: "Created webhook endpoint could not be loaded.",
+      });
+    }
+    return endpoint;
   },
 });
 
 export const listWebhookEndpoints = authQuery({
   args: { connectionId: v.string() },
+  returns: v.array(auth.v.connection.webhook.endpoint),
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
@@ -557,11 +629,9 @@ export const listWebhookEndpoints = authQuery({
 export const listWebhookDeliveries = authQuery({
   args: {
     connectionId: v.string(),
-    paginationOpts: v.object({
-      numItems: v.number(),
-      cursor: v.union(v.string(), v.null()),
-    }),
+    paginationOpts: paginationOptsValidator,
   },
+  returns: auth.v.list(auth.v.connection.webhook.delivery),
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
@@ -574,6 +644,7 @@ export const listWebhookDeliveries = authQuery({
 
 export const disableWebhookEndpoint = authMutation({
   args: { id: v.string() },
+  returns: auth.v.connection.webhook.disabled,
   handler: async (ctx, args) => {
     const endpoint = await auth.connection.webhook.endpoint.get(ctx, { id: args.id });
     if (!endpoint) {
@@ -589,6 +660,7 @@ export const disableWebhookEndpoint = authMutation({
 
 export const setScim = authMutation({
   args: vScimConfigure,
+  returns: auth.v.connection.scim.set,
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
@@ -598,6 +670,7 @@ export const setScim = authMutation({
 
 export const getScim = authQuery({
   args: { connectionId: v.string() },
+  returns: v.union(auth.v.connection.scim.config, v.null()),
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
@@ -607,6 +680,7 @@ export const getScim = authQuery({
 
 export const validateScim = authQuery({
   args: { connectionId: v.string() },
+  returns: auth.v.connection.scim.validation,
   handler: async (ctx, args) => {
     const groupId = await resolveConnectionGroup(ctx, args.connectionId);
     await requireGroupAdmin(ctx, groupId);
@@ -622,8 +696,9 @@ export const signIn = query({
     redirectTo: v.optional(v.string()),
     loginHint: v.optional(v.string()),
   },
+  returns: auth.v.connection.signIn,
   handler: async (ctx, args) => {
-    return auth.connection.signIn(ctx as never, args);
+    return auth.connection.signIn(ctx, args);
   },
 });
 
@@ -634,8 +709,9 @@ export const metadata = query({
     acsUrl: v.optional(v.string()),
     sloUrl: v.optional(v.string()),
   },
+  returns: auth.v.connection.saml.metadata,
   handler: async (ctx, args) => {
-    return auth.connection.metadata(ctx as never, args);
+    return auth.connection.metadata(ctx, args);
   },
 });
 
