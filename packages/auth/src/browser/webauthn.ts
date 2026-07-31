@@ -1,10 +1,10 @@
 import type {
   FactorDeps,
-  PasskeyClient,
-  PasskeyRegisterOptions,
-  PasskeySignInOptions,
+  WebAuthnClient,
+  WebAuthnRegisterOptions,
+  WebAuthnSignInOptions,
 } from "../client/core/types";
-import { createPasskeyClientCore, type PasskeyCeremony } from "../client/factors/passkey";
+import { createWebAuthnClientCore, type WebAuthnCeremony } from "../client/factors/webauthn";
 import { base64urlDecode, base64urlEncode } from "./runtime";
 
 type ConditionalMediationCredential = typeof PublicKeyCredential & {
@@ -27,6 +27,7 @@ type PasskeyRegistrationOptions = {
   challenge: string;
   pubKeyCredParams: PublicKeyCredentialParameters[];
   timeout?: number;
+  hints?: string[];
   attestation?: AttestationConveyancePreference;
   authenticatorSelection?: AuthenticatorSelectionCriteria;
   excludeCredentials?: PasskeyCredentialDescriptor[];
@@ -36,11 +37,12 @@ type PasskeyAuthenticationOptions = {
   challenge: string;
   timeout?: number;
   rpId?: string;
+  hints?: string[];
   userVerification?: UserVerificationRequirement;
   allowCredentials?: PasskeyCredentialDescriptor[];
 };
 
-const browserPasskeyCeremony: PasskeyCeremony = {
+const browserWebAuthnCeremony: WebAuthnCeremony = {
   isSupported: (): boolean =>
     typeof window !== "undefined" && typeof window.PublicKeyCredential !== "undefined",
 
@@ -54,7 +56,7 @@ const browserPasskeyCeremony: PasskeyCeremony = {
     return credential.isConditionalMediationAvailable();
   },
 
-  register: async (rawOptions, opts?: PasskeyRegisterOptions) => {
+  register: async (rawOptions, opts?: WebAuthnRegisterOptions) => {
     const options = rawOptions as PasskeyRegistrationOptions;
     const createOptions: CredentialCreationOptions = {
       publicKey: {
@@ -67,6 +69,7 @@ const browserPasskeyCeremony: PasskeyCeremony = {
         challenge: base64urlDecode(options.challenge).buffer as ArrayBuffer,
         pubKeyCredParams: options.pubKeyCredParams,
         timeout: options.timeout,
+        hints: options.hints,
         attestation: options.attestation,
         authenticatorSelection: options.authenticatorSelection,
         excludeCredentials: (options.excludeCredentials ?? []).map(
@@ -76,7 +79,7 @@ const browserPasskeyCeremony: PasskeyCeremony = {
             transports: cred.transports,
           }),
         ),
-      },
+      } as PublicKeyCredentialCreationOptions & { hints?: string[] },
     };
 
     const createAbort = new AbortController();
@@ -107,17 +110,17 @@ const browserPasskeyCeremony: PasskeyCeremony = {
       attestationObject: base64urlEncode(response.attestationObject),
       transports,
       passkeyName: opts?.name,
-      email: opts?.email,
     };
   },
 
-  signIn: async (rawOptions, opts?: PasskeySignInOptions) => {
+  signIn: async (rawOptions, opts?: WebAuthnSignInOptions) => {
     const options = rawOptions as PasskeyAuthenticationOptions;
     const getOptions: CredentialRequestOptions = {
       publicKey: {
         challenge: base64urlDecode(options.challenge).buffer as ArrayBuffer,
         timeout: options.timeout,
         rpId: options.rpId,
+        hints: options.hints,
         userVerification: options.userVerification,
         allowCredentials: (options.allowCredentials ?? []).map(
           (cred: PasskeyCredentialDescriptor) => ({
@@ -126,7 +129,7 @@ const browserPasskeyCeremony: PasskeyCeremony = {
             transports: cred.transports,
           }),
         ),
-      },
+      } as PublicKeyCredentialRequestOptions & { hints?: string[] },
       ...(opts?.autofill
         ? ({
             mediation: "conditional" as CredentialMediationRequirement,
@@ -165,6 +168,6 @@ const browserPasskeyCeremony: PasskeyCeremony = {
 };
 
 /** @internal */
-export function createPasskeyClient(deps: FactorDeps): PasskeyClient {
-  return createPasskeyClientCore(deps, browserPasskeyCeremony);
+export function createWebAuthnClient(deps: FactorDeps): WebAuthnClient {
+  return createWebAuthnClientCore(deps, browserWebAuthnCeremony);
 }

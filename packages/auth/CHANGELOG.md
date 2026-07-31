@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+- **Canonical WebAuthn provider** — `webauthn()` replaces `passkey()` and groups
+  ceremony preferences under `registration` and `authentication`. The browser
+  and Expo client surface is now `client.webauthn`, and supporting browsers
+  receive typed, non-binding WebAuthn hints without credential-policy tagging
+  or stored-credential migration.
+
 ## 0.0.4-preview.40
 
 ### New — upstream feature parity (in our conventions)
